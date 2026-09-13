@@ -180,7 +180,8 @@ def generate_launch_description():
         parameters=[{
             "msg_module": "geometry_msgs.msg",
             "msg_class": "PoseWithCovarianceStamped",
-            "publish": False,
+            # "publish": False,
+            "publish": True,
             "queue_size": 1,
             "use_sim_time": use_sim_time,
         }],
@@ -254,6 +255,6 @@ def generate_launch_description():
 
     ld.add_action(change_amcl_publish_state_node)
     ld.add_action(gnss_amcl_initializer_node_timer)
-    # ld.add_action(amcl_watchdog_node_timer)
+    ld.add_action(amcl_watchdog_node_timer)
 
     return ld
