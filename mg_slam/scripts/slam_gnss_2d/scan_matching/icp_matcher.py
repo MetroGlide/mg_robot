@@ -151,13 +151,14 @@ class ICPMatcher(ScanMatcherBase):
                 break
 
         n_valid = len(p_trans_v) if 'p_trans_v' in locals() else 0
-        information = H / n_valid + 1e-6 * \
-            np.eye(3) if n_valid > 0 else np.zeros((3, 3))
-
-        # 直進性（Yaw）を保持するため、Yawの確信度を意図的に高く（yaw_information_multiplier倍）設定
-        # これにより、GTSAMがGNSSのズレを吸収する際に「横滑り」は許容しても「曲がる」ことは許さなくなる
         if n_valid > 0:
+            info_scale = 400.0
+            information = (H / n_valid) * info_scale + 1e-4 * np.eye(3)
+            information[:2, :2] = np.clip(information[:2, :2], -1000.0, 1000.0)
+            information[2, 2] = np.clip(information[2, 2], 0.0, 5000.0)
             information[2, 2] *= self._yaw_information_multiplier
+        else:
+            information = np.zeros((3, 3))
 
         # スコア計算
         score = 0.0

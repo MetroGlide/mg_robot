@@ -10,6 +10,7 @@ from gtsam import (
     LevenbergMarquardtParams,
     NonlinearFactorGraph,
     Pose2,
+    PoseTranslationPrior2D,
     PriorFactorPose2,
     Values,
     noiseModel,
@@ -23,9 +24,6 @@ _logger = logging.getLogger(__name__)
 # 最初のノードを固定するアンカー拘束の分散値 (x, y, yaw)
 # 非常に小さい値で最初のノードを強く固定する
 _ANCHOR_VARIANCES = np.array([1e-6, 1e-6, 1e-8])
-
-# GNSS prior の yaw 分散値 — 山の大きさで x/y のみを拘束し yaw は自由にする
-_GNSS_YAW_VARIANCE = 1e6  # [rad^2]
 
 
 class GTSAMOptimizer:
@@ -66,23 +64,17 @@ class GTSAMOptimizer:
                 noise,
             ))
 
-        # GNSS絶対位置拘束を PriorFactorPose2 として投入する
-        # yaw 分散を大きく設定し、x/y のみをグローバル座標で拘束する
+        # GNSS絶対位置拘束を PoseTranslationPrior2D として投入する（xy平面のみ直接拘束）
         for gnss_prior in gnss_priors:
-            try:
-                node_initial = initial.atPose2(gnss_prior.node_index)
-            except (KeyError, RuntimeError) as e:
+            if not initial.exists(gnss_prior.node_index):
                 _logger.warning(
-                    f'GNSS prior skipped: node_index={gnss_prior.node_index} not in graph: {e}'
+                    f'GNSS prior skipped: node_index={gnss_prior.node_index} not in graph'
                 )
                 continue
-            info_3x3 = np.zeros((3, 3))
-            info_3x3[:2, :2] = gnss_prior.information
-            info_3x3[2, 2] = 1.0 / _GNSS_YAW_VARIANCE
-            gnss_noise = noiseModel.Gaussian.Information(info_3x3)
-            graph.add(PriorFactorPose2(
+            gnss_noise = noiseModel.Gaussian.Information(gnss_prior.information)
+            graph.add(PoseTranslationPrior2D(
                 gnss_prior.node_index,
-                Pose2(gnss_prior.x, gnss_prior.y, node_initial.theta()),
+                Pose2(gnss_prior.x, gnss_prior.y, 0.0),
                 gnss_noise,
             ))
 

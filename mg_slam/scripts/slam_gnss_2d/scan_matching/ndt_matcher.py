@@ -210,10 +210,14 @@ class NDTMatcher(ScanMatcherBase):
                 converged = True
                 break
 
-        information = H_final / n_valid_final + 1e-6 * \
-            np.eye(3) if n_valid_final > 0 else np.zeros((3, 3))
         if n_valid_final > 0:
+            info_scale = 400.0
+            information = (H_final / n_valid_final) * info_scale + 1e-4 * np.eye(3)
+            information[:2, :2] = np.clip(information[:2, :2], -1000.0, 1000.0)
+            information[2, 2] = np.clip(information[2, 2], 0.0, 5000.0)
             information[2, 2] *= self._yaw_information_multiplier
+        else:
+            information = np.zeros((3, 3))
 
         score = 0.0
         if converged:

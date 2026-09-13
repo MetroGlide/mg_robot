@@ -9,6 +9,7 @@ from gtsam import (
     ISAM2Params,
     NonlinearFactorGraph,
     Pose2,
+    PoseTranslationPrior2D,
     PriorFactorPose2,
     Values,
     noiseModel,
@@ -79,31 +80,20 @@ class ISAM2Optimizer:
         x: float,
         y: float,
         sigma_xy: float,
-        yaw_variance: float,
+        yaw_variance: float = 0.0,
     ) -> None:
         with self._lock:
             if not self._initialized:
                 return
-            info_3x3 = np.zeros((3, 3), dtype=np.float64)
-            inv_var = 1.0 / max(sigma_xy * sigma_xy, 1e-12)
-            info_3x3[0, 0] = inv_var
-            info_3x3[1, 1] = inv_var
-            info_3x3[2, 2] = 1.0 / max(yaw_variance, 1e-12)
-
-            current_yaw = 0.0
-            try:
-                current_yaw = self._latest_estimate.atPose2(node_index).theta()
-            except RuntimeError:
-                try:
-                    current_yaw = self._pending_values.atPose2(
-                        node_index).theta()
-                except RuntimeError:
-                    pass
-
-            gnss_noise = noiseModel.Gaussian.Information(info_3x3)
+            noise_2d = noiseModel.Diagonal.Sigmas(
+                np.array([sigma_xy, sigma_xy], dtype=np.float64)
+            )
             self._pending_graph.add(
-                PriorFactorPose2(node_index, Pose2(
-                    x, y, current_yaw), gnss_noise)
+                PoseTranslationPrior2D(
+                    node_index,
+                    Pose2(x, y, 0.0),
+                    noise_2d,
+                )
             )
 
     def add_initial_estimate(
