@@ -59,7 +59,6 @@ class LoopClosureBuilder(PoseGraphBuilderBase):
         self._loop_just_closed_flag: bool = False
         self.loop_attempt_count: int = 0
         self.loop_success_count: int = 0
-        self.loop_success_count: int = 0
         self._all_nodes_cache: list[PoseNode] = []
 
     def add_scan(self, scan: ScanData, odom: OdomData) -> Optional[PoseNode]:
@@ -257,3 +256,26 @@ class LoopClosureBuilder(PoseGraphBuilderBase):
         result = self._loop_just_closed_flag
         self._loop_just_closed_flag = False
         return result
+
+    def replace_nodes(self, nodes: list[PoseNode]) -> None:
+        """最適化後のノードリストで内部ノードリストとキャッシュを更新する。"""
+        self._inner.replace_nodes(nodes)
+        node_map = {n.index: n for n in nodes}
+        for cached_node in self._all_nodes_cache:
+            if cached_node.index in node_map:
+                updated = node_map[cached_node.index]
+                cached_node.x = updated.x
+                cached_node.y = updated.y
+                cached_node.yaw = updated.yaw
+
+    @property
+    def icp_attempt_count(self) -> int:
+        return self._inner.icp_attempt_count
+
+    @property
+    def icp_success_count(self) -> int:
+        return self._inner.icp_success_count
+
+    @property
+    def odom_fallback_count(self) -> int:
+        return self._inner.odom_fallback_count

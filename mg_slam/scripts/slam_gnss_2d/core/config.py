@@ -151,6 +151,7 @@ class OptimizationConfig:
     """最適化設定"""
     backend: str  # "isam2" | "gtsam" (バッチ用)
     isam2: Isam2Config
+    rerender_threshold_m: float = 0.1
 
 
 @dataclass(frozen=True)

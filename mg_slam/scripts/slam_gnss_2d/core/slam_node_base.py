@@ -69,6 +69,7 @@ class SlamNodeBase(Node, ABC):
             gnss_factor_yaw_variance=cfg.gnss.sigma.factor_yaw_variance,
             gnss_init_distance_m=cfg.gnss.anchor.init_distance_m,
             gnss_max_sigma_m=cfg.gnss.validation.max_sigma_m,
+            rerender_threshold_m=cfg.optimization.rerender_threshold_m,
         )
 
         self._visualizer = SlamVisualizer(self, self._use_gnss)

@@ -16,6 +16,7 @@ from slam_gnss_2d.core.data_types import (
 from slam_gnss_2d.pose_graph.base import PoseGraphBuilderBase
 from slam_gnss_2d.optimizer.isam2_optimizer import ISAM2Optimizer
 from slam_gnss_2d.gnss.anchor_manager import GnssAnchorManager
+from slam_gnss_2d.core.geometry import angle_diff
 
 
 @dataclass
@@ -39,6 +40,7 @@ class GraphOrchestrator:
         gnss_factor_yaw_variance: float = 1e8,
         gnss_init_distance_m: float = 2.0,
         gnss_max_sigma_m: float = 5.0,
+        rerender_threshold_m: float = 0.1,
     ) -> None:
         self._logger = logger
         self._pose_graph = pose_graph
@@ -56,6 +58,7 @@ class GraphOrchestrator:
         self._gnss_factor_yaw_variance = gnss_factor_yaw_variance
         self._gnss_init_distance_m = gnss_init_distance_m
         self._gnss_max_sigma_m = gnss_max_sigma_m
+        self._rerender_threshold_m = rerender_threshold_m
 
         self._last_node_index = -1
         self._last_loop_edge_count = 0
@@ -63,6 +66,8 @@ class GraphOrchestrator:
 
         self._state = 'INITIALIZING' if use_gnss else 'RUNNING'
         self._init_rotation = 0.0
+        self._last_rendered_poses: dict[int, tuple[float, float, float]] = {}
+        self._last_gnss_timestamp: Optional[float] = None
 
     @property
     def anchor_latlon(self) -> tuple[float, float] | None:
@@ -135,13 +140,22 @@ class GraphOrchestrator:
         theta0 = math.atan2(ly, lx)
         nodes = self._pose_graph.get_nodes()
         node0 = nodes[0]
-        rot = theta0 - node0.yaw
+        curr_node = nodes[-1]
+        odom_dx = curr_node.x - node0.x
+        odom_dy = curr_node.y - node0.y
+        odom_dist = math.hypot(odom_dx, odom_dy)
+        if odom_dist > 0.5:
+            odom_heading = math.atan2(odom_dy, odom_dx)
+            rot = angle_diff(theta0, odom_heading)
+        else:
+            rot = angle_diff(theta0, node0.yaw)
         self._init_rotation = rot
 
         c = math.cos(rot)
         s = math.sin(rot)
 
-        self._optimizer.initialize(node0.index, 0.0, 0.0, theta0, 0.05, 10.0)
+        self._optimizer.initialize(
+            node0.index, 0.0, 0.0, node0.yaw + rot, 0.05, 10.0)
         for node in nodes:
             dx = node.x - node0.x
             dy = node.y - node0.y
@@ -151,6 +165,9 @@ class GraphOrchestrator:
             if node.index != node0.index:
                 self._optimizer.add_initial_estimate(
                     node.index, node.x, node.y, node.yaw)
+
+        if hasattr(self._pose_graph, 'replace_nodes'):
+            self._pose_graph.replace_nodes(nodes)
 
         for edge in self._pose_graph.get_edges():
             self._optimizer.add_between_factor(
@@ -227,6 +244,9 @@ class GraphOrchestrator:
         ):
             return None
 
+        if self._last_gnss_timestamp is not None and abs(frame.gnss.timestamp - self._last_gnss_timestamp) < 1e-6:
+            return None
+
         sigma_xy = self._sigma_from_gnss(frame.gnss)
         if sigma_xy <= 0 or sigma_xy > self._gnss_max_sigma_m:
             return None
@@ -234,6 +254,7 @@ class GraphOrchestrator:
         gx, gy = self._anchor_manager.to_local(frame.gnss)
         self._optimizer.add_gnss_prior(
             node.index, gx, gy, sigma_xy, self._gnss_factor_yaw_variance)
+        self._last_gnss_timestamp = frame.gnss.timestamp
         info_2x2 = np.zeros((2, 2), dtype=np.float64)
         inv_var = 1.0 / max(sigma_xy * sigma_xy, 1e-12)
         info_2x2[0, 0] = inv_var
@@ -260,9 +281,29 @@ class GraphOrchestrator:
             rerender_required = True
             self._first_render_done = True
 
+        max_displacement = 0.0
         for n in nodes:
             if n.index in all_poses:
-                n.x, n.y, n.yaw = all_poses[n.index]
+                new_x, new_y, new_yaw = all_poses[n.index]
+                if n.index in self._last_rendered_poses:
+                    old_x, old_y, _ = self._last_rendered_poses[n.index]
+                    disp = math.hypot(new_x - old_x, new_y - old_y)
+                    if disp > max_displacement:
+                        max_displacement = disp
+                n.x, n.y, n.yaw = new_x, new_y, new_yaw
+
+        if not rerender_required and self._rerender_threshold_m > 0.0:
+            if max_displacement >= self._rerender_threshold_m:
+                rerender_required = True
+
+        if rerender_required:
+            for n in nodes:
+                self._last_rendered_poses[n.index] = (n.x, n.y, n.yaw)
+            if hasattr(self._pose_graph, 'replace_nodes'):
+                self._pose_graph.replace_nodes(nodes)
+        else:
+            self._last_rendered_poses[node.index] = (node.x, node.y, node.yaw)
+
         return rerender_required
 
     def _get_latest_seq_edge(self, node_index: int) -> Optional[PoseEdge]:

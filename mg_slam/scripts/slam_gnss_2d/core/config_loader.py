@@ -80,6 +80,7 @@ class ConfigLoader:
         node.declare_parameter('gnss.sigma.factor_yaw_variance', 1e8)
         node.declare_parameter('optimization.backend', 'isam2')
         node.declare_parameter('optimization.isam2.relinearize_threshold', 0.1)
+        node.declare_parameter('optimization.rerender_threshold_m', 0.1)
         node.declare_parameter('trajectory_noise_filter.enabled', False)
         node.declare_parameter('trajectory_noise_filter.type', 'clear')
         node.declare_parameter('trajectory_noise_filter.radius_m', 0.5)
@@ -233,7 +234,9 @@ class ConfigLoader:
                 isam2=Isam2Config(
                     relinearize_threshold=node.get_parameter(
                         'optimization.isam2.relinearize_threshold').value,
-                )
+                ),
+                rerender_threshold_m=node.get_parameter(
+                    'optimization.rerender_threshold_m').value,
             ),
             trajectory_noise_filter=TrajectoryNoiseFilterConfig(
                 enabled=node.get_parameter(
