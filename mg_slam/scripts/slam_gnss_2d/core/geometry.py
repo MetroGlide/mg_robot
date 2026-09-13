@@ -25,14 +25,16 @@ def quaternion_to_yaw(q) -> float:
 
 
 def scan_to_points(scan: ScanData) -> np.ndarray:
-    """有効レンジのみを2D点群 (N, 2) に変換する。"""
+    """有効レンジのみを2D点群 (N, 2) に変換する。base_link 基準の点群を返す。"""
     n = len(scan.ranges)
     angles = scan.angle_min + np.arange(n) * scan.angle_increment
     ranges = np.asarray(scan.ranges, dtype=np.float64)
     valid = (ranges >= scan.range_min) & (ranges <= scan.range_max)
     r = ranges[valid]
     a = angles[valid]
-    return np.column_stack((r * np.cos(a), r * np.sin(a)))
+    lx = r * np.cos(a) + scan.lidar_x
+    ly = r * np.sin(a) + scan.lidar_y
+    return np.column_stack((lx, ly))
 
 
 def world_delta_to_local(dx_w: float, dy_w: float, reference_yaw: float) -> tuple[float, float]:

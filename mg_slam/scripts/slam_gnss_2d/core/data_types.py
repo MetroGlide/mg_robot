@@ -16,6 +16,8 @@ class ScanData:
     angle_increment: float
     range_min: float = 0.1
     range_max: float = 30.0
+    lidar_x: float = 0.0
+    lidar_y: float = 0.0
 
 
 @dataclass

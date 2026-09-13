@@ -34,6 +34,8 @@ class ROS2ScanSource(ScanSourceBase):
         self._tf_buffer = tf2_ros.Buffer()
         self._tf_listener = tf2_ros.TransformListener(self._tf_buffer, node)
         self._lidar_yaw: float = 0.0
+        self._lidar_x: float = 0.0
+        self._lidar_y: float = 0.0
         self._lidar_tf_ready: bool = False
 
     def set_scan_callback(self, callback: Callable[[ScanData], None]) -> None:
@@ -59,10 +61,13 @@ class ROS2ScanSource(ScanSourceBase):
                     'base_link', msg.header.frame_id, rclpy.time.Time()
                 )
                 self._lidar_yaw = quaternion_to_yaw(tf.transform.rotation)
+                self._lidar_x = float(tf.transform.translation.x)
+                self._lidar_y = float(tf.transform.translation.y)
                 self._lidar_tf_ready = True
                 self._node.get_logger().info(
                     f'ScanSource: TF resolved '
                     f'[{msg.header.frame_id} -> base_link]: '
+                    f'x={self._lidar_x:.3f}m, y={self._lidar_y:.3f}m, '
                     f'yaw={math.degrees(self._lidar_yaw):.1f}deg'
                 )
             except tf2_ros.TransformException as e:
@@ -86,6 +91,8 @@ class ROS2ScanSource(ScanSourceBase):
             angle_increment=msg.angle_increment,
             range_min=msg.range_min,
             range_max=msg.range_max,
+            lidar_x=self._lidar_x,
+            lidar_y=self._lidar_y,
         ))
 
 
@@ -180,7 +187,7 @@ class ROS2GnssUtmSource(GnssSourceBase):
             return None
         buf = sorted(self._buffer, key=lambda g: g.timestamp)
         timestamps = [g.timestamp for g in buf]
-        return nearest_by_timestamp(buf, timestamps, timestamp)
+        return nearest_by_timestamp(buf, timestamps, timestamp, max_dt=5.0)
 
     def get_all_gnss(self) -> list[GnssData]:
         return list(self._buffer)
@@ -254,7 +261,7 @@ class ROS2NavpvtSource(GnssSourceBase):
             return None
         buf = sorted(self._buffer, key=lambda g: g.timestamp)
         timestamps = [g.timestamp for g in buf]
-        return nearest_by_timestamp(buf, timestamps, timestamp)
+        return nearest_by_timestamp(buf, timestamps, timestamp, max_dt=5.0)
 
     def get_all_gnss(self) -> list[GnssData]:
         return list(self._buffer)
@@ -265,8 +272,11 @@ class ROS2NavpvtSource(GnssSourceBase):
         if msg.fix_type < self._FIX_TYPE_2D:
             return
 
-        now = self._node.get_clock().now()
-        stamp = now.nanoseconds * 1e-9
+        if hasattr(msg, 'header') and hasattr(msg.header, 'stamp') and msg.header.stamp.sec != 0:
+            stamp = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
+        else:
+            now = self._node.get_clock().now()
+            stamp = now.nanoseconds * 1e-9
 
         lon = msg.lon * 1e-7
         lat = msg.lat * 1e-7

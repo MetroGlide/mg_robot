@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Callable, Optional
 
 import numpy as np
@@ -50,6 +51,8 @@ class BagScanSource(ScanSourceBase):
         self._scan_topic = scan_topic
         self._callback: Optional[Callable[[ScanData], None]] = None
         self._lidar_yaw: float = 0.0
+        self._lidar_x: float = 0.0
+        self._lidar_y: float = 0.0
         self._reader: Optional[rosbag2_py.SequentialReader] = None
         self._step_count = 0
 
@@ -57,7 +60,7 @@ class BagScanSource(ScanSourceBase):
         self._callback = callback
 
     def start(self) -> None:
-        self._lidar_yaw = self._resolve_lidar_yaw()
+        self._lidar_yaw, self._lidar_x, self._lidar_y = self._resolve_lidar_tf()
         self._reader = _open_reader(self._bag_path, [self._scan_topic])
 
     def stop(self) -> None:
@@ -83,18 +86,20 @@ class BagScanSource(ScanSourceBase):
                 angle_increment=msg.angle_increment,
                 range_min=msg.range_min,
                 range_max=msg.range_max,
+                lidar_x=self._lidar_x,
+                lidar_y=self._lidar_y,
             ))
         return True
 
-    def _resolve_lidar_yaw(self) -> float:
-        """bag 内の /tf_static から lidar→base_link の yaw を解決する。
+    def _resolve_lidar_tf(self) -> tuple[float, float, float]:
+        """bag 内の /tf_static から lidar→base_link の (yaw, x, y) を解決する。
 
         ROS2ScanSource と同じ lookup_transform('base_link', scan_frame_id) に相当する
         変換を bag から直接取得する。
         """
         reader = _open_reader(
             self._bag_path, ['/tf_static', self._scan_topic])
-        tf_map: dict[tuple[str, str], object] = {}
+        tf_map: dict[tuple[str, str], tuple[float, float, float]] = {}
         scan_frame_id: Optional[str] = None
 
         while reader.has_next():
@@ -102,34 +107,43 @@ class BagScanSource(ScanSourceBase):
             if topic == '/tf_static':
                 msg = deserialize_message(data, TFMessage)
                 for tf in msg.transforms:
-                    tf_map[(tf.header.frame_id, tf.child_frame_id)] = \
-                        tf.transform.rotation
+                    r_yaw = quaternion_to_yaw(tf.transform.rotation)
+                    tx = float(tf.transform.translation.x)
+                    ty = float(tf.transform.translation.y)
+                    tf_map[(tf.header.frame_id, tf.child_frame_id)] = (r_yaw, tx, ty)
             elif topic == self._scan_topic and scan_frame_id is None:
                 msg = deserialize_message(data, LaserScan)
                 scan_frame_id = msg.header.frame_id
                 break
 
         if scan_frame_id is None:
-            return 0.0
+            return 0.0, 0.0, 0.0
 
         # /tf_static は個々のジョイント変換しか持たないため、
-        # scan_frame_id から base_link まで TF ツリーをたどって yaw を合成する。
-        # 例: top_lrf_link(yaw=π) → top_frame_link(yaw=0) → base_link = π
-        child_to_parent: dict[str, tuple[str, object]] = {
-            child: (parent, rot)
-            for (parent, child), rot in tf_map.items()
+        # scan_frame_id から base_link まで TF ツリーをたどって (yaw, x, y) を合成する。
+        child_to_parent: dict[str, tuple[str, tuple[float, float, float]]] = {
+            child: (parent, transform)
+            for (parent, child), transform in tf_map.items()
         }
         yaw = 0.0
+        lx = 0.0
+        ly = 0.0
         current = scan_frame_id
         visited: set[str] = set()
         while current != 'base_link':
             if current in visited or current not in child_to_parent:
-                return 0.0
+                return 0.0, 0.0, 0.0
             visited.add(current)
-            parent, rot = child_to_parent[current]
-            yaw += quaternion_to_yaw(rot)
+            parent, (step_yaw, step_tx, step_ty) = child_to_parent[current]
+            c = math.cos(step_yaw)
+            s = math.sin(step_yaw)
+            lx, ly = (
+                step_tx + c * lx - s * ly,
+                step_ty + s * lx + c * ly,
+            )
+            yaw += step_yaw
             current = parent
-        return yaw
+        return yaw, lx, ly
 
 
 class BagOdomSource(OdomSourceBase):
@@ -249,7 +263,7 @@ class BagGnssSource(GnssSourceBase):
     def get_gnss_at(self, timestamp: float) -> Optional[GnssData]:
         if not self._gnss_list:
             return None
-        return interpolate_gnss(self._gnss_list, self._timestamps, timestamp)
+        return interpolate_gnss(self._gnss_list, self._timestamps, timestamp, max_dt=5.0)
 
     def get_all_gnss(self) -> list[GnssData]:
         return list(self._gnss_list)
@@ -389,7 +403,7 @@ class BagNavPVTSource(GnssSourceBase):
     def get_gnss_at(self, timestamp: float) -> Optional[GnssData]:
         if not self._gnss_list:
             return None
-        return interpolate_gnss(self._gnss_list, self._timestamps, timestamp)
+        return interpolate_gnss(self._gnss_list, self._timestamps, timestamp, max_dt=5.0)
 
     def get_all_gnss(self) -> list[GnssData]:
         return list(self._gnss_list)

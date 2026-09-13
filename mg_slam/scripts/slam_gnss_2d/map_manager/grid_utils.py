@@ -52,10 +52,16 @@ def scan_hits_to_pixels(
     resolution: float,
     map_size: int,
 ) -> tuple[int, int, np.ndarray, np.ndarray, np.ndarray]:
-    """ノードの有効スキャン終端をピクセル座標へ変換する。"""
+    """ノードの有効スキャン終端をピクセル座標へ変換する。始点は LiDAR 設置位置。"""
     scan = node.scan
+    cos_yaw = np.cos(node.yaw)
+    sin_yaw = np.sin(node.yaw)
+    lidar_x = scan.lidar_x if scan is not None else 0.0
+    lidar_y = scan.lidar_y if scan is not None else 0.0
+    lidar_wx = node.x + cos_yaw * lidar_x - sin_yaw * lidar_y
+    lidar_wy = node.y + sin_yaw * lidar_x + cos_yaw * lidar_y
     robot_px, robot_py = world_to_pixel(
-        node.x, node.y, origin_x, origin_y, resolution)
+        lidar_wx, lidar_wy, origin_x, origin_y, resolution)
     if scan is None:
         empty = np.empty(0, dtype=np.int32)
         return robot_px, robot_py, empty, empty, np.empty(0, dtype=bool)
@@ -64,12 +70,10 @@ def scan_hits_to_pixels(
     ranges = np.asarray(scan.ranges, dtype=np.float64)
     valid_mask = (ranges > scan.range_min) & (ranges < scan.range_max)
 
-    cos_yaw = np.cos(node.yaw)
-    sin_yaw = np.sin(node.yaw)
     r_v = ranges[valid_mask]
     a_v = angles[valid_mask]
-    lx = r_v * np.cos(a_v)
-    ly = r_v * np.sin(a_v)
+    lx = r_v * np.cos(a_v) + lidar_x
+    ly = r_v * np.sin(a_v) + lidar_y
     wx = node.x + cos_yaw * lx - sin_yaw * ly
     wy = node.y + sin_yaw * lx + cos_yaw * ly
 
