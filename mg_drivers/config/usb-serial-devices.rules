@@ -9,6 +9,14 @@ SUBSYSTEM=="tty", ATTRS{idVendor}=="", ATTRS{idProduct}=="", ATTRS{serial}=="", 
 
 SUBSYSTEM=="tty", ATTRS{idVendor}=="", ATTRS{idProduct}=="", ATTRS{serial}=="", SYMLINK+="ttyRobot-gnss", GROUP="dialout"
 
+
+# SUBSYSTEM=="tty", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="000a", ATTRS{serial}=="4150323833373009", SYMLINK+="ttyHoriokart-odom", GROUP="dialout"
+# # SUBSYSTEM=="tty", ATTRS{idVendor}=="2886", ATTRS{idProduct}=="802f", SYMLINK+="ttyHoriokart-odom", GROUP="dialout"
+# SUBSYSTEM=="tty", ATTRS{idVendor}=="2341", ATTRS{idProduct}=="8036", SYMLINK+="ttyHoriokart-motordriver", GROUP="dialout"
+# SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", ATTRS{serial}=="0001", SYMLINK+="ttyHoriokart-frontlidar", GROUP="dialout"
+# SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", ATTRS{serial}=="aa6e0e86c413ec1195eef4ef7a109228", SYMLINK+="ttyHoriokart-toplidar", GROUP="dialout"
+# SUBSYSTEM=="tty", ATTRS{idVendor}=="1546", ATTRS{idProduct}=="01a9", SYMLINK+="ttyHoriokart-gps", GROUP="dialout"
+
 # ----------
 # path -> /etc/udev/rules.d/
 ## info check command
