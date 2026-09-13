@@ -1,7 +1,7 @@
 /odom
 /scan_top_lidar
-/scan_front_lidar_origin
-/nmea_sentence
-/gps/fix
+/tf_static
+/tf
 /navpvt
-/camera/camera/depth/color/points
+/gps/fix
+/nmea_sentence

@@ -184,6 +184,10 @@ install(PROGRAMS
   scripts/generic_publish_controller_node.py
   DESTINATION lib/${PROJECT_NAME}
 )
+install(PROGRAMS
+  scripts/depth_to_pointcloud_node.py
+  DESTINATION lib/${PROJECT_NAME}
+)
 
 ################################################################################
 # Macro for ament package

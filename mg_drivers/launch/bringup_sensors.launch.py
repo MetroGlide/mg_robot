@@ -42,6 +42,8 @@ def generate_launch_description():
         "use_rs_d435i", default="true")
     use_rs_d435_arg = launch_argument_creator.create(
         "use_rs_d435", default="false")
+    use_rs_imu_arg = launch_argument_creator.create(
+        "use_rs_imu", default="true")
 
     pkg_name = "mg_drivers"
     pkg_share = get_package_share_directory(pkg_name)
@@ -171,8 +173,8 @@ def generate_launch_description():
                     "align_depth.enable": "true",
                     "pointcloud.enable": "true",
 
-                    "enable_gyro": "false",
-                    "enable_accel": "false",
+                    "enable_gyro": use_rs_imu_arg.launch_config,
+                    "enable_accel": use_rs_imu_arg.launch_config,
                     "unite_imu_method": "1",
 
                     "depth_module.depth_profile": "848x480x6",
