@@ -12,7 +12,7 @@ from mg_utils import launch_argument
 
 def generate_launch_description():
     pkg_share = get_package_share_directory('mg_bringup')
-    slam_pkg_share = get_package_share_directory('mg_slam')
+    slam_pkg_share = get_package_share_directory('slam_gnss_2d')
 
     launch_argument_creator = launch_argument.LaunchArgumentCreator()
 
