@@ -66,5 +66,43 @@ TEST(AnchorManagerTest, ManualSetAnchor) {
   EXPECT_NEAR(local_y, 30.0, 1e-6);
 }
 
+TEST(AnchorManagerTest, UpdateAnchor) {
+  GnssAnchorManager mgr;
+  mgr.set_anchor(500.0, 600.0, 36.0, 140.0);
+  EXPECT_TRUE(mgr.is_initialized());
+
+  mgr.update_anchor(510.0, 620.0);
+  auto utm = mgr.anchor_utm();
+  ASSERT_TRUE(utm.has_value());
+  EXPECT_NEAR(utm->first, 510.0, 1e-6);
+  EXPECT_NEAR(utm->second, 620.0, 1e-6);
+
+  GnssData query;
+  query.x = 520.0;
+  query.y = 630.0;
+  auto [local_x, local_y] = mgr.to_local(query);
+  EXPECT_NEAR(local_x, 10.0, 1e-6);
+  EXPECT_NEAR(local_y, 10.0, 1e-6);
+}
+
+TEST(AnchorManagerTest, UpdateAnchorLatLon) {
+  GnssAnchorManager mgr;
+  GnssData gnss;
+  gnss.fix_status = 2;
+  gnss.latitude = 35.6895;
+  gnss.longitude = 139.6917;
+  gnss.x = 381600.0;
+  gnss.y = 3950200.0;
+
+  EXPECT_TRUE(mgr.try_set_anchor(gnss, 2));
+  EXPECT_TRUE(mgr.is_initialized());
+
+  mgr.update_anchor(381700.0, 3950300.0);
+  auto latlon = mgr.anchor_latlon();
+  ASSERT_TRUE(latlon.has_value());
+  EXPECT_GT(latlon->first, 35.6895);
+  EXPECT_GT(latlon->second, 139.6917);
+}
+
 }  // namespace gnss
 }  // namespace slam_gnss_2d

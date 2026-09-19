@@ -9,6 +9,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <string>
 #include <tuple>
 #include <unordered_map>
 
@@ -40,7 +41,9 @@ class ISAM2Optimizer {
       double x,
       double y,
       double sigma_xy,
-      double yaw_variance = 0.0);
+      double yaw_variance = 0.0,
+      const std::string& robust_kernel_type = "huber",
+      double robust_kernel_scale = 1.345);
 
   void add_initial_estimate(
       int node_index,

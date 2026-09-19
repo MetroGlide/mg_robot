@@ -173,10 +173,11 @@ bool CountingRenderer::render_node(const core::PoseNode& node) {
   cv::Mat local_mask = cv::Mat::zeros(h, w, CV_8UC1);
 
   cv::Point start(scan_pixels.robot_px - min_px, scan_pixels.robot_py - min_py);
+  std::vector<std::vector<cv::Point>> curves(n_hits);
   for (size_t i = 0; i < n_hits; ++i) {
-    cv::Point end(scan_pixels.hit_px[i] - min_px, scan_pixels.hit_py[i] - min_py);
-    cv::line(local_mask, start, end, cv::Scalar(1), 1);
+    curves[i] = {start, cv::Point(scan_pixels.hit_px[i] - min_px, scan_pixels.hit_py[i] - min_py)};
   }
+  cv::polylines(local_mask, curves, false, cv::Scalar(1), 1);
 
   for (size_t i = 0; i < n_hits; ++i) {
     int lx = scan_pixels.hit_px[i] - min_px;

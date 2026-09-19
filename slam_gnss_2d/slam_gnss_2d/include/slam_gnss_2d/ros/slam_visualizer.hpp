@@ -40,7 +40,7 @@ class SlamVisualizer {
  private:
   rclcpp::Node::SharedPtr node_;
   bool use_gnss_;
-  bool anchor_published_{false};
+  std::optional<std::pair<double, double>> last_anchor_latlon_;
 
   rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr map_pub_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_pub_;

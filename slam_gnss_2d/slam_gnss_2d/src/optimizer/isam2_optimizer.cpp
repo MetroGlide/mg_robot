@@ -58,16 +58,26 @@ void ISAM2Optimizer::add_gnss_prior(
     double x,
     double y,
     double sigma_xy,
-    [[maybe_unused]] double yaw_variance) {
+    [[maybe_unused]] double yaw_variance,
+    const std::string& robust_kernel_type,
+    double robust_kernel_scale) {
   std::lock_guard<std::mutex> lock(lock_);
   if (!initialized_) {
     return;
   }
-  auto noise_2d = gtsam::noiseModel::Diagonal::Sigmas(
+  auto base_noise = gtsam::noiseModel::Diagonal::Sigmas(
       gtsam::Vector2(sigma_xy, sigma_xy));
+  gtsam::SharedNoiseModel robust_noise;
+  if (robust_kernel_type == "cauchy") {
+    robust_noise = gtsam::noiseModel::Robust::Create(
+        gtsam::noiseModel::mEstimator::Cauchy::Create(robust_kernel_scale), base_noise);
+  } else {
+    robust_noise = gtsam::noiseModel::Robust::Create(
+        gtsam::noiseModel::mEstimator::Huber::Create(robust_kernel_scale), base_noise);
+  }
   pending_graph_.add(
       gtsam::PoseTranslationPrior<gtsam::Pose2>(
-          node_index, gtsam::Point2(x, y), noise_2d));
+          node_index, gtsam::Point2(x, y), robust_noise));
 }
 
 void ISAM2Optimizer::add_initial_estimate(

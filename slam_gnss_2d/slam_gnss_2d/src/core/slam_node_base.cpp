@@ -53,7 +53,18 @@ void SlamNodeBase::init() {
       config_.gnss.sigma.factor_yaw_variance,
       config_.gnss.anchor.init_distance_m,
       config_.gnss.validation.max_sigma_m,
-      config_.optimization.rerender_threshold_m);
+      config_.optimization.rerender_threshold_m,
+      config_.gnss.min_interval_m,
+      config_.gnss.anchor.sigma_m,
+      config_.gnss.anchor.init_yaw_sigma_rad,
+      config_.gnss.max_innovation_m,
+      config_.gnss.robust_kernel,
+      config_.gnss.robust_kernel_scale,
+      config_.gnss.prior_min_fix_status,
+      config_.gnss.dynamic_reanchor.enabled,
+      config_.gnss.dynamic_reanchor.min_fix_status,
+      config_.gnss.dynamic_reanchor.min_samples,
+      config_.gnss.dynamic_reanchor.min_distance_m);
 
   auto node_shared = shared_from_this();
   visualizer_ = std::make_shared<ros::SlamVisualizer>(node_shared, config_.gnss.enabled);
@@ -194,6 +205,10 @@ void SlamNodeBase::finalize() {
     map_dirty_ = true;
     publish_map_timer();
     RCLCPP_INFO(get_logger(), "Final map optimization and rendering complete.");
+  } else {
+    map_dirty_ = true;
+    publish_map_timer();
+    RCLCPP_INFO(get_logger(), "Final map published.");
   }
 }
 

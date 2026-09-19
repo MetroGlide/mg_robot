@@ -18,6 +18,7 @@ class GnssAnchorManager {
 
   bool try_set_anchor(const core::GnssData& gnss, int min_fix_status);
   void set_anchor(double x, double y, double lat, double lon);
+  void update_anchor(double x, double y);
 
   std::pair<double, double> to_local(const core::GnssData& gnss) const;
 
@@ -26,6 +27,8 @@ class GnssAnchorManager {
   std::optional<double> anchor_y_;
   std::optional<double> anchor_lat_;
   std::optional<double> anchor_lon_;
+  std::optional<int> utm_zone_;
+  std::optional<bool> utm_northp_;
 };
 
 }  // namespace gnss

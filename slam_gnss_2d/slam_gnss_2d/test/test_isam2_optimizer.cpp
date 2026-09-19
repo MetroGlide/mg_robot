@@ -32,6 +32,26 @@ TEST(OptimizerTest, ISAM2AddGnssPrior) {
   EXPECT_GT(y, 0.0);
 }
 
+TEST(OptimizerTest, ISAM2AddGnssPriorCauchy) {
+  ISAM2Optimizer optimizer(0.1);
+  optimizer.initialize(0, 0.0, 0.0, 0.0, 0.1, 0.1);
+
+  optimizer.add_initial_estimate(1, 1.0, 0.0, 0.0);
+  Eigen::Matrix3d info = Eigen::Matrix3d::Identity() * 100.0;
+  optimizer.add_between_factor(0, 1, 1.0, 0.0, 0.0, info);
+
+  // Cauchy robust kernel
+  optimizer.add_gnss_prior(1, 1.5, 0.5, 0.1, 0.0, "cauchy", 1.5);
+  optimizer.update();
+
+  auto pose = optimizer.get_pose(1);
+  ASSERT_TRUE(pose.has_value());
+  auto [x, y, yaw] = *pose;
+
+  EXPECT_GT(x, 1.0);
+  EXPECT_GT(y, 0.0);
+}
+
 TEST(OptimizerTest, GTSAMOptimizerWithPriors) {
   GTSAMOptimizer optimizer;
 

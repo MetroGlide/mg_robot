@@ -31,9 +31,14 @@ SlamVisualizer::SlamVisualizer(rclcpp::Node::SharedPtr node, bool use_gnss)
 }
 
 void SlamVisualizer::publish_anchor(core::GraphOrchestrator& orchestrator) {
-  if (use_gnss_ && !anchor_published_) {
-    auto latlon = orchestrator.anchor_latlon();
-    if (latlon.has_value()) {
+  if (!use_gnss_) {
+    return;
+  }
+  auto latlon = orchestrator.anchor_latlon();
+  if (latlon.has_value()) {
+    if (!last_anchor_latlon_.has_value() ||
+        std::abs(latlon->first - last_anchor_latlon_->first) > 1e-7 ||
+        std::abs(latlon->second - last_anchor_latlon_->second) > 1e-7) {
       auto [lat, lon] = *latlon;
       sensor_msgs::msg::NavSatFix msg;
       msg.header.stamp = node_->get_clock()->now();
@@ -42,7 +47,7 @@ void SlamVisualizer::publish_anchor(core::GraphOrchestrator& orchestrator) {
       msg.longitude = lon;
       msg.status.status = sensor_msgs::msg::NavSatStatus::STATUS_FIX;
       anchor_pub_->publish(msg);
-      anchor_published_ = true;
+      last_anchor_latlon_ = latlon;
       RCLCPP_INFO(node_->get_logger(), "Anchor published: Lat=%.7f, Lon=%.7f", lat, lon);
     }
   }
