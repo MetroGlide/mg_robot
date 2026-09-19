@@ -1,6 +1,7 @@
 #include "slam_gnss_2d/scan_matching/reference_provider/local_map.hpp"
 
 #include <cmath>
+#include <unordered_map>
 #include "slam_gnss_2d/core/geometry.hpp"
 
 namespace slam_gnss_2d {
@@ -20,7 +21,52 @@ void LocalMapProvider::update(const core::PoseNode& node) {
 }
 
 void LocalMapProvider::invalidate_cache() {
-  nodes_.clear();
+  // ポーズ更新時も局所参照点群の連続性を維持するため全消去は行わない
+}
+
+void LocalMapProvider::sync_poses(const std::vector<core::PoseNode>& nodes) {
+  if (nodes.empty() || nodes_.empty()) {
+    return;
+  }
+
+  bool is_sequential = (!nodes.empty() && nodes.front().index == 0 &&
+                        nodes.back().index == static_cast<int>(nodes.size() - 1));
+
+  if (is_sequential) {
+    for (auto& pair : nodes_) {
+      int idx = pair.first.index;
+      if (idx >= 0 && idx < static_cast<int>(nodes.size())) {
+        pair.first.x = nodes[idx].x;
+        pair.first.y = nodes[idx].y;
+        pair.first.yaw = nodes[idx].yaw;
+      }
+    }
+    if (last_node_.has_value()) {
+      int idx = last_node_->index;
+      if (idx >= 0 && idx < static_cast<int>(nodes.size())) {
+        last_node_ = nodes[idx];
+      }
+    }
+  } else {
+    std::unordered_map<int, const core::PoseNode*> node_map;
+    for (const auto& n : nodes) {
+      node_map[n.index] = &n;
+    }
+    for (auto& pair : nodes_) {
+      auto it = node_map.find(pair.first.index);
+      if (it != node_map.end()) {
+        pair.first.x = it->second->x;
+        pair.first.y = it->second->y;
+        pair.first.yaw = it->second->yaw;
+      }
+    }
+    if (last_node_.has_value()) {
+      auto it = node_map.find(last_node_->index);
+      if (it != node_map.end()) {
+        last_node_ = *(it->second);
+      }
+    }
+  }
 }
 
 std::optional<std::vector<Eigen::Vector2d>> LocalMapProvider::get_reference_pts() {

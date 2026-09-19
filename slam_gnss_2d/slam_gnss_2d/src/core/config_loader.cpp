@@ -42,6 +42,11 @@ void ConfigLoader::declare_params(rclcpp::Node& node) {
   declare_param_if_not_declared(node, "scan_matching.csm.angular_step", 0.02);
   declare_param_if_not_declared(node, "scan_matching.local_map.window", 30);
   declare_param_if_not_declared(node, "scan_matching.local_map.radius", 30.0);
+  declare_param_if_not_declared(node, "scan_matching.max_translation_drift", 0.08);
+  declare_param_if_not_declared(node, "scan_matching.multi_start.angular_search_window_deg", 20.0);
+  declare_param_if_not_declared(node, "scan_matching.multi_start.angular_step_deg", 2.5);
+  declare_param_if_not_declared(node, "scan_matching.multi_start.enable_straight_hypothesis", true);
+  declare_param_if_not_declared(node, "scan_matching.multi_start.enable_const_vel_hypothesis", true);
 
   declare_param_if_not_declared(node, "loop_closure.enabled", true);
   declare_param_if_not_declared(node, "loop_closure.search_radius", 2.0);
@@ -71,6 +76,15 @@ void ConfigLoader::declare_params(rclcpp::Node& node) {
   declare_param_if_not_declared(node, "gnss.topics.fix", std::string("/gps/fix"));
   declare_param_if_not_declared(node, "gnss.topics.navpvt", std::string("/navpvt"));
   declare_param_if_not_declared(node, "gnss.navpvt_hacc_scale", 1.0);
+  declare_param_if_not_declared(node, "gnss.min_interval_m", 1.0);
+  declare_param_if_not_declared(node, "gnss.max_innovation_m", 0.0);
+  declare_param_if_not_declared(node, "gnss.robust_kernel", std::string("huber"));
+  declare_param_if_not_declared(node, "gnss.robust_kernel_scale", 1.345);
+  declare_param_if_not_declared(node, "gnss.prior.min_fix_status", 1);
+  declare_param_if_not_declared(node, "gnss.dynamic_reanchor.enabled", false);
+  declare_param_if_not_declared(node, "gnss.dynamic_reanchor.min_fix_status", 2);
+  declare_param_if_not_declared(node, "gnss.dynamic_reanchor.min_samples", 10);
+  declare_param_if_not_declared(node, "gnss.dynamic_reanchor.min_distance_m", 10.0);
   declare_param_if_not_declared(node, "gnss.validation.max_sigma_m", 5.0);
   declare_param_if_not_declared(node, "save_dir", std::string(""));
 
@@ -129,6 +143,16 @@ SlamConfig ConfigLoader::build_config(const rclcpp::Node& node) {
   cfg.scan_matching.csm.angular_step = node.get_parameter("scan_matching.csm.angular_step").as_double();
   cfg.scan_matching.local_map.window = node.get_parameter("scan_matching.local_map.window").as_int();
   cfg.scan_matching.local_map.radius = node.get_parameter("scan_matching.local_map.radius").as_double();
+  cfg.scan_matching.max_translation_drift =
+      node.get_parameter("scan_matching.max_translation_drift").as_double();
+  cfg.scan_matching.multi_start.angular_search_window_deg =
+      node.get_parameter("scan_matching.multi_start.angular_search_window_deg").as_double();
+  cfg.scan_matching.multi_start.angular_step_deg =
+      node.get_parameter("scan_matching.multi_start.angular_step_deg").as_double();
+  cfg.scan_matching.multi_start.enable_straight_hypothesis =
+      node.get_parameter("scan_matching.multi_start.enable_straight_hypothesis").as_bool();
+  cfg.scan_matching.multi_start.enable_const_vel_hypothesis =
+      node.get_parameter("scan_matching.multi_start.enable_const_vel_hypothesis").as_bool();
 
   cfg.loop_closure.enabled = node.get_parameter("loop_closure.enabled").as_bool();
   cfg.loop_closure.search_radius = node.get_parameter("loop_closure.search_radius").as_double();
@@ -161,6 +185,15 @@ SlamConfig ConfigLoader::build_config(const rclcpp::Node& node) {
   cfg.gnss.topics.fix = node.get_parameter("gnss.topics.fix").as_string();
   cfg.gnss.topics.navpvt = node.get_parameter("gnss.topics.navpvt").as_string();
   cfg.gnss.navpvt_hacc_scale = node.get_parameter("gnss.navpvt_hacc_scale").as_double();
+  cfg.gnss.min_interval_m = node.get_parameter("gnss.min_interval_m").as_double();
+  cfg.gnss.max_innovation_m = node.get_parameter("gnss.max_innovation_m").as_double();
+  cfg.gnss.robust_kernel = node.get_parameter("gnss.robust_kernel").as_string();
+  cfg.gnss.robust_kernel_scale = node.get_parameter("gnss.robust_kernel_scale").as_double();
+  cfg.gnss.prior_min_fix_status = node.get_parameter("gnss.prior.min_fix_status").as_int();
+  cfg.gnss.dynamic_reanchor.enabled = node.get_parameter("gnss.dynamic_reanchor.enabled").as_bool();
+  cfg.gnss.dynamic_reanchor.min_fix_status = node.get_parameter("gnss.dynamic_reanchor.min_fix_status").as_int();
+  cfg.gnss.dynamic_reanchor.min_samples = node.get_parameter("gnss.dynamic_reanchor.min_samples").as_int();
+  cfg.gnss.dynamic_reanchor.min_distance_m = node.get_parameter("gnss.dynamic_reanchor.min_distance_m").as_double();
   cfg.gnss.validation.max_sigma_m = node.get_parameter("gnss.validation.max_sigma_m").as_double();
   cfg.save_dir = node.get_parameter("save_dir").as_string();
 

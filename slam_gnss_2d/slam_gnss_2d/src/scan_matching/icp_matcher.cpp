@@ -253,8 +253,15 @@ core::MatchResult ICPMatcher::match(
         }
       }
     }
-    if (valid_f >= kMinCorrespondences) {
-      score = cost_sum / static_cast<double>(valid_f);
+    double c_max = (robust_kernel_ == "huber")
+        ? robust_kernel_scale_ * (max_correspondence_dist_ - 0.5 * robust_kernel_scale_)
+        : max_correspondence_dist_;
+    int n_total = static_cast<int>(dst_pts.size());
+    if (valid_f >= kMinCorrespondences && n_total > 0) {
+      double total_cost = cost_sum + static_cast<double>(n_total - valid_f) * c_max;
+      score = total_cost / static_cast<double>(n_total);
+    } else {
+      score = c_max;
     }
   }
 

@@ -200,8 +200,13 @@ core::MatchResult NDTMatcher::match_single_resolution(
         }
       }
     }
-    if (score_count >= kMinCorrespondences) {
-      score = score_sum / static_cast<double>(score_count);
+    double c_max = -kExponentCutoff;
+    int n_total = static_cast<int>(dst_pts.size());
+    if (score_count >= kMinCorrespondences && n_total > 0) {
+      double total_cost = score_sum + static_cast<double>(n_total - score_count) * c_max;
+      score = total_cost / static_cast<double>(n_total);
+    } else {
+      score = c_max;
     }
   }
 

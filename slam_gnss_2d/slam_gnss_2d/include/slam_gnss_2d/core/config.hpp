@@ -51,16 +51,25 @@ struct CsmConfig {
   double angular_step{0.02};
 };
 
+struct MultiStartConfig {
+  double angular_search_window_deg{20.0};
+  double angular_step_deg{2.5};
+  bool enable_straight_hypothesis{true};
+  bool enable_const_vel_hypothesis{true};
+};
+
 struct ScanMatchingConfig {
   bool enabled{true};
-  std::string type{"ndt"};            // "icp" | "ndt" | "csm"
+  std::string type{"ndt"};            // "icp" | "ndt" | "csm" | "coarse_to_fine" | "multi_start_coarse_to_fine"
   std::string reference{"scan_to_local_map"};  // "scan_to_scan" | "scan_to_local_map"
   int max_failure_streak{5};
+  double max_translation_drift{0.08};
   double yaw_information_multiplier{100.0};
   IcpConfig icp;
   NdtConfig ndt;
   CsmConfig csm;
   LocalMapConfig local_map;
+  MultiStartConfig multi_start;
 };
 
 struct LoopClosureConfig {
@@ -101,11 +110,24 @@ struct GnssSigmaConfig {
   double factor_yaw_variance{1e8};
 };
 
+struct GnssDynamicReanchorConfig {
+  bool enabled{false};
+  int min_fix_status{2};       // 2: RTK Fixのみ
+  int min_samples{10};         // アライメントに必要な最小サンプル数
+  double min_distance_m{10.0}; // アライメントに必要な最小移動距離 [m]
+};
+
 struct GnssConfig {
   bool enabled{true};
   std::string source{"navpvt"};  // "navsat_fix" | "navpvt"
   GnssTopicsConfig topics;
   double navpvt_hacc_scale{1.0};
+  double min_interval_m{1.0};
+  double max_innovation_m{0.0};
+  std::string robust_kernel{"huber"};  // "huber" | "cauchy"
+  double robust_kernel_scale{1.345};
+  int prior_min_fix_status{1};  // Prior採用最小測位ステータス (0: 全許可, 1: Float以上, 2: Fixのみ)
+  GnssDynamicReanchorConfig dynamic_reanchor;
   GnssValidationConfig validation;
   GnssAnchorConfig anchor;
   GnssSigmaConfig sigma;

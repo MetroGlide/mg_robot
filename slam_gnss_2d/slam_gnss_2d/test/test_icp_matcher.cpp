@@ -6,6 +6,7 @@
 
 #include "slam_gnss_2d/core/data_types.hpp"
 #include "slam_gnss_2d/scan_matching/icp_matcher.hpp"
+#include "slam_gnss_2d/scan_matching/reference_provider/local_map.hpp"
 
 namespace slam_gnss_2d {
 namespace scan_matching {
@@ -74,6 +75,36 @@ TEST(ICPMatcherTest, MatchAndInformationMatrixScaling) {
   double trans_info_norm = result.information.block<2, 2>(0, 0).norm();
   EXPECT_GE(trans_info_norm, 50.0);
   EXPECT_LE(trans_info_norm, 50000.0);
+}
+
+TEST(LocalMapProviderTest, SyncPoses) {
+  LocalMapProvider provider(10, 20.0);
+
+  auto scan = make_box_scan();
+  core::PoseNode n0{0, 100.0, 0.0, 0.0, 0.0, scan};
+  provider.update(n0);
+
+  auto pts0 = provider.get_reference_pts();
+  ASSERT_TRUE(pts0.has_value());
+  EXPECT_FALSE(pts0->empty());
+
+  // n0 を回転・移動
+  core::PoseNode n0_new{0, 100.0, 10.0, 20.0, M_PI_2, scan};
+  provider.sync_poses({n0_new});
+
+  // 最新ノードとして回転後の座標で更新
+  core::PoseNode n1{1, 100.1, 10.0, 20.0, M_PI_2, nullptr};
+  provider.update(n1);
+
+  auto pts1 = provider.get_reference_pts();
+  ASSERT_TRUE(pts1.has_value());
+  EXPECT_EQ(pts1->size(), pts0->size());
+
+  // n0とn1は同じ相対位置なので、局所座標系での参照点群は pts0 と一致するはず
+  for (size_t i = 0; i < std::min(pts0->size(), size_t(5)); ++i) {
+    EXPECT_NEAR((*pts0)[i].x(), (*pts1)[i].x(), 1e-4);
+    EXPECT_NEAR((*pts0)[i].y(), (*pts1)[i].y(), 1e-4);
+  }
 }
 
 }  // namespace scan_matching

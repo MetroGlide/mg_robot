@@ -10,8 +10,11 @@
 #include "slam_gnss_2d/pose_graph/odom_builder.hpp"
 #include "slam_gnss_2d/pose_graph/scan_matching_builder.hpp"
 #include "slam_gnss_2d/scan_matching/base.hpp"
+#include "slam_gnss_2d/scan_matching/coarse_to_fine_matcher.hpp"
 #include "slam_gnss_2d/scan_matching/csm_matcher.hpp"
 #include "slam_gnss_2d/scan_matching/icp_matcher.hpp"
+#include "slam_gnss_2d/scan_matching/multi_start_coarse_to_fine_matcher.hpp"
+#include "slam_gnss_2d/scan_matching/multi_start_icp_matcher.hpp"
 #include "slam_gnss_2d/scan_matching/ndt_matcher.hpp"
 #include "slam_gnss_2d/scan_matching/reference_provider/base.hpp"
 #include "slam_gnss_2d/scan_matching/reference_provider/local_map.hpp"
@@ -21,7 +24,50 @@ namespace slam_gnss_2d {
 namespace core {
 
 inline scan_matching::ScanMatcherPtr build_matcher(const SlamConfig& config) {
-  if (config.scan_matching.type == "icp") {
+  if (config.scan_matching.type == "multi_start_coarse_to_fine") {
+    auto coarse = std::make_shared<scan_matching::NDTMatcher>(
+        config.scan_matching.icp.max_iterations,
+        config.scan_matching.icp.tolerance,
+        config.scan_matching.ndt.cell_sizes,
+        config.scan_matching.ndt.use_bilinear,
+        config.scan_matching.yaw_information_multiplier);
+    auto fine = std::make_shared<scan_matching::ICPMatcher>(
+        config.scan_matching.icp.max_iterations,
+        config.scan_matching.icp.tolerance,
+        config.scan_matching.icp.max_correspondence_dist,
+        config.scan_matching.icp.robust_kernel,
+        config.scan_matching.icp.robust_kernel_scale,
+        config.scan_matching.yaw_information_multiplier);
+    return std::make_shared<scan_matching::MultiStartCoarseToFineMatcher>(
+        coarse, fine,
+        config.scan_matching.multi_start.angular_search_window_deg,
+        config.scan_matching.multi_start.angular_step_deg,
+        config.scan_matching.multi_start.enable_straight_hypothesis,
+        config.scan_matching.multi_start.enable_const_vel_hypothesis);
+  } else if (config.scan_matching.type == "multi_start_icp") {
+    return std::make_shared<scan_matching::MultiStartICPMatcher>(
+        config.scan_matching.icp.max_iterations,
+        config.scan_matching.icp.tolerance,
+        config.scan_matching.icp.max_correspondence_dist,
+        config.scan_matching.icp.robust_kernel,
+        config.scan_matching.icp.robust_kernel_scale,
+        config.scan_matching.yaw_information_multiplier);
+  } else if (config.scan_matching.type == "coarse_to_fine") {
+    auto coarse = std::make_shared<scan_matching::NDTMatcher>(
+        config.scan_matching.icp.max_iterations,
+        config.scan_matching.icp.tolerance,
+        config.scan_matching.ndt.cell_sizes,
+        config.scan_matching.ndt.use_bilinear,
+        config.scan_matching.yaw_information_multiplier);
+    auto fine = std::make_shared<scan_matching::ICPMatcher>(
+        config.scan_matching.icp.max_iterations,
+        config.scan_matching.icp.tolerance,
+        config.scan_matching.icp.max_correspondence_dist,
+        config.scan_matching.icp.robust_kernel,
+        config.scan_matching.icp.robust_kernel_scale,
+        config.scan_matching.yaw_information_multiplier);
+    return std::make_shared<scan_matching::CoarseToFineMatcher>(coarse, fine);
+  } else if (config.scan_matching.type == "icp") {
     return std::make_shared<scan_matching::ICPMatcher>(
         config.scan_matching.icp.max_iterations,
         config.scan_matching.icp.tolerance,
@@ -48,7 +94,50 @@ inline scan_matching::ScanMatcherPtr build_matcher(const SlamConfig& config) {
 }
 
 inline scan_matching::ScanMatcherPtr build_loop_matcher(const SlamConfig& config) {
-  if (config.loop_closure.matcher_type == "icp") {
+  if (config.loop_closure.matcher_type == "multi_start_coarse_to_fine") {
+    auto coarse = std::make_shared<scan_matching::NDTMatcher>(
+        config.loop_closure.icp.max_iterations,
+        config.loop_closure.icp.tolerance,
+        config.loop_closure.ndt.cell_sizes,
+        config.loop_closure.ndt.use_bilinear,
+        config.loop_closure.yaw_information_multiplier);
+    auto fine = std::make_shared<scan_matching::ICPMatcher>(
+        config.loop_closure.icp.max_iterations,
+        config.loop_closure.icp.tolerance,
+        config.loop_closure.icp.max_correspondence_dist,
+        config.loop_closure.icp.robust_kernel,
+        config.loop_closure.icp.robust_kernel_scale,
+        config.loop_closure.yaw_information_multiplier);
+    return std::make_shared<scan_matching::MultiStartCoarseToFineMatcher>(
+        coarse, fine,
+        config.scan_matching.multi_start.angular_search_window_deg,
+        config.scan_matching.multi_start.angular_step_deg,
+        config.scan_matching.multi_start.enable_straight_hypothesis,
+        config.scan_matching.multi_start.enable_const_vel_hypothesis);
+  } else if (config.loop_closure.matcher_type == "multi_start_icp") {
+    return std::make_shared<scan_matching::MultiStartICPMatcher>(
+        config.loop_closure.icp.max_iterations,
+        config.loop_closure.icp.tolerance,
+        config.loop_closure.icp.max_correspondence_dist,
+        config.loop_closure.icp.robust_kernel,
+        config.loop_closure.icp.robust_kernel_scale,
+        config.loop_closure.yaw_information_multiplier);
+  } else if (config.loop_closure.matcher_type == "coarse_to_fine") {
+    auto coarse = std::make_shared<scan_matching::NDTMatcher>(
+        config.loop_closure.icp.max_iterations,
+        config.loop_closure.icp.tolerance,
+        config.loop_closure.ndt.cell_sizes,
+        config.loop_closure.ndt.use_bilinear,
+        config.loop_closure.yaw_information_multiplier);
+    auto fine = std::make_shared<scan_matching::ICPMatcher>(
+        config.loop_closure.icp.max_iterations,
+        config.loop_closure.icp.tolerance,
+        config.loop_closure.icp.max_correspondence_dist,
+        config.loop_closure.icp.robust_kernel,
+        config.loop_closure.icp.robust_kernel_scale,
+        config.loop_closure.yaw_information_multiplier);
+    return std::make_shared<scan_matching::CoarseToFineMatcher>(coarse, fine);
+  } else if (config.loop_closure.matcher_type == "icp") {
     return std::make_shared<scan_matching::ICPMatcher>(
         config.loop_closure.icp.max_iterations,
         config.loop_closure.icp.tolerance,
@@ -92,7 +181,8 @@ inline pose_graph::PoseGraphBuilderPtr build_pose_graph_builder(const SlamConfig
         build_reference_provider(config),
         config.keyframe.min_translation,
         config.keyframe.min_rotation,
-        config.scan_matching.max_failure_streak);
+        config.scan_matching.max_failure_streak,
+        config.scan_matching.max_translation_drift);
     return std::make_shared<pose_graph::LoopClosureBuilder>(
         inner,
         build_loop_matcher(config),
@@ -109,7 +199,8 @@ inline pose_graph::PoseGraphBuilderPtr build_pose_graph_builder(const SlamConfig
         build_reference_provider(config),
         config.keyframe.min_translation,
         config.keyframe.min_rotation,
-        config.scan_matching.max_failure_streak);
+        config.scan_matching.max_failure_streak,
+        config.scan_matching.max_translation_drift);
   } else {
     return std::make_shared<pose_graph::OdomOnlyBuilder>(
         config.keyframe.min_translation,

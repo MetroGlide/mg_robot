@@ -190,6 +190,15 @@ if(BUILD_TESTING)
 
   ament_add_gtest(test_counting_renderer test/test_counting_renderer.cpp)
   target_link_libraries(test_counting_renderer slam_gnss_2d_core)
+
+  ament_add_gtest(test_coarse_to_fine_matcher test/test_coarse_to_fine_matcher.cpp)
+  target_link_libraries(test_coarse_to_fine_matcher slam_gnss_2d_core)
+
+  ament_add_gtest(test_multi_start_icp_matcher test/test_multi_start_icp_matcher.cpp)
+  target_link_libraries(test_multi_start_icp_matcher slam_gnss_2d_core)
+
+  ament_add_gtest(test_multi_start_coarse_to_fine_matcher test/test_multi_start_coarse_to_fine_matcher.cpp)
+  target_link_libraries(test_multi_start_coarse_to_fine_matcher slam_gnss_2d_core)
 endif()
 
 ament_export_include_directories(include)

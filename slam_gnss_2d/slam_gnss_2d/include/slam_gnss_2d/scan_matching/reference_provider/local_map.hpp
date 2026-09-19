@@ -17,6 +17,7 @@ class LocalMapProvider : public ReferenceProviderBase {
 
   void update(const core::PoseNode& node) override;
   void invalidate_cache() override;
+  void sync_poses(const std::vector<core::PoseNode>& nodes) override;
   std::optional<std::vector<Eigen::Vector2d>> get_reference_pts() override;
 
  private:

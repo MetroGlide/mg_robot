@@ -18,7 +18,8 @@ class ScanMatchingBuilder : public PoseGraphBuilderBase {
       scan_matching::ReferenceProviderPtr provider,
       double min_translation,
       double min_rotation,
-      int max_failure_streak);
+      int max_failure_streak,
+      double max_translation_drift = 0.08);
 
   std::optional<core::PoseNode> add_scan(
       const core::ScanDataPtr& scan,
@@ -41,6 +42,7 @@ class ScanMatchingBuilder : public PoseGraphBuilderBase {
   double min_translation_;
   double min_rotation_;
   int max_failure_streak_;
+  double max_translation_drift_{0.08};
 
   std::vector<core::PoseNode> nodes_;
   std::vector<core::PoseEdge> edges_;

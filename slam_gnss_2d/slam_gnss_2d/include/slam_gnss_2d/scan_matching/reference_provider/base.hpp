@@ -19,6 +19,7 @@ class ReferenceProviderBase {
   virtual std::optional<std::vector<Eigen::Vector2d>> get_reference_pts() = 0;
 
   virtual void invalidate_cache() {}
+  virtual void sync_poses(const std::vector<core::PoseNode>& nodes) { (void)nodes; }
 };
 
 using ReferenceProviderPtr = std::shared_ptr<ReferenceProviderBase>;

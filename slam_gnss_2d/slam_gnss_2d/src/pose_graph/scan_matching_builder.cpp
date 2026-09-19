@@ -31,12 +31,14 @@ ScanMatchingBuilder::ScanMatchingBuilder(
     scan_matching::ReferenceProviderPtr provider,
     double min_translation,
     double min_rotation,
-    int max_failure_streak)
+    int max_failure_streak,
+    double max_translation_drift)
     : matcher_(matcher),
       provider_(provider),
       min_translation_(min_translation),
       min_rotation_(min_rotation),
-      max_failure_streak_(max_failure_streak) {}
+      max_failure_streak_(max_failure_streak),
+      max_translation_drift_(max_translation_drift) {}
 
 std::optional<core::PoseNode> ScanMatchingBuilder::add_scan(
     const core::ScanDataPtr& scan,
@@ -102,25 +104,14 @@ std::optional<core::PoseNode> ScanMatchingBuilder::add_scan(
       failure_streak_++;
       RCLCPP_WARN(
           rclcpp::get_logger("slam_gnss_2d.scan_matching_builder"),
-          "Matcher did not converge at node %zu (init dx=%.3f, dy=%.3f, dyaw=%.1f deg, streak=%d/%d)",
+          "Matcher did not converge at node %zu (init dx=%.3f, dy=%.3f, dyaw=%.1f deg, streak=%d/%d); falling back to odometry",
           nodes_.size(), initial_guess.x, initial_guess.y,
           initial_guess.yaw * 180.0 / M_PI, failure_streak_, max_failure_streak_);
-
-      if (failure_streak_ < max_failure_streak_) {
-        last_odom_ = odom;
-        return std::nullopt;
-      }
-
-      RCLCPP_WARN(
-          rclcpp::get_logger("slam_gnss_2d.scan_matching_builder"),
-          "Failure streak limit reached at node %zu; falling back to odometry",
-          nodes_.size());
 
       dx_icp = dx_local;
       dy_icp = dy_local;
       dyaw_icp = dyaw_delta;
       edge_info = make_odom_fallback_information();
-      failure_streak_ = 0;
       odom_fallback_count_++;
       is_odom_fallback = true;
       score = 0.0;
@@ -133,6 +124,19 @@ std::optional<core::PoseNode> ScanMatchingBuilder::add_scan(
       edge_info = result.information;
       is_odom_fallback = false;
       score = result.score;
+
+      bool is_straight_motion = (std::abs(dyaw_delta) < 0.05 && std::abs(dyaw_icp) < 0.05);
+      if (is_straight_motion && max_translation_drift_ > 0.0) {
+        double translation_drift = std::abs(dx_icp - dx_local);
+        if (translation_drift > max_translation_drift_) {
+          RCLCPP_DEBUG(
+              rclcpp::get_logger("slam_gnss_2d.scan_matching_builder"),
+              "Degeneracy slip detected at node %zu: dx_match=%.3f vs dx_odom=%.3f (drift=%.3fm > %.3fm). Preserving odom translation.",
+              nodes_.size(), dx_icp, dx_local, translation_drift, max_translation_drift_);
+          dx_icp = dx_local;
+          edge_info(0, 0) = std::min(edge_info(0, 0), 20.0);
+        }
+      }
     }
   } else {
     dx_icp = dx_local;
@@ -192,6 +196,7 @@ void ScanMatchingBuilder::reset() {
 
 void ScanMatchingBuilder::replace_nodes(const std::vector<core::PoseNode>& nodes) {
   nodes_ = nodes;
+  provider_->sync_poses(nodes);
   provider_->invalidate_cache();
 }
 
