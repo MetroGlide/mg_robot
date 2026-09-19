@@ -23,11 +23,13 @@ cp .env.example .env
 
 ```
 docker/Dockerfile.base
-├── runtime      ← slam / navigation / rosbag-replay
-│                    ROS2 基本 + RealSense SDK + IMU tools（実機用・軽量）
-├── develop      ← develop / rviz2-slam / rviz2-navigation / rviz
+├── runtime      ← slam / navigation / rosbag-replay / slam-gnss-2d / diagnostics
+│                    ROS2 基本 + RealSense SDK + IMU tools（実機用・軽量）※Gazebo完全排除
+├── develop      ← develop / rviz2-slam / rviz2-navigation / rviz / system-manager
 │                    runtime + RViz2 + foxglove-bridge + rqt + vim + Qt/ZMQ
-└── simulation   ← gazebo-simulation
+├── web-ui       ← web-ui
+│                    runtime + React Web UI 静的配信 + foxglove-bridge
+└── simulation   ← gazebo-simulation / scenario-test
                      develop + Gazebo Fortress + kisak-mesa
 ```
 
@@ -36,11 +38,15 @@ docker/Dockerfile.base
 ### make を使う場合（推奨）
 
 ```bash
-make build svc=slam              # slam / navigation / rosbag-replay 用（runtime イメージ）
+make build-robot                 # 実機向け一括ビルド（Gazebo完全除外: runtime, develop, web-ui）
+make build-real                  # build-robot のエイリアス
+make build-sim                   # シミュレータ含む一括ビルド
+make build-all                   # 全イメージ一括ビルド（build-simのエイリアス）
+make build svc=slam              # 特定サービス用イメージのビルド（例: slam 用 runtime イメージ）
 make build svc=gazebo-simulation # Gazebo シミュレーション用（simulation イメージ）
 make build svc=develop           # 開発用（develop イメージ）
-make build-all                   # 全イメージ一括ビルド
-make build-no-cache svc=slam     # キャッシュ無効でビルド
+make build-robot-no-cache        # 実機向けキャッシュ無効ビルド
+make build-no-cache svc=slam     # 特定サービスのキャッシュ無効ビルド
 ```
 
 `make build` は `docker/collect_deps.sh` を自動実行し、依存解決ファイル（`package.xml` 等）を事前収集してキャッシュを最適化します。

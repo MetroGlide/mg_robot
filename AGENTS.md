@@ -40,9 +40,11 @@
 make develop          # developコンテナ起動（バックグラウンド）
 make shell-develop    # developコンテナにbashアクセス
 make shell svc=slam   # 実行中コンテナにアクセス
+make build-robot      # 実機向け一括ビルド（Gazeboシミュレータ完全除外）
 make build svc=slam   # イメージビルド（collect_deps.sh自動実行）
 make test             # 全テスト実行
 make test pkg=<pkg>   # 特定パッケージのテスト
+make bag-summary      # .env指定のrosbagを解析し同ディレクトリにsummary.mdを出力
 ```
 
 コンテナ内でROS2コマンドを使う場合:
@@ -132,3 +134,23 @@ node_name:
 make test             # Dockerコンテナ内で全パッケージテスト
 make test pkg=mg_waypoint_navigation
 ```
+
+## rosbag データと統計サマリー (summary.md)
+
+デバッグや走行ログ・センサデータの調査を行う際は、以下のルールとツールを活用してください。
+
+1. **ディレクトリ内の既存統計情報 (`summary.md`) の確認**:
+   - 各 rosbag ディレクトリ内には、事前に解析された統計サマリーファイル（`summary.md`）が配置されている場合があります。
+   - **巨大な rosbag を都度全件走査・解析し直す前に、まず該当ディレクトリ内に `summary.md` が存在するか確認し、その内容を参照してください。**
+   - `summary.md` には、トピック一覧、周波数、通信ドロップ警告、GNSSのRTK Fix率や精度統計（min/max/mean/median/95%）、精度ヒストグラム、オドメトリ積算距離などがまとめられています。
+
+2. **統計サマリーの生成・更新**:
+   - `.env` で指定された rosbag (`ROSBAG_FILE` または `BAG_PATH`) のサマリーを同じディレクトリに生成/更新する場合:
+     ```bash
+     make bag-summary
+     ```
+   - 任意の rosbag パスを指定して生成する場合:
+     ```bash
+     make bag-summary BAG=/root/ros2_data/rosbag/TC2026/20260913/record_all_20260913_055508
+     ```
+   - これにより、対象 rosbag と同じディレクトリに `summary.md` が保存され、コンソールにも要約が表示されます。
