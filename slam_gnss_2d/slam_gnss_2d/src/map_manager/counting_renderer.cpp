@@ -29,7 +29,7 @@ CountingRenderer::CountingRenderer(
 
 bool CountingRenderer::add_node(const core::PoseNode& node) {
   std::lock_guard<std::mutex> lock(mutex_);
-  if (!node.scan) {
+  if (!node.scan && !node.submap_patch) {
     return true;
   }
   if (!initialized_ || map_size_ <= 1) {
@@ -64,7 +64,7 @@ void CountingRenderer::rerender_all(const std::vector<core::PoseNode>& nodes) {
       new_size, new_size * resolution_, new_ox, new_oy, nodes.size());
 
   for (const auto& node : nodes) {
-    if (node.scan) {
+    if (node.scan || node.submap_patch) {
       render_node(node);
     }
   }
@@ -144,6 +144,40 @@ void CountingRenderer::apply_trajectory_mask(
 }
 
 bool CountingRenderer::render_node(const core::PoseNode& node) {
+  if (node.submap_patch) {
+    const auto& patch = node.submap_patch;
+    double cos_yaw = std::cos(node.yaw);
+    double sin_yaw = std::sin(node.yaw);
+
+    for (int r = 0; r < patch->height; ++r) {
+      const int32_t* h_ptr = patch->hit_patch.ptr<int32_t>(r);
+      const int32_t* m_ptr = patch->miss_patch.ptr<int32_t>(r);
+      double ly = patch->origin_y + r * patch->resolution;
+
+      for (int c = 0; c < patch->width; ++c) {
+        int32_t hit = h_ptr[c];
+        int32_t miss = m_ptr[c];
+        if (hit == 0 && miss == 0) continue;
+
+        double lx = patch->origin_x + c * patch->resolution;
+        double wx = node.x + cos_yaw * lx - sin_yaw * ly;
+        double wy = node.y + sin_yaw * lx + cos_yaw * ly;
+
+        auto [g_px, g_py] = world_to_pixel(wx, wy, origin_x_, origin_y_, resolution_);
+        if (in_bounds(g_px, g_py, map_size_)) {
+          if (hit > 0) hit_map_.at<int32_t>(g_py, g_px) += hit;
+          if (miss > 0) miss_map_.at<int32_t>(g_py, g_px) += miss;
+        }
+      }
+    }
+    render_count_++;
+    return true;
+  }
+
+  if (!node.scan) {
+    return true;
+  }
+
   auto scan_pixels = scan_hits_to_pixels(
       node, origin_x_, origin_y_, resolution_, map_size_);
   if (!in_bounds(scan_pixels.robot_px, scan_pixels.robot_py, map_size_)) {

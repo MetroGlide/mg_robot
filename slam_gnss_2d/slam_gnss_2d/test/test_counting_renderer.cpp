@@ -109,6 +109,54 @@ TEST(TestCountingRenderer, HitRatioThreshold) {
   EXPECT_EQ(occ_lenient.data.at<int8_t>(target_py, target_px), 100);
 }
 
+TEST(CountingRendererTest, SubmapPatchRendersCorrectly) {
+  double resolution = 0.05;
+  CountingRenderer renderer(resolution, 10.0, 0.2, 1);
+
+  core::PoseNode node;
+  node.index = 0;
+  node.timestamp = 100.0;
+  node.x = 2.0;
+  node.y = 3.0;
+  node.yaw = 0.0;
+
+  auto patch = std::make_shared<core::SubmapPatch>();
+  patch->resolution = resolution;
+  patch->width = 10;
+  patch->height = 10;
+  patch->origin_x = 0.0;
+  patch->origin_y = 0.0;
+  patch->hit_patch = cv::Mat::zeros(10, 10, CV_32SC1);
+  patch->miss_patch = cv::Mat::zeros(10, 10, CV_32SC1);
+
+  // パッチ内の (2, 2) に hit=5 を設定
+  patch->hit_patch.at<int32_t>(2, 2) = 5;
+  node.submap_patch = patch;
+
+  renderer.rerender_all({node});
+
+  auto occ = renderer.to_occupancy_array();
+  int occupied_count = 0;
+  int found_px = -1;
+  int found_py = -1;
+  for (int y = 0; y < occ.data.rows; ++y) {
+    for (int x = 0; x < occ.data.cols; ++x) {
+      if (occ.data.at<int8_t>(y, x) == 100) {
+        occupied_count++;
+        found_px = x;
+        found_py = y;
+      }
+    }
+  }
+  EXPECT_EQ(occupied_count, 1);
+
+  // node (2.0, 3.0) + patch offset (2*0.05, 2*0.05) = (2.10, 3.10)
+  int expected_px = static_cast<int>((2.10 - occ.origin_x) / resolution);
+  int expected_py = static_cast<int>((3.10 - occ.origin_y) / resolution);
+  EXPECT_NEAR(found_px, expected_px, 1);
+  EXPECT_NEAR(found_py, expected_py, 1);
+}
+
 }  // namespace
 }  // namespace map_manager
 }  // namespace slam_gnss_2d
