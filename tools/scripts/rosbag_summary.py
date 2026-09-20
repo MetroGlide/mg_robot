@@ -16,7 +16,6 @@ from collections import Counter, defaultdict
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
-import rosbag2_py
 import yaml
 from diagnostic_msgs.msg import DiagnosticArray
 from geometry_msgs.msg import Twist
@@ -27,6 +26,15 @@ from rosidl_runtime_py.utilities import get_message
 from sensor_msgs.msg import Imu, LaserScan, NavSatFix
 from tf2_msgs.msg import TFMessage
 from ublox_msgs.msg import NavPVT
+
+# tools パッケージルートの解決
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
+
+from tools.common.bag import detect_storage_id, load_metadata, open_reader  # noqa: E402
+from tools.common.cli import resolve_output_path  # noqa: E402
+from tools.common.geo import haversine_distance  # noqa: E402
 
 
 def calculate_stats(values: List[float]) -> Dict[str, float]:
@@ -62,82 +70,6 @@ def build_ascii_bar(ratio: float, max_len: int = 25) -> str:
     clamped = max(0.0, min(1.0, ratio))
     bar_len = int(round(clamped * max_len))
     return "█" * bar_len
-
-
-def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """2点の緯度・経度 (度) から球面三角法による距離 (メートル) を算出する。"""
-    r = 6371000.0
-    phi1 = math.radians(lat1)
-    phi2 = math.radians(lat2)
-    delta_phi = math.radians(lat2 - lat1)
-    delta_lambda = math.radians(lon2 - lon1)
-    a = (
-        math.sin(delta_phi / 2.0) ** 2
-        + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2.0) ** 2
-    )
-    c = 2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
-    return r * c
-
-
-class BagStorageHelper:
-    """rosbagのストレージ形式自動判別とReaderの初期化ヘルパー。"""
-
-    @staticmethod
-    def detect_storage_id(bag_path: str) -> str:
-        """bagパスから storage_id ('mcap' または 'sqlite3') を判定する。"""
-        if os.path.isdir(bag_path):
-            meta_path = os.path.join(bag_path, "metadata.yaml")
-            if os.path.exists(meta_path):
-                try:
-                    with open(meta_path, "r", encoding="utf-8") as f:
-                        meta = yaml.safe_load(f)
-                    info = meta.get("rosbag2_bagfile_information", {})
-                    detected = info.get("storage_identifier")
-                    if detected:
-                        return detected
-                except Exception:
-                    pass
-            for root, _, files in os.walk(bag_path):
-                for file in files:
-                    if file.endswith(".mcap"):
-                        return "mcap"
-                    if file.endswith(".db3"):
-                        return "sqlite3"
-        elif os.path.isfile(bag_path):
-            if bag_path.endswith(".mcap"):
-                return "mcap"
-            if bag_path.endswith(".db3"):
-                return "sqlite3"
-        return "mcap"
-
-    @staticmethod
-    def get_reader(bag_path: str, storage_id: str) -> rosbag2_py.SequentialReader:
-        """SequentialReader を開いて返す。"""
-        storage_options = rosbag2_py.StorageOptions(
-            uri=bag_path, storage_id=storage_id
-        )
-        converter_options = rosbag2_py.ConverterOptions(
-            input_serialization_format="cdr", output_serialization_format="cdr"
-        )
-        reader = rosbag2_py.SequentialReader()
-        reader.open(storage_options, converter_options)
-        return reader
-
-    @staticmethod
-    def load_metadata(bag_path: str) -> Optional[Dict[str, Any]]:
-        """metadata.yaml が存在すればロードして返す。"""
-        meta_path = (
-            os.path.join(bag_path, "metadata.yaml")
-            if os.path.isdir(bag_path)
-            else os.path.join(os.path.dirname(bag_path), "metadata.yaml")
-        )
-        if os.path.exists(meta_path):
-            try:
-                with open(meta_path, "r", encoding="utf-8") as f:
-                    return yaml.safe_load(f)
-            except Exception:
-                return None
-        return None
 
 
 class GeneralTopicCollector:
@@ -927,6 +859,12 @@ def parse_args():
         help="bagと同じディレクトリに summary.md を保存し、端末にもサマリーを表示",
     )
     parser.add_argument(
+        "--output-dir",
+        type=str,
+        default=None,
+        help="指定したディレクトリに summary.md を保存し、端末にもサマリーを表示",
+    )
+    parser.add_argument(
         "--info-only",
         action="store_true",
         help="メッセージ走査を行わず、メタ情報のみを高速出力",
@@ -952,10 +890,10 @@ def main():
         print(f"エラー: 指定されたパスが存在しません: {bag_path}", file=sys.stderr)
         sys.exit(1)
 
-    storage_id = args.storage_id or BagStorageHelper.detect_storage_id(bag_path)
+    storage_id = args.storage_id or detect_storage_id(bag_path)
 
     try:
-        reader = BagStorageHelper.get_reader(bag_path, storage_id)
+        reader = open_reader(bag_path, storage_id=storage_id)
     except Exception as e:
         print(f"エラー: rosbagを開けませんでした: {e}", file=sys.stderr)
         sys.exit(1)
@@ -964,7 +902,7 @@ def main():
     topic_type_map = {t.name: t.type for t in all_topics}
 
     # metadata.yaml からの事前情報取得
-    meta = BagStorageHelper.load_metadata(bag_path)
+    meta = load_metadata(bag_path)
     meta_info = meta.get("rosbag2_bagfile_information", {}) if meta else {}
     start_ns = meta_info.get("starting_time", {}).get("nanoseconds_since_epoch", 0)
     duration_ns = meta_info.get("duration", {}).get("nanoseconds", 0)
@@ -1114,10 +1052,15 @@ def main():
         "diagnostics": diag_collector.finalize(),
     }
 
-    target_output_file = args.output
-    if args.output_to_bag_dir:
-        target_dir = bag_path if os.path.isdir(bag_path) else os.path.dirname(bag_path)
-        target_output_file = os.path.join(target_dir, "summary.md")
+    target_output_file = None
+    if args.output_to_bag_dir or args.output_dir or args.output:
+        target_output_file = resolve_output_path(
+            bag_path,
+            default_filename="summary.md",
+            output=args.output,
+            output_to_bag_dir=args.output_to_bag_dir,
+            output_dir=args.output_dir,
+        )
 
     # 出力生成
     if args.format == "json":
@@ -1131,14 +1074,18 @@ def main():
 
     if target_output_file:
         save_content = formatted
-        if args.output_to_bag_dir and args.format == "text":
+        if (args.output_to_bag_dir or args.output_dir) and args.format == "text":
             save_content = ReportFormatter.format_markdown(report_data)
+
+        target_dir = os.path.dirname(target_output_file)
+        if target_dir:
+            os.makedirs(target_dir, exist_ok=True)
 
         with open(target_output_file, "w", encoding="utf-8") as f:
             f.write(save_content + "\n")
         print(f"サマリーを保存しました: {target_output_file}")
 
-        if args.output_to_bag_dir:
+        if args.output_to_bag_dir or args.output_dir:
             print(formatted)
     else:
         print(formatted)

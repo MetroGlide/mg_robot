@@ -1,75 +1,53 @@
 #!/usr/bin/env python3
-
 """
-This script compares the record topic list file with current topic list.
-The record topic list file is get from argument of this script.
-The record topic list file format is as follows:
-/topic1
-/topic2
-/topic3
+diff_bag_list.py
 
-current topic list is get from rostopic list command.
+記録対象トピック一覧ファイルと、現在実行中の ROS2 システム上のトピック一覧 (ros2 topic list) を比較し、
+差分（記録対象のみ、現在のトピックのみ、両方に存在）をターミナルに色付き表示するツール。
 """
 
-import os
-import sys
-import subprocess
 import argparse
+import subprocess
+from typing import List
 
 
-def get_topic_list():
-    topic_list = []
+def get_topic_list() -> List[str]:
+    """現在アクティブな ROS2 トピック名一覧を取得する。"""
     try:
-        topic_list = subprocess.check_output(
-            "ros2 topic list", shell=True).decode().split("\n")
-    except:
-        pass
-    return topic_list
+        output = subprocess.check_output(["ros2", "topic", "list"]).decode()
+        return [line.strip() for line in output.splitlines() if line.strip()]
+    except Exception:
+        return []
 
 
-def get_record_topic_list(record_topic_list_file):
-    record_topic_list = []
+def get_record_topic_list(record_topic_list_file: str) -> List[str]:
+    """ファイルから記録対象トピック名一覧を読み込む。"""
     try:
-        with open(record_topic_list_file, "r") as f:
-            record_topic_list = f.read().split("\n")
-    except:
-        pass
-    return record_topic_list
+        with open(record_topic_list_file, "r", encoding="utf-8") as f:
+            return [line.strip() for line in f.read().splitlines() if line.strip()]
+    except Exception:
+        return []
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("record_topic_list_file",
-                        help="record topic list file")
+    parser = argparse.ArgumentParser(
+        description="記録対象トピック一覧ファイルと現在アクティブなトピックを比較するツール"
+    )
+    parser.add_argument("record_topic_list_file", help="記録対象トピック一覧ファイルパス")
     args = parser.parse_args()
 
     record_topic_list = get_record_topic_list(args.record_topic_list_file)
     current_topic_list = get_topic_list()
 
-    # check record topic list.
-    # format:
-    # /topic (only RECORD LIST)
-    # /topic (only CURRENT TOPIC)
-    # /topic
-    #
-    # sorted list by only or both
-    record_only_topic_list = []
-    current_only_topic_list = []
-    both_topic_list = []
-
-    for topic in record_topic_list:
-        if topic == "":
-            continue
-        if topic in current_topic_list:
-            both_topic_list.append(topic)
-        else:
-            record_only_topic_list.append(topic)
-
-    for topic in current_topic_list:
-        if topic == "":
-            continue
-        if topic not in record_topic_list:
-            current_only_topic_list.append(topic)
+    record_only_topic_list = [
+        t for t in record_topic_list if t not in current_topic_list
+    ]
+    current_only_topic_list = [
+        t for t in current_topic_list if t not in record_topic_list
+    ]
+    both_topic_list = [
+        t for t in record_topic_list if t in current_topic_list
+    ]
 
     for topic in record_only_topic_list:
         print(f"{topic} \033[33m(only RECORD LIST)\033[0m")
