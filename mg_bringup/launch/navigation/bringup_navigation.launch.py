@@ -114,8 +114,8 @@ def generate_launch_description():
     )
 
     bridge_node = Node(
-        package='mg_slam',
-        executable='slam_gnss_nav_bridge_node.py',
+        package='slam_gnss_2d',
+        executable='slam_gnss_nav_bridge_node',
         name='slam_gnss_nav_bridge',
         output='screen',
         parameters=[{
