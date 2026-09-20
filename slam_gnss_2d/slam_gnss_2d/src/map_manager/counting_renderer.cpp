@@ -13,18 +13,27 @@ CountingRenderer::CountingRenderer(
     double resolution,
     double expansion_margin,
     double hit_threshold,
-    int min_hits)
+    int min_hits,
+    double hit_weight,
+    double miss_weight,
+    double miss_clearance_margin,
+    double max_miss_ratio)
     : resolution_(resolution),
       expansion_margin_(expansion_margin),
       hit_threshold_(hit_threshold),
       min_hits_(min_hits),
+      hit_weight_(hit_weight),
+      miss_weight_(miss_weight),
+      miss_clearance_margin_(miss_clearance_margin),
+      max_miss_ratio_(max_miss_ratio),
       hit_map_(cv::Mat::zeros(1, 1, CV_32SC1)),
       miss_map_(cv::Mat::zeros(1, 1, CV_32SC1)) {
   RCLCPP_INFO(
       rclcpp::get_logger("slam_gnss_2d.counting_renderer"),
-      "CountingRenderer initialized: resolution=%.3f, expansion_margin=%.1f, "
-      "hit_threshold=%.2f, min_hits=%d",
-      resolution_, expansion_margin_, hit_threshold_, min_hits_);
+      "CountingRenderer initialized: resolution=%.3f, margin=%.1f, hit_thresh=%.2f, min_hits=%d, "
+      "hit_weight=%.2f, miss_weight=%.2f, miss_clearance=%.2fm, max_miss_ratio=%.1f",
+      resolution_, expansion_margin_, hit_threshold_, min_hits_,
+      hit_weight_, miss_weight_, miss_clearance_margin_, max_miss_ratio_);
 }
 
 bool CountingRenderer::add_node(const core::PoseNode& node) {
@@ -85,18 +94,33 @@ OccupancyGridData CountingRenderer::to_occupancy_array() {
     for (int c = 0; c < hit_map_.cols; ++c) {
       int32_t hits = hit_row[c];
       int32_t misses = miss_row[c];
-      int32_t total = hits + misses;
 
-      if (total == 0) {
+      if (hits == 0 && misses == 0) {
         occ_row[c] = -1;
       } else {
-        double ratio = static_cast<double>(hits) / static_cast<double>(total);
-        if (hits >= min_hits_ && ratio >= hit_threshold_) {
-          occ_row[c] = 100;
-          occupied_count++;
+        // M3: 確証壁 (hits >= min_hits_) に対する miss 侵食保護 (Max Miss Ratio Cap)
+        int32_t eff_misses = misses;
+        if (hits >= min_hits_ && max_miss_ratio_ > 0.0) {
+          int32_t max_allowed_miss = static_cast<int32_t>(hits * max_miss_ratio_);
+          eff_misses = std::min(misses, max_allowed_miss);
+        }
+
+        // M1: 非対称重み付き Ratio
+        double weighted_hits = hits * hit_weight_;
+        double weighted_misses = eff_misses * miss_weight_;
+        double weighted_total = weighted_hits + weighted_misses;
+
+        if (weighted_total <= 0.0) {
+          occ_row[c] = -1;
         } else {
-          occ_row[c] = 0;
-          free_count++;
+          double ratio = weighted_hits / weighted_total;
+          if (hits >= min_hits_ && ratio >= hit_threshold_) {
+            occ_row[c] = 100;
+            occupied_count++;
+          } else {
+            occ_row[c] = 0;
+            free_count++;
+          }
         }
       }
     }
@@ -208,15 +232,35 @@ bool CountingRenderer::render_node(const core::PoseNode& node) {
 
   cv::Point start(scan_pixels.robot_px - min_px, scan_pixels.robot_py - min_py);
   std::vector<std::vector<cv::Point>> curves(n_hits);
+  double margin_px = miss_clearance_margin_ / resolution_;
+  int mask_clear_radius = static_cast<int>(std::round(margin_px));
+
   for (size_t i = 0; i < n_hits; ++i) {
-    curves[i] = {start, cv::Point(scan_pixels.hit_px[i] - min_px, scan_pixels.hit_py[i] - min_py)};
+    cv::Point end(scan_pixels.hit_px[i] - min_px, scan_pixels.hit_py[i] - min_py);
+    double dx = end.x - start.x;
+    double dy = end.y - start.y;
+    double dist = std::hypot(dx, dy);
+
+    if (dist > margin_px && margin_px > 0.0) {
+      double scale = (dist - margin_px) / dist;
+      cv::Point miss_end(
+          start.x + static_cast<int>(std::round(dx * scale)),
+          start.y + static_cast<int>(std::round(dy * scale)));
+      curves[i] = {start, miss_end};
+    } else {
+      curves[i] = {start, end};
+    }
   }
   cv::polylines(local_mask, curves, false, cv::Scalar(1), 1);
 
   for (size_t i = 0; i < n_hits; ++i) {
     int lx = scan_pixels.hit_px[i] - min_px;
     int ly = scan_pixels.hit_py[i] - min_py;
-    local_mask.at<uint8_t>(ly, lx) = 0;
+    if (mask_clear_radius > 0) {
+      cv::circle(local_mask, cv::Point(lx, ly), mask_clear_radius, cv::Scalar(0), -1);
+    } else {
+      local_mask.at<uint8_t>(ly, lx) = 0;
+    }
   }
 
   for (int r = 0; r < h; ++r) {

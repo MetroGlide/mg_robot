@@ -70,8 +70,9 @@ TEST(TestCountingRenderer, HitRatioThreshold) {
   double resolution = 0.1;
   double expansion_margin = 5.0;
 
-  CountingRenderer renderer_strict(resolution, expansion_margin, 0.3, 1);
-  CountingRenderer renderer_lenient(resolution, expansion_margin, 0.2, 1);
+  // 対称重み (hit_weight=1.0, miss_weight=1.0, miss_clearance=0.0, max_miss_ratio=0.0) で明示的に初期化
+  CountingRenderer renderer_strict(resolution, expansion_margin, 0.3, 1, 1.0, 1.0, 0.0, 0.0);
+  CountingRenderer renderer_lenient(resolution, expansion_margin, 0.2, 1, 1.0, 1.0, 0.0, 0.0);
 
   // 1回目は (1.0, 0.0) で反射
   core::PoseNode node_hit;
@@ -107,6 +108,47 @@ TEST(TestCountingRenderer, HitRatioThreshold) {
 
   // 緩やかな閾値(0.2)では 0.25 >= 0.2 のため Occupied (100)
   EXPECT_EQ(occ_lenient.data.at<int8_t>(target_py, target_px), 100);
+}
+
+TEST(TestCountingRenderer, AsymmetricRenderingProtectsWallFromPassingRays) {
+  double resolution = 0.1;
+  double expansion_margin = 5.0;
+
+  // M1 (hit_weight=1.0, miss_weight=0.25), M2 (clearance=0.0m: 無効), M3 (max_miss_ratio=2.0)
+  CountingRenderer renderer(resolution, expansion_margin, 0.4, 2, 1.0, 0.25, 0.0, 2.0);
+
+  core::PoseNode node_hit0;
+  node_hit0.index = 0;
+  node_hit0.timestamp = 100.0;
+  node_hit0.x = 0.0;
+  node_hit0.y = 0.0;
+  node_hit0.yaw = 0.0;
+  node_hit0.scan = make_single_point_scan(1.0, 0.0);
+
+  core::PoseNode node_hit1 = node_hit0;
+  node_hit1.index = 1;
+  node_hit1.timestamp = 100.5;
+
+  std::vector<core::PoseNode> nodes = {node_hit0, node_hit1};
+  for (int i = 2; i < 12; ++i) {
+    core::PoseNode node_pass;
+    node_pass.index = i;
+    node_pass.timestamp = 100.0 + i;
+    node_pass.x = 0.0;
+    node_pass.y = 0.0;
+    node_pass.yaw = 0.0;
+    node_pass.scan = make_single_point_scan(2.0, 0.0);
+    nodes.push_back(node_pass);
+  }
+
+  renderer.rerender_all(nodes);
+  auto occ = renderer.to_occupancy_array();
+
+  int target_px = static_cast<int>((1.0 - occ.origin_x) / resolution);
+  int target_py = static_cast<int>((0.0 - occ.origin_y) / resolution);
+
+  // 10本の光線が通過しても、M1 & M3 により確証壁は Occupied (100) を維持
+  EXPECT_EQ(occ.data.at<int8_t>(target_py, target_px), 100);
 }
 
 TEST(CountingRendererTest, SubmapPatchRendersCorrectly) {
