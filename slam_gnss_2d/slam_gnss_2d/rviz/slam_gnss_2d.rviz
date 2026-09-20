@@ -11,7 +11,7 @@ Panels:
         - /Path1
         - /LaserScan1
       Splitter Ratio: 0.5
-    Tree Height: 1572
+    Tree Height: 299
   - Class: rviz_common/Selection
     Name: Selection
   - Class: rviz_common/Views
@@ -371,7 +371,7 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Scale: 10
+      Scale: 24.759634017944336
       Target Frame: base_link
       Value: TopDownOrtho (rviz_default_plugins)
       X: 0

@@ -75,6 +75,7 @@ std::optional<core::PoseNode> ScanMatchingBuilder::add_scan(
   }
 
   const auto prev_node = nodes_.back();
+  const int prev_index = prev_node.index;
 
   auto [dx_local, dy_local] = core::world_delta_to_local(
       dx_w, dy_w, last_odom_->yaw);
@@ -165,7 +166,7 @@ std::optional<core::PoseNode> ScanMatchingBuilder::add_scan(
   provider_->update(node);
 
   edges_.emplace_back(core::PoseEdge{
-      prev_node.index,
+      prev_index,
       node.index,
       dx_icp,
       dy_icp,

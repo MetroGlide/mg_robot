@@ -92,13 +92,19 @@ ICPMatcher::ICPMatcher(
     double max_correspondence_dist,
     const std::string& robust_kernel,
     double robust_kernel_scale,
-    double yaw_information_multiplier)
+    double yaw_information_multiplier,
+    double motion_prior_weight_x,
+    double motion_prior_weight_y,
+    double motion_prior_weight_yaw)
     : max_iterations_(max_iterations),
       tolerance_(tolerance),
       max_correspondence_dist_(max_correspondence_dist),
       robust_kernel_(robust_kernel),
       robust_kernel_scale_(robust_kernel_scale),
       yaw_information_multiplier_(yaw_information_multiplier),
+      motion_prior_weight_x_(motion_prior_weight_x),
+      motion_prior_weight_y_(motion_prior_weight_y),
+      motion_prior_weight_yaw_(motion_prior_weight_yaw),
       impl_(std::make_unique<Impl>()) {}
 
 ICPMatcher::~ICPMatcher() = default;
@@ -196,8 +202,17 @@ core::MatchResult ICPMatcher::match(
       b += (w * J) * r;
     }
 
-    Eigen::Matrix3d H_reg = H + Eigen::Matrix3d::Identity() * 1e-4;
-    Eigen::Vector3d delta = H_reg.ldlt().solve(-b);
+    Eigen::Matrix3d W_motion = Eigen::Matrix3d::Zero();
+    W_motion(0, 0) = motion_prior_weight_x_;
+    W_motion(1, 1) = motion_prior_weight_y_;
+    W_motion(2, 2) = motion_prior_weight_yaw_;
+
+    double dyaw_motion = core::angle_diff(theta, initial_guess.yaw);
+    Eigen::Vector3d err_motion(tx - initial_guess.x, ty - 0.0, dyaw_motion);
+
+    Eigen::Matrix3d H_reg = H + W_motion + Eigen::Matrix3d::Identity() * 1e-4;
+    Eigen::Vector3d b_reg = b + W_motion * err_motion;
+    Eigen::Vector3d delta = H_reg.ldlt().solve(-b_reg);
 
     tx += delta.x();
     ty += delta.y();
@@ -219,6 +234,7 @@ core::MatchResult ICPMatcher::match(
         information(r, c) = std::clamp(information(r, c), -1000.0, 1000.0);
       }
     }
+    information(1, 1) = std::max(information(1, 1), 200.0);
     information(2, 2) = std::clamp(information(2, 2), 0.0, 5000.0) * yaw_information_multiplier_;
   }
 

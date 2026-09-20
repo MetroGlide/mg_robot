@@ -18,7 +18,10 @@ class ICPMatcher : public ScanMatcherBase {
       double max_correspondence_dist,
       const std::string& robust_kernel,
       double robust_kernel_scale,
-      double yaw_information_multiplier);
+      double yaw_information_multiplier,
+      double motion_prior_weight_x = 10.0,
+      double motion_prior_weight_y = 500.0,
+      double motion_prior_weight_yaw = 100.0);
 
   ~ICPMatcher() override;
 
@@ -35,6 +38,9 @@ class ICPMatcher : public ScanMatcherBase {
   std::string robust_kernel_;
   double robust_kernel_scale_;
   double yaw_information_multiplier_;
+  double motion_prior_weight_x_;
+  double motion_prior_weight_y_;
+  double motion_prior_weight_yaw_;
 
   std::vector<Eigen::Vector2d> src_pts_;
   std::vector<Eigen::Vector2d> src_normals_;

@@ -112,5 +112,86 @@ TEST(ScanMatchingBuilderTest, NonConvergenceFallsBackToOdometryWithoutDropping) 
   EXPECT_NEAR(edges[0].dx, 0.25, 1e-4);
 }
 
+// 理想的なマッチャー (微小変位を正確に追従)
+class MockPerfectMatcher : public ScanMatcherBase {
+ public:
+  void set_target_cloud(const std::vector<Eigen::Vector2d>&) override {}
+  core::MatchResult match(
+      const core::ConstScanDataPtr&,
+      const core::OdomData& initial_guess) override {
+    Eigen::Matrix3d info = Eigen::Matrix3d::Identity() * 500.0;
+    return core::MatchResult{
+        initial_guess.x, initial_guess.y, initial_guess.yaw,
+        true, info, 0.01};
+  }
+};
+
+TEST(ScanMatchingBuilderTest, KeyframeScanMatchingGeneratesAccuratePoses) {
+  auto mock_matcher = std::make_shared<MockPerfectMatcher>();
+  auto provider = std::make_shared<LocalMapProvider>(10, 20.0);
+
+  // min_translation = 0.2m
+  pose_graph::ScanMatchingBuilder builder(mock_matcher, provider, 0.2, 0.1, 5);
+
+  auto scan = make_box_scan();
+
+  // フレーム1: 原点 (ノード0生成)
+  auto n0 = builder.add_scan(scan, core::OdomData{100.0, 0.0, 0.0, 0.0});
+  ASSERT_TRUE(n0.has_value());
+  EXPECT_EQ(n0->index, 0);
+
+  // フレーム2: +0.05m 移動 (キーフレーム閾値未達 -> nullopt)
+  auto n_sub1 = builder.add_scan(scan, core::OdomData{100.05, 0.05, 0.0, 0.0});
+  EXPECT_FALSE(n_sub1.has_value());
+
+  // フレーム3: +0.10m 移動 (キーフレーム閾値未達 -> nullopt)
+  auto n_sub2 = builder.add_scan(scan, core::OdomData{100.10, 0.10, 0.0, 0.0});
+  EXPECT_FALSE(n_sub2.has_value());
+
+  // フレーム4: +0.22m 移動 (累積0.22m > 0.2m -> ノード1生成)
+  auto n1 = builder.add_scan(scan, core::OdomData{100.22, 0.22, 0.0, 0.0});
+  ASSERT_TRUE(n1.has_value());
+  EXPECT_EQ(n1->index, 1);
+  EXPECT_NEAR(n1->x, 0.22, 1e-4);
+
+  // 生成されたエッジが高精度マッチングエッジであること
+  auto edges = builder.get_edges();
+  ASSERT_EQ(edges.size(), 1u);
+  EXPECT_FALSE(edges[0].is_odom_fallback);
+  EXPECT_NEAR(edges[0].dx, 0.22, 1e-4);
+  EXPECT_EQ(edges[0].from_index, 0);
+  EXPECT_EQ(edges[0].to_index, 1);
+
+  auto all_nodes = builder.get_nodes();
+  ASSERT_EQ(all_nodes.size(), 2u);
+  EXPECT_EQ(all_nodes[0].index, 0);
+  EXPECT_EQ(all_nodes[1].index, 1);
+}
+
+TEST(ScanMatchingBuilderTest, StillMotionDoesNotAddKeyframes) {
+  auto mock_matcher = std::make_shared<MockPerfectMatcher>();
+  auto provider = std::make_shared<LocalMapProvider>(10, 20.0);
+
+  pose_graph::ScanMatchingBuilder builder(mock_matcher, provider, 0.2, 0.1, 5);
+
+  auto scan = make_box_scan();
+
+  // 原点
+  auto n0 = builder.add_scan(scan, core::OdomData{100.0, 0.0, 0.0, 0.0});
+  ASSERT_TRUE(n0.has_value());
+
+  int initial_attempts = builder.icp_attempt_count();
+
+  // 静止中（移動量微小）のスキャンが何回入ってもスキップされること
+  for (int i = 1; i <= 20; ++i) {
+    auto n_still = builder.add_scan(scan, core::OdomData{100.0 + i * 0.025, 0.0001, 0.0001, 0.0});
+    EXPECT_FALSE(n_still.has_value());
+  }
+
+  // ノード数は原点の1つのみであること
+  EXPECT_EQ(builder.get_nodes().size(), 1u);
+  EXPECT_EQ(builder.icp_attempt_count(), initial_attempts);
+}
+
 }  // namespace scan_matching
 }  // namespace slam_gnss_2d

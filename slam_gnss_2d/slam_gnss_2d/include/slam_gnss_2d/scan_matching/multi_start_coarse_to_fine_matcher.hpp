@@ -51,6 +51,20 @@ class MultiStartCoarseToFineMatcher : public ScanMatcherBase {
       return fine_matcher_->match(dst, initial_guess);
     }
 
+    // Phase 1: 平常時の直接精密マッチング (Fine-first fast tracking)
+    // 連続トラッキング時は変位が極小なため、まずは運動正則化ICPで直接吸着を試みる。
+    // これにより、平常時の不要なNDT角度探索による微小な角度跳ねを完全根絶する。
+    if (fine_matcher_) {
+      auto direct_res = fine_matcher_->match(dst, initial_guess);
+      if (direct_res.converged && direct_res.score < 0.15) {
+        last_matched_dyaw_ = direct_res.dyaw;
+        has_last_yaw_ = true;
+        return direct_res;
+      }
+    }
+
+    // Phase 2: セーフティネット (大スリップ・急激な旋回時のNDTマルチスタート粗探索)
+    // 直接ICPが非収束、またはスコアが悪化した場合のみNDT大域探索を発動
     std::vector<core::OdomData> hypotheses;
 
     // 1. オドメトリ仮説
@@ -80,7 +94,6 @@ class MultiStartCoarseToFineMatcher : public ScanMatcherBase {
       hypotheses.push_back(h);
     }
 
-    // Phase 1: NDTによる全仮説の大域粗探索
     core::MatchResult best_coarse_res;
     best_coarse_res.converged = false;
     double best_coarse_score = std::numeric_limits<double>::max();
@@ -102,7 +115,7 @@ class MultiStartCoarseToFineMatcher : public ScanMatcherBase {
       fine_seed.yaw = best_coarse_res.dyaw;
     }
 
-    // Phase 2: Point-to-Line ICPによる精密壁面吸着
+    // NDT最良解からの精密壁面吸着
     if (fine_matcher_) {
       auto fine_res = fine_matcher_->match(dst, fine_seed);
       if (fine_res.converged) {
