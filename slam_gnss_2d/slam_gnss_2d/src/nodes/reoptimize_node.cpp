@@ -10,7 +10,7 @@
 #include <vector>
 
 #include <rclcpp/rclcpp.hpp>
-#include <std_srvs/srv/trigger.hpp>
+#include <slam_gnss_2d_msgs/srv/save_slam_map.hpp>
 
 #include "slam_gnss_2d/core/component_factory.hpp"
 #include "slam_gnss_2d/core/config_loader.hpp"
@@ -76,11 +76,11 @@ class ReoptimizeNode : public rclcpp::Node {
     auto node_shared = shared_from_this();
     visualizer_ = std::make_shared<ros::SlamVisualizer>(node_shared, true);
 
-    save_srv_ = create_service<std_srvs::srv::Trigger>(
+    save_srv_ = create_service<slam_gnss_2d_msgs::srv::SaveSlamMap>(
         "slam_gnss_2d/save_slam_map",
         [this](
-            const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
-            std::shared_ptr<std_srvs::srv::Trigger::Response> res) {
+            const std::shared_ptr<slam_gnss_2d_msgs::srv::SaveSlamMap::Request> req,
+            std::shared_ptr<slam_gnss_2d_msgs::srv::SaveSlamMap::Response> res) {
           this->handle_save_slam_map(req, res);
         });
 
@@ -92,7 +92,7 @@ class ReoptimizeNode : public rclcpp::Node {
  private:
   core::SlamConfig config_;
   std::shared_ptr<ros::SlamVisualizer> visualizer_;
-  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr save_srv_;
+  rclcpp::Service<slam_gnss_2d_msgs::srv::SaveSlamMap>::SharedPtr save_srv_;
   rclcpp::TimerBase::SharedPtr timer_;
 
   std::vector<core::PoseNode> optimized_nodes_;
@@ -378,9 +378,14 @@ class ReoptimizeNode : public rclcpp::Node {
   }
 
   void handle_save_slam_map(
-      [[maybe_unused]] const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
-      std::shared_ptr<std_srvs::srv::Trigger::Response> res) {
-    std::string output_dir = get_parameter("save_dir").as_string();
+      const std::shared_ptr<slam_gnss_2d_msgs::srv::SaveSlamMap::Request> req,
+      std::shared_ptr<slam_gnss_2d_msgs::srv::SaveSlamMap::Response> res) {
+    std::string output_dir = req->map_dir;
+    if (output_dir.empty()) {
+      if (has_parameter("save_dir")) {
+        output_dir = get_parameter("save_dir").as_string();
+      }
+    }
     if (output_dir.empty()) {
       auto now = std::chrono::system_clock::now();
       auto tt = std::chrono::system_clock::to_time_t(now);
@@ -389,6 +394,12 @@ class ReoptimizeNode : public rclcpp::Node {
          << std::put_time(std::localtime(&tt), "%Y%m%d_%H%M%S") << "_opt";
       output_dir = ss.str();
     }
+
+    std::filesystem::path p(output_dir);
+    if (p.is_relative()) {
+      p = std::filesystem::absolute(p);
+    }
+    output_dir = p.lexically_normal().string();
 
     try {
       std::filesystem::create_directories(output_dir);

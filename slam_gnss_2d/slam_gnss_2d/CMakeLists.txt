@@ -151,6 +151,10 @@ add_executable(pose_graph_preview_node src/nodes/pose_graph_preview_node.cpp)
 target_link_libraries(pose_graph_preview_node slam_gnss_2d_core)
 ament_target_dependencies(pose_graph_preview_node ${DEPENDENCIES})
 
+add_executable(save_slam_map_cli src/tools/save_slam_map_cli.cpp)
+target_link_libraries(save_slam_map_cli slam_gnss_2d_core)
+ament_target_dependencies(save_slam_map_cli ${DEPENDENCIES})
+
 # Install
 install(TARGETS
   slam_gnss_2d_core
@@ -166,6 +170,7 @@ install(TARGETS
   slam_gnss_nav_bridge_node
   anchor_publisher_node
   pose_graph_preview_node
+  save_slam_map_cli
   DESTINATION lib/${PROJECT_NAME}
 )
 
@@ -183,6 +188,9 @@ if(BUILD_TESTING)
 
   ament_add_gtest(test_geometry test/test_geometry.cpp)
   target_link_libraries(test_geometry slam_gnss_2d_core)
+
+  ament_add_gtest(test_slam_data_saver test/test_slam_data_saver.cpp)
+  target_link_libraries(test_slam_data_saver slam_gnss_2d_core)
 
   ament_add_gtest(test_time_series test/test_time_series.cpp)
   target_link_libraries(test_time_series slam_gnss_2d_core)

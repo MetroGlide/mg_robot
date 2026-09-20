@@ -1,6 +1,7 @@
 #include "slam_gnss_2d/ros/map_save_service.hpp"
 
 #include <cmath>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -14,25 +15,36 @@ MapSaveService::MapSaveService(
     pose_graph::PoseGraphBuilderPtr pose_graph,
     core::GraphOrchestratorPtr orchestrator)
     : node_(node), pose_graph_(pose_graph), orchestrator_(orchestrator) {
-  save_srv_ = node_->create_service<std_srvs::srv::Trigger>(
+  save_srv_ = node_->create_service<slam_gnss_2d_msgs::srv::SaveSlamMap>(
       "slam_gnss_2d/save_slam_map",
       [this](
-          const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
-          std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
+          const std::shared_ptr<slam_gnss_2d_msgs::srv::SaveSlamMap::Request> request,
+          std::shared_ptr<slam_gnss_2d_msgs::srv::SaveSlamMap::Response> response) {
         this->handle_save(request, response);
       });
 }
 
 void MapSaveService::handle_save(
-    [[maybe_unused]] const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
-    std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
-  std::string output_dir = "/root/ros2_data/slam_maps/latest";
-  if (node_->has_parameter("save_dir")) {
-    auto val = node_->get_parameter("save_dir").as_string();
-    if (!val.empty()) {
-      output_dir = val;
+    const std::shared_ptr<slam_gnss_2d_msgs::srv::SaveSlamMap::Request> request,
+    std::shared_ptr<slam_gnss_2d_msgs::srv::SaveSlamMap::Response> response) {
+  std::string output_dir = request->map_dir;
+  if (output_dir.empty()) {
+    if (node_->has_parameter("save_dir")) {
+      auto val = node_->get_parameter("save_dir").as_string();
+      if (!val.empty()) {
+        output_dir = val;
+      }
     }
   }
+  if (output_dir.empty()) {
+    output_dir = "/root/ros2_data/slam_maps/latest";
+  }
+
+  std::filesystem::path p(output_dir);
+  if (p.is_relative()) {
+    p = std::filesystem::absolute(p);
+  }
+  output_dir = p.lexically_normal().string();
 
   try {
     auto nodes = pose_graph_->get_nodes();
