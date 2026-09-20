@@ -119,4 +119,133 @@ std::vector<Eigen::Vector2d> points_world_to_local(
   return local_pts;
 }
 
+std::pair<std::vector<Eigen::Vector2d>, std::vector<Eigen::Vector2d>>
+scan_to_points_and_normals(const core::ScanData& scan) {
+  std::vector<Eigen::Vector2d> pts;
+  std::vector<int> beam_indices;
+  pts.reserve(scan.ranges.size());
+  beam_indices.reserve(scan.ranges.size());
+
+  for (size_t i = 0; i < scan.ranges.size(); ++i) {
+    float r = scan.ranges[i];
+    if (r >= scan.range_min && r <= scan.range_max) {
+      double angle = scan.angle_min + static_cast<double>(i) * scan.angle_increment;
+      double lx = r * std::cos(angle) + scan.lidar_x;
+      double ly = r * std::sin(angle) + scan.lidar_y;
+      pts.emplace_back(lx, ly);
+      beam_indices.push_back(static_cast<int>(i));
+    }
+  }
+
+  std::vector<Eigen::Vector2d> normals;
+  normals.reserve(pts.size());
+
+  const int n = static_cast<int>(pts.size());
+  const double max_jump_dist_sq = 0.25 * 0.25;  // 25cm以上の距離跳躍は別物体とみなす
+
+  for (int i = 0; i < n; ++i) {
+    Eigen::Vector2d tangent(0.0, 0.0);
+    bool found = false;
+
+    // 前後2点までの有効な連続ビームを探す
+    int prev_idx = -1;
+    for (int step = 1; step <= 2; ++step) {
+      int cand = i - step;
+      if (cand >= 0 && (beam_indices[i] - beam_indices[cand] <= step + 1)) {
+        if ((pts[i] - pts[cand]).squaredNorm() < max_jump_dist_sq * step * step) {
+          prev_idx = cand;
+          break;
+        }
+      }
+    }
+
+    int next_idx = -1;
+    for (int step = 1; step <= 2; ++step) {
+      int cand = i + step;
+      if (cand < n && (beam_indices[cand] - beam_indices[i] <= step + 1)) {
+        if ((pts[cand] - pts[i]).squaredNorm() < max_jump_dist_sq * step * step) {
+          next_idx = cand;
+          break;
+        }
+      }
+    }
+
+    if (prev_idx >= 0 && next_idx >= 0) {
+      tangent = pts[next_idx] - pts[prev_idx];
+      found = true;
+    } else if (next_idx >= 0) {
+      tangent = pts[next_idx] - pts[i];
+      found = true;
+    } else if (prev_idx >= 0) {
+      tangent = pts[i] - pts[prev_idx];
+      found = true;
+    }
+
+    if (found && tangent.squaredNorm() > 1e-8) {
+      Eigen::Vector2d normal(-tangent.y(), tangent.x());
+      normal.normalize();
+
+      // センサー原点方向を向くように法線の向きを統一
+      Eigen::Vector2d view(scan.lidar_x - pts[i].x(), scan.lidar_y - pts[i].y());
+      if (normal.dot(view) < 0.0) {
+        normal = -normal;
+      }
+      normals.push_back(normal);
+    } else {
+      // フォールバック法線（視線方向）
+      Eigen::Vector2d view(scan.lidar_x - pts[i].x(), scan.lidar_y - pts[i].y());
+      double norm = view.norm();
+      if (norm > 1e-4) {
+        normals.push_back(view / norm);
+      } else {
+        normals.push_back(Eigen::Vector2d(0.0, 1.0));
+      }
+    }
+  }
+
+  return {pts, normals};
+}
+
+std::pair<std::vector<Eigen::Vector2d>, std::vector<Eigen::Vector2d>>
+scan_to_points_and_normals(const core::ConstScanDataPtr& scan) {
+  if (!scan) return {{}, {}};
+  return scan_to_points_and_normals(*scan);
+}
+
+std::pair<std::vector<Eigen::Vector2d>, std::vector<Eigen::Vector2d>>
+scan_to_points_and_normals(const core::ScanDataPtr& scan) {
+  if (!scan) return {{}, {}};
+  return scan_to_points_and_normals(*scan);
+}
+
+std::vector<Eigen::Vector2d> normals_local_to_world(
+    const std::vector<Eigen::Vector2d>& local_normals, double yaw) {
+  double cos_yaw = std::cos(yaw);
+  double sin_yaw = std::sin(yaw);
+  std::vector<Eigen::Vector2d> world_normals;
+  world_normals.reserve(local_normals.size());
+
+  for (const auto& n : local_normals) {
+    double wx = cos_yaw * n.x() - sin_yaw * n.y();
+    double wy = sin_yaw * n.x() + cos_yaw * n.y();
+    world_normals.emplace_back(wx, wy);
+  }
+  return world_normals;
+}
+
+std::vector<Eigen::Vector2d> normals_world_to_local(
+    const std::vector<Eigen::Vector2d>& world_normals, double yaw) {
+  double cos_yaw = std::cos(yaw);
+  double sin_yaw = std::sin(yaw);
+  std::vector<Eigen::Vector2d> local_normals;
+  local_normals.reserve(world_normals.size());
+
+  for (const auto& n : world_normals) {
+    double lx = cos_yaw * n.x() + sin_yaw * n.y();
+    double ly = -sin_yaw * n.x() + cos_yaw * n.y();
+    local_normals.emplace_back(lx, ly);
+  }
+  return local_normals;
+}
+
 }  // namespace slam_gnss_2d

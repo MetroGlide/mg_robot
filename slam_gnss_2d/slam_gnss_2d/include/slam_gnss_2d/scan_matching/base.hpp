@@ -14,6 +14,12 @@ class ScanMatcherBase {
   virtual ~ScanMatcherBase() = default;
 
   virtual void set_target_cloud(const std::vector<Eigen::Vector2d>& src_pts) = 0;
+  virtual void set_target_cloud_with_normals(
+      const std::vector<Eigen::Vector2d>& src_pts,
+      const std::vector<Eigen::Vector2d>& src_normals) {
+    (void)src_normals;
+    set_target_cloud(src_pts);
+  }
 
   virtual core::MatchResult match(
       const core::ConstScanDataPtr& dst,

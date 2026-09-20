@@ -5,6 +5,7 @@
 #include <Eigen/Dense>
 
 #include "slam_gnss_2d/core/data_types.hpp"
+#include "slam_gnss_2d/core/geometry.hpp"
 #include "slam_gnss_2d/scan_matching/icp_matcher.hpp"
 #include "slam_gnss_2d/scan_matching/reference_provider/local_map.hpp"
 
@@ -105,6 +106,57 @@ TEST(LocalMapProviderTest, SyncPoses) {
     EXPECT_NEAR((*pts0)[i].x(), (*pts1)[i].x(), 1e-4);
     EXPECT_NEAR((*pts0)[i].y(), (*pts1)[i].y(), 1e-4);
   }
+}
+
+TEST(LocalMapProviderTest, ProvidesReferencePointsAndNormals) {
+  LocalMapProvider provider(5, 10.0);
+  auto scan = make_box_scan();
+  core::PoseNode n0{0, 100.0, 0.0, 0.0, 0.0, scan};
+  provider.update(n0);
+
+  auto res = provider.get_reference_pts_and_normals();
+  ASSERT_TRUE(res.has_value());
+  EXPECT_FALSE(res->first.empty());
+  EXPECT_EQ(res->first.size(), res->second.size());
+
+  // 法線ベクトルが単位ベクトル（長さ約1.0）であることを確認
+  for (const auto& normal : res->second) {
+    EXPECT_NEAR(normal.norm(), 1.0, 1e-3);
+  }
+}
+
+TEST(ICPMatcherTest, MatchesWithPrecomputedNormalsAndDirectPoints) {
+  // 純粋幾何マッチングの検証のため運動正則化重みを0に設定
+  ICPMatcher matcher(
+      50, 1e-4, 1.0, "huber", 0.1, 100.0,
+      0.0, 0.0, 0.0, 1e-4, 1e-4);
+
+  auto scan = make_box_scan();
+  auto [src_pts, src_normals] = core::scan_to_points_and_normals(scan);
+  matcher.set_target_cloud_with_normals(src_pts, src_normals);
+
+  // 0.1m, 0.05m, 0.03rad ずらした点群を作成
+  double true_dx = 0.1;
+  double true_dy = 0.05;
+  double true_yaw = 0.03;
+  double c = std::cos(true_yaw);
+  double s = std::sin(true_yaw);
+
+  std::vector<Eigen::Vector2d> dst_pts;
+  for (const auto& pt : src_pts) {
+    // 逆変換（ローカルに移動）
+    double rx = pt.x() - true_dx;
+    double ry = pt.y() - true_dy;
+    dst_pts.emplace_back(c * rx + s * ry, -s * rx + c * ry);
+  }
+
+  core::OdomData initial_guess{100.0, 0.08, 0.04, 0.0};
+  auto result = matcher.match(dst_pts, initial_guess);
+
+  EXPECT_TRUE(result.converged);
+  EXPECT_NEAR(result.dx, true_dx, 0.02);
+  EXPECT_NEAR(result.dy, true_dy, 0.02);
+  EXPECT_NEAR(result.dyaw, true_yaw, 0.02);
 }
 
 }  // namespace scan_matching

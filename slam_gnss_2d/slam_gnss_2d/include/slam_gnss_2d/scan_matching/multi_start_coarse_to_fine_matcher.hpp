@@ -39,6 +39,13 @@ class MultiStartCoarseToFineMatcher : public ScanMatcherBase {
     if (fine_matcher_) fine_matcher_->set_target_cloud(src_pts);
   }
 
+  void set_target_cloud_with_normals(
+      const std::vector<Eigen::Vector2d>& src_pts,
+      const std::vector<Eigen::Vector2d>& src_normals) override {
+    if (coarse_matcher_) coarse_matcher_->set_target_cloud(src_pts);
+    if (fine_matcher_) fine_matcher_->set_target_cloud_with_normals(src_pts, src_normals);
+  }
+
   core::MatchResult match(
       const core::ConstScanDataPtr& dst,
       const core::OdomData& initial_guess) override {

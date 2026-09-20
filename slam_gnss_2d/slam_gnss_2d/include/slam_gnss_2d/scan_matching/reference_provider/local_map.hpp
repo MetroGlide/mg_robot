@@ -19,11 +19,19 @@ class LocalMapProvider : public ReferenceProviderBase {
   void invalidate_cache() override;
   void sync_poses(const std::vector<core::PoseNode>& nodes) override;
   std::optional<std::vector<Eigen::Vector2d>> get_reference_pts() override;
+  std::optional<std::pair<std::vector<Eigen::Vector2d>, std::vector<Eigen::Vector2d>>>
+  get_reference_pts_and_normals() override;
 
  private:
+  struct CachedKeyframe {
+    core::PoseNode node;
+    std::vector<Eigen::Vector2d> pts;
+    std::vector<Eigen::Vector2d> normals;
+  };
+
   int window_;
   double radius_;
-  std::deque<std::pair<core::PoseNode, std::vector<Eigen::Vector2d>>> nodes_;
+  std::deque<CachedKeyframe> nodes_;
   std::optional<core::PoseNode> last_node_;
 };
 

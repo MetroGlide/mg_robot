@@ -61,5 +61,66 @@ TEST(LoopClosureTest, ReplaceNodesUpdatesNodes) {
   EXPECT_NEAR(nodes[1].yaw, 0.2, 1e-6);
 }
 
+static core::ScanDataPtr make_test_scan() {
+  auto scan = std::make_shared<core::ScanData>();
+  scan->timestamp = 100.0;
+  scan->angle_min = -M_PI;
+  scan->angle_increment = 2.0 * M_PI / 360.0;
+  scan->range_min = 0.1;
+  scan->range_max = 30.0;
+  scan->ranges.assign(360, 5.0f);
+  return scan;
+}
+
+TEST(LoopClosureTest, SubmapToSubmapLoopEdgeCreated) {
+  auto matcher = std::make_shared<scan_matching::ICPMatcher>(
+      50, 1e-4, 1.0, "huber", 0.1, 100.0);
+  auto ref_provider = std::make_shared<scan_matching::ScanToScanProvider>();
+  auto sm_builder = std::make_shared<ScanMatchingBuilder>(
+      matcher, ref_provider, 0.2, 0.1, 5);
+
+  auto loop_matcher = std::make_shared<scan_matching::ICPMatcher>(
+      50, 1e-4, 1.0, "huber", 0.1, 100.0);
+
+  LoopClosureBuilder lc_builder(
+      sm_builder,
+      loop_matcher,
+      4.0,   // search_radius
+      3,     // min_node_gap
+      3,     // max_failure_streak
+      30.0,  // max_loop_dyaw_deg
+      0.0,   // crossing_reject_deg
+      5.0,   // submap_radius
+      0.2    // max_score
+  );
+
+  auto scan = make_test_scan();
+  // Node 0 at (0, 0)
+  lc_builder.add_scan(scan, core::OdomData{100.0, 0.0, 0.0, 0.0});
+  // Node 1 at (0.3, 0)
+  lc_builder.add_scan(scan, core::OdomData{100.1, 0.3, 0.0, 0.0});
+  // Node 2 at (0.6, 0)
+  lc_builder.add_scan(scan, core::OdomData{100.2, 0.6, 0.0, 0.0});
+  // Node 3 at (0.9, 0)
+  lc_builder.add_scan(scan, core::OdomData{100.3, 0.9, 0.0, 0.0});
+
+  // Node 4 loops back near Node 0 at (0.05, 0.0) -> node gap = 4 >= min_node_gap(3)
+  auto n4 = lc_builder.add_scan(scan, core::OdomData{100.4, 0.05, 0.0, 0.0});
+  ASSERT_TRUE(n4.has_value());
+
+  auto loop_edges = lc_builder.get_loop_edges();
+  EXPECT_FALSE(loop_edges.empty());
+  bool found_node4_loop = false;
+  for (const auto& edge : loop_edges) {
+    if (edge.to_index == 4) {
+      found_node4_loop = true;
+      EXPECT_EQ(edge.from_index, 1);
+      EXPECT_NEAR(edge.dx, -0.25, 0.1);
+      break;
+    }
+  }
+  EXPECT_TRUE(found_node4_loop);
+}
+
 }  // namespace pose_graph
 }  // namespace slam_gnss_2d

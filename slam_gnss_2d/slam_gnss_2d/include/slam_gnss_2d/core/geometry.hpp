@@ -24,6 +24,13 @@ std::vector<Eigen::Vector2d> scan_to_points(const core::ScanData& scan);
 std::vector<Eigen::Vector2d> scan_to_points(const core::ConstScanDataPtr& scan);
 std::vector<Eigen::Vector2d> scan_to_points(const core::ScanDataPtr& scan);
 
+std::pair<std::vector<Eigen::Vector2d>, std::vector<Eigen::Vector2d>>
+scan_to_points_and_normals(const core::ScanData& scan);
+std::pair<std::vector<Eigen::Vector2d>, std::vector<Eigen::Vector2d>>
+scan_to_points_and_normals(const core::ConstScanDataPtr& scan);
+std::pair<std::vector<Eigen::Vector2d>, std::vector<Eigen::Vector2d>>
+scan_to_points_and_normals(const core::ScanDataPtr& scan);
+
 std::pair<double, double> world_delta_to_local(double dx_w, double dy_w, double reference_yaw);
 std::pair<double, double> local_delta_to_world(double dx_local, double dy_local, double reference_yaw);
 
@@ -32,6 +39,12 @@ std::vector<Eigen::Vector2d> points_local_to_world(
 
 std::vector<Eigen::Vector2d> points_world_to_local(
     const std::vector<Eigen::Vector2d>& world_pts, double origin_x, double origin_y, double yaw);
+
+std::vector<Eigen::Vector2d> normals_local_to_world(
+    const std::vector<Eigen::Vector2d>& local_normals, double yaw);
+
+std::vector<Eigen::Vector2d> normals_world_to_local(
+    const std::vector<Eigen::Vector2d>& world_normals, double yaw);
 
 namespace core {
 using slam_gnss_2d::angle_diff;
@@ -45,6 +58,9 @@ using slam_gnss_2d::world_delta_to_local;
 using slam_gnss_2d::local_delta_to_world;
 using slam_gnss_2d::points_local_to_world;
 using slam_gnss_2d::points_world_to_local;
+using slam_gnss_2d::scan_to_points_and_normals;
+using slam_gnss_2d::normals_local_to_world;
+using slam_gnss_2d::normals_world_to_local;
 }  // namespace core
 
 }  // namespace slam_gnss_2d

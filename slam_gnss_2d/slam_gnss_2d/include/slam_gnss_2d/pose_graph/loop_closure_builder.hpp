@@ -63,6 +63,10 @@ class LoopClosureBuilder : public PoseGraphBuilderBase {
 
   std::vector<core::PoseNode> find_loop_candidates(const core::PoseNode& node) const;
   std::vector<Eigen::Vector2d> build_candidate_submap(const core::PoseNode& candidate) const;
+  std::pair<std::vector<Eigen::Vector2d>, std::vector<Eigen::Vector2d>>
+  build_candidate_submap_with_normals(const core::PoseNode& candidate) const;
+  std::vector<Eigen::Vector2d> build_query_submap(
+      const core::PoseNode& node, int query_window = 5) const;
   bool try_add_loop_edge(const core::PoseNode& node, const core::PoseNode& candidate);
 };
 

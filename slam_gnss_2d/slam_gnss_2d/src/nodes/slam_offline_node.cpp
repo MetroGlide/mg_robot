@@ -91,12 +91,20 @@ class SlamOfflineNode : public core::SlamNodeBase {
   }
 
   void process_step() {
-    if (!bag_scan_source_ || !bag_scan_source_->step()) {
-      if (step_timer_) {
-        step_timer_->cancel();
+    if (!bag_scan_source_) {
+      return;
+    }
+    double step_hz = get_parameter("offline_step_hz").as_double();
+    int batch_size = (step_hz <= 0.0) ? 50 : 1;
+    for (int b = 0; b < batch_size; ++b) {
+      if (!bag_scan_source_->step()) {
+        if (step_timer_) {
+          step_timer_->cancel();
+        }
+        RCLCPP_INFO(get_logger(), "Bag processing complete");
+        finalize();
+        break;
       }
-      RCLCPP_INFO(get_logger(), "Bag processing complete");
-      finalize();
     }
   }
 

@@ -17,6 +17,10 @@ class ReferenceProviderBase {
   virtual void update(const core::PoseNode& node) = 0;
 
   virtual std::optional<std::vector<Eigen::Vector2d>> get_reference_pts() = 0;
+  virtual std::optional<std::pair<std::vector<Eigen::Vector2d>, std::vector<Eigen::Vector2d>>>
+  get_reference_pts_and_normals() {
+    return std::nullopt;
+  }
 
   virtual void invalidate_cache() {}
   virtual void sync_poses(const std::vector<core::PoseNode>& nodes) { (void)nodes; }

@@ -15,7 +15,17 @@ void LocalMapProvider::update(const core::PoseNode& node) {
     if (static_cast<int>(nodes_.size()) >= window_) {
       nodes_.pop_front();
     }
-    nodes_.emplace_back(node, core::scan_to_points(node.scan));
+    std::vector<Eigen::Vector2d> pts;
+    std::vector<Eigen::Vector2d> normals;
+    if (node.normals && !node.normals->empty()) {
+      pts = core::scan_to_points(node.scan);
+      normals = *(node.normals);
+    } else {
+      auto pair = core::scan_to_points_and_normals(node.scan);
+      pts = std::move(pair.first);
+      normals = std::move(pair.second);
+    }
+    nodes_.push_back(CachedKeyframe{node, std::move(pts), std::move(normals)});
   }
   last_node_ = node;
 }
@@ -33,12 +43,12 @@ void LocalMapProvider::sync_poses(const std::vector<core::PoseNode>& nodes) {
                         nodes.back().index == static_cast<int>(nodes.size() - 1));
 
   if (is_sequential) {
-    for (auto& pair : nodes_) {
-      int idx = pair.first.index;
+    for (auto& kf : nodes_) {
+      int idx = kf.node.index;
       if (idx >= 0 && idx < static_cast<int>(nodes.size())) {
-        pair.first.x = nodes[idx].x;
-        pair.first.y = nodes[idx].y;
-        pair.first.yaw = nodes[idx].yaw;
+        kf.node.x = nodes[idx].x;
+        kf.node.y = nodes[idx].y;
+        kf.node.yaw = nodes[idx].yaw;
       }
     }
     if (last_node_.has_value()) {
@@ -52,12 +62,12 @@ void LocalMapProvider::sync_poses(const std::vector<core::PoseNode>& nodes) {
     for (const auto& n : nodes) {
       node_map[n.index] = &n;
     }
-    for (auto& pair : nodes_) {
-      auto it = node_map.find(pair.first.index);
+    for (auto& kf : nodes_) {
+      auto it = node_map.find(kf.node.index);
       if (it != node_map.end()) {
-        pair.first.x = it->second->x;
-        pair.first.y = it->second->y;
-        pair.first.yaw = it->second->yaw;
+        kf.node.x = it->second->x;
+        kf.node.y = it->second->y;
+        kf.node.yaw = it->second->yaw;
       }
     }
     if (last_node_.has_value()) {
@@ -70,23 +80,39 @@ void LocalMapProvider::sync_poses(const std::vector<core::PoseNode>& nodes) {
 }
 
 std::optional<std::vector<Eigen::Vector2d>> LocalMapProvider::get_reference_pts() {
+  auto res = get_reference_pts_and_normals();
+  if (!res.has_value()) {
+    return std::nullopt;
+  }
+  return res->first;
+}
+
+std::optional<std::pair<std::vector<Eigen::Vector2d>, std::vector<Eigen::Vector2d>>>
+LocalMapProvider::get_reference_pts_and_normals() {
   if (nodes_.empty() || !last_node_.has_value()) {
     return std::nullopt;
   }
 
   const auto& last = *last_node_;
   std::vector<Eigen::Vector2d> world_pts;
+  std::vector<Eigen::Vector2d> world_normals;
 
   double radius_sq = radius_ * radius_;
-  for (const auto& pair : nodes_) {
-    const auto& n = pair.first;
-    const auto& local_pts = pair.second;
-    auto w_pts = core::points_local_to_world(local_pts, n.x, n.y, n.yaw);
-    for (const auto& pt : w_pts) {
-      double dx = pt.x() - last.x;
-      double dy = pt.y() - last.y;
+  for (const auto& kf : nodes_) {
+    const auto& n = kf.node;
+    auto w_pts = core::points_local_to_world(kf.pts, n.x, n.y, n.yaw);
+    auto w_normals = core::normals_local_to_world(kf.normals, n.yaw);
+
+    for (size_t i = 0; i < w_pts.size(); ++i) {
+      double dx = w_pts[i].x() - last.x;
+      double dy = w_pts[i].y() - last.y;
       if (dx * dx + dy * dy <= radius_sq) {
-        world_pts.push_back(pt);
+        world_pts.push_back(w_pts[i]);
+        if (i < w_normals.size()) {
+          world_normals.push_back(w_normals[i]);
+        } else {
+          world_normals.push_back(Eigen::Vector2d(0.0, 1.0));
+        }
       }
     }
   }
@@ -95,7 +121,9 @@ std::optional<std::vector<Eigen::Vector2d>> LocalMapProvider::get_reference_pts(
     return std::nullopt;
   }
 
-  return core::points_world_to_local(world_pts, last.x, last.y, last.yaw);
+  auto local_pts = core::points_world_to_local(world_pts, last.x, last.y, last.yaw);
+  auto local_normals = core::normals_world_to_local(world_normals, last.yaw);
+  return std::make_pair(std::move(local_pts), std::move(local_normals));
 }
 
 }  // namespace scan_matching

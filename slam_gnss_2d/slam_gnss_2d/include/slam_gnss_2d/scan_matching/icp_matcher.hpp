@@ -21,19 +21,30 @@ class ICPMatcher : public ScanMatcherBase {
       double yaw_information_multiplier,
       double motion_prior_weight_x = 10.0,
       double motion_prior_weight_y = 500.0,
-      double motion_prior_weight_yaw = 100.0);
+      double motion_prior_weight_yaw = 100.0,
+      double tolerance_trans = -1.0,
+      double tolerance_rot = -1.0);
 
   ~ICPMatcher() override;
 
   void set_target_cloud(const std::vector<Eigen::Vector2d>& src_pts) override;
+  void set_target_cloud_with_normals(
+      const std::vector<Eigen::Vector2d>& src_pts,
+      const std::vector<Eigen::Vector2d>& src_normals);
 
   core::MatchResult match(
       const core::ConstScanDataPtr& dst,
       const core::OdomData& initial_guess) override;
 
+  core::MatchResult match(
+      const std::vector<Eigen::Vector2d>& dst_pts,
+      const core::OdomData& initial_guess);
+
  private:
   int max_iterations_;
   double tolerance_;
+  double tolerance_trans_;
+  double tolerance_rot_;
   double max_correspondence_dist_;
   std::string robust_kernel_;
   double robust_kernel_scale_;

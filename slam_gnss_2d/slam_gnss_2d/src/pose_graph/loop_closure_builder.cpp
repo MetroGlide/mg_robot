@@ -6,6 +6,7 @@
 #include <unordered_map>
 
 #include "slam_gnss_2d/core/geometry.hpp"
+#include "slam_gnss_2d/scan_matching/icp_matcher.hpp"
 
 namespace slam_gnss_2d {
 namespace pose_graph {
@@ -84,11 +85,23 @@ std::vector<core::PoseNode> LoopClosureBuilder::find_loop_candidates(
 
 std::vector<Eigen::Vector2d> LoopClosureBuilder::build_candidate_submap(
     const core::PoseNode& candidate) const {
+  auto pair = build_candidate_submap_with_normals(candidate);
+  return pair.first;
+}
+
+std::pair<std::vector<Eigen::Vector2d>, std::vector<Eigen::Vector2d>>
+LoopClosureBuilder::build_candidate_submap_with_normals(
+    const core::PoseNode& candidate) const {
   if (submap_radius_ <= 0.0) {
-    return candidate.scan ? core::scan_to_points(candidate.scan) : std::vector<Eigen::Vector2d>{};
+    if (!candidate.scan) return {{}, {}};
+    if (candidate.normals && !candidate.normals->empty()) {
+      return {core::scan_to_points(candidate.scan), *candidate.normals};
+    }
+    return core::scan_to_points_and_normals(candidate.scan);
   }
 
   std::vector<Eigen::Vector2d> world_pts;
+  std::vector<Eigen::Vector2d> world_normals;
   double submap_radius_sq = submap_radius_ * submap_radius_;
 
   for (const auto& node : all_nodes_cache_) {
@@ -101,20 +114,51 @@ std::vector<Eigen::Vector2d> LoopClosureBuilder::build_candidate_submap(
       continue;
     }
 
-    auto pts = core::scan_to_points(node.scan);
-    if (pts.empty()) {
-      continue;
+    std::vector<Eigen::Vector2d> pts;
+    std::vector<Eigen::Vector2d> normals;
+    if (node.normals && !node.normals->empty()) {
+      pts = core::scan_to_points(node.scan);
+      normals = *node.normals;
+    } else {
+      auto pair = core::scan_to_points_and_normals(node.scan);
+      pts = std::move(pair.first);
+      normals = std::move(pair.second);
     }
 
     auto w_pts = core::points_local_to_world(pts, node.x, node.y, node.yaw);
+    auto w_normals = core::normals_local_to_world(normals, node.yaw);
+    world_pts.insert(world_pts.end(), w_pts.begin(), w_pts.end());
+    world_normals.insert(world_normals.end(), w_normals.begin(), w_normals.end());
+  }
+
+  if (world_pts.empty()) {
+    if (!candidate.scan) return {{}, {}};
+    return core::scan_to_points_and_normals(candidate.scan);
+  }
+
+  auto local_pts = core::points_world_to_local(world_pts, candidate.x, candidate.y, candidate.yaw);
+  auto local_normals = core::normals_world_to_local(world_normals, candidate.yaw);
+  return {std::move(local_pts), std::move(local_normals)};
+}
+
+std::vector<Eigen::Vector2d> LoopClosureBuilder::build_query_submap(
+    const core::PoseNode& node, int query_window) const {
+  std::vector<Eigen::Vector2d> world_pts;
+  int total_nodes = static_cast<int>(all_nodes_cache_.size());
+  int start_idx = std::max(0, total_nodes - query_window);
+
+  for (int i = start_idx; i < total_nodes; ++i) {
+    const auto& n = all_nodes_cache_[i];
+    if (!n.scan) continue;
+    auto pts = core::scan_to_points(n.scan);
+    auto w_pts = core::points_local_to_world(pts, n.x, n.y, n.yaw);
     world_pts.insert(world_pts.end(), w_pts.begin(), w_pts.end());
   }
 
   if (world_pts.empty()) {
-    return candidate.scan ? core::scan_to_points(candidate.scan) : std::vector<Eigen::Vector2d>{};
+    return core::scan_to_points(node.scan);
   }
-
-  return core::points_world_to_local(world_pts, candidate.x, candidate.y, candidate.yaw);
+  return core::points_world_to_local(world_pts, node.x, node.y, node.yaw);
 }
 
 bool LoopClosureBuilder::try_add_loop_edge(
@@ -126,7 +170,7 @@ bool LoopClosureBuilder::try_add_loop_edge(
     }
   }
 
-  auto src_pts = build_candidate_submap(candidate);
+  auto [src_pts, src_normals] = build_candidate_submap_with_normals(candidate);
   if (src_pts.empty()) {
     return false;
   }
@@ -142,8 +186,17 @@ bool LoopClosureBuilder::try_add_loop_edge(
   };
 
   loop_attempt_count_++;
-  loop_matcher_->set_target_cloud(src_pts);
-  auto result = loop_matcher_->match(node.scan, initial_guess);
+  loop_matcher_->set_target_cloud_with_normals(src_pts, src_normals);
+
+  // クエリ側も直近サブマップ点群（直近5キーフレーム）を使用
+  auto query_pts = build_query_submap(node, 5);
+
+  core::MatchResult result;
+  if (auto icp = dynamic_cast<scan_matching::ICPMatcher*>(loop_matcher_.get())) {
+    result = icp->match(query_pts, initial_guess);
+  } else {
+    result = loop_matcher_->match(node.scan, initial_guess);
+  }
 
   if (!result.converged) {
     loop_failure_streak_++;
@@ -157,6 +210,17 @@ bool LoopClosureBuilder::try_add_loop_edge(
     return false;
   }
 
+  // 1. 幾何ゲート：初期値からの移動量乖離チェック（過大なズレは誤マッチング）
+  double translation_drift = std::hypot(result.dx - initial_guess.x, result.dy - initial_guess.y);
+  if (translation_drift > 1.0) {
+    RCLCPP_WARN(
+        rclcpp::get_logger("slam_gnss_2d.loop_closure_builder"),
+        "Loop edge translation drift check failed: node %d <- candidate %d (drift=%.3fm > 1.0m)",
+        node.index, candidate.index, translation_drift);
+    return false;
+  }
+
+  // 2. 角度ゲート
   double abs_dyaw = std::abs(result.dyaw);
   if (abs_dyaw > max_loop_dyaw_rad_) {
     RCLCPP_WARN(
@@ -176,11 +240,22 @@ bool LoopClosureBuilder::try_add_loop_edge(
     return false;
   }
 
+  // 3. マッチングスコアチェック
   if (max_score_ > 0.0 && result.score > max_score_) {
     RCLCPP_WARN(
         rclcpp::get_logger("slam_gnss_2d.loop_closure_builder"),
         "Loop edge score check failed: node %d <- candidate %d (score=%.6f, limit=%.6f)",
         node.index, candidate.index, result.score, max_score_);
+    return false;
+  }
+
+  // 4. 縮退（Rank / 拘束不足）チェック：情報行列の最小固有値
+  Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> eigensolver(result.information);
+  if (eigensolver.info() == Eigen::Success && eigensolver.eigenvalues()(0) < 5.0) {
+    RCLCPP_DEBUG(
+        rclcpp::get_logger("slam_gnss_2d.loop_closure_builder"),
+        "Loop edge degenerate check failed: node %d <- candidate %d (min eigenvalue=%.2f < 5.0)",
+        node.index, candidate.index, eigensolver.eigenvalues()(0));
     return false;
   }
 
@@ -199,7 +274,7 @@ bool LoopClosureBuilder::try_add_loop_edge(
 
   RCLCPP_INFO(
       rclcpp::get_logger("slam_gnss_2d.loop_closure_builder"),
-      "Loop edge added: %d -> %d (dx=%.3f, dy=%.3f, dyaw=%.1f deg, score=%.6f)",
+      "Submap loop edge added: %d -> %d (dx=%.3f, dy=%.3f, dyaw=%.1f deg, score=%.6f)",
       candidate.index, node.index, result.dx, result.dy,
       result.dyaw * 180.0 / M_PI, result.score);
   return true;

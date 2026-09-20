@@ -68,6 +68,7 @@ struct PoseNode {
   double yaw{0.0};
   ConstScanDataPtr scan{nullptr};
   SubmapPatchPtr submap_patch{nullptr};
+  std::shared_ptr<std::vector<Eigen::Vector2d>> normals{nullptr};
 };
 
 struct MatchResult {

@@ -243,6 +243,13 @@ void GraphOrchestrator::initialize_with_gnss_if_ready(const SensorFrame& frame) 
         edge.information);
   }
 
+  last_loop_edge_count_ = 0;
+  for (const auto& e : pose_graph_->get_edges()) {
+    if (std::abs(e.to_index - e.from_index) >= 15) {
+      last_loop_edge_count_++;
+    }
+  }
+
   state_ = "RUNNING";
   last_node_index_ = nodes.back().index;
   initialized_ = true;
@@ -286,6 +293,24 @@ std::optional<PoseEdge> GraphOrchestrator::add_latest_seq_edge(const PoseNode& n
         latest_seq_edge->dy,
         latest_seq_edge->dyaw,
         latest_seq_edge->information);
+
+    // 新ノード node.index に向かう局所メッシュリンク (1 < diff < 15) も BetweenFactor に登録
+    auto all_edges = pose_graph_->get_edges();
+    for (const auto& edge : all_edges) {
+      if (edge.to_index == node.index) {
+        int diff = std::abs(edge.to_index - edge.from_index);
+        if (diff > 1 && diff < 15) {
+          optimizer_.add_between_factor(
+              edge.from_index,
+              edge.to_index,
+              edge.dx,
+              edge.dy,
+              edge.dyaw,
+              edge.information);
+        }
+      }
+    }
+
     last_node_index_ = node.index;
     return latest_seq_edge;
   }
@@ -299,7 +324,7 @@ std::pair<std::vector<PoseEdge>, bool> GraphOrchestrator::add_new_loop_edges() {
   auto all_edges = pose_graph_->get_edges();
   std::vector<PoseEdge> loop_edges;
   for (const auto& e : all_edges) {
-    if (std::abs(e.to_index - e.from_index) > 1) {
+    if (std::abs(e.to_index - e.from_index) >= 15) {
       loop_edges.push_back(e);
     }
   }

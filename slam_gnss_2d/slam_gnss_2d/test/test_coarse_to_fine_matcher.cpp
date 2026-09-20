@@ -193,5 +193,39 @@ TEST(ScanMatchingBuilderTest, StillMotionDoesNotAddKeyframes) {
   EXPECT_EQ(builder.icp_attempt_count(), initial_attempts);
 }
 
+TEST(ScanMatchingBuilderTest, NearKeyframeLinksFormMeshGraph) {
+  auto mock_matcher = std::make_shared<MockPerfectMatcher>();
+  auto provider = std::make_shared<LocalMapProvider>(10, 20.0);
+
+  // near_links enabled, buffer_size=10, max_distance=2.0, min_index_diff=2, max_links=3
+  pose_graph::ScanMatchingBuilder builder(
+      mock_matcher, provider,
+      0.2, 0.1, 5, 0.08,
+      true, 10, 2.0, 2, 3);
+
+  auto scan = make_box_scan();
+
+  // ノード0 (x=0.0)
+  auto n0 = builder.add_scan(scan, core::OdomData{100.0, 0.0, 0.0, 0.0});
+  ASSERT_TRUE(n0.has_value());
+
+  // ノード1 (x=0.25) -> エッジ 0->1 のみ (差分1)
+  auto n1 = builder.add_scan(scan, core::OdomData{101.0, 0.25, 0.0, 0.0});
+  ASSERT_TRUE(n1.has_value());
+  EXPECT_EQ(builder.get_edges().size(), 1u);
+
+  // ノード2 (x=0.50) -> 直前エッジ 1->2 + 近接メッシュリンク 0->2 (diff=2 <= 10, dist=0.5m <= 2.0m)
+  auto n2 = builder.add_scan(scan, core::OdomData{102.0, 0.50, 0.0, 0.0});
+  ASSERT_TRUE(n2.has_value());
+  // エッジは合計 3本 (0->1, 1->2, 0->2) になる
+  EXPECT_EQ(builder.get_edges().size(), 3u);
+  EXPECT_GT(builder.near_link_success_count(), 0);
+
+  // ノード3 (x=0.75) -> 直前エッジ 2->3 + 近接リンク 1->3, 0->3 (計3本追加で合計6本)
+  auto n3 = builder.add_scan(scan, core::OdomData{103.0, 0.75, 0.0, 0.0});
+  ASSERT_TRUE(n3.has_value());
+  EXPECT_EQ(builder.get_edges().size(), 6u);
+}
+
 }  // namespace scan_matching
 }  // namespace slam_gnss_2d
