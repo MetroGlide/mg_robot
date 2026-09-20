@@ -21,7 +21,7 @@ _up_flags = $(if $(DETACH),-d,)
         build build-all build-no-cache build-robot build-real build-robot-no-cache build-real-no-cache build-sim \
         _collect-deps \
         rviz2 rviz2-slam rviz2-navigation down xhost config \
-        test bag-summary \
+        test bag-summary bag-plot-gnss bag-plot-scans \
         diagnostics system-manager foxglove-bridge web-ui web-ui-dev tui ui-all ui-dev-all
 
 # --- サービス起動 ---
@@ -136,11 +136,29 @@ down:
 reoptimize:
 	$(if $(INPUT_DIR),INPUT_DIR=$(INPUT_DIR) )$(if $(SAVE_DIR),SAVE_DIR=$(SAVE_DIR) )$(if $(BAG_PATH),BAG_PATH=$(BAG_PATH) )$(COMPOSE) run --rm reoptimize-slam
 
+# --- rosbag 解析・可視化ツール群 ---
+# 保存先の切り替え:
+#   デフォルト: rosbag ディレクトリに出力
+#   TO_TOOLS=1 または OUT_DIR=tools: tools/data/ に出力
+#   OUT_DIR=<dir>: 指定ディレクトリに出力
+#   OUT=<file>: 指定ファイルパスに出力
+define _resolve_bag_output_opts
+$(strip \
+  $(if $(OUT),-o "$(OUT)", \
+    $(if $(filter 1 true,$(TO_TOOLS)$(TOOLS)),--output-dir /app/tools/data, \
+      $(if $(filter tools,$(OUT_DIR)),--output-dir /app/tools/data, \
+        $(if $(OUT_DIR),--output-dir "$(OUT_DIR)",--output-to-bag-dir) \
+      ) \
+    ) \
+  ) \
+)
+endef
+
 # --- rosbag 統計サマリー ---
-# .env の ROSBAG_FILE (または BAG_PATH) を解析し、bag と同じディレクトリに summary.md を出力
 # 実行例:
 #   make bag-summary
 #   make bag-summary BAG=/root/ros2_data/rosbag/TC2026/20260913/record_all_20260913_055508
+#   make bag-summary TO_TOOLS=1
 #   make bag-summary OPTS="--info-only"
 bag-summary:
 	$(COMPOSE) run --rm --no-deps $(if $(BAG),-e BAG="$(BAG)" )$(if $(BAG_PATH),-e BAG_PATH="$(BAG_PATH)" )develop bash -c \
@@ -151,7 +169,41 @@ bag-summary:
 	     echo 'エラー: 解析対象の rosbag が指定されていません。.env に ROSBAG_FILE を設定するか、BAG=/path/to/bag を指定してください。' >&2; \
 	     exit 1; \
 	   fi && \
-	   python3 /app/tools/scripts/rosbag_summary.py \"\$$TARGET_BAG\" --output-to-bag-dir --all $(OPTS)"
+	   python3 /app/tools/scripts/rosbag_summary.py \"\$$TARGET_BAG\" $(_resolve_bag_output_opts) --all $(OPTS)"
+
+# --- GNSS軌跡・Fix状態の可視化 ---
+# 実行例:
+#   make bag-plot-gnss
+#   make bag-plot-gnss CIRCLES=1
+#   make bag-plot-gnss CIRCLES=1 SCALE=5
+#   make bag-plot-gnss TO_TOOLS=1 SCALE=10
+#   make bag-plot-gnss BAG=/path/to/bag OPTS="--circle-step 1"
+bag-plot-gnss:
+	$(COMPOSE) run --rm --no-deps $(if $(BAG),-e BAG="$(BAG)" )$(if $(BAG_PATH),-e BAG_PATH="$(BAG_PATH)" )develop bash -c \
+	  "source /opt/ros/humble/setup.bash && \
+	   source /root/ros2_ws/install/setup.bash && \
+	   TARGET_BAG=\"\$${BAG:-\$${BAG_PATH:-\$$ROSBAG_FILE}}\" && \
+	   if [ -z \"\$$TARGET_BAG\" ]; then \
+	     echo 'エラー: 解析対象の rosbag が指定されていません。.env に ROSBAG_FILE を設定するか、BAG=/path/to/bag を指定してください。' >&2; \
+	     exit 1; \
+	   fi && \
+	   python3 /app/tools/scripts/plot_gnss_trajectory.py \"\$$TARGET_BAG\" $(_resolve_bag_output_opts) $(if $(filter 1 true,$(CIRCLES)$(ACC_CIRCLES)),--accuracy-circles )$(if $(SCALE),--circle-scale $(SCALE) )$(if $(CIRCLE_SCALE),--circle-scale $(CIRCLE_SCALE) )$(OPTS)"
+
+# --- LiDARスキャン点群の可視化 ---
+# 実行例:
+#   make bag-plot-scans
+#   make bag-plot-scans TO_TOOLS=1 NODES=1:20
+#   make bag-plot-scans BAG=/path/to/bag
+bag-plot-scans:
+	$(COMPOSE) run --rm --no-deps $(if $(BAG),-e BAG="$(BAG)" )$(if $(BAG_PATH),-e BAG_PATH="$(BAG_PATH)" )develop bash -c \
+	  "source /opt/ros/humble/setup.bash && \
+	   source /root/ros2_ws/install/setup.bash && \
+	   TARGET_BAG=\"\$${BAG:-\$${BAG_PATH:-\$$ROSBAG_FILE}}\" && \
+	   if [ -z \"\$$TARGET_BAG\" ]; then \
+	     echo 'エラー: 解析対象の rosbag が指定されていません。.env に ROSBAG_FILE を設定するか、BAG=/path/to/bag を指定してください。' >&2; \
+	     exit 1; \
+	   fi && \
+	   python3 /app/tools/scripts/plot_lidar_scans.py \"\$$TARGET_BAG\" $(_resolve_bag_output_opts) $(if $(NODES),--nodes $(NODES) )$(OPTS)"
 
 # --- テスト ---
 # 全テスト: make test
