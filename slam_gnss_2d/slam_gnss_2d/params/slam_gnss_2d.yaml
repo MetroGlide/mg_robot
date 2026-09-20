@@ -135,7 +135,7 @@
     # GNSS絶対位置拘束設定
     # --------------------------------------------------------------------------
     gnss:
-      enabled: false # GNSS絶対位置拘束の有効化 (false時は以下すべて無効)
+      enabled: true # GNSS絶対位置拘束の有効化 (false時は以下すべて無効)
       source: "navpvt" # [enabled=true で有効]: GNSSデータ種別 ("navsat_fix" | "navpvt")
       topics:
         fix: "/gps/fix" # [enabled=true かつ source=navsat_fix で有効]: NavSatFixトピック名
