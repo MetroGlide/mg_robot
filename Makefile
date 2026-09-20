@@ -39,7 +39,7 @@ slam-gnss-2d:
 	$(COMPOSE) up $(_up_flags) slam-gnss-2d
 
 offline-slam-gnss-2d:
-	$(COMPOSE) up $(_up_flags) offline-slam-gnss-2d
+	$(if $(BAG),ROSBAG_FILE=$(BAG) )$(if $(ROSBAG_FILE),ROSBAG_FILE=$(ROSBAG_FILE) )$(COMPOSE) up $(_up_flags) offline-slam-gnss-2d
 
 gazebo-simulation:
 	$(COMPOSE) up $(_up_flags) gazebo-simulation
