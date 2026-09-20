@@ -37,7 +37,10 @@ inline scan_matching::ScanMatcherPtr build_matcher(const SlamConfig& config) {
         config.scan_matching.icp.max_correspondence_dist,
         config.scan_matching.icp.robust_kernel,
         config.scan_matching.icp.robust_kernel_scale,
-        config.scan_matching.yaw_information_multiplier);
+        config.scan_matching.yaw_information_multiplier,
+        config.scan_matching.icp.motion_prior_weight_x,
+        config.scan_matching.icp.motion_prior_weight_y,
+        config.scan_matching.icp.motion_prior_weight_yaw);
     return std::make_shared<scan_matching::MultiStartCoarseToFineMatcher>(
         coarse, fine,
         config.scan_matching.multi_start.angular_search_window_deg,
@@ -65,7 +68,10 @@ inline scan_matching::ScanMatcherPtr build_matcher(const SlamConfig& config) {
         config.scan_matching.icp.max_correspondence_dist,
         config.scan_matching.icp.robust_kernel,
         config.scan_matching.icp.robust_kernel_scale,
-        config.scan_matching.yaw_information_multiplier);
+        config.scan_matching.yaw_information_multiplier,
+        config.scan_matching.icp.motion_prior_weight_x,
+        config.scan_matching.icp.motion_prior_weight_y,
+        config.scan_matching.icp.motion_prior_weight_yaw);
     return std::make_shared<scan_matching::CoarseToFineMatcher>(coarse, fine);
   } else if (config.scan_matching.type == "icp") {
     return std::make_shared<scan_matching::ICPMatcher>(
@@ -74,7 +80,10 @@ inline scan_matching::ScanMatcherPtr build_matcher(const SlamConfig& config) {
         config.scan_matching.icp.max_correspondence_dist,
         config.scan_matching.icp.robust_kernel,
         config.scan_matching.icp.robust_kernel_scale,
-        config.scan_matching.yaw_information_multiplier);
+        config.scan_matching.yaw_information_multiplier,
+        config.scan_matching.icp.motion_prior_weight_x,
+        config.scan_matching.icp.motion_prior_weight_y,
+        config.scan_matching.icp.motion_prior_weight_yaw);
   } else if (config.scan_matching.type == "ndt") {
     return std::make_shared<scan_matching::NDTMatcher>(
         config.scan_matching.icp.max_iterations,

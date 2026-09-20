@@ -32,7 +32,10 @@ GraphOrchestrator::GraphOrchestrator(
     bool dynamic_reanchor_enabled,
     int dynamic_reanchor_min_fix_status,
     int dynamic_reanchor_min_samples,
-    double dynamic_reanchor_min_distance_m)
+    double dynamic_reanchor_min_distance_m,
+    double dynamic_reanchor_max_residual_rms_m,
+    bool batch_on_finalize,
+    int batch_max_iterations)
     : pose_graph_(pose_graph),
       use_gnss_(use_gnss),
       optimizer_(isam2_relinearize_threshold),
@@ -55,6 +58,9 @@ GraphOrchestrator::GraphOrchestrator(
       dynamic_reanchor_min_fix_status_(dynamic_reanchor_min_fix_status),
       dynamic_reanchor_min_samples_(dynamic_reanchor_min_samples),
       dynamic_reanchor_min_distance_m_(dynamic_reanchor_min_distance_m),
+      dynamic_reanchor_max_residual_rms_m_(dynamic_reanchor_max_residual_rms_m),
+      batch_on_finalize_(batch_on_finalize),
+      batch_max_iterations_(batch_max_iterations),
       state_(use_gnss ? "INITIALIZING" : "RUNNING") {}
 
 std::optional<std::pair<double, double>> GraphOrchestrator::anchor_latlon() const {
@@ -120,7 +126,14 @@ ScanProcessResult GraphOrchestrator::process_frame(const SensorFrame& frame) {
   }
 
   auto new_gnss_prior = add_gnss_prior(frame, *node);
-  optimizer_.update();
+  try {
+    optimizer_.update();
+  } catch (const std::exception& e) {
+    RCLCPP_ERROR(
+        rclcpp::get_logger("slam_gnss_2d.graph_orchestrator"),
+        "optimizer_.update() exception at node %d: %s", node->index, e.what());
+    throw;
+  }
   bool rerender_required = apply_optimized_poses(*node, loop_closed || reanchored);
 
   auto updated_pose = optimizer_.get_pose(node->index);
@@ -243,6 +256,7 @@ void GraphOrchestrator::initialize_optimizer_if_needed(const PoseNode& node) {
     return;
   }
   optimizer_.initialize(node.index, node.x, node.y, node.yaw, 0.05, 10.0);
+  optimizer_.update();
   initialized_ = true;
   last_node_index_ = node.index;
 }
@@ -250,26 +264,30 @@ void GraphOrchestrator::initialize_optimizer_if_needed(const PoseNode& node) {
 std::optional<PoseEdge> GraphOrchestrator::add_latest_seq_edge(const PoseNode& node) {
   auto latest_seq_edge = get_latest_seq_edge(node.index);
   if (latest_seq_edge.has_value() && node.index > last_node_index_) {
+    double x = node.x;
+    double y = node.y;
+    double yaw = node.yaw;
+
     auto prev_pose = optimizer_.get_pose(latest_seq_edge->from_index);
     if (prev_pose.has_value()) {
       auto [px, py, pyaw] = *prev_pose;
       double c = std::cos(pyaw);
       double s = std::sin(pyaw);
-      double x = px + c * latest_seq_edge->dx - s * latest_seq_edge->dy;
-      double y = py + s * latest_seq_edge->dx + c * latest_seq_edge->dy;
-      double yaw = pyaw + latest_seq_edge->dyaw;
-      optimizer_.add_initial_estimate(node.index, x, y, yaw);
-      optimizer_.add_between_factor(
-          latest_seq_edge->from_index,
-          latest_seq_edge->to_index,
-          latest_seq_edge->dx,
-          latest_seq_edge->dy,
-          latest_seq_edge->dyaw,
-          latest_seq_edge->information);
-      last_node_index_ = node.index;
-      return latest_seq_edge;
+      x = px + c * latest_seq_edge->dx - s * latest_seq_edge->dy;
+      y = py + s * latest_seq_edge->dx + c * latest_seq_edge->dy;
+      yaw = pyaw + latest_seq_edge->dyaw;
     }
+
+    optimizer_.add_initial_estimate(node.index, x, y, yaw);
+    optimizer_.add_between_factor(
+        latest_seq_edge->from_index,
+        latest_seq_edge->to_index,
+        latest_seq_edge->dx,
+        latest_seq_edge->dy,
+        latest_seq_edge->dyaw,
+        latest_seq_edge->information);
     last_node_index_ = node.index;
+    return latest_seq_edge;
   }
   return std::nullopt;
 }
@@ -331,6 +349,15 @@ bool GraphOrchestrator::try_dynamic_reanchor(const PoseNode& node, const SensorF
         frame.gnss->fix_status, sigma, node.index);
   }
 
+  // 直近の局所ウィンドウに限定（最大サンプル数: min_samples + 5、最大スパン: 25m以内）
+  while (reanchor_samples_.size() > static_cast<size_t>(dynamic_reanchor_min_samples_ + 5)) {
+    reanchor_samples_.pop_front();
+  }
+  while (reanchor_samples_.size() >= 2 &&
+         (reanchor_samples_.back().slam_pos - reanchor_samples_.front().slam_pos).norm() > 25.0) {
+    reanchor_samples_.pop_front();
+  }
+
   if (static_cast<int>(reanchor_samples_.size()) < dynamic_reanchor_min_samples_) {
     return false;
   }
@@ -376,56 +403,33 @@ bool GraphOrchestrator::try_dynamic_reanchor(const PoseNode& node, const SensorF
   Eigen::Matrix2d R = V * S * U.transpose();
   double delta_theta = std::atan2(R(1, 0), R(0, 0));
 
-  if (std::abs(delta_theta) > (45.0 * M_PI / 180.0)) {
+  Eigen::Vector2d anchor_star = q_mean - R * p_mean;
+
+  double sum_sq_err = 0.0;
+  for (const auto& s : reanchor_samples_) {
+    Eigen::Vector2d pred = R * s.slam_pos + anchor_star;
+    sum_sq_err += (pred - s.utm_pos).squaredNorm();
+  }
+  double rms = std::sqrt(sum_sq_err / static_cast<double>(n));
+
+  if (rms > dynamic_reanchor_max_residual_rms_m_) {
     RCLCPP_WARN(
         rclcpp::get_logger("slam_gnss_2d.graph_orchestrator"),
-        "Dynamic Re-anchoring rejected: estimated delta_theta is too large (%.1f deg > 45 deg)",
-        delta_theta * 180.0 / M_PI);
+        "Dynamic Re-anchoring rejected: estimated delta_theta=%.1f deg, but RMS residual %.3fm exceeds threshold %.3fm",
+        delta_theta * 180.0 / M_PI, rms, dynamic_reanchor_max_residual_rms_m_);
     return false;
   }
 
-  Eigen::Vector2d anchor_star = q_mean - R * p_mean;
-
   RCLCPP_INFO(
       rclcpp::get_logger("slam_gnss_2d.graph_orchestrator"),
-      "Dynamic Re-anchoring triggered! Samples=%zu, span=%.2fm, rot=%.3f rad (%.1f deg), "
+      "Dynamic Re-anchoring (translation only): Samples=%zu, span=%.2fm, rot=%.3f rad (%.1f deg), RMS=%.3fm, "
       "anchor=(%.2f, %.2f) -> (%.2f, %.2f)",
-      n, max_span, delta_theta, delta_theta * 180.0 / M_PI,
+      n, max_span, delta_theta, delta_theta * 180.0 / M_PI, rms,
       anchor_manager_->anchor_utm()->first, anchor_manager_->anchor_utm()->second,
       anchor_star.x(), anchor_star.y());
 
   anchor_manager_->update_anchor(anchor_star.x(), anchor_star.y());
-
-  auto nodes = pose_graph_->get_nodes();
-  for (auto& nd : nodes) {
-    Eigen::Vector2d p(nd.x, nd.y);
-    Eigen::Vector2d p_rot = R * p;
-    nd.x = p_rot.x();
-    nd.y = p_rot.y();
-    nd.yaw = nd.yaw + delta_theta;
-  }
-  pose_graph_->replace_nodes(nodes);
-
-  if (!nodes.empty()) {
-    const auto& node0 = nodes.front();
-    optimizer_.initialize(node0.index, node0.x, node0.y, node0.yaw, anchor_sigma_m_, anchor_init_yaw_sigma_rad_);
-    for (const auto& nd : nodes) {
-      if (nd.index != node0.index) {
-        optimizer_.add_initial_estimate(nd.index, nd.x, nd.y, nd.yaw);
-      }
-    }
-    for (const auto& edge : pose_graph_->get_edges()) {
-      optimizer_.add_between_factor(
-          edge.from_index,
-          edge.to_index,
-          edge.dx,
-          edge.dy,
-          edge.dyaw,
-          edge.information);
-    }
-  }
-
-  init_rotation_ += delta_theta;
+  last_gnss_pos_.reset();
   dynamic_reanchored_ = true;
   return true;
 }
@@ -433,10 +437,6 @@ bool GraphOrchestrator::try_dynamic_reanchor(const PoseNode& node, const SensorF
 std::optional<GnssPrior> GraphOrchestrator::add_gnss_prior(
     const SensorFrame& frame, const PoseNode& node) {
   if (!use_gnss_ || !frame.gnss.has_value() || !anchor_manager_ || !anchor_manager_->is_initialized()) {
-    return std::nullopt;
-  }
-
-  if (dynamic_reanchor_enabled_ && !dynamic_reanchored_) {
     return std::nullopt;
   }
 
@@ -578,10 +578,14 @@ FinalizeResult GraphOrchestrator::finalize() {
   std::lock_guard<std::mutex> lock(mutex_);
   RCLCPP_INFO(
       rclcpp::get_logger("slam_gnss_2d.graph_orchestrator"),
-      "Running offline batch optimization (Finalize). GNSS stats: added=%d, "
+      "Finalizing GraphOrchestrator. GNSS stats: added=%d, "
       "rejected_status=%d, rejected_sigma=%d, rejected_interval=%d, rejected_innovation=%d",
       gnss_prior_count_, gnss_rejected_status_count_, gnss_rejected_sigma_count_,
       gnss_rejected_interval_count_, gnss_rejected_innovation_count_);
+
+  if (batch_on_finalize_) {
+    optimizer_.run_batch_optimization(batch_max_iterations_);
+  }
 
   auto all_poses = optimizer_.get_all_poses();
   auto nodes = pose_graph_->get_nodes();

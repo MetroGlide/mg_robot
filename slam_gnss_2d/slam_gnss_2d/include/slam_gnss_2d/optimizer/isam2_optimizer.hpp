@@ -57,10 +57,14 @@ class ISAM2Optimizer {
 
   std::unordered_map<int, std::tuple<double, double, double>> get_all_poses() const;
 
+  void run_batch_optimization(int max_iterations = 100);
+
  private:
   gtsam::ISAM2Params params_;
   std::unique_ptr<gtsam::ISAM2> isam2_;
   gtsam::NonlinearFactorGraph pending_graph_;
+  gtsam::NonlinearFactorGraph geom_graph_;
+  gtsam::NonlinearFactorGraph gnss_graph_;
   gtsam::Values pending_values_;
   gtsam::Values latest_estimate_;
   bool initialized_{false};

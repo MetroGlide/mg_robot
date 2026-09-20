@@ -33,6 +33,9 @@ void ConfigLoader::declare_params(rclcpp::Node& node) {
   declare_param_if_not_declared(node, "scan_matching.icp.max_correspondence_dist", 1.0);
   declare_param_if_not_declared(node, "scan_matching.icp.robust_kernel", std::string("huber"));
   declare_param_if_not_declared(node, "scan_matching.icp.robust_kernel_scale", 0.1);
+  declare_param_if_not_declared(node, "scan_matching.icp.motion_prior_weight_x", 10.0);
+  declare_param_if_not_declared(node, "scan_matching.icp.motion_prior_weight_y", 500.0);
+  declare_param_if_not_declared(node, "scan_matching.icp.motion_prior_weight_yaw", 100.0);
   declare_param_if_not_declared(node, "scan_matching.ndt.cell_size", 1.0);
   declare_param_if_not_declared(node, "scan_matching.ndt.cell_sizes", std::vector<double>{1.0});
   declare_param_if_not_declared(node, "scan_matching.ndt.use_bilinear", false);
@@ -85,6 +88,7 @@ void ConfigLoader::declare_params(rclcpp::Node& node) {
   declare_param_if_not_declared(node, "gnss.dynamic_reanchor.min_fix_status", 2);
   declare_param_if_not_declared(node, "gnss.dynamic_reanchor.min_samples", 10);
   declare_param_if_not_declared(node, "gnss.dynamic_reanchor.min_distance_m", 10.0);
+  declare_param_if_not_declared(node, "gnss.dynamic_reanchor.max_residual_rms_m", 1.0);
   declare_param_if_not_declared(node, "gnss.validation.max_sigma_m", 5.0);
   declare_param_if_not_declared(node, "save_dir", std::string(""));
 
@@ -99,6 +103,8 @@ void ConfigLoader::declare_params(rclcpp::Node& node) {
   declare_param_if_not_declared(node, "optimization.backend", std::string("isam2"));
   declare_param_if_not_declared(node, "optimization.isam2.relinearize_threshold", 0.1);
   declare_param_if_not_declared(node, "optimization.rerender_threshold_m", 0.1);
+  declare_param_if_not_declared(node, "optimization.batch_on_finalize", true);
+  declare_param_if_not_declared(node, "optimization.batch_max_iterations", 100);
 
   declare_param_if_not_declared(node, "trajectory_noise_filter.enabled", false);
   declare_param_if_not_declared(node, "trajectory_noise_filter.type", std::string("clear"));
@@ -133,6 +139,12 @@ SlamConfig ConfigLoader::build_config(const rclcpp::Node& node) {
       node.get_parameter("scan_matching.icp.max_correspondence_dist").as_double();
   cfg.scan_matching.icp.robust_kernel = node.get_parameter("scan_matching.icp.robust_kernel").as_string();
   cfg.scan_matching.icp.robust_kernel_scale = node.get_parameter("scan_matching.icp.robust_kernel_scale").as_double();
+  cfg.scan_matching.icp.motion_prior_weight_x =
+      node.get_parameter("scan_matching.icp.motion_prior_weight_x").as_double();
+  cfg.scan_matching.icp.motion_prior_weight_y =
+      node.get_parameter("scan_matching.icp.motion_prior_weight_y").as_double();
+  cfg.scan_matching.icp.motion_prior_weight_yaw =
+      node.get_parameter("scan_matching.icp.motion_prior_weight_yaw").as_double();
   cfg.scan_matching.ndt.cell_size = node.get_parameter("scan_matching.ndt.cell_size").as_double();
   cfg.scan_matching.ndt.cell_sizes = node.get_parameter("scan_matching.ndt.cell_sizes").as_double_array();
   cfg.scan_matching.ndt.use_bilinear = node.get_parameter("scan_matching.ndt.use_bilinear").as_bool();
@@ -194,6 +206,7 @@ SlamConfig ConfigLoader::build_config(const rclcpp::Node& node) {
   cfg.gnss.dynamic_reanchor.min_fix_status = node.get_parameter("gnss.dynamic_reanchor.min_fix_status").as_int();
   cfg.gnss.dynamic_reanchor.min_samples = node.get_parameter("gnss.dynamic_reanchor.min_samples").as_int();
   cfg.gnss.dynamic_reanchor.min_distance_m = node.get_parameter("gnss.dynamic_reanchor.min_distance_m").as_double();
+  cfg.gnss.dynamic_reanchor.max_residual_rms_m = node.get_parameter("gnss.dynamic_reanchor.max_residual_rms_m").as_double();
   cfg.gnss.validation.max_sigma_m = node.get_parameter("gnss.validation.max_sigma_m").as_double();
   cfg.save_dir = node.get_parameter("save_dir").as_string();
 
@@ -209,6 +222,10 @@ SlamConfig ConfigLoader::build_config(const rclcpp::Node& node) {
   cfg.optimization.isam2.relinearize_threshold =
       node.get_parameter("optimization.isam2.relinearize_threshold").as_double();
   cfg.optimization.rerender_threshold_m = node.get_parameter("optimization.rerender_threshold_m").as_double();
+  cfg.optimization.batch_on_finalize =
+      node.get_parameter("optimization.batch_on_finalize").as_bool();
+  cfg.optimization.batch_max_iterations =
+      node.get_parameter("optimization.batch_max_iterations").as_int();
 
   cfg.trajectory_noise_filter.enabled = node.get_parameter("trajectory_noise_filter.enabled").as_bool();
   cfg.trajectory_noise_filter.type = node.get_parameter("trajectory_noise_filter.type").as_string();

@@ -31,6 +31,9 @@ struct IcpConfig {
   double max_correspondence_dist{1.0};
   std::string robust_kernel{"huber"};  // "none" | "huber" | "cauchy"
   double robust_kernel_scale{0.1};
+  double motion_prior_weight_x{10.0};
+  double motion_prior_weight_y{500.0};
+  double motion_prior_weight_yaw{100.0};
 };
 
 struct NdtConfig {
@@ -115,6 +118,7 @@ struct GnssDynamicReanchorConfig {
   int min_fix_status{2};       // 2: RTK Fixのみ
   int min_samples{10};         // アライメントに必要な最小サンプル数
   double min_distance_m{10.0}; // アライメントに必要な最小移動距離 [m]
+  double max_residual_rms_m{1.0}; // アライメント採用判定の最大許容残差RMS [m]
 };
 
 struct GnssConfig {
@@ -141,6 +145,8 @@ struct OptimizationConfig {
   std::string backend{"isam2"};  // "isam2" | "gtsam"
   Isam2Config isam2;
   double rerender_threshold_m{0.1};
+  bool batch_on_finalize{true};
+  int batch_max_iterations{100};
 };
 
 struct TrajectoryNoiseFilterConfig {

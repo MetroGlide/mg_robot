@@ -76,5 +76,41 @@ TEST(OptimizerTest, GTSAMOptimizerWithPriors) {
   EXPECT_GT(result[1].y, 0.0);
 }
 
+TEST(OptimizerTest, ISAM2TwoStageBatchOptimizationPreservesLinearity) {
+  ISAM2Optimizer optimizer(0.1);
+  optimizer.initialize(0, 0.0, 0.0, 0.0, 0.01, 0.01);
+
+  // 0 -> 1 -> 2 -> 3 -> 4 直線軌跡
+  Eigen::Matrix3d stiff_edge = Eigen::Matrix3d::Zero();
+  stiff_edge(0, 0) = 500.0;
+  stiff_edge(1, 1) = 2000.0;
+  stiff_edge(2, 2) = 3000.0;
+
+  for (int i = 1; i <= 4; ++i) {
+    optimizer.add_initial_estimate(i, static_cast<double>(i), 0.0, 0.0);
+    optimizer.add_between_factor(i - 1, i, 1.0, 0.0, 0.0, stiff_edge);
+  }
+
+  // ノード2にGNSS Prior (少しy方向にオフセット)
+  optimizer.add_gnss_prior(2, 2.0, 0.2, 0.1, 0.0, "cauchy", 1.5);
+  optimizer.update();
+
+  // 二段階バッチ最適化を実行
+  optimizer.run_batch_optimization(100);
+
+  auto p0 = optimizer.get_pose(0);
+  auto p2 = optimizer.get_pose(2);
+  auto p4 = optimizer.get_pose(4);
+  ASSERT_TRUE(p0.has_value() && p2.has_value() && p4.has_value());
+
+  // 直線性が維持されているか（相対ステップのdyawがほぼ0であること）
+  for (int i = 1; i <= 4; ++i) {
+    auto p_prev = optimizer.get_pose(i - 1);
+    auto p_curr = optimizer.get_pose(i);
+    ASSERT_TRUE(p_prev.has_value() && p_curr.has_value());
+    EXPECT_NEAR(std::get<2>(*p_curr), std::get<2>(*p_prev), 0.05);
+  }
+}
+
 }  // namespace optimizer
 }  // namespace slam_gnss_2d

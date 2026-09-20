@@ -2,11 +2,25 @@
 
 #include <Eigen/Core>
 #include <memory>
+#include <opencv2/core.hpp>
 #include <optional>
 #include <vector>
 
 namespace slam_gnss_2d {
 namespace core {
+
+struct SubmapPatch {
+  int width{0};
+  int height{0};
+  double resolution{0.05};
+  double origin_x{0.0};
+  double origin_y{0.0};
+  cv::Mat hit_patch;
+  cv::Mat miss_patch;
+};
+
+using SubmapPatchPtr = std::shared_ptr<SubmapPatch>;
+using ConstSubmapPatchPtr = std::shared_ptr<const SubmapPatch>;
 
 struct ScanData {
   double timestamp{0.0};
@@ -53,6 +67,7 @@ struct PoseNode {
   double y{0.0};
   double yaw{0.0};
   ConstScanDataPtr scan{nullptr};
+  SubmapPatchPtr submap_patch{nullptr};
 };
 
 struct MatchResult {

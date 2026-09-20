@@ -1,5 +1,6 @@
 #pragma once
 
+#include <deque>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -44,7 +45,10 @@ class GraphOrchestrator {
       bool dynamic_reanchor_enabled = false,
       int dynamic_reanchor_min_fix_status = 2,
       int dynamic_reanchor_min_samples = 10,
-      double dynamic_reanchor_min_distance_m = 10.0);
+      double dynamic_reanchor_min_distance_m = 10.0,
+      double dynamic_reanchor_max_residual_rms_m = 1.0,
+      bool batch_on_finalize = true,
+      int batch_max_iterations = 100);
 
   ScanProcessResult process_frame(const SensorFrame& frame);
   FinalizeResult finalize();
@@ -80,7 +84,10 @@ class GraphOrchestrator {
   int dynamic_reanchor_min_fix_status_{2};
   int dynamic_reanchor_min_samples_{10};
   double dynamic_reanchor_min_distance_m_{10.0};
+  double dynamic_reanchor_max_residual_rms_m_{1.0};
   bool dynamic_reanchored_{false};
+  bool batch_on_finalize_{true};
+  int batch_max_iterations_{100};
 
   int last_node_index_{-1};
   size_t last_loop_edge_count_{0};
@@ -101,7 +108,7 @@ class GraphOrchestrator {
     Eigen::Vector2d slam_pos;
     Eigen::Vector2d utm_pos;
   };
-  std::vector<ReanchorSample> reanchor_samples_;
+  std::deque<ReanchorSample> reanchor_samples_;
 
   mutable std::mutex mutex_;
 
