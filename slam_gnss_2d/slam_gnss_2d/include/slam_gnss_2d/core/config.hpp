@@ -18,6 +18,10 @@ struct MapConfig {
   std::string renderer{"overwrite"};  // "overwrite" | "counting"
   double hit_threshold{0.3};
   int min_hits{2};
+  double hit_weight{1.0};
+  double miss_weight{0.25};
+  double miss_clearance_margin{0.0};
+  double max_miss_ratio{2.0};
 };
 
 struct KeyframeConfig {
@@ -34,6 +38,8 @@ struct IcpConfig {
   double motion_prior_weight_x{10.0};
   double motion_prior_weight_y{500.0};
   double motion_prior_weight_yaw{100.0};
+  double tolerance_trans{-1.0};
+  double tolerance_rot{-1.0};
 };
 
 struct NdtConfig {
@@ -61,9 +67,34 @@ struct MultiStartConfig {
   bool enable_const_vel_hypothesis{true};
 };
 
+struct MultiResCsmConfig {
+  double linear_search_window{0.4};
+  double angular_search_window_deg{15.0};
+  double linear_step{0.02};
+  double angular_step_deg{0.5};
+  double grid_resolution{0.03};
+  double score_threshold{0.1};
+  bool enable_variance_penalty{true};
+  double distance_variance_penalty{0.5};
+  double angle_variance_penalty{1.0};
+  double minimum_distance_penalty{0.5};
+  double minimum_angle_penalty{0.9};
+};
+
+struct NearKeyframeLinkConfig {
+  bool enabled{true};
+  int buffer_size{10};
+  double max_distance{2.0};
+  int min_index_diff{2};
+  int max_links_per_node{3};
+  double max_translation_drift{0.4};
+  double max_rotation_drift_deg{15.0};
+  double min_eigenvalue{10.0};
+};
+
 struct ScanMatchingConfig {
   bool enabled{true};
-  std::string type{"ndt"};            // "icp" | "ndt" | "csm" | "coarse_to_fine" | "multi_start_coarse_to_fine"
+  std::string type{"multi_res_csm"};            // "icp" | "ndt" | "csm" | "coarse_to_fine" | "multi_start_coarse_to_fine" | "multi_res_csm"
   std::string reference{"scan_to_local_map"};  // "scan_to_scan" | "scan_to_local_map"
   int max_failure_streak{5};
   double max_translation_drift{0.08};
@@ -73,6 +104,8 @@ struct ScanMatchingConfig {
   CsmConfig csm;
   LocalMapConfig local_map;
   MultiStartConfig multi_start;
+  MultiResCsmConfig multi_res_csm;
+  NearKeyframeLinkConfig near_links;
 };
 
 struct LoopClosureConfig {

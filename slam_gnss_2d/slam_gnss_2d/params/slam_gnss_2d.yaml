@@ -4,145 +4,185 @@
     # トピック設定
     # --------------------------------------------------------------------------
     topics:
-      scan: "/scan_top_lidar" # LiDAR点群トピック名 (sensor_msgs/LaserScan)
-      odom: "/odom" # 車輪オドメトリトピック名 (nav_msgs/Odometry)
+      scan: "/scan_top_lidar" # 全体共通: LiDAR点群トピック名 (sensor_msgs/LaserScan)
+      odom: "/odom" # 全体共通: 車輪オドメトリトピック名 (nav_msgs/Odometry)
 
     # --------------------------------------------------------------------------
     # 地図レンダリング設定
     # --------------------------------------------------------------------------
     map:
-      resolution: 0.05 # 占有格子地図の解像度 [m/cell] (5cm)
-      expansion_margin: 100.0 # 地図境界拡張時の余白マージン [m]
-      publish_hz: 0.1 # 地図配信周期 [Hz]
+      resolution: 0.05 # 全体共通: 占有格子地図の解像度 [m/cell] (5cm)
+      expansion_margin: 100.0 # 全体共通: 地図境界拡張時の余白マージン [m]
+      publish_hz: 0.1 # 全体共通: 地図配信周期 [Hz]
       renderer: "counting" # レンダラー種別 ("overwrite": 上書き / "counting": ヒット数カウント式)
-      hit_threshold: 0.1 # counting方式における占有判定しきい値 (hit / (hit + miss))
-      min_hits: 1 # counting方式において占有判定に必要な最小ヒット回数
+      hit_threshold: 0.4 # [renderer=counting で有効]: 占有判定しきい値 (weighted_hit / (weighted_hit + weighted_miss))
+      min_hits: 2 # [renderer=counting で有効]: 占有判定に必要な最小ヒット回数
+      hit_weight: 1.0 # [renderer=counting で有効]: hitの重み (非対称性)
+      miss_weight: 0.50 # [renderer=counting で有効]: missの重み (非対称性: 壁の掠め通過による過剰消去を防止)
+      miss_clearance_margin: 0.0 # [renderer=counting で有効]: 終端手前miss停止マージン [m] (0.0で無効化)
+      max_miss_ratio: 0.0 # [renderer=counting で有効]: 確証壁に対するmiss上限比率 (復路や交差光線による確定壁の永久保護)
 
     # --------------------------------------------------------------------------
     # キーフレーム生成設定
     # --------------------------------------------------------------------------
     keyframe:
-      min_translation: 0.2 # 新規ノード作成に必要な最小移動距離 [m]
-      min_rotation: 0.1 # 新規ノード作成に必要な最小回転角 [rad]
+      min_translation: 0.2 # 全体共通: 新規ノード作成に必要な最小移動距離 [m]
+      min_rotation: 0.05 # 全体共通: 新規ノード作成に必要な最小回転角 [rad]
 
     # --------------------------------------------------------------------------
     # スキャンマッチング（フロントエンド）設定
     # --------------------------------------------------------------------------
     scan_matching:
-      enabled: true # スキャンマッチングの有効化
-      type: "multi_start_coarse_to_fine" # マッチャー種別 ("icp" | "ndt" | "csm" | "coarse_to_fine" | "multi_start_coarse_to_fine")
+      enabled: true # 全体共通: スキャンマッチングの有効化
+      type: "multi_res_csm" # マッチャー種別 ("multi_res_csm" | "multi_start_coarse_to_fine" | "coarse_to_fine" | "icp" | "ndt" | "csm")
       reference: "scan_to_local_map" # 参照点群種別 ("scan_to_scan" | "scan_to_local_map")
-      max_failure_streak: 5 # 連続マッチング失敗許容回数 (超えた場合はオドメトリにフォールバック)
-      max_translation_drift: 0.08 # 進行方向縮退すべり保護しきい値 [m] (オドメトリ進行量との乖離上限)
-      yaw_information_multiplier: 1.0 # スキャンマッチングエッジの方位角情報量倍率
-      multi_start:
+      max_failure_streak: 5 # 全マッチャー共通: 連続マッチング失敗許容回数 (超えた場合はオドメトリにフォールバック)
+      max_translation_drift: 0.08 # 全マッチャー共通: 進行方向縮退すべり保護しきい値 [m] (オドメトリ進行量との乖離上限)
+      yaw_information_multiplier: 3.0 # 全マッチャー共通: スキャンマッチングエッジの方位角情報量倍率
+
+      multi_res_csm: # [type=multi_res_csm で有効]: 2段階マルチレゾリューションCSM+放物線補間パラメータ
+        linear_search_window: 0.4 # 並進探索窓 [m] (±0.4m)
+        angular_search_window_deg: 15.0 # 回転探索窓 [deg] (±15度)
+        linear_step: 0.03 # 並進探索刻み幅 [m] (グリッド解像度0.03mと整合)
+        angular_step_deg: 1.0 # 回転探索刻み幅 [deg] (Fine段は0.2度+放物線補間で解析導出)
+        grid_resolution: 0.03 # 尤度場グリッド解像度 [m] (3cm)
+        score_threshold: 0.1 # 相関スコア有効判定しきい値
+        enable_variance_penalty: true # [slam_toolbox同等]: オドメトリ予測からの乖離ペナルティ有効化
+        distance_variance_penalty: 0.5 # [slam_toolbox同等]: 距離分散ペナルティ係数 (小さいほどオドメトリ直進性を重視)
+        angle_variance_penalty: 1.0 # [slam_toolbox同等]: 角度分散ペナルティ係数 (小さいほどオドメトリ回転角を重視)
+        minimum_distance_penalty: 0.5 # 距離ペナルティ下限値
+        minimum_angle_penalty: 0.9 # 角度ペナルティ下限値
+
+      near_links: # [全マッチャー共通]: 直近キーフレーム多重リンク設定 (slam_toolbox 同等メッシュポーズグラフ)
+        enabled: true # 直近多重リンクの有効化 (片道走行でも局所メッシュ構造を形成し回転歪みを相殺)
+        buffer_size: 10 # [enabled=true で有効]: 直近キーフレームバッファサイズ (slam_toolboxのscan_buffer_size相当)
+        max_distance: 2.0 # [enabled=true で有効]: 多重リンクを張る最大空間距離 [m] (slam_toolboxのlink_scan_maximum_distance相当)
+        min_index_diff: 2 # [enabled=true で有効]: 直前ノード(diff=1)以外の最小インデックス差
+        max_links_per_node: 3 # [enabled=true で有効]: 1ノードあたりに追加する最大多重リンク数
+        max_translation_drift: 0.4 # [enabled=true で有効]: リンク採用判定の最大許容並進乖離 [m]
+        max_rotation_drift_deg: 15.0 # [enabled=true で有効]: リンク採用判定の最大許容回転乖離 [deg]
+        min_eigenvalue: 10.0 # [enabled=true で有効]: 縮退防止のための情報行列最小固有値しきい値
+
+      multi_start: # [type=multi_start_coarse_to_fine, multi_start_icp で有効]: 回転グリッド探索パラメータ
         angular_search_window_deg: 20.0 # 回転グリッド探索窓 [deg] (±20度)
         angular_step_deg: 2.5 # 回転グリッド探索刻み幅 [deg]
         enable_straight_hypothesis: true # 直進0度仮説を必ず評価
         enable_const_vel_hypothesis: true # 前回確定角速度仮説を評価
-      icp:
-        max_iterations: 10000 # ICP最大反復回数
-        tolerance: 0.00005 # 収束判定しきい値 (ステップ移動量のノルム)
-        max_correspondence_dist: 2.0 # 対応点探索の最大距離 [m]
+
+      icp: # [type=icp, coarse_to_fine, multi_start_coarse_to_fine のFine段で有効]: Point-to-Line ICPパラメータ
+        max_iterations: 100 # ICP最大反復回数
+        tolerance: 0.00001 # フォールバック収束しきい値
+        tolerance_trans: 0.0001 # 並進収束判定しきい値 [m]
+        tolerance_rot: 0.0001 # 回転収束判定しきい値 [rad]
+        max_correspondence_dist: 1.0 # 対応点探索の最大距離 [m]
         robust_kernel: "huber" # ロバスト損失関数 ("huber" | "cauchy" | "none")
         robust_kernel_scale: 0.15 # ロバスト核のスケールパラメータ [m]
         motion_prior_weight_x: 10.0 # 前後変化に対する運動正則化重み
         motion_prior_weight_y: 500.0 # 差動二輪の横すべり防止正則化重み (Non-holonomic constraint)
-        motion_prior_weight_yaw: 100.0 # 運動連続性・急激な旋回抑制の正則化重み
-      ndt:
+        motion_prior_weight_yaw: 0.0 # 運動連続性・急激な旋回抑制の正則化重み
+
+      ndt: # [type=ndt, coarse_to_fine, multi_start_coarse_to_fine のCoarse段で有効]: NDTパラメータ
         cell_size: 1.0
         cell_sizes: [1.0, 0.5]
         use_bilinear: true
-      csm:
+
+      csm: # [type=csm で有効]: 単体CSMパラメータ
         linear_search_window: 1.0
         angular_search_window: 0.5
         linear_step: 0.05
         angular_step: 0.02
-      local_map:
-        window: 100 # scan_to_local_map選択時の蓄積ノード数
-        radius: 50.0 # scan_to_local_map選択時の点群採用半径 [m]
+
+      local_map: # [reference=scan_to_local_map で有効]: ローカルマップ参照点群パラメータ
+        window: 30 # scan_to_local_map選択時の蓄積ノード数 (直近30キーフレーム分)
+        radius: 30.0 # scan_to_local_map選択時の点群採用半径 [m]
 
     # --------------------------------------------------------------------------
     # ループクロージャ設定
     # --------------------------------------------------------------------------
     loop_closure:
-      enabled: false # ループクロージャの有効化
-      search_radius: 4.0 # ループ候補探索半径 [m]
-      min_node_gap: 50 # ループ候補とする最小ノード番号差
-      max_failure_streak: 3 # 連続失敗時のstreakリセットしきい値
-      matcher_type: "icp" # ループ判定用マッチャー種別
-      yaw_information_multiplier: 100.0 # ループエッジの方位角情報量倍率
-      icp:
+      enabled: false # ループクロージャの有効化 (false時は以下すべて無効)
+      search_radius: 4.0 # [enabled=true で有効]: ループ候補探索半径 [m]
+      min_node_gap: 50 # [enabled=true で有効]: ループ候補とする最小ノード番号差
+      max_failure_streak: 3 # [enabled=true で有効]: 連続失敗時のstreakリセットしきい値
+      matcher_type: "icp" # [enabled=true で有効]: ループ判定用マッチャー種別 ("icp" | "ndt" | "csm" | "coarse_to_fine")
+      yaw_information_multiplier: 100.0 # [enabled=true で有効]: ループエッジの方位角情報量倍率
+      max_dyaw_deg: 145.0 # [enabled=true で有効]: 許容最大相対回転角 [deg]
+      crossing_reject_deg: 45.0 # [enabled=true で有効]: 直交交差除外の角度しきい値 [deg]
+      submap_radius: 5.0 # [enabled=true で有効]: ループ相手側のサブマップ半径 [m]
+      max_score: 0.05 # [enabled=true で有効]: ループエッジ採用判定の最大許容マッチングスコア
+
+      icp: # [enabled=true かつ matcher_type=icp, coarse_to_fine で有効]: ループICPパラメータ
         max_iterations: 100
-        tolerance: 0.001
+        tolerance: 0.0001
+        tolerance_trans: 0.0001
+        tolerance_rot: 0.0001
         max_correspondence_dist: 1.0
-        robust_kernel: "huber"
-        robust_kernel_scale: 0.05 # ロバスト核のスケールパラメータ [m]
-      ndt:
+        robust_kernel: "cauchy" # 外れ値・スライド誤一致抑制のためCauchy核を採用
+        robust_kernel_scale: 0.1 # ロバスト核のスケールパラメータ [m]
+
+      ndt: # [enabled=true かつ matcher_type=ndt, coarse_to_fine で有効]: ループNDTパラメータ
         cell_size: 1.0
         cell_sizes: [2.0, 1.0, 0.5]
         use_bilinear: true
-      csm:
+
+      csm: # [enabled=true かつ matcher_type=csm で有効]: ループCSMパラメータ
         linear_search_window: 1.0
         angular_search_window: 0.5
         linear_step: 0.05
         angular_step: 0.02
-      max_dyaw_deg: 145.0 # 許容最大相対回転角 [deg]
-      crossing_reject_deg: 45.0 # 直交交差除外の角度しきい値 [deg]
-      submap_radius: 5.0 # ループ相手側のサブマップ半径 [m]
-      max_score: 0.05 # ループエッジ採用判定の最大許容マッチングスコア
+
     # --------------------------------------------------------------------------
     # GNSS絶対位置拘束設定
     # --------------------------------------------------------------------------
     gnss:
-      enabled: false # GNSS絶対位置拘束の有効化
-      source: "navpvt" # GNSSデータ種別 ("navsat_fix" | "navpvt")
+      enabled: false # GNSS絶対位置拘束の有効化 (false時は以下すべて無効)
+      source: "navpvt" # [enabled=true で有効]: GNSSデータ種別 ("navsat_fix" | "navpvt")
       topics:
-        fix: "/gps/fix" # NavSatFixトピック名
-        navpvt: "/navpvt" # ublox NavPVTトピック名
-      navpvt_hacc_scale: 1.5 # NavPVTの水平精度(h_acc)に乗算する標準偏差スケール係数
-      min_interval_m: 1.0 # GNSS拘束を追加する最小移動間隔 [m]
-      max_innovation_m: 0.0 # SLAM推定位置とGNSS測定位置の最大許容乖離 [m] (0以下で無効化しデッドロック防止)
-      robust_kernel: "cauchy" # GNSSプライオアのロバスト核 ("huber" | "cauchy")
-      robust_kernel_scale: 0.5 # ロバスト核のスケールパラメータ
+        fix: "/gps/fix" # [enabled=true かつ source=navsat_fix で有効]: NavSatFixトピック名
+        navpvt: "/navpvt" # [enabled=true かつ source=navpvt で有効]: ublox NavPVTトピック名
+      navpvt_hacc_scale: 1.5 # [enabled=true かつ source=navpvt で有効]: 水平精度(h_acc)に乗算する標準偏差スケール係数
+      min_interval_m: 4.0 # [enabled=true で有効]: GNSS拘束を追加する最小移動間隔 [m]
+      max_innovation_m: 0.0 # [enabled=true で有効]: SLAM推定位置とGNSS測定位置の最大許容乖離 [m] (0以下で無効化しデッドロック防止)
+      robust_kernel: "cauchy" # [enabled=true で有効]: GNSSプライオアのロバスト核 ("huber" | "cauchy")
+      robust_kernel_scale: 0.5 # [enabled=true で有効]: ロバスト核のスケールパラメータ
       prior:
-        min_fix_status: 1 # Prior採用最小測位ステータス (0: 全許可, 1: RTK Float以上, 2: RTK Fixのみ)
+        min_fix_status: 1 # [enabled=true で有効]: Prior採用最小測位ステータス (0: 全許可, 1: RTK Float以上, 2: RTK Fixのみ)
       dynamic_reanchor:
-        enabled: true # 高精度測位出現時の動的アンカー再計算・大域剛体アライメント (マップ暴れ防止のため無効化)
-        min_fix_status: 2 # 2: RTK Fix のみ採用
-        min_samples: 10 # 剛体変換算出に必要な最小Fixサンプル数
-        min_distance_m: 10.0 # 剛体変換算出に必要な最小移動距離 [m]
-        max_residual_rms_m: 1.0 # 剛体変換採用判定の最大許容残差RMS [m]
+        enabled: true # [enabled=true で有効]: 高精度測位出現時の動的アンカー再計算・大域剛体アライメント
+        min_fix_status: 2 # [dynamic_reanchor.enabled=true で有効]: 2: RTK Fix のみ採用
+        min_samples: 10 # [dynamic_reanchor.enabled=true で有効]: 剛体変換算出に必要な最小Fixサンプル数
+        min_distance_m: 10.0 # [dynamic_reanchor.enabled=true で有効]: 剛体変換算出に必要な最小移動距離 [m]
+        max_residual_rms_m: 1.0 # [dynamic_reanchor.enabled=true で有効]: 剛体変換採用判定の最大許容残差RMS [m]
       validation:
-        max_sigma_m: 1.5 # 採用するGNSS位置標準偏差の最大許容値 [m]
+        max_sigma_m: 1.5 # [enabled=true で有効]: 採用するGNSS位置標準偏差の最大許容値 [m]
       anchor:
-        min_fix_status: 0 # アンカー(マップ原点)決定に必要な最小測位ステータス (0: NO_FIX以上, 1: FIX, 2: DGPS/FLOAT, 3: RTK_FIX)
-        init_distance_m: 15.0 # 初期方位(UTM回転角)推定に必要な最小直線移動距離 [m]
-        sigma_m: 2.0 # 原点ノードの位置固定標準偏差 [m] (初期Single測位への過剰拘束を解き、中盤・終盤のRTK Fixで全体を整合)
-        init_yaw_sigma_rad: 1.0 # 原点ノードの方位角固定標準偏差 [rad]
+        min_fix_status: 0 # [enabled=true で有効]: アンカー(マップ原点)決定に必要な最小測位ステータス
+        init_distance_m: 15.0 # [enabled=true で有効]: 初期方位(UTM回転角)推定に必要な最小直線移動距離 [m]
+        sigma_m: 2.0 # [enabled=true で有効]: 原点ノードの位置固定標準偏差 [m]
+        init_yaw_sigma_rad: 1.0 # [enabled=true で有効]: 原点ノードの方位角固定標準偏差 [rad]
       sigma:
-        fix_m: 0.05 # 共分散未知時のRTK Fix時標準偏差フォールバック値 [m]
-        float_m: 0.3 # 共分散未知時のRTK Float時標準偏差フォールバック値 [m]
-        factor_yaw_variance: 100000000.0 # GNSS方位Priorの分散 [rad^2]
+        fix_m: 0.05 # [enabled=true で有効]: 共分散未知時のRTK Fix時標準偏差フォールバック値 [m]
+        float_m: 0.3 # [enabled=true で有効]: 共分散未知時のRTK Float時標準偏差フォールバック値 [m]
+        factor_yaw_variance: 100000000.0 # [enabled=true で有効]: GNSS方位Priorの分散 [rad^2]
 
     # --------------------------------------------------------------------------
     # バックエンド最適化設定
     # --------------------------------------------------------------------------
     optimization:
       backend: "isam2" # 最適化バックエンド ("isam2")
-      rerender_threshold_m: 0.1 # 最適化後のノード移動量がこの値を超えた場合に全地図再描画を行うしきい値 [m]
-      batch_on_finalize: true # オフライン処理終了時に蓄積全グラフに対するLevenberg-Marquardt一括最適化を実行
-      batch_max_iterations: 100 # LMバッチ最適化の最大反復回数
+      rerender_threshold_m: 0.1 # 全体共通: 最適化後のノード移動量がこの値を超えた場合に全地図再描画を行うしきい値 [m]
+      batch_on_finalize: true # 全体共通: オフライン処理終了時に蓄積全グラフに対するLM一括最適化を実行
+      batch_max_iterations: 100 # [batch_on_finalize=true で有効]: LMバッチ最適化の最大反復回数
       isam2:
-        relinearize_threshold: 0.1 # iSAM2の再線形化しきい値
+        relinearize_threshold: 0.1 # [backend=isam2 で有効]: iSAM2の再線形化しきい値
 
     # --------------------------------------------------------------------------
     # 軌跡ベースノイズ除去設定
     # --------------------------------------------------------------------------
     trajectory_noise_filter:
-      enabled: false # ノイズ除去フィルタの有効化
-      type: "attenuate" # フィルタ種別 ("clear" | "attenuate")
-      radius_m: 1.0 # 軌跡周辺のノイズ除去半径 [m]
+      enabled: false # ノイズ除去フィルタの有効化 (false時は以下無効)
+      type: "attenuate" # [enabled=true で有効]: フィルタ種別 ("clear" | "attenuate")
+      radius_m: 1.0 # [enabled=true で有効]: 軌跡周辺のノイズ除去半径 [m]
 
 slam_gnss_2d_offline_node:
   ros__parameters:

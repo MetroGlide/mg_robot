@@ -1,12 +1,22 @@
 cmake_minimum_required(VERSION 3.8)
 project(slam_gnss_2d)
 
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+  set(CMAKE_BUILD_TYPE Release CACHE STRING "Choose the type of build." FORCE)
+endif()
+
 if(NOT CMAKE_CXX_STANDARD)
   set(CMAKE_CXX_STANDARD 17)
 endif()
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
+
+# Find 3rd party dependencies first for global compile options
+find_package(OpenMP REQUIRED)
+if(OpenMP_CXX_FOUND)
+  add_compile_options(${OpenMP_CXX_FLAGS})
 endif()
 
 # Find ROS2 dependencies
@@ -81,6 +91,7 @@ add_library(slam_gnss_2d_core
   src/scan_matching/icp_matcher.cpp
   src/scan_matching/ndt_matcher.cpp
   src/scan_matching/csm_matcher.cpp
+  src/scan_matching/multi_res_csm_matcher.cpp
   src/scan_matching/reference_provider/scan_to_scan.cpp
   src/scan_matching/reference_provider/local_map.cpp
   src/ros/slam_visualizer.cpp
@@ -104,12 +115,15 @@ target_include_directories(slam_gnss_2d_core PUBLIC
 
 ament_target_dependencies(slam_gnss_2d_core ${DEPENDENCIES})
 
+target_compile_options(slam_gnss_2d_core PUBLIC ${OpenMP_CXX_FLAGS})
+
 target_link_libraries(slam_gnss_2d_core
   gtsam
   ${OpenCV_LIBS}
   ${GeographicLib_LIBRARIES}
   nlohmann_json::nlohmann_json
   yaml-cpp
+  OpenMP::OpenMP_CXX
 )
 
 # Executables
@@ -199,6 +213,9 @@ if(BUILD_TESTING)
 
   ament_add_gtest(test_multi_start_coarse_to_fine_matcher test/test_multi_start_coarse_to_fine_matcher.cpp)
   target_link_libraries(test_multi_start_coarse_to_fine_matcher slam_gnss_2d_core)
+
+  ament_add_gtest(test_multi_res_csm_matcher test/test_multi_res_csm_matcher.cpp)
+  target_link_libraries(test_multi_res_csm_matcher slam_gnss_2d_core)
 endif()
 
 ament_export_include_directories(include)

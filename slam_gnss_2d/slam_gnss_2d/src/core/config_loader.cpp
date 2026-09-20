@@ -19,6 +19,10 @@ void ConfigLoader::declare_params(rclcpp::Node& node) {
   declare_param_if_not_declared(node, "map.renderer", std::string("overwrite"));
   declare_param_if_not_declared(node, "map.hit_threshold", 0.3);
   declare_param_if_not_declared(node, "map.min_hits", 2);
+  declare_param_if_not_declared(node, "map.hit_weight", 1.0);
+  declare_param_if_not_declared(node, "map.miss_weight", 0.25);
+  declare_param_if_not_declared(node, "map.miss_clearance_margin", 0.0);
+  declare_param_if_not_declared(node, "map.max_miss_ratio", 2.0);
 
   declare_param_if_not_declared(node, "keyframe.min_translation", 1.0);
   declare_param_if_not_declared(node, "keyframe.min_rotation", 0.1);
@@ -30,6 +34,8 @@ void ConfigLoader::declare_params(rclcpp::Node& node) {
   declare_param_if_not_declared(node, "scan_matching.yaw_information_multiplier", 100.0);
   declare_param_if_not_declared(node, "scan_matching.icp.max_iterations", 100);
   declare_param_if_not_declared(node, "scan_matching.icp.tolerance", 1e-5);
+  declare_param_if_not_declared(node, "scan_matching.icp.tolerance_trans", -1.0);
+  declare_param_if_not_declared(node, "scan_matching.icp.tolerance_rot", -1.0);
   declare_param_if_not_declared(node, "scan_matching.icp.max_correspondence_dist", 1.0);
   declare_param_if_not_declared(node, "scan_matching.icp.robust_kernel", std::string("huber"));
   declare_param_if_not_declared(node, "scan_matching.icp.robust_kernel_scale", 0.1);
@@ -50,6 +56,26 @@ void ConfigLoader::declare_params(rclcpp::Node& node) {
   declare_param_if_not_declared(node, "scan_matching.multi_start.angular_step_deg", 2.5);
   declare_param_if_not_declared(node, "scan_matching.multi_start.enable_straight_hypothesis", true);
   declare_param_if_not_declared(node, "scan_matching.multi_start.enable_const_vel_hypothesis", true);
+  declare_param_if_not_declared(node, "scan_matching.multi_res_csm.linear_search_window", 0.4);
+  declare_param_if_not_declared(node, "scan_matching.multi_res_csm.angular_search_window_deg", 15.0);
+  declare_param_if_not_declared(node, "scan_matching.multi_res_csm.linear_step", 0.02);
+  declare_param_if_not_declared(node, "scan_matching.multi_res_csm.angular_step_deg", 0.5);
+  declare_param_if_not_declared(node, "scan_matching.multi_res_csm.grid_resolution", 0.03);
+  declare_param_if_not_declared(node, "scan_matching.multi_res_csm.score_threshold", 0.1);
+  declare_param_if_not_declared(node, "scan_matching.multi_res_csm.enable_variance_penalty", true);
+  declare_param_if_not_declared(node, "scan_matching.multi_res_csm.distance_variance_penalty", 0.5);
+  declare_param_if_not_declared(node, "scan_matching.multi_res_csm.angle_variance_penalty", 1.0);
+  declare_param_if_not_declared(node, "scan_matching.multi_res_csm.minimum_distance_penalty", 0.5);
+  declare_param_if_not_declared(node, "scan_matching.multi_res_csm.minimum_angle_penalty", 0.9);
+
+  declare_param_if_not_declared(node, "scan_matching.near_links.enabled", true);
+  declare_param_if_not_declared(node, "scan_matching.near_links.buffer_size", 10);
+  declare_param_if_not_declared(node, "scan_matching.near_links.max_distance", 2.0);
+  declare_param_if_not_declared(node, "scan_matching.near_links.min_index_diff", 2);
+  declare_param_if_not_declared(node, "scan_matching.near_links.max_links_per_node", 3);
+  declare_param_if_not_declared(node, "scan_matching.near_links.max_translation_drift", 0.4);
+  declare_param_if_not_declared(node, "scan_matching.near_links.max_rotation_drift_deg", 15.0);
+  declare_param_if_not_declared(node, "scan_matching.near_links.min_eigenvalue", 10.0);
 
   declare_param_if_not_declared(node, "loop_closure.enabled", true);
   declare_param_if_not_declared(node, "loop_closure.search_radius", 2.0);
@@ -59,6 +85,8 @@ void ConfigLoader::declare_params(rclcpp::Node& node) {
   declare_param_if_not_declared(node, "loop_closure.yaw_information_multiplier", 100.0);
   declare_param_if_not_declared(node, "loop_closure.icp.max_iterations", 100);
   declare_param_if_not_declared(node, "loop_closure.icp.tolerance", 1e-5);
+  declare_param_if_not_declared(node, "loop_closure.icp.tolerance_trans", -1.0);
+  declare_param_if_not_declared(node, "loop_closure.icp.tolerance_rot", -1.0);
   declare_param_if_not_declared(node, "loop_closure.icp.max_correspondence_dist", 1.0);
   declare_param_if_not_declared(node, "loop_closure.icp.robust_kernel", std::string("huber"));
   declare_param_if_not_declared(node, "loop_closure.icp.robust_kernel_scale", 0.1);
@@ -123,6 +151,10 @@ SlamConfig ConfigLoader::build_config(const rclcpp::Node& node) {
   cfg.map.renderer = node.get_parameter("map.renderer").as_string();
   cfg.map.hit_threshold = node.get_parameter("map.hit_threshold").as_double();
   cfg.map.min_hits = node.get_parameter("map.min_hits").as_int();
+  cfg.map.hit_weight = node.get_parameter("map.hit_weight").as_double();
+  cfg.map.miss_weight = node.get_parameter("map.miss_weight").as_double();
+  cfg.map.miss_clearance_margin = node.get_parameter("map.miss_clearance_margin").as_double();
+  cfg.map.max_miss_ratio = node.get_parameter("map.max_miss_ratio").as_double();
 
   cfg.keyframe.min_translation = node.get_parameter("keyframe.min_translation").as_double();
   cfg.keyframe.min_rotation = node.get_parameter("keyframe.min_rotation").as_double();
@@ -135,6 +167,10 @@ SlamConfig ConfigLoader::build_config(const rclcpp::Node& node) {
       node.get_parameter("scan_matching.yaw_information_multiplier").as_double();
   cfg.scan_matching.icp.max_iterations = node.get_parameter("scan_matching.icp.max_iterations").as_int();
   cfg.scan_matching.icp.tolerance = node.get_parameter("scan_matching.icp.tolerance").as_double();
+  cfg.scan_matching.icp.tolerance_trans =
+      node.get_parameter("scan_matching.icp.tolerance_trans").as_double();
+  cfg.scan_matching.icp.tolerance_rot =
+      node.get_parameter("scan_matching.icp.tolerance_rot").as_double();
   cfg.scan_matching.icp.max_correspondence_dist =
       node.get_parameter("scan_matching.icp.max_correspondence_dist").as_double();
   cfg.scan_matching.icp.robust_kernel = node.get_parameter("scan_matching.icp.robust_kernel").as_string();
@@ -165,6 +201,45 @@ SlamConfig ConfigLoader::build_config(const rclcpp::Node& node) {
       node.get_parameter("scan_matching.multi_start.enable_straight_hypothesis").as_bool();
   cfg.scan_matching.multi_start.enable_const_vel_hypothesis =
       node.get_parameter("scan_matching.multi_start.enable_const_vel_hypothesis").as_bool();
+  cfg.scan_matching.multi_res_csm.linear_search_window =
+      node.get_parameter("scan_matching.multi_res_csm.linear_search_window").as_double();
+  cfg.scan_matching.multi_res_csm.angular_search_window_deg =
+      node.get_parameter("scan_matching.multi_res_csm.angular_search_window_deg").as_double();
+  cfg.scan_matching.multi_res_csm.linear_step =
+      node.get_parameter("scan_matching.multi_res_csm.linear_step").as_double();
+  cfg.scan_matching.multi_res_csm.angular_step_deg =
+      node.get_parameter("scan_matching.multi_res_csm.angular_step_deg").as_double();
+  cfg.scan_matching.multi_res_csm.grid_resolution =
+      node.get_parameter("scan_matching.multi_res_csm.grid_resolution").as_double();
+  cfg.scan_matching.multi_res_csm.score_threshold =
+      node.get_parameter("scan_matching.multi_res_csm.score_threshold").as_double();
+  cfg.scan_matching.multi_res_csm.enable_variance_penalty =
+      node.get_parameter("scan_matching.multi_res_csm.enable_variance_penalty").as_bool();
+  cfg.scan_matching.multi_res_csm.distance_variance_penalty =
+      node.get_parameter("scan_matching.multi_res_csm.distance_variance_penalty").as_double();
+  cfg.scan_matching.multi_res_csm.angle_variance_penalty =
+      node.get_parameter("scan_matching.multi_res_csm.angle_variance_penalty").as_double();
+  cfg.scan_matching.multi_res_csm.minimum_distance_penalty =
+      node.get_parameter("scan_matching.multi_res_csm.minimum_distance_penalty").as_double();
+  cfg.scan_matching.multi_res_csm.minimum_angle_penalty =
+      node.get_parameter("scan_matching.multi_res_csm.minimum_angle_penalty").as_double();
+
+  cfg.scan_matching.near_links.enabled =
+      node.get_parameter("scan_matching.near_links.enabled").as_bool();
+  cfg.scan_matching.near_links.buffer_size =
+      node.get_parameter("scan_matching.near_links.buffer_size").as_int();
+  cfg.scan_matching.near_links.max_distance =
+      node.get_parameter("scan_matching.near_links.max_distance").as_double();
+  cfg.scan_matching.near_links.min_index_diff =
+      node.get_parameter("scan_matching.near_links.min_index_diff").as_int();
+  cfg.scan_matching.near_links.max_links_per_node =
+      node.get_parameter("scan_matching.near_links.max_links_per_node").as_int();
+  cfg.scan_matching.near_links.max_translation_drift =
+      node.get_parameter("scan_matching.near_links.max_translation_drift").as_double();
+  cfg.scan_matching.near_links.max_rotation_drift_deg =
+      node.get_parameter("scan_matching.near_links.max_rotation_drift_deg").as_double();
+  cfg.scan_matching.near_links.min_eigenvalue =
+      node.get_parameter("scan_matching.near_links.min_eigenvalue").as_double();
 
   cfg.loop_closure.enabled = node.get_parameter("loop_closure.enabled").as_bool();
   cfg.loop_closure.search_radius = node.get_parameter("loop_closure.search_radius").as_double();
@@ -175,6 +250,10 @@ SlamConfig ConfigLoader::build_config(const rclcpp::Node& node) {
       node.get_parameter("loop_closure.yaw_information_multiplier").as_double();
   cfg.loop_closure.icp.max_iterations = node.get_parameter("loop_closure.icp.max_iterations").as_int();
   cfg.loop_closure.icp.tolerance = node.get_parameter("loop_closure.icp.tolerance").as_double();
+  cfg.loop_closure.icp.tolerance_trans =
+      node.get_parameter("loop_closure.icp.tolerance_trans").as_double();
+  cfg.loop_closure.icp.tolerance_rot =
+      node.get_parameter("loop_closure.icp.tolerance_rot").as_double();
   cfg.loop_closure.icp.max_correspondence_dist =
       node.get_parameter("loop_closure.icp.max_correspondence_dist").as_double();
   cfg.loop_closure.icp.robust_kernel = node.get_parameter("loop_closure.icp.robust_kernel").as_string();
