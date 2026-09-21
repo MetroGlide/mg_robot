@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <cmath>
 #include <vector>
 #include <Eigen/Dense>
 
@@ -50,6 +51,59 @@ TEST(OptimizerTest, ISAM2AddGnssPriorCauchy) {
 
   EXPECT_GT(x, 1.0);
   EXPECT_GT(y, 0.0);
+}
+
+TEST(OptimizerTest, GnssPriorWithLeverArmPlacesAntennaOnMeasurement) {
+  // ロボットは (1, 2) で yaw = 90 deg。アンテナは base_link の (0.26, -0.13) にあるので、
+  // 世界座標では (1.13, 2.26) に観測される。
+  const double true_x = 1.0;
+  const double true_y = 2.0;
+  const double true_yaw = M_PI / 2.0;
+  const double lever_x = 0.26;
+  const double lever_y = -0.13;
+  const double antenna_x = true_x + std::cos(true_yaw) * lever_x - std::sin(true_yaw) * lever_y;
+  const double antenna_y = true_y + std::sin(true_yaw) * lever_x + std::cos(true_yaw) * lever_y;
+
+  // 方位は強く拘束し、位置は弱く拘束した初期化
+  auto run = [&](double lx, double ly) {
+    ISAM2Optimizer optimizer(0.1);
+    optimizer.initialize(0, true_x + 0.2, true_y - 0.1, true_yaw, 10.0, 0.001);
+    optimizer.add_gnss_prior(0, antenna_x, antenna_y, 0.01, 0.0, "huber", 1.5, lx, ly);
+    optimizer.update();
+    return *optimizer.get_pose(0);
+  };
+
+  auto [x_lever, y_lever, yaw_lever] = run(lever_x, lever_y);
+  EXPECT_NEAR(x_lever, true_x, 0.02);
+  EXPECT_NEAR(y_lever, true_y, 0.02);
+  EXPECT_NEAR(yaw_lever, true_yaw, 0.01);
+
+  // レバーアームなしでは、ロボット位置がアンテナ位置に引かれて 0.29 m ずれる
+  auto [x_plain, y_plain, yaw_plain] = run(0.0, 0.0);
+  EXPECT_NEAR(std::hypot(x_plain - true_x, y_plain - true_y), std::hypot(lever_x, lever_y), 0.05);
+}
+
+TEST(OptimizerTest, RobustBetweenFactorDownWeightsOutlierEdge) {
+  // 0 -> 1 -> 2 の逐次エッジ (各 1.0 m) に、0 -> 2 の外れ値エッジ (5.0 m) を追加する
+  auto solve = [](const std::string& kernel) {
+    ISAM2Optimizer optimizer(0.1);
+    optimizer.set_between_robust_kernel(kernel, 1.345);
+    optimizer.initialize(0, 0.0, 0.0, 0.0, 0.001, 0.001);
+    optimizer.add_initial_estimate(1, 1.0, 0.0, 0.0);
+    optimizer.add_initial_estimate(2, 2.0, 0.0, 0.0);
+    Eigen::Matrix3d info = Eigen::Matrix3d::Identity() * 10000.0;
+    optimizer.add_between_factor(0, 1, 1.0, 0.0, 0.0, info);
+    optimizer.add_between_factor(1, 2, 1.0, 0.0, 0.0, info);
+    optimizer.add_between_factor(0, 2, 5.0, 0.0, 0.0, info);
+    optimizer.update();
+    optimizer.run_batch_optimization(50);
+    return std::get<0>(*optimizer.get_pose(2));
+  };
+  const double gaussian_x = solve("none");
+  const double robust_x = solve("cauchy");
+  // ガウスは外れ値に引かれて 2.0 から大きくずれ、ロバストは 2.0 に近い
+  EXPECT_GT(std::abs(gaussian_x - 2.0), 0.5);
+  EXPECT_LT(std::abs(robust_x - 2.0), std::abs(gaussian_x - 2.0));
 }
 
 TEST(OptimizerTest, GTSAMOptimizerWithPriors) {

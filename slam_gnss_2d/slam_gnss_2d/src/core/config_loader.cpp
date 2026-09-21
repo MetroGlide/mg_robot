@@ -136,12 +136,16 @@ void ConfigLoader::declare_params(rclcpp::Node& node) {
   declare_param_if_not_declared(node, "gnss.sigma.fix_m", 0.02);
   declare_param_if_not_declared(node, "gnss.sigma.float_m", 0.5);
   declare_param_if_not_declared(node, "gnss.sigma.factor_yaw_variance", 1e8);
+  declare_param_if_not_declared(node, "gnss.lever_arm.x", 0.26);
+  declare_param_if_not_declared(node, "gnss.lever_arm.y", -0.13);
 
   declare_param_if_not_declared(node, "optimization.backend", std::string("isam2"));
   declare_param_if_not_declared(node, "optimization.isam2.relinearize_threshold", 0.1);
   declare_param_if_not_declared(node, "optimization.rerender_threshold_m", 0.1);
   declare_param_if_not_declared(node, "optimization.batch_on_finalize", true);
   declare_param_if_not_declared(node, "optimization.batch_max_iterations", 100);
+  declare_param_if_not_declared(node, "optimization.between_robust_kernel", std::string("huber"));
+  declare_param_if_not_declared(node, "optimization.between_robust_kernel_scale", 1.345);
 
   declare_param_if_not_declared(node, "trajectory_noise_filter.enabled", false);
   declare_param_if_not_declared(node, "trajectory_noise_filter.type", std::string("clear"));
@@ -317,8 +321,14 @@ SlamConfig ConfigLoader::build_config(const rclcpp::Node& node) {
   cfg.gnss.sigma.fix_m = node.get_parameter("gnss.sigma.fix_m").as_double();
   cfg.gnss.sigma.float_m = node.get_parameter("gnss.sigma.float_m").as_double();
   cfg.gnss.sigma.factor_yaw_variance = node.get_parameter("gnss.sigma.factor_yaw_variance").as_double();
+  cfg.gnss.lever_arm.x = node.get_parameter("gnss.lever_arm.x").as_double();
+  cfg.gnss.lever_arm.y = node.get_parameter("gnss.lever_arm.y").as_double();
 
   cfg.optimization.backend = node.get_parameter("optimization.backend").as_string();
+  cfg.optimization.between_robust_kernel =
+      node.get_parameter("optimization.between_robust_kernel").as_string();
+  cfg.optimization.between_robust_kernel_scale =
+      node.get_parameter("optimization.between_robust_kernel_scale").as_double();
   cfg.optimization.isam2.relinearize_threshold =
       node.get_parameter("optimization.isam2.relinearize_threshold").as_double();
   cfg.optimization.rerender_threshold_m = node.get_parameter("optimization.rerender_threshold_m").as_double();

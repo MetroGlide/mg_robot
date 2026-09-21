@@ -175,6 +175,12 @@ struct GnssDynamicReanchorConfig {
   double max_residual_rms_m{1.0}; // アライメント採用判定の最大許容残差RMS [m]
 };
 
+// GNSS アンテナのロボット座標系 (base_link) での位置 [m]
+struct GnssLeverArmConfig {
+  double x{0.26};
+  double y{-0.13};
+};
+
 struct GnssConfig {
   bool enabled{true};
   std::string source{"navpvt"};  // "navsat_fix" | "navpvt"
@@ -189,6 +195,7 @@ struct GnssConfig {
   GnssValidationConfig validation;
   GnssAnchorConfig anchor;
   GnssSigmaConfig sigma;
+  GnssLeverArmConfig lever_arm;
 };
 
 struct Isam2Config {
@@ -201,6 +208,8 @@ struct OptimizationConfig {
   double rerender_threshold_m{0.1};
   bool batch_on_finalize{true};
   int batch_max_iterations{100};
+  std::string between_robust_kernel{"huber"};  // スキャンマッチングエッジのロバスト化: "none" | "huber" | "cauchy"
+  double between_robust_kernel_scale{1.345};
 };
 
 struct TrajectoryNoiseFilterConfig {

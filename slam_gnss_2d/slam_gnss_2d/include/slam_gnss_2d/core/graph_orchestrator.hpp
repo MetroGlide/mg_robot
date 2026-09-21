@@ -56,7 +56,9 @@ class GraphOrchestrator {
       double dynamic_reanchor_min_distance_m = 10.0,
       double dynamic_reanchor_max_residual_rms_m = 1.0,
       bool batch_on_finalize = true,
-      int batch_max_iterations = 100);
+      int batch_max_iterations = 100,
+      double gnss_lever_arm_x = 0.0,
+      double gnss_lever_arm_y = 0.0);
 
   ScanProcessResult process_frame(const SensorFrame& frame);
   FinalizeResult finalize();
@@ -67,6 +69,9 @@ class GraphOrchestrator {
   std::vector<PoseNode> get_all_nodes() const;
   std::vector<PoseEdge> get_all_edges() const;
   const OrchestratorStageTimes& stage_times() const { return stage_times_; }
+  void set_between_robust_kernel(const std::string& kernel, double scale) {
+    optimizer_.set_between_robust_kernel(kernel, scale);
+  }
 
  private:
   OrchestratorStageTimes stage_times_;
@@ -98,6 +103,8 @@ class GraphOrchestrator {
   bool dynamic_reanchored_{false};
   bool batch_on_finalize_{true};
   int batch_max_iterations_{100};
+  double gnss_lever_arm_x_{0.0};
+  double gnss_lever_arm_y_{0.0};
 
   int last_node_index_{-1};
   size_t last_loop_edge_count_{0};

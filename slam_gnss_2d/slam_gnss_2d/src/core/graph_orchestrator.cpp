@@ -36,7 +36,9 @@ GraphOrchestrator::GraphOrchestrator(
     double dynamic_reanchor_min_distance_m,
     double dynamic_reanchor_max_residual_rms_m,
     bool batch_on_finalize,
-    int batch_max_iterations)
+    int batch_max_iterations,
+    double gnss_lever_arm_x,
+    double gnss_lever_arm_y)
     : pose_graph_(pose_graph),
       use_gnss_(use_gnss),
       optimizer_(isam2_relinearize_threshold),
@@ -62,6 +64,8 @@ GraphOrchestrator::GraphOrchestrator(
       dynamic_reanchor_max_residual_rms_m_(dynamic_reanchor_max_residual_rms_m),
       batch_on_finalize_(batch_on_finalize),
       batch_max_iterations_(batch_max_iterations),
+      gnss_lever_arm_x_(gnss_lever_arm_x),
+      gnss_lever_arm_y_(gnss_lever_arm_y),
       state_(use_gnss ? "INITIALIZING" : "RUNNING") {}
 
 std::optional<std::pair<double, double>> GraphOrchestrator::anchor_latlon() const {
@@ -525,7 +529,8 @@ std::optional<GnssPrior> GraphOrchestrator::add_gnss_prior(
 
   optimizer_.add_gnss_prior(
       node.index, gx, gy, sigma_xy, gnss_factor_yaw_variance_,
-      gnss_robust_kernel_, gnss_robust_kernel_scale_);
+      gnss_robust_kernel_, gnss_robust_kernel_scale_,
+      gnss_lever_arm_x_, gnss_lever_arm_y_);
   last_gnss_timestamp_ = frame.gnss->timestamp;
   last_gnss_pos_ = {gx, gy};
   gnss_prior_count_++;

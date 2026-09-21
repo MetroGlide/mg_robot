@@ -175,6 +175,9 @@
         init_distance_m: 30.0 # [enabled=true で有効]: 初期方位(UTM回転角)推定に必要な最小直線移動距離 [m]
         sigma_m: 2.0 # [enabled=true で有効]: 原点ノードの位置固定標準偏差 [m]
         init_yaw_sigma_rad: 1.0 # [enabled=true で有効]: 原点ノードの方位角固定標準偏差 [rad]
+      lever_arm: # GNSS アンテナのロボット座標系 (base_link) での位置 (URDF の base_link -> gps_link)。0/0 で無効
+        x: 0.26 # 前方 [m]
+        y: -0.13 # 左方 [m]
       sigma:
         fix_m: 0.05 # [enabled=true で有効]: 共分散未知時のRTK Fix時標準偏差フォールバック値 [m]
         float_m: 0.3 # [enabled=true で有効]: 共分散未知時のRTK Float時標準偏差フォールバック値 [m]
@@ -185,6 +188,8 @@
     # --------------------------------------------------------------------------
     optimization:
       backend: "isam2" # 最適化バックエンド ("isam2")
+      between_robust_kernel: "huber" # スキャンマッチングエッジ (逐次・near-link・ループ) のロバスト化 ("none" | "huber" | "cauchy")
+      between_robust_kernel_scale: 1.345 # ロバスト化のしきい値 (白色化した残差、標準偏差の倍数)
       rerender_threshold_m: 0.1 # 全体共通: 最適化後のノード移動量がこの値を超えた場合に全地図再描画を行うしきい値 [m]
       batch_on_finalize: true # 全体共通: オフライン処理終了時に蓄積全グラフに対するLM一括最適化を実行
       batch_max_iterations: 100 # [batch_on_finalize=true で有効]: LMバッチ最適化の最大反復回数

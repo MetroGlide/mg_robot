@@ -1,5 +1,11 @@
 #include "slam_gnss_2d/optimizer/isam2_optimizer.hpp"
 
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+#include <limits>
+#include <string>
+
 #include <gtsam/linear/NoiseModel.h>
 #include <gtsam/nonlinear/LevenbergMarquardtOptimizer.h>
 #include <gtsam/nonlinear/LevenbergMarquardtParams.h>
@@ -10,6 +16,41 @@
 
 namespace slam_gnss_2d {
 namespace optimizer {
+
+namespace {
+
+// GNSS アンテナ位置の観測ファクター。アンテナはロボット座標系で lever_arm の位置にあるので、
+// 予測値は pose.transformFrom(lever_arm) (= 位置 + R(yaw) * lever_arm) となる。
+// 旋回すると、アンテナ位置はロボット位置を中心に円を描くため、方位にも拘束がかかる。
+class LeverArmPositionFactor : public gtsam::NoiseModelFactor1<gtsam::Pose2> {
+ public:
+  LeverArmPositionFactor(
+      gtsam::Key key,
+      const gtsam::Point2& measured,
+      const gtsam::Point2& lever_arm,
+      const gtsam::SharedNoiseModel& model)
+      : gtsam::NoiseModelFactor1<gtsam::Pose2>(model, key),
+        measured_(measured),
+        lever_arm_(lever_arm) {}
+
+  gtsam::Vector evaluateError(
+      const gtsam::Pose2& pose,
+      boost::optional<gtsam::Matrix&> H = boost::none) const override {
+    if (H) {
+      gtsam::Matrix23 jacobian;
+      const gtsam::Point2 predicted = pose.transformFrom(lever_arm_, jacobian);
+      *H = jacobian;
+      return predicted - measured_;
+    }
+    return pose.transformFrom(lever_arm_) - measured_;
+  }
+
+ private:
+  gtsam::Point2 measured_;
+  gtsam::Point2 lever_arm_;
+};
+
+}  // namespace
 
 ISAM2Optimizer::ISAM2Optimizer(double relinearize_threshold) {
   params_.setRelinearizeThreshold(relinearize_threshold);
@@ -41,6 +82,12 @@ void ISAM2Optimizer::initialize(
   initialized_ = true;
 }
 
+void ISAM2Optimizer::set_between_robust_kernel(const std::string& kernel, double scale) {
+  std::lock_guard<std::mutex> lock(lock_);
+  between_robust_kernel_ = kernel;
+  between_robust_scale_ = scale;
+}
+
 void ISAM2Optimizer::add_between_factor(
     int from_index,
     int to_index,
@@ -52,7 +99,14 @@ void ISAM2Optimizer::add_between_factor(
   if (!initialized_) {
     return;
   }
-  auto noise = gtsam::noiseModel::Gaussian::Information(information);
+  gtsam::SharedNoiseModel noise = gtsam::noiseModel::Gaussian::Information(information);
+  if (between_robust_kernel_ == "huber") {
+    noise = gtsam::noiseModel::Robust::Create(
+        gtsam::noiseModel::mEstimator::Huber::Create(between_robust_scale_), noise);
+  } else if (between_robust_kernel_ == "cauchy") {
+    noise = gtsam::noiseModel::Robust::Create(
+        gtsam::noiseModel::mEstimator::Cauchy::Create(between_robust_scale_), noise);
+  }
   auto factor = gtsam::BetweenFactor<gtsam::Pose2>(
       from_index, to_index, gtsam::Pose2(dx, dy, dyaw), noise);
   pending_graph_.add(factor);
@@ -66,7 +120,9 @@ void ISAM2Optimizer::add_gnss_prior(
     double sigma_xy,
     [[maybe_unused]] double yaw_variance,
     const std::string& robust_kernel_type,
-    double robust_kernel_scale) {
+    double robust_kernel_scale,
+    double lever_arm_x,
+    double lever_arm_y) {
   std::lock_guard<std::mutex> lock(lock_);
   if (!initialized_) {
     return;
@@ -81,8 +137,15 @@ void ISAM2Optimizer::add_gnss_prior(
     robust_noise = gtsam::noiseModel::Robust::Create(
         gtsam::noiseModel::mEstimator::Huber::Create(robust_kernel_scale), base_noise);
   }
-  auto factor = gtsam::PoseTranslationPrior<gtsam::Pose2>(
-      node_index, gtsam::Point2(x, y), robust_noise);
+  if (lever_arm_x == 0.0 && lever_arm_y == 0.0) {
+    auto factor = gtsam::PoseTranslationPrior<gtsam::Pose2>(
+        node_index, gtsam::Point2(x, y), robust_noise);
+    pending_graph_.add(factor);
+    gnss_graph_.add(factor);
+    return;
+  }
+  auto factor = LeverArmPositionFactor(
+      node_index, gtsam::Point2(x, y), gtsam::Point2(lever_arm_x, lever_arm_y), robust_noise);
   pending_graph_.add(factor);
   gnss_graph_.add(factor);
 }
@@ -102,6 +165,35 @@ void ISAM2Optimizer::add_initial_estimate(
   pending_values_.insert(node_index, gtsam::Pose2(x, y, theta));
 }
 
+void ISAM2Optimizer::log_indeterminant_variable(gtsam::Key key) const {
+  // 失敗した変数に接続するファクターと、現在の線形化点での誤差を出力する (原因の切り分け用)
+  const auto logger = rclcpp::get_logger("slam_gnss_2d.isam2_optimizer");
+  const gtsam::Values linearization_point = isam2_->getLinearizationPoint();
+  RCLCPP_ERROR(logger, "Indeterminant linear system near variable %zu; connected factors:", static_cast<size_t>(key));
+  for (const auto& factor : isam2_->getFactorsUnsafe()) {
+    if (!factor || std::find(factor->begin(), factor->end(), key) == factor->end()) {
+      continue;
+    }
+    std::string keys;
+    for (const auto k : factor->keys()) {
+      keys += std::to_string(k);
+      if (linearization_point.exists(k)) {
+        const auto pose = linearization_point.at<gtsam::Pose2>(k);
+        char buf[96];
+        std::snprintf(buf, sizeof(buf), "(%.4g,%.4g,%.4g)", pose.x(), pose.y(), pose.theta());
+        keys += buf;
+      }
+      keys += " ";
+    }
+    double error = std::numeric_limits<double>::quiet_NaN();
+    try {
+      error = factor->error(linearization_point);
+    } catch (const std::exception&) {
+    }
+    RCLCPP_ERROR(logger, "  factor keys=[%s] error=%.6g", keys.c_str(), error);
+  }
+}
+
 void ISAM2Optimizer::update() {
   std::lock_guard<std::mutex> lock(lock_);
   if (!initialized_) {
@@ -110,7 +202,12 @@ void ISAM2Optimizer::update() {
   if (pending_graph_.size() == 0 && pending_values_.size() == 0) {
     return;
   }
-  isam2_->update(pending_graph_, pending_values_);
+  try {
+    isam2_->update(pending_graph_, pending_values_);
+  } catch (const gtsam::IndeterminantLinearSystemException& e) {
+    log_indeterminant_variable(e.nearbyVariable());
+    throw;
+  }
   latest_estimate_ = isam2_->calculateEstimate();
   pending_graph_ = gtsam::NonlinearFactorGraph();
   pending_values_ = gtsam::Values();

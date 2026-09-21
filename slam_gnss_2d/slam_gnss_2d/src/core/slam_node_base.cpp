@@ -72,7 +72,12 @@ void SlamNodeBase::init() {
       config_.gnss.dynamic_reanchor.min_distance_m,
       config_.gnss.dynamic_reanchor.max_residual_rms_m,
       config_.optimization.batch_on_finalize,
-      config_.optimization.batch_max_iterations);
+      config_.optimization.batch_max_iterations,
+      config_.gnss.lever_arm.x,
+      config_.gnss.lever_arm.y);
+
+  orchestrator_->set_between_robust_kernel(
+      config_.optimization.between_robust_kernel, config_.optimization.between_robust_kernel_scale);
 
   auto node_shared = shared_from_this();
   visualizer_ = std::make_shared<ros::SlamVisualizer>(node_shared, config_.gnss.enabled);

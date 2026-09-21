@@ -43,7 +43,9 @@ class ISAM2Optimizer {
       double sigma_xy,
       double yaw_variance = 0.0,
       const std::string& robust_kernel_type = "huber",
-      double robust_kernel_scale = 1.345);
+      double robust_kernel_scale = 1.345,
+      double lever_arm_x = 0.0,
+      double lever_arm_y = 0.0);
 
   void add_initial_estimate(
       int node_index,
@@ -59,7 +61,13 @@ class ISAM2Optimizer {
 
   void run_batch_optimization(int max_iterations = 100);
 
+  // between factor (スキャンマッチングのエッジ) のロバスト化。kernel: "none" | "huber" | "cauchy"
+  // scale は白色化した残差に対するしきい値 (標準偏差の何倍か)。以降に追加する factor に適用される
+  void set_between_robust_kernel(const std::string& kernel, double scale);
+
  private:
+  void log_indeterminant_variable(gtsam::Key key) const;
+
   gtsam::ISAM2Params params_;
   std::unique_ptr<gtsam::ISAM2> isam2_;
   gtsam::NonlinearFactorGraph pending_graph_;
@@ -68,6 +76,8 @@ class ISAM2Optimizer {
   gtsam::Values pending_values_;
   gtsam::Values latest_estimate_;
   bool initialized_{false};
+  std::string between_robust_kernel_{"none"};
+  double between_robust_scale_{1.345};
   mutable std::mutex lock_;
 };
 
