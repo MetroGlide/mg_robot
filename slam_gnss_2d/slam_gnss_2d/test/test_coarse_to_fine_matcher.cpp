@@ -227,5 +227,71 @@ TEST(ScanMatchingBuilderTest, NearKeyframeLinksFormMeshGraph) {
   EXPECT_EQ(builder.get_edges().size(), 6u);
 }
 
+// 並進を常に 0.9 倍に縮めて返すマッチャー (縮退方向の並進の偏りを模擬)
+class MockShrinkingMatcher : public ScanMatcherBase {
+ public:
+  explicit MockShrinkingMatcher(double info_x) : info_x_(info_x) {}
+  void set_target_cloud(const std::vector<Eigen::Vector2d>&) override {}
+  core::MatchResult match(
+      const core::ConstScanDataPtr&,
+      const core::OdomData& initial_guess) override {
+    Eigen::Matrix3d info = Eigen::Matrix3d::Identity() * 500.0;
+    info(0, 0) = info_x_;
+    return core::MatchResult{
+        initial_guess.x * 0.9, initial_guess.y, initial_guess.yaw + 0.01,
+        true, info, 0.01};
+  }
+
+ private:
+  double info_x_;
+};
+
+pose_graph::ScanMatchingBuilder make_fusion_builder(double match_info_x, core::OdomFusionConfig fusion) {
+  return pose_graph::ScanMatchingBuilder(
+      std::make_shared<MockShrinkingMatcher>(match_info_x),
+      std::make_shared<LocalMapProvider>(10, 20.0),
+      0.2, 0.1, 5, /*max_translation_drift=*/0.0,
+      /*enable_near_keyframe_links=*/false, 10, 2.0, 2, 3, 0.4, 15.0, 10.0, fusion);
+}
+
+TEST(ScanMatchingBuilderOdomFusionTest, WeakAxisFollowsOdometryStrongAxisFollowsMatcher) {
+  core::OdomFusionConfig fusion;
+  fusion.information_x = 100.0;
+
+  // 縮退 (情報量 20): 融合後はオドメトリ寄り
+  auto weak = make_fusion_builder(20.0, fusion);
+  auto scan = make_box_scan();
+  weak.add_scan(scan, core::OdomData{100.0, 0.0, 0.0, 0.0});
+  ASSERT_TRUE(weak.add_scan(scan, core::OdomData{100.2, 0.3, 0.0, 0.0}).has_value());
+  auto weak_edge = weak.get_edges().front();
+  const double weak_expected = (20.0 * (0.3 * 0.9) + 100.0 * 0.3) / 120.0;
+  EXPECT_NEAR(weak_edge.dx, weak_expected, 1e-9);
+  EXPECT_NEAR(weak_edge.information(0, 0), 120.0, 1e-9);
+
+  // 拘束が強い (情報量 5000): 融合してもマッチャーの結果に近い
+  auto strong = make_fusion_builder(5000.0, fusion);
+  strong.add_scan(scan, core::OdomData{100.0, 0.0, 0.0, 0.0});
+  ASSERT_TRUE(strong.add_scan(scan, core::OdomData{100.2, 0.3, 0.0, 0.0}).has_value());
+  auto strong_edge = strong.get_edges().front();
+  const double strong_expected = (5000.0 * (0.3 * 0.9) + 100.0 * 0.3) / 5100.0;
+  EXPECT_NEAR(strong_edge.dx, strong_expected, 1e-9);
+  EXPECT_LT(std::abs(strong_edge.dx - 0.27), std::abs(weak_edge.dx - 0.27));
+
+  // 方位と横方向は情報量 0 なので融合されない
+  EXPECT_NEAR(weak_edge.dyaw, 0.01, 1e-9);
+  EXPECT_NEAR(weak_edge.information(1, 1), 500.0, 1e-9);
+  EXPECT_NEAR(weak_edge.information(2, 2), 500.0, 1e-9);
+}
+
+TEST(ScanMatchingBuilderOdomFusionTest, DisabledLeavesMatcherResultUntouched) {
+  auto builder = make_fusion_builder(20.0, core::OdomFusionConfig{0.0, 0.0, 0.0});
+  auto scan = make_box_scan();
+  builder.add_scan(scan, core::OdomData{100.0, 0.0, 0.0, 0.0});
+  ASSERT_TRUE(builder.add_scan(scan, core::OdomData{100.2, 0.3, 0.0, 0.0}).has_value());
+  auto edge = builder.get_edges().front();
+  EXPECT_NEAR(edge.dx, 0.27, 1e-9);
+  EXPECT_NEAR(edge.information(0, 0), 20.0, 1e-9);
+}
+
 }  // namespace scan_matching
 }  // namespace slam_gnss_2d

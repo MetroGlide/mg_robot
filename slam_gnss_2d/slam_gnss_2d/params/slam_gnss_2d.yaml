@@ -40,6 +40,11 @@
       max_failure_streak: 5 # 全マッチャー共通: 連続マッチング失敗許容回数 (超えた場合はオドメトリにフォールバック)
       max_translation_drift: 0.08 # 全マッチャー共通: 進行方向縮退すべり保護しきい値 [m] (オドメトリ進行量との乖離上限)
       yaw_information_multiplier: 3.0 # 全マッチャー共通: スキャンマッチングエッジの方位角情報量倍率
+      odom_fusion: # スキャンマッチング結果とオドメトリ並進の融合 (各軸の情報量 [1/m^2, 1/rad^2]。0 で無効)
+        information_x: 1500.0 # 進行方向。廊下などで拘束が弱い (マッチングの情報量が小さい) ときにオドメトリが効く (0/100/400/1500 を実データで比較して選定)
+        information_y: 0.0 # 横方向
+        information_yaw: 0.0 # 回転 (オドメトリの方位はドリフトするため通常は 0)
+      num_threads: 12 # [type=multi_res_csm]: 1回のマッチング/尤度グリッド構築が使う OpenMP スレッド数 (0: OpenMP 既定値。多すぎると並列効率が落ちる)
 
       multi_res_csm: # [type=multi_res_csm で有効]: 2段階マルチレゾリューションCSM+放物線補間パラメータ
         linear_search_window: 0.4 # 並進探索窓 [m] (±0.4m)

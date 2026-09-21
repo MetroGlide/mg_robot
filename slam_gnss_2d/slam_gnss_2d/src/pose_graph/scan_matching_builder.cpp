@@ -1,6 +1,9 @@
 #include "slam_gnss_2d/pose_graph/scan_matching_builder.hpp"
 
+#include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <rclcpp/rclcpp.hpp>
 
 #include "slam_gnss_2d/core/geometry.hpp"
@@ -10,6 +13,12 @@ namespace slam_gnss_2d {
 namespace pose_graph {
 
 namespace {
+
+double elapsed_sec(std::chrono::steady_clock::time_point since) {
+  return std::chrono::duration<double>(std::chrono::steady_clock::now() - since).count();
+}
+
+
 Eigen::Matrix3d make_odom_information() {
   Eigen::Matrix3d info = Eigen::Matrix3d::Zero();
   info(0, 0) = 100.0;
@@ -41,7 +50,8 @@ ScanMatchingBuilder::ScanMatchingBuilder(
     int near_link_max_links_per_node,
     double near_link_max_translation_drift,
     double near_link_max_rotation_drift_deg,
-    double near_link_min_eigenvalue)
+    double near_link_min_eigenvalue,
+    core::OdomFusionConfig odom_fusion)
     : matcher_(matcher),
       provider_(provider),
       min_translation_(min_translation),
@@ -55,7 +65,35 @@ ScanMatchingBuilder::ScanMatchingBuilder(
       near_link_max_links_per_node_(near_link_max_links_per_node),
       near_link_max_translation_drift_(near_link_max_translation_drift),
       near_link_max_rotation_drift_rad_(near_link_max_rotation_drift_deg * M_PI / 180.0),
-      near_link_min_eigenvalue_(near_link_min_eigenvalue) {}
+      near_link_min_eigenvalue_(near_link_min_eigenvalue),
+      odom_fusion_(odom_fusion) {}
+
+void ScanMatchingBuilder::fuse_with_odometry(
+    double odom_dx, double odom_dy, double odom_dyaw,
+    double& dx, double& dy, double& dyaw,
+    Eigen::Matrix3d& information) const {
+  // 軸ごとのガウス積: 情報量は加算し、平均は情報量で重み付けする。
+  // マッチングの拘束が弱い (情報量が小さい) 軸ほどオドメトリの寄与が大きくなる。
+  const double odom_info[3] = {
+      odom_fusion_.information_x, odom_fusion_.information_y, odom_fusion_.information_yaw};
+  const double odom_value[3] = {odom_dx, odom_dy, odom_dyaw};
+  double value[3] = {dx, dy, dyaw};
+  for (int i = 0; i < 3; ++i) {
+    if (odom_info[i] <= 0.0) {
+      continue;
+    }
+    const double match_info = information(i, i);
+    const double total = match_info + odom_info[i];
+    // 回転は角度差で扱い、±π をまたいでも正しく融合する
+    const double delta = (i == 2) ? core::angle_diff(odom_value[i], value[i])
+                                  : odom_value[i] - value[i];
+    value[i] += odom_info[i] / total * delta;
+    information(i, i) = total;
+  }
+  dx = value[0];
+  dy = value[1];
+  dyaw = (odom_fusion_.information_yaw > 0.0) ? core::normalize_angle(value[2]) : dyaw;
+}
 
 std::optional<core::PoseNode> ScanMatchingBuilder::add_scan(
     const core::ScanDataPtr& scan,
@@ -109,7 +147,9 @@ std::optional<core::PoseNode> ScanMatchingBuilder::add_scan(
       dyaw_delta,
   };
 
+  auto t_ref = std::chrono::steady_clock::now();
   auto ref_res = provider_->get_reference_pts_and_normals();
+  stage_times_.reference_sec += elapsed_sec(t_ref);
   double dx_icp = dx_local;
   double dy_icp = dy_local;
   double dyaw_icp = dyaw_delta;
@@ -119,8 +159,12 @@ std::optional<core::PoseNode> ScanMatchingBuilder::add_scan(
 
   if (ref_res.has_value()) {
     icp_attempt_count_++;
+    auto t_set = std::chrono::steady_clock::now();
     matcher_->set_target_cloud_with_normals(ref_res->first, ref_res->second);
+    stage_times_.set_target_sec += elapsed_sec(t_set);
+    auto t_match = std::chrono::steady_clock::now();
     auto result = matcher_->match(scan, initial_guess);
+    stage_times_.match_sec += elapsed_sec(t_match);
 
     if (!result.converged) {
       failure_streak_++;
@@ -159,6 +203,9 @@ std::optional<core::PoseNode> ScanMatchingBuilder::add_scan(
           edge_info(0, 0) = std::min(edge_info(0, 0), 20.0);
         }
       }
+
+      fuse_with_odometry(
+          dx_local, dy_local, dyaw_delta, dx_icp, dy_icp, dyaw_icp, edge_info);
     }
   } else {
     dx_icp = dx_local;
@@ -203,11 +250,26 @@ std::optional<core::PoseNode> ScanMatchingBuilder::add_scan(
   });
 
   if (enable_near_keyframe_links_ && nodes_.size() > static_cast<size_t>(near_link_min_index_diff_)) {
+    auto t_near = std::chrono::steady_clock::now();
     add_near_keyframe_links(node);
+    stage_times_.near_link_sec += elapsed_sec(t_near);
   }
 
   last_odom_ = odom;
   return node;
+}
+
+std::string ScanMatchingBuilder::timing_summary() const {
+  char buf[384];
+  std::snprintf(
+      buf, sizeof(buf),
+      "scan_matching: reference=%.2fs set_target=%.2fs match=%.2fs near_link=%.2fs "
+      "(target=%.2fs match=%.2fs) (attempts=%d, success=%d, odom_fallback=%d, near_link_added=%d)",
+      stage_times_.reference_sec, stage_times_.set_target_sec, stage_times_.match_sec,
+      stage_times_.near_link_sec, stage_times_.near_target_sec, stage_times_.near_match_sec,
+      icp_attempt_count_, icp_success_count_,
+      odom_fallback_count_, near_link_success_count_);
+  return buf;
 }
 
 std::vector<core::PoseNode> ScanMatchingBuilder::get_nodes() const {
@@ -219,6 +281,9 @@ std::vector<core::PoseEdge> ScanMatchingBuilder::get_edges() const {
 }
 
 void ScanMatchingBuilder::reset() {
+  if (matcher_) {
+    matcher_->clear_reusable_targets();
+  }
   nodes_.clear();
   edges_.clear();
   last_odom_.reset();
@@ -270,15 +335,10 @@ void ScanMatchingBuilder::add_near_keyframe_links(const core::PoseNode& current_
               return a.distance < b.distance;
             });
 
-  int added_count = 0;
-  for (const auto& cand : candidates) {
-    if (added_count >= near_link_max_links_per_node_) {
-      break;
-    }
-    const auto& cand_node = nodes_[cand.index];
-
-    std::vector<Eigen::Vector2d> target_pts;
-    std::vector<Eigen::Vector2d> target_normals;
+  // 候補スキャンの点群と法線を取得する。空の場合は false
+  auto build_target_cloud = [&](const core::PoseNode& cand_node,
+                                std::vector<Eigen::Vector2d>& target_pts,
+                                std::vector<Eigen::Vector2d>& target_normals) {
     if (cand_node.normals && !cand_node.normals->empty()) {
       target_pts = core::scan_to_points(cand_node.scan);
       target_normals = *(cand_node.normals);
@@ -287,99 +347,122 @@ void ScanMatchingBuilder::add_near_keyframe_links(const core::PoseNode& current_
       target_pts = std::move(pair.first);
       target_normals = std::move(pair.second);
     }
+    return !target_pts.empty() && !target_normals.empty();
+  };
 
-    if (target_pts.empty() || target_normals.empty()) {
-      continue;
+  // 候補の再利用ターゲットを登録する (登録済みなら何もしない)。空の点群を持つ候補は false
+  auto ensure_reusable_target = [&](const core::PoseNode& cand_node) {
+    if (matcher_->try_use_reusable_target(cand_node.index)) {
+      return true;
     }
+    std::vector<Eigen::Vector2d> target_pts;
+    std::vector<Eigen::Vector2d> target_normals;
+    if (!build_target_cloud(cand_node, target_pts, target_normals)) {
+      return false;
+    }
+    matcher_->set_reusable_target_cloud_with_normals(cand_node.index, target_pts, target_normals);
+    return true;
+  };
 
-    double dx_w = current_node.x - cand_node.x;
-    double dy_w = current_node.y - cand_node.y;
-    auto [dx_l, dy_l] = core::world_delta_to_local(dx_w, dy_w, cand_node.yaw);
-    double dyaw_l = core::angle_diff(current_node.yaw, cand_node.yaw);
+  // 候補は距離順に、必要本数ぶんずつまとめて (並列に) マッチングし、結果は距離順に採否判定する。
+  // 採否判定の順序と打ち切りは逐次実行と同じなので、採用されるリンクは変わらない。
+  // 再利用ターゲットに対応しないマッチャは 1 候補ずつ通常のターゲット設定で逐次マッチングする。
+  const bool reusable = matcher_->supports_reusable_targets();
+  constexpr size_t kMaxBatch = 6;  // マッチャの再利用ターゲットキャッシュに収まる数
+  int added_count = 0;
+  size_t next = 0;
+  while (added_count < near_link_max_links_per_node_ && next < candidates.size()) {
+    const size_t want = static_cast<size_t>(near_link_max_links_per_node_ - added_count);
+    const size_t batch_size = reusable
+        ? std::min({want, kMaxBatch, candidates.size() - next})
+        : 1;
 
-    core::OdomData initial_guess{
-        current_node.scan->timestamp,
-        dx_l,
-        dy_l,
-        dyaw_l,
-    };
-
-    core::MatchResult result;
-    bool fast_success = false;
-
-    // Level 1: 高速局所探索 (Point-to-Line ICP 直接実行: 1〜2ms)
-    auto csm_matcher = std::dynamic_pointer_cast<scan_matching::MultiResCSMMatcher>(matcher_);
-    std::shared_ptr<scan_matching::ICPMatcher> fine_matcher =
-        csm_matcher ? csm_matcher->fine_matcher() : nullptr;
-
-    if (fine_matcher) {
-      fine_matcher->set_target_cloud_with_normals(target_pts, target_normals);
-      auto fast_res = fine_matcher->match(current_node.scan, initial_guess);
-
-      if (fast_res.converged) {
-        double trans_drift = std::hypot(fast_res.dx - initial_guess.x, fast_res.dy - initial_guess.y);
-        double rot_drift = std::abs(core::angle_diff(fast_res.dyaw, initial_guess.yaw));
-
-        bool has_strong_constraint =
-            (fast_res.information(1, 1) >= near_link_min_eigenvalue_ ||
-             fast_res.information(2, 2) >= near_link_min_eigenvalue_);
-
-        // 局所収束ゲート判定 (変位 0.15m以内、角度 5.0度以内、スコア良好、十分な幾何拘束)
-        if (trans_drift <= 0.15 && rot_drift <= (5.0 * M_PI / 180.0) &&
-            fast_res.score >= 0.25 && has_strong_constraint) {
-          result = fast_res;
-          fast_success = true;
+    auto t_target = std::chrono::steady_clock::now();
+    std::vector<size_t> batch;
+    std::vector<scan_matching::ReusableMatchRequest> requests;
+    std::vector<core::MatchResult> results;
+    for (size_t k = next; k < next + batch_size; ++k) {
+      const auto& cand_node = nodes_[candidates[k].index];
+      std::vector<Eigen::Vector2d> target_pts;
+      std::vector<Eigen::Vector2d> target_normals;
+      if (reusable) {
+        if (!ensure_reusable_target(cand_node)) {
+          continue;
         }
+      } else {
+        if (!build_target_cloud(cand_node, target_pts, target_normals)) {
+          continue;
+        }
+        matcher_->set_target_cloud_with_normals(target_pts, target_normals);
       }
+      double dx_w = current_node.x - cand_node.x;
+      double dy_w = current_node.y - cand_node.y;
+      auto [dx_l, dy_l] = core::world_delta_to_local(dx_w, dy_w, cand_node.yaw);
+      double dyaw_l = core::angle_diff(current_node.yaw, cand_node.yaw);
+      batch.push_back(k);
+      requests.push_back({
+          cand_node.index,
+          core::OdomData{current_node.scan->timestamp, dx_l, dy_l, dyaw_l},
+      });
     }
+    stage_times_.near_target_sec += elapsed_sec(t_target);
+    next += batch_size;
 
-    // Level 2: 大域探索フォールバック (オドメトリ大ズレ・Level 1 不合格時のみ発動)
-    if (!fast_success) {
-      matcher_->set_target_cloud_with_normals(target_pts, target_normals);
-      result = matcher_->match(current_node.scan, initial_guess);
+    auto t_near_match = std::chrono::steady_clock::now();
+    if (reusable) {
+      results = matcher_->match_reusable_targets(current_node.scan, requests);
+    } else if (!requests.empty()) {
+      results.push_back(matcher_->match(current_node.scan, requests.front().initial_guess));
     }
+    stage_times_.near_match_sec += elapsed_sec(t_near_match);
 
-    if (!result.converged) {
-      continue;
+    for (size_t r = 0; r < batch.size() && added_count < near_link_max_links_per_node_; ++r) {
+      const auto& cand_node = nodes_[candidates[batch[r]].index];
+      const auto& initial_guess = requests[r].initial_guess;
+      core::MatchResult result = results[r];
+
+      if (!result.converged) {
+        continue;
+      }
+
+      double trans_drift = std::hypot(result.dx - initial_guess.x, result.dy - initial_guess.y);
+      if (trans_drift > near_link_max_translation_drift_) {
+        continue;
+      }
+      double rot_drift = std::abs(core::angle_diff(result.dyaw, initial_guess.yaw));
+      if (rot_drift > near_link_max_rotation_drift_rad_) {
+        continue;
+      }
+
+      // 異方性判定: 直線路で前後(x)拘束が弱くても、横(y)または回転(yaw)の拘束が十分であれば採用
+      double info_yy = result.information(1, 1);
+      double info_tt = result.information(2, 2);
+      if (info_yy < near_link_min_eigenvalue_ && info_tt < near_link_min_eigenvalue_) {
+        continue;
+      }
+
+      // 前後方向(x)が極小値の場合も正定値を保証
+      result.information(0, 0) = std::max(result.information(0, 0), 10.0);
+
+      edges_.emplace_back(core::PoseEdge{
+          cand_node.index,
+          current_node.index,
+          result.dx,
+          result.dy,
+          result.dyaw,
+          result.information,
+          result.score,
+          false,
+      });
+      near_link_success_count_++;
+      added_count++;
+
+      RCLCPP_DEBUG(
+          rclcpp::get_logger("slam_gnss_2d.scan_matching_builder"),
+          "Near-keyframe mesh link added: %d -> %d (dx=%.3f, dy=%.3f, dyaw=%.1f deg, score=%.4f)",
+          cand_node.index, current_node.index, result.dx, result.dy,
+          result.dyaw * 180.0 / M_PI, result.score);
     }
-
-    double trans_drift = std::hypot(result.dx - initial_guess.x, result.dy - initial_guess.y);
-    if (trans_drift > near_link_max_translation_drift_) {
-      continue;
-    }
-    double rot_drift = std::abs(core::angle_diff(result.dyaw, initial_guess.yaw));
-    if (rot_drift > near_link_max_rotation_drift_rad_) {
-      continue;
-    }
-
-    // 異方性判定: 直線路で前後(x)拘束が弱くても、横(y)または回転(yaw)の拘束が十分であれば採用
-    double info_yy = result.information(1, 1);
-    double info_tt = result.information(2, 2);
-    if (info_yy < near_link_min_eigenvalue_ && info_tt < near_link_min_eigenvalue_) {
-      continue;
-    }
-
-    // 前後方向(x)が極小値の場合も正定値を保証
-    result.information(0, 0) = std::max(result.information(0, 0), 10.0);
-
-    edges_.emplace_back(core::PoseEdge{
-        cand_node.index,
-        current_node.index,
-        result.dx,
-        result.dy,
-        result.dyaw,
-        result.information,
-        result.score,
-        false,
-    });
-    near_link_success_count_++;
-    added_count++;
-
-    RCLCPP_DEBUG(
-        rclcpp::get_logger("slam_gnss_2d.scan_matching_builder"),
-        "Near-keyframe mesh link added: %d -> %d (dx=%.3f, dy=%.3f, dyaw=%.1f deg, score=%.4f)",
-        cand_node.index, current_node.index, result.dx, result.dy,
-        result.dyaw * 180.0 / M_PI, result.score);
   }
 }
 

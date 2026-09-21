@@ -50,7 +50,8 @@ inline scan_matching::ScanMatcherPtr build_matcher(const SlamConfig& config) {
         config.scan_matching.multi_res_csm.distance_variance_penalty,
         config.scan_matching.multi_res_csm.angle_variance_penalty,
         config.scan_matching.multi_res_csm.minimum_distance_penalty,
-        config.scan_matching.multi_res_csm.minimum_angle_penalty);
+        config.scan_matching.multi_res_csm.minimum_angle_penalty,
+        config.scan_matching.num_threads);
   } else if (config.scan_matching.type == "multi_start_coarse_to_fine") {
     auto coarse = std::make_shared<scan_matching::NDTMatcher>(
         config.scan_matching.icp.max_iterations,
@@ -247,7 +248,8 @@ inline pose_graph::PoseGraphBuilderPtr build_pose_graph_builder(const SlamConfig
         config.scan_matching.near_links.max_links_per_node,
         config.scan_matching.near_links.max_translation_drift,
         config.scan_matching.near_links.max_rotation_drift_deg,
-        config.scan_matching.near_links.min_eigenvalue);
+        config.scan_matching.near_links.min_eigenvalue,
+        config.scan_matching.odom_fusion);
     return std::make_shared<pose_graph::LoopClosureBuilder>(
         inner,
         build_loop_matcher(config),
@@ -273,7 +275,8 @@ inline pose_graph::PoseGraphBuilderPtr build_pose_graph_builder(const SlamConfig
         config.scan_matching.near_links.max_links_per_node,
         config.scan_matching.near_links.max_translation_drift,
         config.scan_matching.near_links.max_rotation_drift_deg,
-        config.scan_matching.near_links.min_eigenvalue);
+        config.scan_matching.near_links.min_eigenvalue,
+        config.scan_matching.odom_fusion);
   } else {
     return std::make_shared<pose_graph::OdomOnlyBuilder>(
         config.keyframe.min_translation,

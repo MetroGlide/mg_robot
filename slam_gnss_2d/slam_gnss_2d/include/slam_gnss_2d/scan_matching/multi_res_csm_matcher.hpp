@@ -26,7 +26,8 @@ class MultiResCSMMatcher : public ScanMatcherBase {
       double distance_variance_penalty = 0.5,
       double angle_variance_penalty = 1.0,
       double minimum_distance_penalty = 0.5,
-      double minimum_angle_penalty = 0.9);
+      double minimum_angle_penalty = 0.9,
+      int num_threads = 0);
 
   ~MultiResCSMMatcher() override;
 
@@ -35,6 +36,17 @@ class MultiResCSMMatcher : public ScanMatcherBase {
   void set_target_cloud_with_normals(
       const std::vector<Eigen::Vector2d>& src_pts,
       const std::vector<Eigen::Vector2d>& src_normals) override;
+
+  bool supports_reusable_targets() const override { return true; }
+  bool try_use_reusable_target(int key) override;
+  void set_reusable_target_cloud_with_normals(
+      int key,
+      const std::vector<Eigen::Vector2d>& src_pts,
+      const std::vector<Eigen::Vector2d>& src_normals) override;
+  void clear_reusable_targets() override;
+  std::vector<core::MatchResult> match_reusable_targets(
+      const core::ConstScanDataPtr& dst,
+      const std::vector<ReusableMatchRequest>& requests) override;
 
   core::MatchResult match(
       const core::ConstScanDataPtr& dst,

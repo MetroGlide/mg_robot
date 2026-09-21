@@ -129,8 +129,10 @@ TEST(ScanMatchingBuilderDegeneracyTest, PreservesOdomTranslationOnDegeneracySlip
   auto mock_matcher = std::make_shared<MockDegenerateSlipMatcher>();
   auto provider = std::make_shared<LocalMapProvider>(10, 20.0);
 
+  // 縮退ガード単体の検証なので、オドメトリ融合は無効にする
   pose_graph::ScanMatchingBuilder builder(
-      mock_matcher, provider, 0.2, 0.1, 5, 0.08);
+      mock_matcher, provider, 0.2, 0.1, 5, 0.08, true, 10, 2.0, 2, 3, 0.4, 15.0, 10.0,
+      core::OdomFusionConfig{0.0, 0.0, 0.0});
 
   auto scan1 = make_corridor_scan(0.0, 0.0, 0.0);
   core::OdomData odom1{100.0, 0.0, 0.0, 0.0};
@@ -170,8 +172,10 @@ TEST(ScanMatchingBuilderDegeneracyTest, BypassesProtectionDuringTurning) {
   auto mock_matcher = std::make_shared<MockTurningMatcher>();
   auto provider = std::make_shared<LocalMapProvider>(10, 20.0);
 
+  // 縮退ガード単体の検証なので、オドメトリ融合は無効にする
   pose_graph::ScanMatchingBuilder builder(
-      mock_matcher, provider, 0.2, 0.1, 5, 0.08);
+      mock_matcher, provider, 0.2, 0.1, 5, 0.08, true, 10, 2.0, 2, 3, 0.4, 15.0, 10.0,
+      core::OdomFusionConfig{0.0, 0.0, 0.0});
 
   auto scan1 = make_corridor_scan(0.0, 0.0, 0.0);
   core::OdomData odom1{100.0, 0.0, 0.0, 0.0};

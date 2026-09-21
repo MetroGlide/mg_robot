@@ -69,6 +69,10 @@ void ConfigLoader::declare_params(rclcpp::Node& node) {
   declare_param_if_not_declared(node, "scan_matching.multi_res_csm.minimum_distance_penalty", 0.5);
   declare_param_if_not_declared(node, "scan_matching.multi_res_csm.minimum_angle_penalty", 0.9);
 
+  declare_param_if_not_declared(node, "scan_matching.num_threads", 12);
+  declare_param_if_not_declared(node, "scan_matching.odom_fusion.information_x", 1500.0);
+  declare_param_if_not_declared(node, "scan_matching.odom_fusion.information_y", 0.0);
+  declare_param_if_not_declared(node, "scan_matching.odom_fusion.information_yaw", 0.0);
   declare_param_if_not_declared(node, "scan_matching.near_links.enabled", true);
   declare_param_if_not_declared(node, "scan_matching.near_links.buffer_size", 10);
   declare_param_if_not_declared(node, "scan_matching.near_links.max_distance", 2.0);
@@ -203,6 +207,13 @@ SlamConfig ConfigLoader::build_config(const rclcpp::Node& node) {
       node.get_parameter("scan_matching.multi_start.enable_straight_hypothesis").as_bool();
   cfg.scan_matching.multi_start.enable_const_vel_hypothesis =
       node.get_parameter("scan_matching.multi_start.enable_const_vel_hypothesis").as_bool();
+  cfg.scan_matching.num_threads = node.get_parameter("scan_matching.num_threads").as_int();
+  cfg.scan_matching.odom_fusion.information_x =
+      node.get_parameter("scan_matching.odom_fusion.information_x").as_double();
+  cfg.scan_matching.odom_fusion.information_y =
+      node.get_parameter("scan_matching.odom_fusion.information_y").as_double();
+  cfg.scan_matching.odom_fusion.information_yaw =
+      node.get_parameter("scan_matching.odom_fusion.information_yaw").as_double();
   cfg.scan_matching.multi_res_csm.linear_search_window =
       node.get_parameter("scan_matching.multi_res_csm.linear_search_window").as_double();
   cfg.scan_matching.multi_res_csm.angular_search_window_deg =

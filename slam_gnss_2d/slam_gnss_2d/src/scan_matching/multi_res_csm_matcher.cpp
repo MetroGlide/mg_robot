@@ -2,6 +2,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <deque>
+#include <mutex>
 #include <limits>
 #include <nanoflann.hpp>
 #include <omp.h>
@@ -39,7 +42,7 @@ class LikelihoodGrid {
   LikelihoodGrid(double resolution, double sigma)
       : resolution_(resolution), inv_resolution_(1.0 / resolution), sigma_(sigma) {}
 
-  void build(const std::vector<Eigen::Vector2d>& pts, double margin) {
+  void build(const std::vector<Eigen::Vector2d>& pts, double margin, int threads) {
     if (pts.empty()) {
       clear();
       return;
@@ -72,16 +75,35 @@ class LikelihoodGrid {
     double max_eval_dist_sq = max_eval_dist * max_eval_dist;
     int kernel_cells = static_cast<int>(std::ceil(max_eval_dist * inv_resolution_));
 
-    int num_threads = std::min(4, omp_get_max_threads());
-    if (num_threads <= 1 || pts.size() < 64) {
-      for (const auto& p : pts) {
-        int center_gx = static_cast<int>((p.x() - origin_x_) * inv_resolution_);
-        int center_gy = static_cast<int>((p.y() - origin_y_) * inv_resolution_);
+    // 各点の中心セルを先に求め、行バンド単位で並列に描画する。
+    // バンドごとに書き込むセルが排他的なので、スレッド別グリッドやマージは不要で、
+    // 各セルは max 演算のみのため描画順に依存せず結果は逐次実行と一致する。
+    const size_t num_pts = pts.size();
+    std::vector<int> pt_gx(num_pts);
+    std::vector<int> pt_gy(num_pts);
+    for (size_t i = 0; i < num_pts; ++i) {
+      pt_gx[i] = static_cast<int>((pts[i].x() - origin_x_) * inv_resolution_);
+      pt_gy[i] = static_cast<int>((pts[i].y() - origin_y_) * inv_resolution_);
+    }
 
-        int min_gx = std::max(0, center_gx - kernel_cells);
-        int max_gx = std::min(width_ - 1, center_gx + kernel_cells);
-        int min_gy = std::max(0, center_gy - kernel_cells);
-        int max_gy = std::min(height_ - 1, center_gy + kernel_cells);
+    constexpr int kBandRows = 32;
+    const int num_bands = (height_ + kBandRows - 1) / kBandRows;
+    const int num_threads = (num_pts < 64) ? 1 : std::max(1, threads);
+
+    #pragma omp parallel for schedule(dynamic, 1) num_threads(num_threads)
+    for (int band = 0; band < num_bands; ++band) {
+      const int band_min_gy = band * kBandRows;
+      const int band_max_gy = std::min(height_ - 1, band_min_gy + kBandRows - 1);
+
+      for (size_t i = 0; i < num_pts; ++i) {
+        const int min_gy = std::max(band_min_gy, pt_gy[i] - kernel_cells);
+        const int max_gy = std::min(band_max_gy, pt_gy[i] + kernel_cells);
+        if (min_gy > max_gy) {
+          continue;
+        }
+        const auto& p = pts[i];
+        const int min_gx = std::max(0, pt_gx[i] - kernel_cells);
+        const int max_gx = std::min(width_ - 1, pt_gx[i] + kernel_cells);
 
         for (int gy = min_gy; gy <= max_gy; ++gy) {
           double y = origin_y_ + (gy + 0.5) * resolution_;
@@ -103,67 +125,6 @@ class LikelihoodGrid {
             }
           }
         }
-      }
-    } else {
-      if (thread_grids_.size() != static_cast<size_t>(num_threads)) {
-        thread_grids_.resize(num_threads);
-      }
-      for (int t = 0; t < num_threads; ++t) {
-        if (thread_grids_[t].size() != grid_.size()) {
-          thread_grids_[t].assign(grid_.size(), 0.0f);
-        } else {
-          std::fill(thread_grids_[t].begin(), thread_grids_[t].end(), 0.0f);
-        }
-      }
-
-      #pragma omp parallel num_threads(num_threads)
-      {
-        int tid = omp_get_thread_num();
-        auto& local_grid = thread_grids_[tid];
-
-        #pragma omp for schedule(dynamic, 32)
-        for (size_t i = 0; i < pts.size(); ++i) {
-          const auto& p = pts[i];
-          int center_gx = static_cast<int>((p.x() - origin_x_) * inv_resolution_);
-          int center_gy = static_cast<int>((p.y() - origin_y_) * inv_resolution_);
-
-          int min_gx = std::max(0, center_gx - kernel_cells);
-          int max_gx = std::min(width_ - 1, center_gx + kernel_cells);
-          int min_gy = std::max(0, center_gy - kernel_cells);
-          int max_gy = std::min(height_ - 1, center_gy + kernel_cells);
-
-          for (int gy = min_gy; gy <= max_gy; ++gy) {
-            double y = origin_y_ + (gy + 0.5) * resolution_;
-            double dy = y - p.y();
-            double dy_sq = dy * dy;
-            int row_offset = gy * width_;
-
-            for (int gx = min_gx; gx <= max_gx; ++gx) {
-              double x = origin_x_ + (gx + 0.5) * resolution_;
-              double dx = x - p.x();
-              double dist_sq = dx * dx + dy_sq;
-
-              if (dist_sq <= max_eval_dist_sq) {
-                float val = static_cast<float>(std::exp(-dist_sq / sigma_sq2));
-                float& cell = local_grid[row_offset + gx];
-                if (val > cell) {
-                  cell = val;
-                }
-              }
-            }
-          }
-        }
-      }
-
-      #pragma omp parallel for schedule(static) num_threads(num_threads)
-      for (size_t i = 0; i < grid_.size(); ++i) {
-        float m = 0.0f;
-        for (int t = 0; t < num_threads; ++t) {
-          if (thread_grids_[t][i] > m) {
-            m = thread_grids_[t][i];
-          }
-        }
-        grid_[i] = m;
       }
     }
   }
@@ -207,10 +168,6 @@ class LikelihoodGrid {
 
   void clear() {
     grid_.clear();
-    for (auto& tg : thread_grids_) {
-      tg.clear();
-    }
-    thread_grids_.clear();
     width_ = 0;
     height_ = 0;
   }
@@ -226,7 +183,6 @@ class LikelihoodGrid {
   int width_{0};
   int height_{0};
   std::vector<float> grid_;
-  std::vector<std::vector<float>> thread_grids_;
 };
 
 }  // namespace
@@ -245,9 +201,39 @@ struct MultiResCSMMatcher::Impl {
   double minimum_distance_penalty;
   double minimum_angle_penalty;
 
-  std::vector<Eigen::Vector2d> target_pts;
-  std::vector<Eigen::Vector2d> target_normals;
-  LikelihoodGrid likelihood_grid;
+  // マッチング対象 (点群・法線・尤度グリッド)
+  struct Target {
+    std::vector<Eigen::Vector2d> pts;
+    std::vector<Eigen::Vector2d> normals;
+    LikelihoodGrid grid;
+
+    Target(double resolution, double sigma) : grid(resolution, sigma) {}
+  };
+
+  // 毎回内容が変わるターゲット用 (グリッドのメモリを使い回す)
+  Target scratch_target;
+  // 再利用可能ターゲット (キー: 呼び出し側が付ける不変なID) の LRU キャッシュ
+  static constexpr size_t kMaxReusableTargets = 8;
+  std::deque<std::pair<int, std::shared_ptr<Target>>> reusable_targets;
+  // 現在マッチング対象になっているターゲット (scratch_target または reusable_targets の要素)
+  Target* active_target;
+
+  // 1回のマッチング/グリッド構築が使う OpenMP スレッド数 (0: OpenMP の既定値)
+  int num_threads;
+  // ICP フォールバック (ステートを持つ fine_matcher) の排他制御
+  std::mutex icp_mutex;
+
+  int match_threads() const {
+    const int max_threads = omp_get_max_threads();
+    return num_threads > 0 ? std::min(num_threads, max_threads) : max_threads;
+  }
+
+  // 指定ターゲットに対する 3 段階 CSM の本体。スレッド数 threads で並列化する。
+  core::MatchResult run_match(
+      const Target& target,
+      const std::vector<Eigen::Vector2d>& dst_pts,
+      const core::OdomData& initial_guess,
+      int threads);
 
   Impl(
       std::shared_ptr<ICPMatcher> fine,
@@ -261,7 +247,8 @@ struct MultiResCSMMatcher::Impl {
       double dist_var_pen,
       double angle_var_pen,
       double min_dist_pen,
-      double min_angle_pen)
+      double min_angle_pen,
+      int num_thr)
       : fine_matcher(std::move(fine)),
         linear_search_window(l_win),
         angular_search_window_rad(a_win_deg * M_PI / 180.0),
@@ -274,7 +261,9 @@ struct MultiResCSMMatcher::Impl {
         angle_variance_penalty(angle_var_pen),
         minimum_distance_penalty(min_dist_pen),
         minimum_angle_penalty(min_angle_pen),
-        likelihood_grid(grid_res, grid_res * 1.5) {}
+        scratch_target(grid_res, grid_res * 1.5),
+        active_target(&scratch_target),
+        num_threads(num_thr) {}
 };
 
 MultiResCSMMatcher::MultiResCSMMatcher(
@@ -289,7 +278,8 @@ MultiResCSMMatcher::MultiResCSMMatcher(
     double distance_variance_penalty,
     double angle_variance_penalty,
     double minimum_distance_penalty,
-    double minimum_angle_penalty)
+    double minimum_angle_penalty,
+    int num_threads)
     : impl_(std::make_unique<Impl>(
           std::move(fine_matcher),
           linear_search_window,
@@ -302,28 +292,68 @@ MultiResCSMMatcher::MultiResCSMMatcher(
           distance_variance_penalty,
           angle_variance_penalty,
           minimum_distance_penalty,
-          minimum_angle_penalty)) {}
+          minimum_angle_penalty,
+          num_threads)) {}
 
 MultiResCSMMatcher::~MultiResCSMMatcher() = default;
 
 void MultiResCSMMatcher::set_target_cloud(const std::vector<Eigen::Vector2d>& src_pts) {
-  impl_->target_pts = src_pts;
-  impl_->target_normals.clear();
-  if (impl_->fine_matcher) {
-    impl_->fine_matcher->set_target_cloud(src_pts);
-  }
-  impl_->likelihood_grid.build(src_pts, impl_->linear_search_window + 1.0);
+  auto& target = impl_->scratch_target;
+  target.pts = src_pts;
+  target.normals.clear();
+  target.grid.build(src_pts, impl_->linear_search_window + 1.0, impl_->match_threads());
+  impl_->active_target = &target;
 }
 
 void MultiResCSMMatcher::set_target_cloud_with_normals(
     const std::vector<Eigen::Vector2d>& src_pts,
     const std::vector<Eigen::Vector2d>& src_normals) {
-  impl_->target_pts = src_pts;
-  impl_->target_normals = src_normals;
-  if (impl_->fine_matcher) {
-    impl_->fine_matcher->set_target_cloud_with_normals(src_pts, src_normals);
+  auto& target = impl_->scratch_target;
+  target.pts = src_pts;
+  target.normals = src_normals;
+  target.grid.build(src_pts, impl_->linear_search_window + 1.0, impl_->match_threads());
+  impl_->active_target = &target;
+}
+
+bool MultiResCSMMatcher::try_use_reusable_target(int key) {
+  auto& cache = impl_->reusable_targets;
+  for (auto it = cache.begin(); it != cache.end(); ++it) {
+    if (it->first == key) {
+      auto entry = *it;
+      cache.erase(it);
+      cache.push_back(entry);
+      impl_->active_target = entry.second.get();
+      return true;
+    }
   }
-  impl_->likelihood_grid.build(src_pts, impl_->linear_search_window + 1.0);
+  return false;
+}
+
+void MultiResCSMMatcher::set_reusable_target_cloud_with_normals(
+    int key,
+    const std::vector<Eigen::Vector2d>& src_pts,
+    const std::vector<Eigen::Vector2d>& src_normals) {
+  auto& cache = impl_->reusable_targets;
+  auto target = std::make_shared<Impl::Target>(impl_->grid_resolution, impl_->grid_resolution * 1.5);
+  target->pts = src_pts;
+  target->normals = src_normals;
+  target->grid.build(src_pts, impl_->linear_search_window + 1.0, impl_->match_threads());
+
+  cache.erase(
+      std::remove_if(cache.begin(), cache.end(), [key](const auto& e) { return e.first == key; }),
+      cache.end());
+  cache.emplace_back(key, target);
+  while (cache.size() > Impl::kMaxReusableTargets) {
+    cache.pop_front();
+  }
+  impl_->active_target = target.get();
+}
+
+void MultiResCSMMatcher::clear_reusable_targets() {
+  if (impl_->active_target != &impl_->scratch_target) {
+    impl_->active_target = &impl_->scratch_target;
+  }
+  impl_->reusable_targets.clear();
 }
 
 core::MatchResult MultiResCSMMatcher::match(
@@ -341,7 +371,68 @@ core::MatchResult MultiResCSMMatcher::match(
 core::MatchResult MultiResCSMMatcher::match(
     const std::vector<Eigen::Vector2d>& dst_pts,
     const core::OdomData& initial_guess) {
-  if (impl_->target_pts.empty() || !impl_->likelihood_grid.is_valid() ||
+  return impl_->run_match(*impl_->active_target, dst_pts, initial_guess, impl_->match_threads());
+}
+
+std::vector<core::MatchResult> MultiResCSMMatcher::match_reusable_targets(
+    const core::ConstScanDataPtr& dst,
+    const std::vector<ReusableMatchRequest>& requests) {
+  std::vector<core::MatchResult> results;
+  results.reserve(requests.size());
+  for (const auto& req : requests) {
+    results.push_back(core::MatchResult{
+        req.initial_guess.x, req.initial_guess.y, req.initial_guess.yaw,
+        false, Eigen::Matrix3d::Zero(), 0.0});
+  }
+  if (!dst || requests.empty()) {
+    return results;
+  }
+
+  std::vector<Eigen::Vector2d> dst_pts = core::scan_to_points(dst);
+
+  // キャッシュ済みターゲットを解決する (未登録の key は不収束のまま)
+  std::vector<std::shared_ptr<Impl::Target>> targets(requests.size());
+  for (size_t i = 0; i < requests.size(); ++i) {
+    if (try_use_reusable_target(requests[i].key)) {
+      for (const auto& entry : impl_->reusable_targets) {
+        if (entry.first == requests[i].key) {
+          targets[i] = entry.second;
+          break;
+        }
+      }
+    }
+  }
+
+  const int num_requests = static_cast<int>(requests.size());
+  const int total_threads = impl_->match_threads();
+  if (num_requests == 1 || total_threads <= 1) {
+    for (int i = 0; i < num_requests; ++i) {
+      if (targets[i]) {
+        results[i] = impl_->run_match(*targets[i], dst_pts, requests[i].initial_guess, total_threads);
+      }
+    }
+    return results;
+  }
+
+  // 候補ごとのマッチングを並列に実行し、各マッチング内部も入れ子で並列化する。
+  // 各マッチングは独立で、結果はスレッド数に依らず決定的。
+  const int inner_threads = std::max(1, std::min(total_threads, omp_get_max_threads() / num_requests));
+  omp_set_max_active_levels(2);
+  #pragma omp parallel for num_threads(num_requests) schedule(static, 1)
+  for (int i = 0; i < num_requests; ++i) {
+    if (targets[i]) {
+      results[i] = impl_->run_match(*targets[i], dst_pts, requests[i].initial_guess, inner_threads);
+    }
+  }
+  return results;
+}
+
+core::MatchResult MultiResCSMMatcher::Impl::run_match(
+    const Target& target,
+    const std::vector<Eigen::Vector2d>& dst_pts,
+    const core::OdomData& initial_guess,
+    int threads) {
+  if (target.pts.empty() || !target.grid.is_valid() ||
       static_cast<int>(dst_pts.size()) < kMinCorrespondences) {
     return core::MatchResult{
         initial_guess.x, initial_guess.y, initial_guess.yaw,
@@ -351,7 +442,7 @@ core::MatchResult MultiResCSMMatcher::match(
   RCLCPP_INFO_ONCE(
       rclcpp::get_logger("slam_gnss_2d.multi_res_csm"),
       "MultiResCSMMatcher OpenMP initialized (%d threads) with Scan Barycenter 2-stage CSM",
-      omp_get_max_threads());
+      threads);
 
   // 1. 点群重心 (Scan Barycenter) の算出と重心基準シフト
   Eigen::Vector2d centroid = Eigen::Vector2d::Zero();
@@ -371,24 +462,24 @@ core::MatchResult MultiResCSMMatcher::match(
   double init_cx = initial_guess.x + cos_init * centroid.x() - sin_init * centroid.y();
   double init_cy = initial_guess.y + sin_init * centroid.x() + cos_init * centroid.y();
 
-  const auto& grid = impl_->likelihood_grid;
+  const auto& grid = target.grid;
   double inv_pts = 1.0 / static_cast<double>(dst_pts.size());
 
   // --- Stage 1: Coarse CSM (広域グリッド相関探索) ---
-  int x_steps = static_cast<int>(std::ceil(impl_->linear_search_window / impl_->linear_step));
-  int y_steps = static_cast<int>(std::ceil(impl_->linear_search_window / impl_->linear_step));
-  int yaw_steps = static_cast<int>(std::ceil(impl_->angular_search_window_rad / impl_->angular_step_rad));
+  int x_steps = static_cast<int>(std::ceil(linear_search_window / linear_step));
+  int y_steps = static_cast<int>(std::ceil(linear_search_window / linear_step));
+  int yaw_steps = static_cast<int>(std::ceil(angular_search_window_rad / angular_step_rad));
 
   std::vector<double> x_offsets;
   x_offsets.reserve(2 * x_steps + 1);
   for (int i = -x_steps; i <= x_steps; ++i) {
-    x_offsets.push_back(i * impl_->linear_step);
+    x_offsets.push_back(i * linear_step);
   }
 
   std::vector<double> y_offsets;
   y_offsets.reserve(2 * y_steps + 1);
   for (int i = -y_steps; i <= y_steps; ++i) {
-    y_offsets.push_back(i * impl_->linear_step);
+    y_offsets.push_back(i * linear_step);
   }
 
   std::vector<double> yaw_candidates;
@@ -396,7 +487,7 @@ core::MatchResult MultiResCSMMatcher::match(
   yaw_candidates.push_back(initial_guess.yaw);
   yaw_candidates.push_back(0.0); // 直進仮説 (dyaw = 0)
   for (int i = -yaw_steps; i <= yaw_steps; ++i) {
-    double y_val = core::normalize_angle(initial_guess.yaw + i * impl_->angular_step_rad);
+    double y_val = core::normalize_angle(initial_guess.yaw + i * angular_step_rad);
     yaw_candidates.push_back(y_val);
   }
 
@@ -425,9 +516,12 @@ core::MatchResult MultiResCSMMatcher::match(
     double cx{0.0};
     double cy{0.0};
     double theta{0.0};
+    // 同点時に探索順(角度→dx→dy)で決定的に選ぶためのキー
+    int64_t order{std::numeric_limits<int64_t>::max()};
+    bool updated{false};
   };
 
-  int max_threads = omp_get_max_threads();
+  const int max_threads = std::max(threads, 1);
   std::vector<Candidate> thread_best_stage1(max_threads);
   for (int t = 0; t < max_threads; ++t) {
     thread_best_stage1[t].cx = init_cx;
@@ -435,7 +529,7 @@ core::MatchResult MultiResCSMMatcher::match(
     thread_best_stage1[t].theta = initial_guess.yaw;
   }
 
-  #pragma omp parallel for schedule(dynamic, 1)
+  #pragma omp parallel for schedule(dynamic, 1) num_threads(max_threads)
   for (int a = 0; a < num_angles; ++a) {
     int tid = omp_get_thread_num();
     double theta = yaw_candidates[a];
@@ -443,11 +537,11 @@ core::MatchResult MultiResCSMMatcher::match(
     size_t n_pts = r_pts.size();
 
     double angle_penalty = 1.0;
-    if (impl_->enable_variance_penalty && impl_->angle_variance_penalty > 0.0) {
+    if (enable_variance_penalty && angle_variance_penalty > 0.0) {
       double dyaw = core::angle_diff(theta, initial_guess.yaw);
-      double var_yaw = impl_->angle_variance_penalty * impl_->angle_variance_penalty;
+      double var_yaw = angle_variance_penalty * angle_variance_penalty;
       angle_penalty = std::exp(-0.5 * (dyaw * dyaw) / var_yaw);
-      angle_penalty = std::max(impl_->minimum_angle_penalty, angle_penalty);
+      angle_penalty = std::max(minimum_angle_penalty, angle_penalty);
     }
 
     size_t num_x = x_offsets.size();
@@ -511,11 +605,11 @@ core::MatchResult MultiResCSMMatcher::match(
         bool y_valid = (gy_all_valid[dy_idx] != 0);
 
         double dist_penalty = 1.0;
-        if (impl_->enable_variance_penalty && impl_->distance_variance_penalty > 0.0) {
+        if (enable_variance_penalty && distance_variance_penalty > 0.0) {
           double dist_sq = dx * dx + dy * dy;
-          double var_d = impl_->distance_variance_penalty * impl_->distance_variance_penalty;
+          double var_d = distance_variance_penalty * distance_variance_penalty;
           dist_penalty = std::exp(-0.5 * dist_sq / var_d);
-          dist_penalty = std::max(impl_->minimum_distance_penalty, dist_penalty);
+          dist_penalty = std::max(minimum_distance_penalty, dist_penalty);
         }
 
         double sum_score = 0.0;
@@ -536,11 +630,17 @@ core::MatchResult MultiResCSMMatcher::match(
 
         double norm_score = sum_score * inv_pts * angle_penalty * dist_penalty;
 
-        if (norm_score > thread_best_stage1[tid].score) {
-          thread_best_stage1[tid].score = norm_score;
-          thread_best_stage1[tid].cx = cx;
-          thread_best_stage1[tid].cy = cy;
-          thread_best_stage1[tid].theta = theta;
+        int64_t order = (static_cast<int64_t>(a) * static_cast<int64_t>(num_x) +
+                         static_cast<int64_t>(dx_idx)) * static_cast<int64_t>(num_y) +
+                        static_cast<int64_t>(dy_idx);
+        auto& thread_best = thread_best_stage1[tid];
+        if (norm_score > thread_best.score ||
+            (norm_score == thread_best.score && order < thread_best.order)) {
+          thread_best.score = norm_score;
+          thread_best.cx = cx;
+          thread_best.cy = cy;
+          thread_best.theta = theta;
+          thread_best.order = order;
         }
       }
     }
@@ -553,14 +653,16 @@ core::MatchResult MultiResCSMMatcher::match(
   best_stage1.score = -1.0;
 
   for (int t = 0; t < max_threads; ++t) {
-    if (thread_best_stage1[t].score > best_stage1.score) {
+    if (thread_best_stage1[t].score > best_stage1.score ||
+        (thread_best_stage1[t].score == best_stage1.score &&
+         thread_best_stage1[t].order < best_stage1.order)) {
       best_stage1 = thread_best_stage1[t];
     }
   }
 
   // --- Stage 2: Fine CSM (解像度1cm / 角度0.2度 局所精密探索) ---
   double fine_linear_step = 0.01; // 1cm 刻み
-  int fine_lin_steps = std::max(1, static_cast<int>(std::round(impl_->linear_step / fine_linear_step)));
+  int fine_lin_steps = std::max(1, static_cast<int>(std::round(linear_step / fine_linear_step)));
   std::vector<double> fine_x_offsets;
   for (int i = -fine_lin_steps; i <= fine_lin_steps; ++i) {
     fine_x_offsets.push_back(i * fine_linear_step);
@@ -568,7 +670,7 @@ core::MatchResult MultiResCSMMatcher::match(
   std::vector<double> fine_y_offsets = fine_x_offsets;
 
   double fine_ang_step_rad = 0.2 * M_PI / 180.0; // 0.2度 刻み
-  int fine_ang_steps = std::max(1, static_cast<int>(std::round(impl_->angular_step_rad / fine_ang_step_rad)));
+  int fine_ang_steps = std::max(1, static_cast<int>(std::round(angular_step_rad / fine_ang_step_rad)));
   std::vector<double> fine_yaw_candidates;
   for (int i = -fine_ang_steps; i <= fine_ang_steps; ++i) {
     fine_yaw_candidates.push_back(core::normalize_angle(best_stage1.theta + i * fine_ang_step_rad));
@@ -591,9 +693,11 @@ core::MatchResult MultiResCSMMatcher::match(
   std::vector<Candidate> thread_best_stage2(max_threads);
   for (int t = 0; t < max_threads; ++t) {
     thread_best_stage2[t] = best_stage1;
+    thread_best_stage2[t].order = std::numeric_limits<int64_t>::max();
+    thread_best_stage2[t].updated = false;
   }
 
-  #pragma omp parallel for schedule(dynamic, 1)
+  #pragma omp parallel for schedule(dynamic, 1) num_threads(max_threads)
   for (int a = 0; a < num_fine_angles; ++a) {
     int tid = omp_get_thread_num();
     double theta = fine_yaw_candidates[a];
@@ -601,11 +705,11 @@ core::MatchResult MultiResCSMMatcher::match(
     size_t n_pts = r_pts.size();
 
     double angle_penalty = 1.0;
-    if (impl_->enable_variance_penalty && impl_->angle_variance_penalty > 0.0) {
+    if (enable_variance_penalty && angle_variance_penalty > 0.0) {
       double dyaw = core::angle_diff(theta, initial_guess.yaw);
-      double var_yaw = impl_->angle_variance_penalty * impl_->angle_variance_penalty;
+      double var_yaw = angle_variance_penalty * angle_variance_penalty;
       angle_penalty = std::exp(-0.5 * (dyaw * dyaw) / var_yaw);
-      angle_penalty = std::max(impl_->minimum_angle_penalty, angle_penalty);
+      angle_penalty = std::max(minimum_angle_penalty, angle_penalty);
     }
 
     size_t num_fx = fine_x_offsets.size();
@@ -686,13 +790,13 @@ core::MatchResult MultiResCSMMatcher::match(
         bool y_valid = (by_all_valid[dy_idx] != 0);
 
         double dist_penalty = 1.0;
-        if (impl_->enable_variance_penalty && impl_->distance_variance_penalty > 0.0) {
+        if (enable_variance_penalty && distance_variance_penalty > 0.0) {
           double total_dx = cx - init_cx;
           double total_dy = cy - init_cy;
           double dist_sq = total_dx * total_dx + total_dy * total_dy;
-          double var_d = impl_->distance_variance_penalty * impl_->distance_variance_penalty;
+          double var_d = distance_variance_penalty * distance_variance_penalty;
           dist_penalty = std::exp(-0.5 * dist_sq / var_d);
-          dist_penalty = std::max(impl_->minimum_distance_penalty, dist_penalty);
+          dist_penalty = std::max(minimum_distance_penalty, dist_penalty);
         }
 
         double sum_score = 0.0;
@@ -722,20 +826,38 @@ core::MatchResult MultiResCSMMatcher::match(
 
         double norm_score = sum_score * inv_pts * angle_penalty * dist_penalty;
 
-        if (norm_score > thread_best_stage2[tid].score) {
-          thread_best_stage2[tid].score = norm_score;
-          thread_best_stage2[tid].cx = cx;
-          thread_best_stage2[tid].cy = cy;
-          thread_best_stage2[tid].theta = theta;
+        int64_t order = (static_cast<int64_t>(a) * static_cast<int64_t>(num_fx) +
+                         static_cast<int64_t>(dx_idx)) * static_cast<int64_t>(num_fy) +
+                        static_cast<int64_t>(dy_idx);
+        auto& thread_best = thread_best_stage2[tid];
+        // Stage1 の最良より真に高いものだけを採用し、Stage2 候補同士の同点は探索順で決める
+        bool better = thread_best.updated
+            ? (norm_score > thread_best.score ||
+               (norm_score == thread_best.score && order < thread_best.order))
+            : (norm_score > thread_best.score);
+        if (better) {
+          thread_best.score = norm_score;
+          thread_best.cx = cx;
+          thread_best.cy = cy;
+          thread_best.theta = theta;
+          thread_best.order = order;
+          thread_best.updated = true;
         }
       }
     }
   }
 
   Candidate best_stage2 = best_stage1;
+  bool stage2_found = false;
   for (int t = 0; t < max_threads; ++t) {
-    if (thread_best_stage2[t].score > best_stage2.score) {
-      best_stage2 = thread_best_stage2[t];
+    const auto& c = thread_best_stage2[t];
+    if (!c.updated) {
+      continue;
+    }
+    if (!stage2_found || c.score > best_stage2.score ||
+        (c.score == best_stage2.score && c.order < best_stage2.order)) {
+      best_stage2 = c;
+      stage2_found = true;
     }
   }
 
@@ -793,17 +915,24 @@ core::MatchResult MultiResCSMMatcher::match(
   info(1, 1) = std::clamp(curv_y * 0.1 * base_scale, 20.0, 1000.0);
   info(2, 2) = std::clamp(curv_t * 0.005 * base_scale, 50.0, 3000.0);
 
-  bool csm_converged = (best_stage2.score >= impl_->score_threshold);
+  bool csm_converged = (best_stage2.score >= score_threshold);
 
   // フォールバック: スコアが閾値未満の異常時のみ ICP を呼ぶ
-  if (impl_->fine_matcher && !csm_converged) {
+  if (fine_matcher && !csm_converged) {
+    std::lock_guard<std::mutex> icp_lock(icp_mutex);
+    // ICP 用ターゲット (kd-tree・法線) は、このフォールバック時にだけ構築する
+    if (target.normals.empty()) {
+      fine_matcher->set_target_cloud(target.pts);
+    } else {
+      fine_matcher->set_target_cloud_with_normals(target.pts, target.normals);
+    }
     core::OdomData csm_seed{
         initial_guess.timestamp,
         tx_opt,
         ty_opt,
         theta_opt,
     };
-    auto fine_res = impl_->fine_matcher->match(dst_pts, csm_seed);
+    auto fine_res = fine_matcher->match(dst_pts, csm_seed);
     if (fine_res.converged) {
       return fine_res;
     }

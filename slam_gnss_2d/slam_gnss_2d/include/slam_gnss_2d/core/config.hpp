@@ -82,6 +82,13 @@ struct MultiResCsmConfig {
   double minimum_angle_penalty{0.9};
 };
 
+// スキャンマッチング結果とオドメトリ並進のガウス積による融合 (各軸の情報量。0 で無効)
+struct OdomFusionConfig {
+  double information_x{1500.0};  // 進行方向 (前後)
+  double information_y{0.0};    // 横方向
+  double information_yaw{0.0};  // 回転
+};
+
 struct NearKeyframeLinkConfig {
   bool enabled{true};
   int buffer_size{10};
@@ -107,6 +114,8 @@ struct ScanMatchingConfig {
   MultiStartConfig multi_start;
   MultiResCsmConfig multi_res_csm;
   NearKeyframeLinkConfig near_links;
+  OdomFusionConfig odom_fusion;
+  int num_threads{12};  // multi_res_csm の 1 マッチング/グリッド構築あたりの OpenMP スレッド数 (0: OpenMP 既定値)
 };
 
 struct LoopClosureConfig {
