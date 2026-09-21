@@ -129,6 +129,14 @@ slam_gnss_2d/
 3. **CSM (Correlative Scan Matcher)**:
    - 多重解像度グリッドによる網羅的探索。初期値誤差が大きい場合でも高い引き込み性能を発揮。
 
+#### 現在の既定構成 (`params/slam_gnss_2d.yaml`)
+- **マッチャー**: `multi_res_csm` (2段階の相関探索 + 放物線ピーク補間)。参照は直近 30 キーフレームのローカルマップ。
+- **デスキュー** (`deskew`): LiDAR は 1 走査に約 0.1 秒かかるため、各ビームの計測時刻のオドメトリ姿勢を補間し、`header.stamp` 時点の姿勢へ点群を補正します。rplidar ではビーム番号が増えるほど先に計測されます (`direction: -1`)。
+- **オドメトリ融合** (`scan_matching.odom_fusion`): スキャンマッチング結果とオドメトリの並進をガウス積で融合します。廊下などマッチングの拘束が弱い方向ではオドメトリが効き、拘束が強い方向ではマッチングが効きます。
+- **ロバスト化** (`optimization.between_robust_kernel`): スキャンマッチングのエッジ (逐次・near-link・ループ) に Huber カーネルを適用し、誤マッチの影響を抑えます。
+- **キーフレーム**: 0.5 m / 0.5 rad ごと (slam_toolbox と同じ)。
+- **スレッド数** (`scan_matching.num_threads`): 1 回のマッチングに使う OpenMP スレッド数。多すぎると並列効率が落ちます。near-link の候補は同時にマッチングします。
+
 ### ループクロージャ
 - 現在位置から `search_radius` 以内かつノード間隔が `min_node_gap` 以上離れた過去のノードを候補として検出。
 - 候補ノード周辺のキーフレーム点群を合成したサブマップに対してスキャンマッチングを実行。
@@ -137,7 +145,8 @@ slam_gnss_2d/
 ### GNSS 拘束と逐次最適化
 - 最初の有効な GNSS 測位から UTM ゾーンを自動決定して基準アンカーを設定。
 - ロボットが `init_distance_m` 移動した時点で、SLAM 軌跡と GNSS 軌跡の変位ベクトルから初期方位角 $\theta_0$ を算出し、グラフ全体を UTM 座標系に初期回転整合。
-- 走行中は水平精度が `max_sigma_m` 以下の良好な GNSS 測位に対し、位置のみを拘束する `BetweenFactor` / `PriorFactor` をファクターグラフにインクリメンタル追加。
+- 走行中は水平精度が `max_sigma_m` 以下の良好な GNSS 測位に対し、位置のみを拘束するファクターをファクターグラフにインクリメンタル追加。
+- **レバーアーム補正** (`gnss.lever_arm`): GNSS アンテナは `base_link` から (0.26, -0.13) m ずれているため、ファクターの予測値を `位置 + R(yaw) × レバーアーム` として、アンテナ位置に対する観測として扱います。旋回時には方位にも拘束がかかります。
 - GTSAM の iSAM2 エンジンによりリアルタイムにグラフを逐次最適化。
 
 ---
@@ -174,6 +183,10 @@ ros2 launch slam_gnss_2d offline_slam_gnss_2d.launch.py \
 
 - `start_time` (double, デフォルト: `0.0`): rosbag 開始からの経過秒 [s]（`0.0` で最初から）
 - `end_time` (double, デフォルト: `0.0`): rosbag 開始からの経過秒 [s]（`0.0` で末尾まで）
+- `skip_intermediate_rendering` (bool, デフォルト: `true`): 中間の地図描画・可視化配信を止めて終了時に一括描画します（高速化）。RViz で処理中の地図を見たいときは `false` にします。
+
+終了時に `[timing]` として、処理ステージごとの所要時間がログ出力されます。
+出力の評価は `tools/scripts/eval_slam.py` (`make bag-eval-slam`) で、パラメータ変種の比較は `tools/scripts/run_slam_variant.sh` で行えます (`tools/README.md` を参照)。
 
 
 ### ポーズグラフ再最適化 (reoptimize_node)
@@ -354,14 +367,20 @@ $$\begin{pmatrix} x_{map} \\ y_{map} \end{pmatrix} = R(\theta_{applied}) \begin{
 | `topics.odom` | `/odom` | オドメトリトピック名 |
 | `map.resolution` | `0.05` | 占有格子解像度 [m/px] |
 | `map.publish_hz` | `1.0` | マップ配信レート [Hz] |
-| `keyframe.min_translation` | `1.0` | キーフレーム追加 最小移動距離 [m] |
-| `keyframe.min_rotation` | `0.1` | キーフレーム追加 最小回転角 [rad] |
+| `keyframe.min_translation` | `0.5` | キーフレーム追加 最小移動距離 [m] |
+| `keyframe.min_rotation` | `0.5` | キーフレーム追加 最小回転角 [rad] |
+| `deskew.enabled` | `true` | スキャンのモーションディストーション補正 |
+| `deskew.direction` | `-1` | ビーム番号と計測時刻の対応 (`+1`: 番号が増えるほど後、`-1`: 先) |
+| `deskew.start_offset_s` | `-0.03` | 最初に計測されるビームの `header.stamp` に対する時刻オフセット [s] |
 
 ### スキャンマッチング / ループ閉合 / 最適化
 | パラメータ | デフォルト | 説明 |
 | :--- | :--- | :--- |
 | `scan_matching.enabled` | `true` | スキャンマッチングの有効化 |
-| `scan_matching.type` | `ndt` | マッチャー種別 (`icp` / `ndt` / `csm`) |
+| `scan_matching.type` | `multi_res_csm` | マッチャー種別 (`multi_res_csm` / `icp` / `ndt` / `csm` ほか) |
+| `scan_matching.num_threads` | `12` | 1 回のマッチングが使う OpenMP スレッド数 (`0`: OpenMP 既定値) |
+| `scan_matching.odom_fusion.information_x` | `1500.0` | 進行方向のオドメトリ融合の情報量 (`0` で無効) |
+| `optimization.between_robust_kernel` | `huber` | スキャンマッチングエッジのロバスト化 (`none` / `huber` / `cauchy`) |
 | `loop_closure.enabled` | `true` | ループクロージャ検出の有効化 |
 | `loop_closure.search_radius`| `2.0` | ループ候補検索半径 [m] |
 | `loop_closure.min_node_gap` | `50` | ループ候補の最小ノード間隔 |
@@ -375,6 +394,7 @@ $$\begin{pmatrix} x_{map} \\ y_{map} \end{pmatrix} = R(\theta_{applied}) \begin{
 | `gnss.topics.navpvt` | `/navpvt` | NavPVT トピック名 |
 | `gnss.topics.fix` | `/gps/fix` | NavSatFix トピック名 |
 | `gnss.anchor.init_distance_m` | `2.0` | 初期方位角推定に必要な移動距離 [m] |
+| `gnss.lever_arm.x` / `.y` | `0.26` / `-0.13` | GNSS アンテナの `base_link` 座標系での位置 [m] (`0`/`0` で無効) |
 | `gnss.validation.max_sigma_m`| `2.0` | 拘束採用を許容する最大位置標準偏差 $\sigma$ [m] |
 
 ### ナビゲーションブリッジ パラメータ (`slam_gnss_nav_bridge_node`)
