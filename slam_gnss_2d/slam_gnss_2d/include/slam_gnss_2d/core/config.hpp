@@ -37,8 +37,8 @@ struct MapConfig {
 };
 
 struct KeyframeConfig {
-  double min_translation{1.0};
-  double min_rotation{0.1};
+  double min_translation{0.5};
+  double min_rotation{0.5};
 };
 
 struct IcpConfig {

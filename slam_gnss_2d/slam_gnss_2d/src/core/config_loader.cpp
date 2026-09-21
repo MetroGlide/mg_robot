@@ -29,8 +29,8 @@ void ConfigLoader::declare_params(rclcpp::Node& node) {
   declare_param_if_not_declared(node, "map.max_miss_ratio", 2.0);
   declare_param_if_not_declared(node, "map.skip_intermediate_rendering", false);
 
-  declare_param_if_not_declared(node, "keyframe.min_translation", 1.0);
-  declare_param_if_not_declared(node, "keyframe.min_rotation", 0.1);
+  declare_param_if_not_declared(node, "keyframe.min_translation", 0.5);
+  declare_param_if_not_declared(node, "keyframe.min_rotation", 0.5);
 
   declare_param_if_not_declared(node, "scan_matching.enabled", true);
   declare_param_if_not_declared(node, "scan_matching.type", std::string("ndt"));
