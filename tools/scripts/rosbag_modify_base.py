@@ -1,14 +1,31 @@
 #!/usr/bin/env python3
+"""
+rosbag_modify_base.py
 
-import os
+rosbag 内の特定トピックのメッセージ内容（例: Odometry共分散の付与、LaserScan frame_idの変更など）を
+書き換えて新しい rosbag に保存する変換ツール。
+"""
+
 import argparse
+import os
 import shutil
+import sys
 
-from rclpy.serialization import deserialize_message, serialize_message
-from rosidl_runtime_py.utilities import get_message
-import rosbag2_py
 from nav_msgs.msg import Odometry
+from rclpy.serialization import serialize_message
 from sensor_msgs.msg import LaserScan
+
+# tools パッケージルートの解決
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
+
+from tools.common.bag import (  # noqa: E402
+    MessageDeserializer,
+    detect_storage_id,
+    open_reader,
+    open_writer,
+)
 
 
 def add_covariance_to_odom(msg: Odometry):
@@ -43,36 +60,6 @@ MODIFY_FUNC_DICT = {
 }
 
 
-def get_reader(input_bag: str):
-    reader = rosbag2_py.SequentialReader()
-    reader.open(
-        rosbag2_py.StorageOptions(uri=input_bag, storage_id="mcap"),
-        rosbag2_py.ConverterOptions(
-            input_serialization_format="cdr", output_serialization_format="cdr"
-        ),
-    )
-    return reader
-
-
-def get_writer(output_bag: str, topic_meta_list: list):
-    writer = rosbag2_py.SequentialWriter()
-    writer.open(
-        rosbag2_py.StorageOptions(uri=output_bag, storage_id="mcap"),
-        rosbag2_py.ConverterOptions(
-            input_serialization_format="cdr", output_serialization_format="cdr"
-        ),
-    )
-    for topic_meta in topic_meta_list:
-        writer.create_topic(topic_meta)
-    return writer
-
-
-def get_topic_type(topic: str, topic_meta_list: list):
-    for topic_meta in topic_meta_list:
-        if topic_meta.name == topic:
-            return topic_meta.type
-    raise ValueError(f"topic {topic} not found in topic_meta_list")
-
 def rename_to_backup(path: str):
     output_path = path + "_bak"
     if os.path.exists(output_path):
@@ -83,7 +70,6 @@ def rename_to_backup(path: str):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    # input file require format: /path/to/dir/file_name_dir/file_name.mcap
     parser.add_argument(
         "-i",
         "--input",
@@ -116,40 +102,34 @@ def main():
     print(f"input file: {args.input}")
 
     if args.output == "":
-        if args.force:
-            # print("output file is not specified. use input file name")
-            # input_path = os.path.dirname(args.input) # /path/to/dir/file_name_dir
-            # args.output = input_path
-            pass
-
-        else:
-            input_path = os.path.dirname(args.input) + "/.." # /path/to/dir/file_name_dir/..
-            input_path = os.path.abspath(input_path) # /path/to/dir
-
-            input_file_name = os.path.basename(args.input)
-            input_file_name = os.path.splitext(input_file_name)[0]
-
-            args.output = input_path + "/" + input_file_name + "_modified" # /path/to/dir/file_name_modified
+        if not args.force:
+            input_path = os.path.abspath(os.path.join(os.path.dirname(args.input), ".."))
+            input_file_name = os.path.splitext(os.path.basename(args.input))[0]
+            args.output = os.path.join(input_path, input_file_name + "_modified")
             print(f"output file is not specified. use {args.output}")
 
     if os.path.exists(args.output):
         print(f"output file {args.output} already exists")
         if args.force:
-            # print(f"remove output directory {args.output}")
-            # shutil.rmtree(args.output)
             p = rename_to_backup(args.output)
             print(f"backup output file {args.output} -> {p}")
         else:
             raise FileExistsError(f"output file {args.output} already exists")
 
-    reader = get_reader(args.input)
+    storage_id = detect_storage_id(args.input)
+    reader = open_reader(args.input, storage_id=storage_id)
     topic_meta_list = reader.get_all_topics_and_types()
+    type_map = {t.name: t.type for t in topic_meta_list}
 
-    writer = get_writer(args.output, topic_meta_list)
+    writer = open_writer(args.output, storage_id=storage_id)
+    for topic_meta in topic_meta_list:
+        writer.create_topic(topic_meta)
+
+    deserializer = MessageDeserializer(type_map)
+
     while reader.has_next():
         topic, data, timestamp = reader.read_next()
-        msg_type = get_message(get_topic_type(topic, topic_meta_list))
-        msg = deserialize_message(data, msg_type)
+        msg = deserializer.deserialize(topic, data)
         if topic in MODIFY_FUNC_DICT:
             for func in MODIFY_FUNC_DICT[topic]:
                 msg = func(msg)

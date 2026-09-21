@@ -191,7 +191,7 @@ export function usePoseGraph(client: FoxgloveClientHandle) {
   useEffect(() => {
     if (client.status !== 'connected') return
 
-    const unsub = client.subscribe(TOPICS.SLAM_GNSS2D_POSE_GRAPH_DIFF, 'mg_msgs/msg/PoseGraphDiff', (data) => {
+    const handleDiff = (data: unknown) => {
       const diff = data as PoseGraphDiffMsg
       if (diff.full_refresh_needed) {
         fetchFullGraph()
@@ -265,9 +265,15 @@ export function usePoseGraph(client: FoxgloveClientHandle) {
           }
         }
       })
-    })
+    }
 
-    return () => unsub()
+    const unsub1 = client.subscribe(TOPICS.SLAM_GNSS2D_POSE_GRAPH_DIFF, 'slam_gnss_2d_msgs/msg/PoseGraphDiff', handleDiff)
+    const unsub2 = client.subscribe(TOPICS.SLAM_GNSS2D_POSE_GRAPH_DIFF, 'mg_msgs/msg/PoseGraphDiff', handleDiff)
+
+    return () => {
+      unsub1()
+      unsub2()
+    }
   }, [client, fetchFullGraph])
 
   // 初回接続時に1度だけフルフェッチを実行する

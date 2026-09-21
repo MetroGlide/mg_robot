@@ -6,12 +6,22 @@ ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 DEPS_DIR="${SCRIPT_DIR}/deps"
 EXTRA_FILE="${SCRIPT_DIR}/deps_extra.txt"
 
-EXCLUDE_DIRS=(".git" "docker" "log" "nav2_pkg")
+PRUNE_NAMES=(
+  ".git"
+  "build"
+  "install"
+  "log"
+  "node_modules"
+  "docker"
+  "mg_simulation"
+  "mg_scenario_test"
+  "mg_simulator_client"
+)
 
 build_prune_args() {
   prune_args=()
-  for d in "${EXCLUDE_DIRS[@]}"; do
-    prune_args+=(-path "${ROOT_DIR}/${d}" -prune -o)
+  for name in "${PRUNE_NAMES[@]}"; do
+    prune_args+=(-name "${name}" -prune -o)
   done
 }
 

@@ -79,7 +79,7 @@ services:
       bash -c "
         source /opt/ros/humble/setup.bash &&
         source /root/ros2_ws/install/setup.bash &&
-        ros2 launch mg_bringup bringup_slam_toolbox.launch.py
+        ros2 launch mg_bringup bringup_slam_toolbox.launch.py ${OPTS:-}
       "
 
   slam-gnss-2d:
@@ -93,7 +93,7 @@ services:
       bash -c "
         source /opt/ros/humble/setup.bash &&
         source /root/ros2_ws/install/setup.bash &&
-        ros2 launch mg_slam bringup_slam_gnss_2d.launch.py
+        ros2 launch slam_gnss_2d bringup_slam_gnss_2d.launch.py ${OPTS:-}
       "
 
   offline-slam-gnss-2d:
@@ -107,7 +107,7 @@ services:
       bash -c "
         source /opt/ros/humble/setup.bash &&
         source /root/ros2_ws/install/setup.bash &&
-        ros2 launch mg_slam offline_slam_gnss_2d.launch.py
+        ros2 launch mg_bringup offline_slam_gnss_2d.launch.py ${OPTS:-}
       "
 
   reoptimize-slam:
@@ -122,7 +122,7 @@ services:
       bash -c "
         source /opt/ros/humble/setup.bash &&
         source /root/ros2_ws/install/setup.bash &&
-        ros2 launch mg_slam reoptimize_slam.launch.py input_dir:=$$INPUT_DIR $${BAG_PATH:+bag_path:=$$BAG_PATH} $${SAVE_DIR:+save_dir:=$$SAVE_DIR}
+        ros2 launch slam_gnss_2d reoptimize.launch.py input_dir:=$$INPUT_DIR $${BAG_PATH:+bag_path:=$$BAG_PATH} $${SAVE_DIR:+save_dir:=$$SAVE_DIR} ${OPTS:-}
       "
 
   navigation:
@@ -135,7 +135,7 @@ services:
       bash -c "
         source /opt/ros/humble/setup.bash &&
         source /root/ros2_ws/install/setup.bash &&
-        ros2 launch mg_bringup bringup_navigation.launch.py
+        ros2 launch mg_bringup bringup_navigation.launch.py ${OPTS:-}
       "
 
   rosbag-replay:
@@ -151,7 +151,7 @@ services:
       bash -c "
         source /opt/ros/humble/setup.bash &&
         source /root/ros2_ws/install/setup.bash &&
-        ros2 bag play $$ROSBAG_FILE $${ROSBAG_TOPICS:+--topics $$ROSBAG_TOPICS} --clock
+        ros2 bag play $$ROSBAG_FILE $${ROSBAG_TOPICS:+--topics $$ROSBAG_TOPICS} --clock ${OPTS:-}
       "
 
   map-preview:
@@ -173,7 +173,7 @@ services:
       bash -c "
         source /opt/ros/humble/setup.bash &&
         source /root/ros2_ws/install/setup.bash &&
-        ros2 launch mg_simulation bringup.launch.py
+        ros2 launch mg_simulation bringup.launch.py ${OPTS:-}
       "
 
   scenario-test:
@@ -188,7 +188,7 @@ services:
       bash -c "
         source /opt/ros/humble/setup.bash &&
         source /root/ros2_ws/install/setup.bash &&
-        ros2 launch mg_scenario_test scenario_test.launch.py scenario_file:=$$SCENARIO_FILE
+        ros2 launch mg_scenario_test scenario_test.launch.py scenario_file:=$$SCENARIO_FILE ${OPTS:-}
       "
 
   scenario-test-full:
@@ -205,7 +205,7 @@ services:
         source /opt/ros/humble/setup.bash &&
         source /root/ros2_ws/install/setup.bash &&
         ros2 launch mg_scenario_test scenario_test.launch.py \
-          scenario_file:=$$SCENARIO_FILE
+          scenario_file:=$$SCENARIO_FILE ${OPTS:-}
       "
 
   develop:
@@ -227,7 +227,7 @@ services:
       bash -c "
         source /opt/ros/humble/setup.bash &&
         source /root/ros2_ws/install/setup.bash &&
-        rviz2 --display-config /app/mg_slam/rviz/slam_gnss_2d.rviz
+        rviz2 --display-config /app/slam_gnss_2d/slam_gnss_2d/rviz/slam_gnss_2d.rviz
       "
 
   rviz2-navigation:

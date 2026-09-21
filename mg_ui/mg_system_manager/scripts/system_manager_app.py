@@ -358,7 +358,10 @@ class DockerManager:
             self._run_local_ros2_cmd(f"ros2 param set {node} save_dir '{slam_map_dir}'")
         
         # 3. SLAMノードの保存サービス呼び出し
-        cmd_save_slam = "ros2 service call /slam_gnss_2d/save_slam_map std_srvs/srv/Trigger"
+        cmd_save_slam = (
+            f"ros2 service call /slam_gnss_2d/save_slam_map "
+            f"slam_gnss_2d_msgs/srv/SaveSlamMap \"{{map_dir: '{slam_map_dir}'}}\""
+        )
         ok, out = self._run_local_ros2_cmd(cmd_save_slam)
         if not ok:
             return False, f"Failed to call /slam_gnss_2d/save_slam_map: {out}"
