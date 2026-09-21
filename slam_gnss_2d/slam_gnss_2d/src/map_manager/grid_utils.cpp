@@ -8,12 +8,12 @@
 namespace slam_gnss_2d {
 namespace map_manager {
 
-std::tuple<double, double, int> compute_square_bounds(
+std::tuple<double, double, int, int> compute_bounds(
     const std::vector<core::PoseNode>& nodes,
     double resolution,
     double expansion_margin) {
   if (nodes.empty()) {
-    return {0.0, 0.0, 1};
+    return {0.0, 0.0, 1, 1};
   }
 
   double min_x = std::numeric_limits<double>::infinity();
@@ -33,11 +33,20 @@ std::tuple<double, double, int> compute_square_bounds(
   double end_x = max_x + expansion_margin;
   double end_y = max_y + expansion_margin;
 
-  int size_x = static_cast<int>(std::ceil((end_x - origin_x) / resolution));
-  int size_y = static_cast<int>(std::ceil((end_y - origin_y) / resolution));
-  int size = std::max(size_x, size_y);
+  int width = static_cast<int>(std::ceil((end_x - origin_x) / resolution));
+  int height = static_cast<int>(std::ceil((end_y - origin_y) / resolution));
+  width = std::max(1, width);
+  height = std::max(1, height);
 
-  return {origin_x, origin_y, size};
+  return {origin_x, origin_y, width, height};
+}
+
+std::tuple<double, double, int> compute_square_bounds(
+    const std::vector<core::PoseNode>& nodes,
+    double resolution,
+    double expansion_margin) {
+  auto [ox, oy, w, h] = compute_bounds(nodes, resolution, expansion_margin);
+  return {ox, oy, std::max(w, h)};
 }
 
 std::pair<int, int> world_to_pixel(
@@ -49,8 +58,12 @@ std::pair<int, int> world_to_pixel(
   return {px, py};
 }
 
+bool in_bounds(int px, int py, int width, int height) {
+  return px >= 0 && px < width && py >= 0 && py < height;
+}
+
 bool in_bounds(int px, int py, int map_size) {
-  return px >= 0 && px < map_size && py >= 0 && py < map_size;
+  return in_bounds(px, py, map_size, map_size);
 }
 
 ScanHitsPixels scan_hits_to_pixels(
@@ -58,7 +71,8 @@ ScanHitsPixels scan_hits_to_pixels(
     double origin_x,
     double origin_y,
     double resolution,
-    int map_size) {
+    int width,
+    int height) {
   ScanHitsPixels result;
   const auto& scan = node.scan;
   double cos_yaw = std::cos(node.yaw);
@@ -89,7 +103,7 @@ ScanHitsPixels scan_hits_to_pixels(
     double wy = node.y + sin_yaw * lx + cos_yaw * ly;
 
     auto [h_px, h_py] = world_to_pixel(wx, wy, origin_x, origin_y, resolution);
-    if (in_bounds(h_px, h_py, map_size)) {
+    if (in_bounds(h_px, h_py, width, height)) {
       result.hit_px.push_back(h_px);
       result.hit_py.push_back(h_py);
     } else {
@@ -98,6 +112,15 @@ ScanHitsPixels scan_hits_to_pixels(
   }
 
   return result;
+}
+
+ScanHitsPixels scan_hits_to_pixels(
+    const core::PoseNode& node,
+    double origin_x,
+    double origin_y,
+    double resolution,
+    int map_size) {
+  return scan_hits_to_pixels(node, origin_x, origin_y, resolution, map_size, map_size);
 }
 
 cv::Mat build_trajectory_mask(

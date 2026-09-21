@@ -39,7 +39,7 @@ class SlamNodeBase : public rclcpp::Node {
   setup_gnss_source(const SlamConfig& cfg) = 0;
 
   virtual void on_frame(const SensorFrame& frame);
-  void publish_map_timer();
+  void publish_map_timer(bool force = false);
   void publish_tf_timer();
 
   SlamConfig config_;
@@ -61,7 +61,9 @@ class SlamNodeBase : public rclcpp::Node {
   bool map_dirty_{false};
   int node_count_{0};
   std::chrono::steady_clock::time_point last_stat_time_;
+  std::chrono::steady_clock::time_point last_map_publish_time_{std::chrono::steady_clock::time_point::min()};
   bool finalized_{false};
+  bool skip_intermediate_rendering_{false};
 };
 
 }  // namespace core

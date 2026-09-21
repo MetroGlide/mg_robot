@@ -101,9 +101,9 @@ class SlamOfflineNode : public core::SlamNodeBase {
       return;
     }
     double step_hz = get_parameter("offline_step_hz").as_double();
-    int batch_size = (step_hz <= 0.0) ? 50 : 1;
+    int batch_size = (step_hz <= 0.0) ? (skip_intermediate_rendering_ ? 500 : 10) : 1;
     for (int b = 0; b < batch_size; ++b) {
-      if (!bag_scan_source_->step()) {
+      if (!rclcpp::ok() || !bag_scan_source_->step()) {
         if (step_timer_) {
           step_timer_->cancel();
         }
@@ -111,6 +111,11 @@ class SlamOfflineNode : public core::SlamNodeBase {
         finalize();
         break;
       }
+    }
+
+    if (!skip_intermediate_rendering_) {
+      publish_tf_timer();
+      publish_map_timer();
     }
   }
 

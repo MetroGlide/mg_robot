@@ -199,6 +199,34 @@ TEST(CountingRendererTest, SubmapPatchRendersCorrectly) {
   EXPECT_NEAR(found_py, expected_py, 1);
 }
 
+TEST(TestCountingRenderer, RectangularBounds) {
+  // 横長コース (X: 0.0 ~ 100.0, Y: 0.0 ~ 10.0) で正方形ではなく必要最小限の矩形になることを検証
+  double resolution = 0.1;
+  double expansion_margin = 5.0;
+  CountingRenderer renderer(resolution, expansion_margin, 0.3, 1);
+
+  core::PoseNode node1;
+  node1.index = 0;
+  node1.x = 0.0;
+  node1.y = 0.0;
+  node1.scan = make_single_point_scan(1.0, 0.0);
+
+  core::PoseNode node2;
+  node2.index = 1;
+  node2.x = 100.0;
+  node2.y = 10.0;
+  node2.scan = make_single_point_scan(1.0, 0.0);
+
+  renderer.rerender_all({node1, node2});
+
+  auto occ = renderer.to_occupancy_array();
+  // X: [-5.0, 105.0] -> 110.0m / 0.1 = 1100 px (cols/width)
+  // Y: [-5.0, 15.0]  -> 20.0m / 0.1 = 200 px (rows/height)
+  EXPECT_EQ(occ.data.cols, 1100);
+  EXPECT_EQ(occ.data.rows, 200);
+  EXPECT_NE(occ.data.cols, occ.data.rows);
+}
+
 }  // namespace
 }  // namespace map_manager
 }  // namespace slam_gnss_2d

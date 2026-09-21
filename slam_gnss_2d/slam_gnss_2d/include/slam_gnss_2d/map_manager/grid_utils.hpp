@@ -9,6 +9,11 @@
 namespace slam_gnss_2d {
 namespace map_manager {
 
+std::tuple<double, double, int, int> compute_bounds(
+    const std::vector<core::PoseNode>& nodes,
+    double resolution,
+    double expansion_margin);
+
 std::tuple<double, double, int> compute_square_bounds(
     const std::vector<core::PoseNode>& nodes,
     double resolution,
@@ -19,6 +24,7 @@ std::pair<int, int> world_to_pixel(
     double origin_x, double origin_y,
     double resolution);
 
+bool in_bounds(int px, int py, int width, int height);
 bool in_bounds(int px, int py, int map_size);
 
 struct ScanHitsPixels {
@@ -28,6 +34,14 @@ struct ScanHitsPixels {
   std::vector<int> hit_py;
   size_t out_of_bounds_hits{0};
 };
+
+ScanHitsPixels scan_hits_to_pixels(
+    const core::PoseNode& node,
+    double origin_x,
+    double origin_y,
+    double resolution,
+    int width,
+    int height);
 
 ScanHitsPixels scan_hits_to_pixels(
     const core::PoseNode& node,

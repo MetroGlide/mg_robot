@@ -12,15 +12,16 @@
     # --------------------------------------------------------------------------
     map:
       resolution: 0.05 # 全体共通: 占有格子地図の解像度 [m/cell] (5cm)
-      expansion_margin: 100.0 # 全体共通: 地図境界拡張時の余白マージン [m]
+      expansion_margin: 20.0 # 全体共通: 地図境界拡張時の余白マージン [m]
       publish_hz: 0.1 # 全体共通: 地図配信周期 [Hz]
       renderer: "counting" # レンダラー種別 ("overwrite": 上書き / "counting": ヒット数カウント式)
-      hit_threshold: 0.4 # [renderer=counting で有効]: 占有判定しきい値 (weighted_hit / (weighted_hit + weighted_miss))
+      hit_threshold: 0.3 # [renderer=counting で有効]: 占有判定しきい値 (weighted_hit / (weighted_hit + weighted_miss))
       min_hits: 2 # [renderer=counting で有効]: 占有判定に必要な最小ヒット回数
       hit_weight: 1.0 # [renderer=counting で有効]: hitの重み (非対称性)
       miss_weight: 0.50 # [renderer=counting で有効]: missの重み (非対称性: 壁の掠め通過による過剰消去を防止)
       miss_clearance_margin: 0.0 # [renderer=counting で有効]: 終端手前miss停止マージン [m] (0.0で無効化)
       max_miss_ratio: 0.0 # [renderer=counting で有効]: 確証壁に対するmiss上限比率 (復路や交差光線による確定壁の永久保護)
+      skip_intermediate_rendering: false # [全体共通]: 中間描画をスキップし終了時に一括描画 (オフライン処理高速化用)
 
     # --------------------------------------------------------------------------
     # キーフレーム生成設定

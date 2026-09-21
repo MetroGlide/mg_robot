@@ -23,6 +23,7 @@ class LoopClosureBuilder : public PoseGraphBuilderBase {
       double loop_closure_crossing_reject_deg,
       double loop_closure_submap_radius,
       double loop_closure_max_score);
+  ~LoopClosureBuilder() override;
 
   std::optional<core::PoseNode> add_scan(
       const core::ScanDataPtr& scan,
@@ -61,6 +62,9 @@ class LoopClosureBuilder : public PoseGraphBuilderBase {
   int loop_success_count_{0};
   std::vector<core::PoseNode> all_nodes_cache_;
 
+  struct Impl;
+  std::unique_ptr<Impl> pimpl_;
+
   std::vector<core::PoseNode> find_loop_candidates(const core::PoseNode& node) const;
   std::vector<Eigen::Vector2d> build_candidate_submap(const core::PoseNode& candidate) const;
   std::pair<std::vector<Eigen::Vector2d>, std::vector<Eigen::Vector2d>>
@@ -68,6 +72,7 @@ class LoopClosureBuilder : public PoseGraphBuilderBase {
   std::vector<Eigen::Vector2d> build_query_submap(
       const core::PoseNode& node, int query_window = 5) const;
   bool try_add_loop_edge(const core::PoseNode& node, const core::PoseNode& candidate);
+  void ensure_node_kdtree() const;
 };
 
 }  // namespace pose_graph

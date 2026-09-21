@@ -1,6 +1,7 @@
 #include "slam_gnss_2d/map_manager/counting_renderer.hpp"
 
 #include <algorithm>
+#include <omp.h>
 #include <opencv2/imgproc.hpp>
 #include <rclcpp/rclcpp.hpp>
 
@@ -41,11 +42,11 @@ bool CountingRenderer::add_node(const core::PoseNode& node) {
   if (!node.scan && !node.submap_patch) {
     return true;
   }
-  if (!initialized_ || map_size_ <= 1) {
+  if (!initialized_ || map_width_ <= 1 || map_height_ <= 1) {
     return false;
   }
   auto [r_px, r_py] = world_to_pixel(node.x, node.y, origin_x_, origin_y_, resolution_);
-  if (!in_bounds(r_px, r_py, map_size_)) {
+  if (!in_bounds(r_px, r_py, map_width_, map_height_)) {
     return false;
   }
   return render_node(node);
@@ -57,25 +58,73 @@ void CountingRenderer::rerender_all(const std::vector<core::PoseNode>& nodes) {
     return;
   }
 
-  auto [new_ox, new_oy, new_size] = compute_square_bounds(
+  auto [new_ox, new_oy, new_w, new_h] = compute_bounds(
       nodes, resolution_, expansion_margin_);
   origin_x_ = new_ox;
   origin_y_ = new_oy;
-  map_size_ = new_size;
-  hit_map_ = cv::Mat::zeros(new_size, new_size, CV_32SC1);
-  miss_map_ = cv::Mat::zeros(new_size, new_size, CV_32SC1);
+  map_width_ = new_w;
+  map_height_ = new_h;
   render_count_ = 0;
   initialized_ = true;
 
   RCLCPP_INFO(
       rclcpp::get_logger("slam_gnss_2d.counting_renderer"),
-      "Map recomputed (Counting): size=%dpx (%.0fm), origin=(%.1f, %.1f), nodes=%zu",
-      new_size, new_size * resolution_, new_ox, new_oy, nodes.size());
+      "Map recomputed (Counting): size=%dx%dpx (%.0fx%.0fm), origin=(%.1f, %.1f), nodes=%zu",
+      new_w, new_h, new_w * resolution_, new_h * resolution_, new_ox, new_oy, nodes.size());
 
-  for (const auto& node : nodes) {
-    if (node.scan || node.submap_patch) {
-      render_node(node);
+  int num_threads = std::min(4, omp_get_max_threads());
+  if (num_threads <= 1 || nodes.size() <= 4) {
+    hit_map_ = cv::Mat::zeros(new_h, new_w, CV_32SC1);
+    miss_map_ = cv::Mat::zeros(new_h, new_w, CV_32SC1);
+    for (const auto& node : nodes) {
+      if (node.scan || node.submap_patch) {
+        render_node(node);
+      }
     }
+    return;
+  }
+
+  std::vector<cv::Mat> thread_hits(num_threads);
+  std::vector<cv::Mat> thread_misses(num_threads);
+  std::vector<int> thread_counts(num_threads, 0);
+
+  for (int t = 0; t < num_threads; ++t) {
+    thread_hits[t] = cv::Mat::zeros(new_h, new_w, CV_32SC1);
+    thread_misses[t] = cv::Mat::zeros(new_h, new_w, CV_32SC1);
+  }
+
+  #pragma omp parallel num_threads(num_threads)
+  {
+    int tid = omp_get_thread_num();
+    #pragma omp for schedule(dynamic, 4)
+    for (size_t i = 0; i < nodes.size(); ++i) {
+      if (nodes[i].scan || nodes[i].submap_patch) {
+        if (render_node_impl(nodes[i], thread_hits[tid], thread_misses[tid])) {
+          thread_counts[tid]++;
+        }
+      }
+    }
+  }
+
+  hit_map_ = cv::Mat::zeros(new_h, new_w, CV_32SC1);
+  miss_map_ = cv::Mat::zeros(new_h, new_w, CV_32SC1);
+
+  #pragma omp parallel for schedule(static)
+  for (int r = 0; r < new_h; ++r) {
+    int32_t* hit_row = hit_map_.ptr<int32_t>(r);
+    int32_t* miss_row = miss_map_.ptr<int32_t>(r);
+    for (int t = 0; t < num_threads; ++t) {
+      const int32_t* t_hit = thread_hits[t].ptr<int32_t>(r);
+      const int32_t* t_miss = thread_misses[t].ptr<int32_t>(r);
+      for (int c = 0; c < new_w; ++c) {
+        hit_row[c] += t_hit[c];
+        miss_row[c] += t_miss[c];
+      }
+    }
+  }
+
+  for (int t = 0; t < num_threads; ++t) {
+    render_count_ += thread_counts[t];
   }
 }
 
@@ -168,6 +217,23 @@ void CountingRenderer::apply_trajectory_mask(
 }
 
 bool CountingRenderer::render_node(const core::PoseNode& node) {
+  bool ret = render_node_impl(node, hit_map_, miss_map_);
+  if (ret) {
+    render_count_++;
+    if (render_count_ == 1 || render_count_ % 50 == 0) {
+      RCLCPP_DEBUG(
+          rclcpp::get_logger("slam_gnss_2d.counting_renderer"),
+          "Render #%d (Counting): robot=(%.2f, %.2f)",
+          render_count_, node.x, node.y);
+    }
+  }
+  return ret;
+}
+
+bool CountingRenderer::render_node_impl(
+    const core::PoseNode& node,
+    cv::Mat& target_hit,
+    cv::Mat& target_miss) {
   if (node.submap_patch) {
     const auto& patch = node.submap_patch;
     double cos_yaw = std::cos(node.yaw);
@@ -188,13 +254,12 @@ bool CountingRenderer::render_node(const core::PoseNode& node) {
         double wy = node.y + sin_yaw * lx + cos_yaw * ly;
 
         auto [g_px, g_py] = world_to_pixel(wx, wy, origin_x_, origin_y_, resolution_);
-        if (in_bounds(g_px, g_py, map_size_)) {
-          if (hit > 0) hit_map_.at<int32_t>(g_py, g_px) += hit;
-          if (miss > 0) miss_map_.at<int32_t>(g_py, g_px) += miss;
+        if (in_bounds(g_px, g_py, map_width_, map_height_)) {
+          if (hit > 0) target_hit.at<int32_t>(g_py, g_px) += hit;
+          if (miss > 0) target_miss.at<int32_t>(g_py, g_px) += miss;
         }
       }
     }
-    render_count_++;
     return true;
   }
 
@@ -203,12 +268,11 @@ bool CountingRenderer::render_node(const core::PoseNode& node) {
   }
 
   auto scan_pixels = scan_hits_to_pixels(
-      node, origin_x_, origin_y_, resolution_, map_size_);
-  if (!in_bounds(scan_pixels.robot_px, scan_pixels.robot_py, map_size_)) {
+      node, origin_x_, origin_y_, resolution_, map_width_, map_height_);
+  if (!in_bounds(scan_pixels.robot_px, scan_pixels.robot_py, map_width_, map_height_)) {
     return false;
   }
 
-  render_count_++;
   size_t n_hits = scan_pixels.hit_px.size();
   if (n_hits == 0) {
     return true;
@@ -265,7 +329,7 @@ bool CountingRenderer::render_node(const core::PoseNode& node) {
 
   for (int r = 0; r < h; ++r) {
     const uint8_t* lmask_row = local_mask.ptr<uint8_t>(r);
-    int32_t* miss_row = miss_map_.ptr<int32_t>(min_py + r);
+    int32_t* miss_row = target_miss.ptr<int32_t>(min_py + r);
     for (int c = 0; c < w; ++c) {
       if (lmask_row[c] > 0) {
         miss_row[min_px + c] += 1;
@@ -274,14 +338,7 @@ bool CountingRenderer::render_node(const core::PoseNode& node) {
   }
 
   for (size_t i = 0; i < n_hits; ++i) {
-    hit_map_.at<int32_t>(scan_pixels.hit_py[i], scan_pixels.hit_px[i]) += 1;
-  }
-
-  if (render_count_ == 1 || render_count_ % 50 == 0) {
-    RCLCPP_DEBUG(
-        rclcpp::get_logger("slam_gnss_2d.counting_renderer"),
-        "Render #%d (Counting): robot=(%.2f, %.2f), hits=%zu",
-        render_count_, node.x, node.y, n_hits);
+    target_hit.at<int32_t>(scan_pixels.hit_py[i], scan_pixels.hit_px[i]) += 1;
   }
 
   return true;

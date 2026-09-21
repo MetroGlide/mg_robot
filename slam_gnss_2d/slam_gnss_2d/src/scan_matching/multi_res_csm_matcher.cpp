@@ -72,37 +72,109 @@ class LikelihoodGrid {
     double max_eval_dist_sq = max_eval_dist * max_eval_dist;
     int kernel_cells = static_cast<int>(std::ceil(max_eval_dist * inv_resolution_));
 
-    for (const auto& p : pts) {
-      int center_gx = static_cast<int>((p.x() - origin_x_) * inv_resolution_);
-      int center_gy = static_cast<int>((p.y() - origin_y_) * inv_resolution_);
+    int num_threads = std::min(4, omp_get_max_threads());
+    if (num_threads <= 1 || pts.size() < 64) {
+      for (const auto& p : pts) {
+        int center_gx = static_cast<int>((p.x() - origin_x_) * inv_resolution_);
+        int center_gy = static_cast<int>((p.y() - origin_y_) * inv_resolution_);
 
-      int min_gx = std::max(0, center_gx - kernel_cells);
-      int max_gx = std::min(width_ - 1, center_gx + kernel_cells);
-      int min_gy = std::max(0, center_gy - kernel_cells);
-      int max_gy = std::min(height_ - 1, center_gy + kernel_cells);
+        int min_gx = std::max(0, center_gx - kernel_cells);
+        int max_gx = std::min(width_ - 1, center_gx + kernel_cells);
+        int min_gy = std::max(0, center_gy - kernel_cells);
+        int max_gy = std::min(height_ - 1, center_gy + kernel_cells);
 
-      for (int gy = min_gy; gy <= max_gy; ++gy) {
-        double y = origin_y_ + (gy + 0.5) * resolution_;
-        double dy = y - p.y();
-        double dy_sq = dy * dy;
-        int row_offset = gy * width_;
+        for (int gy = min_gy; gy <= max_gy; ++gy) {
+          double y = origin_y_ + (gy + 0.5) * resolution_;
+          double dy = y - p.y();
+          double dy_sq = dy * dy;
+          int row_offset = gy * width_;
 
-        for (int gx = min_gx; gx <= max_gx; ++gx) {
-          double x = origin_x_ + (gx + 0.5) * resolution_;
-          double dx = x - p.x();
-          double dist_sq = dx * dx + dy_sq;
+          for (int gx = min_gx; gx <= max_gx; ++gx) {
+            double x = origin_x_ + (gx + 0.5) * resolution_;
+            double dx = x - p.x();
+            double dist_sq = dx * dx + dy_sq;
 
-          if (dist_sq <= max_eval_dist_sq) {
-            float val = static_cast<float>(std::exp(-dist_sq / sigma_sq2));
-            float& cell = grid_[row_offset + gx];
-            if (val > cell) {
-              cell = val;
+            if (dist_sq <= max_eval_dist_sq) {
+              float val = static_cast<float>(std::exp(-dist_sq / sigma_sq2));
+              float& cell = grid_[row_offset + gx];
+              if (val > cell) {
+                cell = val;
+              }
             }
           }
         }
       }
+    } else {
+      if (thread_grids_.size() != static_cast<size_t>(num_threads)) {
+        thread_grids_.resize(num_threads);
+      }
+      for (int t = 0; t < num_threads; ++t) {
+        if (thread_grids_[t].size() != grid_.size()) {
+          thread_grids_[t].assign(grid_.size(), 0.0f);
+        } else {
+          std::fill(thread_grids_[t].begin(), thread_grids_[t].end(), 0.0f);
+        }
+      }
+
+      #pragma omp parallel num_threads(num_threads)
+      {
+        int tid = omp_get_thread_num();
+        auto& local_grid = thread_grids_[tid];
+
+        #pragma omp for schedule(dynamic, 32)
+        for (size_t i = 0; i < pts.size(); ++i) {
+          const auto& p = pts[i];
+          int center_gx = static_cast<int>((p.x() - origin_x_) * inv_resolution_);
+          int center_gy = static_cast<int>((p.y() - origin_y_) * inv_resolution_);
+
+          int min_gx = std::max(0, center_gx - kernel_cells);
+          int max_gx = std::min(width_ - 1, center_gx + kernel_cells);
+          int min_gy = std::max(0, center_gy - kernel_cells);
+          int max_gy = std::min(height_ - 1, center_gy + kernel_cells);
+
+          for (int gy = min_gy; gy <= max_gy; ++gy) {
+            double y = origin_y_ + (gy + 0.5) * resolution_;
+            double dy = y - p.y();
+            double dy_sq = dy * dy;
+            int row_offset = gy * width_;
+
+            for (int gx = min_gx; gx <= max_gx; ++gx) {
+              double x = origin_x_ + (gx + 0.5) * resolution_;
+              double dx = x - p.x();
+              double dist_sq = dx * dx + dy_sq;
+
+              if (dist_sq <= max_eval_dist_sq) {
+                float val = static_cast<float>(std::exp(-dist_sq / sigma_sq2));
+                float& cell = local_grid[row_offset + gx];
+                if (val > cell) {
+                  cell = val;
+                }
+              }
+            }
+          }
+        }
+      }
+
+      #pragma omp parallel for schedule(static) num_threads(num_threads)
+      for (size_t i = 0; i < grid_.size(); ++i) {
+        float m = 0.0f;
+        for (int t = 0; t < num_threads; ++t) {
+          if (thread_grids_[t][i] > m) {
+            m = thread_grids_[t][i];
+          }
+        }
+        grid_[i] = m;
+      }
     }
   }
+
+  inline double origin_x() const { return origin_x_; }
+  inline double origin_y() const { return origin_y_; }
+  inline double resolution() const { return resolution_; }
+  inline double inv_resolution() const { return inv_resolution_; }
+  inline int width() const { return width_; }
+  inline int height() const { return height_; }
+  inline const float* data() const { return grid_.data(); }
 
   inline float lookup(double x, double y) const {
     int gx = static_cast<int>((x - origin_x_) * inv_resolution_);
@@ -135,6 +207,10 @@ class LikelihoodGrid {
 
   void clear() {
     grid_.clear();
+    for (auto& tg : thread_grids_) {
+      tg.clear();
+    }
+    thread_grids_.clear();
     width_ = 0;
     height_ = 0;
   }
@@ -150,6 +226,7 @@ class LikelihoodGrid {
   int width_{0};
   int height_{0};
   std::vector<float> grid_;
+  std::vector<std::vector<float>> thread_grids_;
 };
 
 }  // namespace
@@ -363,6 +440,7 @@ core::MatchResult MultiResCSMMatcher::match(
     int tid = omp_get_thread_num();
     double theta = yaw_candidates[a];
     const auto& r_pts = rotated_centered[a];
+    size_t n_pts = r_pts.size();
 
     double angle_penalty = 1.0;
     if (impl_->enable_variance_penalty && impl_->angle_variance_penalty > 0.0) {
@@ -372,10 +450,65 @@ core::MatchResult MultiResCSMMatcher::match(
       angle_penalty = std::max(impl_->minimum_angle_penalty, angle_penalty);
     }
 
-    for (double dx : x_offsets) {
+    size_t num_x = x_offsets.size();
+    size_t num_y = y_offsets.size();
+    double grid_ox = grid.origin_x();
+    double grid_oy = grid.origin_y();
+    double grid_inv_res = grid.inv_resolution();
+    int grid_w = grid.width();
+    int grid_h = grid.height();
+    const float* grid_data = grid.data();
+
+    // 1D事前計算: 各 dx に対する全点の gx 座標テーブル
+    std::vector<int> gx_table(num_x * n_pts);
+    std::vector<uint8_t> gx_all_valid(num_x, 1);
+    for (size_t dx_idx = 0; dx_idx < num_x; ++dx_idx) {
+      double cx = init_cx + x_offsets[dx_idx];
+      int* gx_row = &gx_table[dx_idx * n_pts];
+      bool all_valid = true;
+      for (size_t i = 0; i < n_pts; ++i) {
+        int gx = static_cast<int>((r_pts[i].x() + cx - grid_ox) * grid_inv_res);
+        if (gx >= 0 && gx < grid_w) {
+          gx_row[i] = gx;
+        } else {
+          gx_row[i] = -1;
+          all_valid = false;
+        }
+      }
+      gx_all_valid[dx_idx] = all_valid ? 1 : 0;
+    }
+
+    // 1D事前計算: 各 dy に対する全点の gy オフセットテーブル
+    std::vector<int> gy_table(num_y * n_pts);
+    std::vector<uint8_t> gy_all_valid(num_y, 1);
+    for (size_t dy_idx = 0; dy_idx < num_y; ++dy_idx) {
+      double cy = init_cy + y_offsets[dy_idx];
+      int* gy_row = &gy_table[dy_idx * n_pts];
+      bool all_valid = true;
+      for (size_t i = 0; i < n_pts; ++i) {
+        int gy = static_cast<int>((r_pts[i].y() + cy - grid_oy) * grid_inv_res);
+        if (gy >= 0 && gy < grid_h) {
+          gy_row[i] = gy * grid_w;
+        } else {
+          gy_row[i] = -1;
+          all_valid = false;
+        }
+      }
+      gy_all_valid[dy_idx] = all_valid ? 1 : 0;
+    }
+
+    // 並進探索ループ (内側は純粋なポインタ参照・加算)
+    for (size_t dx_idx = 0; dx_idx < num_x; ++dx_idx) {
+      double dx = x_offsets[dx_idx];
       double cx = init_cx + dx;
-      for (double dy : y_offsets) {
+      const int* gx_row = &gx_table[dx_idx * n_pts];
+      bool x_valid = (gx_all_valid[dx_idx] != 0);
+
+      for (size_t dy_idx = 0; dy_idx < num_y; ++dy_idx) {
+        double dy = y_offsets[dy_idx];
         double cy = init_cy + dy;
+        const int* gy_row = &gy_table[dy_idx * n_pts];
+        bool y_valid = (gy_all_valid[dy_idx] != 0);
 
         double dist_penalty = 1.0;
         if (impl_->enable_variance_penalty && impl_->distance_variance_penalty > 0.0) {
@@ -386,9 +519,21 @@ core::MatchResult MultiResCSMMatcher::match(
         }
 
         double sum_score = 0.0;
-        for (const auto& p : r_pts) {
-          sum_score += grid.lookup(p.x() + cx, p.y() + cy);
+        if (x_valid && y_valid) {
+          #pragma omp simd reduction(+:sum_score)
+          for (size_t i = 0; i < n_pts; ++i) {
+            sum_score += grid_data[gy_row[i] + gx_row[i]];
+          }
+        } else {
+          for (size_t i = 0; i < n_pts; ++i) {
+            int gy_off = gy_row[i];
+            int gx = gx_row[i];
+            if (gy_off >= 0 && gx >= 0) {
+              sum_score += grid_data[gy_off + gx];
+            }
+          }
         }
+
         double norm_score = sum_score * inv_pts * angle_penalty * dist_penalty;
 
         if (norm_score > thread_best_stage1[tid].score) {
@@ -453,6 +598,7 @@ core::MatchResult MultiResCSMMatcher::match(
     int tid = omp_get_thread_num();
     double theta = fine_yaw_candidates[a];
     const auto& r_pts = fine_rotated_centered[a];
+    size_t n_pts = r_pts.size();
 
     double angle_penalty = 1.0;
     if (impl_->enable_variance_penalty && impl_->angle_variance_penalty > 0.0) {
@@ -462,10 +608,82 @@ core::MatchResult MultiResCSMMatcher::match(
       angle_penalty = std::max(impl_->minimum_angle_penalty, angle_penalty);
     }
 
-    for (double dx : fine_x_offsets) {
+    size_t num_fx = fine_x_offsets.size();
+    size_t num_fy = fine_y_offsets.size();
+    double grid_ox = grid.origin_x();
+    double grid_oy = grid.origin_y();
+    double grid_inv_res = grid.inv_resolution();
+    int grid_w = grid.width();
+    int grid_h = grid.height();
+    const float* grid_data = grid.data();
+
+    // 1D事前計算: x 方向のバイリニア補間成分 (gx0, gx1, wx0, wx1)
+    struct BilinearX {
+      int gx0;
+      int gx1;
+      float wx0;
+      float wx1;
+      bool valid;
+    };
+    std::vector<BilinearX> bx_table(num_fx * n_pts);
+    std::vector<uint8_t> bx_all_valid(num_fx, 1);
+
+    for (size_t dx_idx = 0; dx_idx < num_fx; ++dx_idx) {
+      double cx = best_stage1.cx + fine_x_offsets[dx_idx];
+      BilinearX* bx_row = &bx_table[dx_idx * n_pts];
+      bool all_v = true;
+      for (size_t i = 0; i < n_pts; ++i) {
+        double fx = (r_pts[i].x() + cx - grid_ox) * grid_inv_res - 0.5;
+        int gx0 = static_cast<int>(std::floor(fx));
+        int gx1 = gx0 + 1;
+        float wx1 = static_cast<float>(fx - gx0);
+        float wx0 = 1.0f - wx1;
+        bool v = (gx0 >= 0 && gx1 < grid_w);
+        if (!v) all_v = false;
+        bx_row[i] = BilinearX{gx0, gx1, wx0, wx1, v};
+      }
+      bx_all_valid[dx_idx] = all_v ? 1 : 0;
+    }
+
+    // 1D事前計算: y 方向のバイリニア補間成分 (gy0_off, gy1_off, wy0, wy1)
+    struct BilinearY {
+      int gy0_off;
+      int gy1_off;
+      float wy0;
+      float wy1;
+      bool valid;
+    };
+    std::vector<BilinearY> by_table(num_fy * n_pts);
+    std::vector<uint8_t> by_all_valid(num_fy, 1);
+
+    for (size_t dy_idx = 0; dy_idx < num_fy; ++dy_idx) {
+      double cy = best_stage1.cy + fine_y_offsets[dy_idx];
+      BilinearY* by_row = &by_table[dy_idx * n_pts];
+      bool all_v = true;
+      for (size_t i = 0; i < n_pts; ++i) {
+        double fy = (r_pts[i].y() + cy - grid_oy) * grid_inv_res - 0.5;
+        int gy0 = static_cast<int>(std::floor(fy));
+        int gy1 = gy0 + 1;
+        float wy1 = static_cast<float>(fy - gy0);
+        float wy0 = 1.0f - wy1;
+        bool v = (gy0 >= 0 && gy1 < grid_h);
+        if (!v) all_v = false;
+        by_row[i] = BilinearY{gy0 * grid_w, gy1 * grid_w, wy0, wy1, v};
+      }
+      by_all_valid[dy_idx] = all_v ? 1 : 0;
+    }
+
+    for (size_t dx_idx = 0; dx_idx < num_fx; ++dx_idx) {
+      double dx = fine_x_offsets[dx_idx];
       double cx = best_stage1.cx + dx;
-      for (double dy : fine_y_offsets) {
+      const BilinearX* bx_row = &bx_table[dx_idx * n_pts];
+      bool x_valid = (bx_all_valid[dx_idx] != 0);
+
+      for (size_t dy_idx = 0; dy_idx < num_fy; ++dy_idx) {
+        double dy = fine_y_offsets[dy_idx];
         double cy = best_stage1.cy + dy;
+        const BilinearY* by_row = &by_table[dy_idx * n_pts];
+        bool y_valid = (by_all_valid[dy_idx] != 0);
 
         double dist_penalty = 1.0;
         if (impl_->enable_variance_penalty && impl_->distance_variance_penalty > 0.0) {
@@ -478,9 +696,30 @@ core::MatchResult MultiResCSMMatcher::match(
         }
 
         double sum_score = 0.0;
-        for (const auto& p : r_pts) {
-          sum_score += grid.lookup_bilinear(p.x() + cx, p.y() + cy);
+        if (x_valid && y_valid) {
+          for (size_t i = 0; i < n_pts; ++i) {
+            const auto& bx = bx_row[i];
+            const auto& by = by_row[i];
+            sum_score += by.wy0 * (bx.wx0 * grid_data[by.gy0_off + bx.gx0] +
+                                  bx.wx1 * grid_data[by.gy0_off + bx.gx1]) +
+                         by.wy1 * (bx.wx0 * grid_data[by.gy1_off + bx.gx0] +
+                                  bx.wx1 * grid_data[by.gy1_off + bx.gx1]);
+          }
+        } else {
+          for (size_t i = 0; i < n_pts; ++i) {
+            const auto& bx = bx_row[i];
+            const auto& by = by_row[i];
+            if (bx.valid && by.valid) {
+              sum_score += by.wy0 * (bx.wx0 * grid_data[by.gy0_off + bx.gx0] +
+                                    bx.wx1 * grid_data[by.gy0_off + bx.gx1]) +
+                           by.wy1 * (bx.wx0 * grid_data[by.gy1_off + bx.gx0] +
+                                    bx.wx1 * grid_data[by.gy1_off + bx.gx1]);
+            } else {
+              sum_score += grid.lookup(r_pts[i].x() + cx, r_pts[i].y() + cy);
+            }
+          }
         }
+
         double norm_score = sum_score * inv_pts * angle_penalty * dist_penalty;
 
         if (norm_score > thread_best_stage2[tid].score) {

@@ -13,7 +13,7 @@ struct TopicsConfig {
 
 struct MapConfig {
   double resolution{0.05};
-  double expansion_margin{100.0};
+  double expansion_margin{20.0};
   double publish_hz{1.0};
   std::string renderer{"overwrite"};  // "overwrite" | "counting"
   double hit_threshold{0.3};
@@ -22,6 +22,7 @@ struct MapConfig {
   double miss_weight{0.25};
   double miss_clearance_margin{0.0};
   double max_miss_ratio{2.0};
+  bool skip_intermediate_rendering{false};
 };
 
 struct KeyframeConfig {

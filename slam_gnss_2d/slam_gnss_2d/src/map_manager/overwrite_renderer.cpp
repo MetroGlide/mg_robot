@@ -18,11 +18,11 @@ bool OverwriteRenderer::add_node(const core::PoseNode& node) {
   if (!node.scan) {
     return true;
   }
-  if (map_size_ <= 1) {
+  if (map_width_ <= 1 || map_height_ <= 1) {
     return false;
   }
   auto [r_px, r_py] = world_to_pixel(node.x, node.y, origin_x_, origin_y_, resolution_);
-  if (!in_bounds(r_px, r_py, map_size_)) {
+  if (!in_bounds(r_px, r_py, map_width_, map_height_)) {
     return false;
   }
   return render_node(node);
@@ -34,12 +34,13 @@ void OverwriteRenderer::rerender_all(const std::vector<core::PoseNode>& nodes) {
     return;
   }
 
-  auto [new_ox, new_oy, new_size] = compute_square_bounds(
+  auto [new_ox, new_oy, new_w, new_h] = compute_bounds(
       nodes, resolution_, expansion_margin_);
   origin_x_ = new_ox;
   origin_y_ = new_oy;
-  map_size_ = new_size;
-  map_ = cv::Mat(new_size, new_size, CV_8UC1, cv::Scalar(128));
+  map_width_ = new_w;
+  map_height_ = new_h;
+  map_ = cv::Mat(new_h, new_w, CV_8UC1, cv::Scalar(128));
   render_count_ = 0;
 
   for (const auto& node : nodes) {
@@ -84,8 +85,8 @@ void OverwriteRenderer::apply_trajectory_mask(
 
 bool OverwriteRenderer::render_node(const core::PoseNode& node) {
   auto scan_pixels = scan_hits_to_pixels(
-      node, origin_x_, origin_y_, resolution_, map_size_);
-  if (!in_bounds(scan_pixels.robot_px, scan_pixels.robot_py, map_size_)) {
+      node, origin_x_, origin_y_, resolution_, map_width_, map_height_);
+  if (!in_bounds(scan_pixels.robot_px, scan_pixels.robot_py, map_width_, map_height_)) {
     return false;
   }
 

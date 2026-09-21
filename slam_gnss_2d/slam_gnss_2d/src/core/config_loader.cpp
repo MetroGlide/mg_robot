@@ -14,7 +14,7 @@ void ConfigLoader::declare_params(rclcpp::Node& node) {
   declare_param_if_not_declared(node, "topics.odom", std::string("/odom"));
 
   declare_param_if_not_declared(node, "map.resolution", 0.05);
-  declare_param_if_not_declared(node, "map.expansion_margin", 100.0);
+  declare_param_if_not_declared(node, "map.expansion_margin", 20.0);
   declare_param_if_not_declared(node, "map.publish_hz", 1.0);
   declare_param_if_not_declared(node, "map.renderer", std::string("overwrite"));
   declare_param_if_not_declared(node, "map.hit_threshold", 0.3);
@@ -23,6 +23,7 @@ void ConfigLoader::declare_params(rclcpp::Node& node) {
   declare_param_if_not_declared(node, "map.miss_weight", 0.25);
   declare_param_if_not_declared(node, "map.miss_clearance_margin", 0.0);
   declare_param_if_not_declared(node, "map.max_miss_ratio", 2.0);
+  declare_param_if_not_declared(node, "map.skip_intermediate_rendering", false);
 
   declare_param_if_not_declared(node, "keyframe.min_translation", 1.0);
   declare_param_if_not_declared(node, "keyframe.min_rotation", 0.1);
@@ -155,6 +156,7 @@ SlamConfig ConfigLoader::build_config(const rclcpp::Node& node) {
   cfg.map.miss_weight = node.get_parameter("map.miss_weight").as_double();
   cfg.map.miss_clearance_margin = node.get_parameter("map.miss_clearance_margin").as_double();
   cfg.map.max_miss_ratio = node.get_parameter("map.max_miss_ratio").as_double();
+  cfg.map.skip_intermediate_rendering = node.get_parameter("map.skip_intermediate_rendering").as_bool();
 
   cfg.keyframe.min_translation = node.get_parameter("keyframe.min_translation").as_double();
   cfg.keyframe.min_rotation = node.get_parameter("keyframe.min_rotation").as_double();

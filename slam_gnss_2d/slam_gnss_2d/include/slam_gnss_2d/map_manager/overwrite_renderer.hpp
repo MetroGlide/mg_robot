@@ -24,7 +24,8 @@ class OverwriteRenderer : public MapRendererBase {
  private:
   double resolution_;
   double expansion_margin_;
-  int map_size_{1};
+  int map_width_{1};
+  int map_height_{1};
   double origin_x_{0.0};
   double origin_y_{0.0};
   cv::Mat map_;

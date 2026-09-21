@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <nanoflann.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <unordered_map>
 
@@ -10,6 +11,30 @@
 
 namespace slam_gnss_2d {
 namespace pose_graph {
+
+namespace {
+
+struct NodeCloudAdaptor {
+  const std::vector<core::PoseNode>& nodes;
+  inline size_t kdtree_get_point_count() const { return nodes.size(); }
+  inline double kdtree_get_pt(const size_t idx, const size_t dim) const {
+    return (dim == 0) ? nodes[idx].x : nodes[idx].y;
+  }
+  template <class BBOX>
+  bool kdtree_get_bbox(BBOX&) const { return false; }
+};
+
+using NodeKDTree = nanoflann::KDTreeSingleIndexAdaptor<
+    nanoflann::L2_Simple_Adaptor<double, NodeCloudAdaptor>,
+    NodeCloudAdaptor, 2>;
+
+}  // namespace
+
+struct LoopClosureBuilder::Impl {
+  std::unique_ptr<NodeCloudAdaptor> adaptor;
+  std::unique_ptr<NodeKDTree> tree;
+  bool dirty{true};
+};
 
 LoopClosureBuilder::LoopClosureBuilder(
     std::shared_ptr<ScanMatchingBuilder> inner,
@@ -31,7 +56,27 @@ LoopClosureBuilder::LoopClosureBuilder(
                               ? loop_closure_crossing_reject_deg * M_PI / 180.0
                               : 0.0),
       submap_radius_(loop_closure_submap_radius),
-      max_score_(loop_closure_max_score) {}
+      max_score_(loop_closure_max_score),
+      pimpl_(std::make_unique<Impl>()) {}
+
+LoopClosureBuilder::~LoopClosureBuilder() = default;
+
+void LoopClosureBuilder::ensure_node_kdtree() const {
+  if (!pimpl_->dirty && pimpl_->tree) {
+    return;
+  }
+  if (all_nodes_cache_.empty()) {
+    pimpl_->tree.reset();
+    pimpl_->adaptor.reset();
+    pimpl_->dirty = false;
+    return;
+  }
+  pimpl_->adaptor = std::make_unique<NodeCloudAdaptor>(NodeCloudAdaptor{all_nodes_cache_});
+  pimpl_->tree = std::make_unique<NodeKDTree>(
+      2, *pimpl_->adaptor, nanoflann::KDTreeSingleIndexAdaptorParams(10));
+  pimpl_->tree->buildIndex();
+  pimpl_->dirty = false;
+}
 
 std::optional<core::PoseNode> LoopClosureBuilder::add_scan(
     const core::ScanDataPtr& scan,
@@ -42,6 +87,7 @@ std::optional<core::PoseNode> LoopClosureBuilder::add_scan(
   }
 
   all_nodes_cache_.push_back(*node);
+  pimpl_->dirty = true;
   loop_just_closed_flag_ = false;
 
   auto candidates = find_loop_candidates(*node);
@@ -66,19 +112,36 @@ std::vector<core::PoseNode> LoopClosureBuilder::find_loop_candidates(
     return candidates;
   }
 
+  ensure_node_kdtree();
+  if (!pimpl_->tree) {
+    return candidates;
+  }
+
+  double query_pt[2] = {node.x, node.y};
   double search_radius_sq = search_radius_ * search_radius_;
-  for (const auto& n : all_nodes_cache_) {
+  std::vector<std::pair<uint32_t, double>> matches;
+  nanoflann::SearchParams params;
+  params.sorted = false;
+
+  pimpl_->tree->radiusSearch(query_pt, search_radius_sq, matches, params);
+
+  std::vector<size_t> matched_indices;
+  matched_indices.reserve(matches.size());
+  for (const auto& m : matches) {
+    const auto& n = all_nodes_cache_[m.first];
     if (!n.scan) {
       continue;
     }
     if ((node.index - n.index) < min_node_gap_) {
       continue;
     }
-    double dx = node.x - n.x;
-    double dy = node.y - n.y;
-    if (dx * dx + dy * dy <= search_radius_sq) {
-      candidates.push_back(n);
-    }
+    matched_indices.push_back(m.first);
+  }
+
+  std::sort(matched_indices.begin(), matched_indices.end());
+  candidates.reserve(matched_indices.size());
+  for (size_t idx : matched_indices) {
+    candidates.push_back(all_nodes_cache_[idx]);
   }
   return candidates;
 }
@@ -100,19 +163,34 @@ LoopClosureBuilder::build_candidate_submap_with_normals(
     return core::scan_to_points_and_normals(candidate.scan);
   }
 
+  ensure_node_kdtree();
+  if (!pimpl_->tree) {
+    if (!candidate.scan) return {{}, {}};
+    return core::scan_to_points_and_normals(candidate.scan);
+  }
+
+  double query_pt[2] = {candidate.x, candidate.y};
+  double submap_radius_sq = submap_radius_ * submap_radius_;
+  std::vector<std::pair<uint32_t, double>> matches;
+  nanoflann::SearchParams params;
+  params.sorted = false;
+
+  pimpl_->tree->radiusSearch(query_pt, submap_radius_sq, matches, params);
+
+  std::vector<size_t> matched_indices;
+  matched_indices.reserve(matches.size());
+  for (const auto& m : matches) {
+    if (all_nodes_cache_[m.first].scan) {
+      matched_indices.push_back(m.first);
+    }
+  }
+  std::sort(matched_indices.begin(), matched_indices.end());
+
   std::vector<Eigen::Vector2d> world_pts;
   std::vector<Eigen::Vector2d> world_normals;
-  double submap_radius_sq = submap_radius_ * submap_radius_;
 
-  for (const auto& node : all_nodes_cache_) {
-    if (!node.scan) {
-      continue;
-    }
-    double dx = node.x - candidate.x;
-    double dy = node.y - candidate.y;
-    if (dx * dx + dy * dy > submap_radius_sq) {
-      continue;
-    }
+  for (size_t idx : matched_indices) {
+    const auto& node = all_nodes_cache_[idx];
 
     std::vector<Eigen::Vector2d> pts;
     std::vector<Eigen::Vector2d> normals;
@@ -298,6 +376,7 @@ void LoopClosureBuilder::reset() {
   loop_attempt_count_ = 0;
   loop_success_count_ = 0;
   all_nodes_cache_.clear();
+  pimpl_->dirty = true;
 }
 
 std::vector<core::PoseEdge> LoopClosureBuilder::get_loop_edges() const {
@@ -324,6 +403,7 @@ void LoopClosureBuilder::replace_nodes(const std::vector<core::PoseNode>& nodes)
       cached_node.yaw = it->second.yaw;
     }
   }
+  pimpl_->dirty = true;
 }
 
 }  // namespace pose_graph

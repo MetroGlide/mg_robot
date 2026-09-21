@@ -111,8 +111,9 @@ ScanProcessResult GraphOrchestrator::process_frame(const SensorFrame& frame) {
   }
 
   initialize_optimizer_if_needed(*node);
-  auto new_seq_edge = add_latest_seq_edge(*node);
-  auto [new_loop_edges, loop_closed] = add_new_loop_edges();
+  auto all_edges = pose_graph_->get_edges();
+  auto new_seq_edge = add_latest_seq_edge(*node, all_edges);
+  auto [new_loop_edges, loop_closed] = add_new_loop_edges(all_edges);
 
   bool reanchored = false;
   if (dynamic_reanchor_enabled_ && !dynamic_reanchored_) {
@@ -269,7 +270,12 @@ void GraphOrchestrator::initialize_optimizer_if_needed(const PoseNode& node) {
 }
 
 std::optional<PoseEdge> GraphOrchestrator::add_latest_seq_edge(const PoseNode& node) {
-  auto latest_seq_edge = get_latest_seq_edge(node.index);
+  return add_latest_seq_edge(node, pose_graph_->get_edges());
+}
+
+std::optional<PoseEdge> GraphOrchestrator::add_latest_seq_edge(
+    const PoseNode& node, const std::vector<PoseEdge>& all_edges) {
+  auto latest_seq_edge = get_latest_seq_edge(node.index, all_edges);
   if (latest_seq_edge.has_value() && node.index > last_node_index_) {
     double x = node.x;
     double y = node.y;
@@ -295,18 +301,18 @@ std::optional<PoseEdge> GraphOrchestrator::add_latest_seq_edge(const PoseNode& n
         latest_seq_edge->information);
 
     // 新ノード node.index に向かう局所メッシュリンク (1 < diff < 15) も BetweenFactor に登録
-    auto all_edges = pose_graph_->get_edges();
-    for (const auto& edge : all_edges) {
-      if (edge.to_index == node.index) {
-        int diff = std::abs(edge.to_index - edge.from_index);
+    // 直近に追加されたエッジなので末尾から逆順走査
+    for (auto it = all_edges.rbegin(); it != all_edges.rend(); ++it) {
+      if (it->to_index == node.index) {
+        int diff = std::abs(it->to_index - it->from_index);
         if (diff > 1 && diff < 15) {
           optimizer_.add_between_factor(
-              edge.from_index,
-              edge.to_index,
-              edge.dx,
-              edge.dy,
-              edge.dyaw,
-              edge.information);
+              it->from_index,
+              it->to_index,
+              it->dx,
+              it->dy,
+              it->dyaw,
+              it->information);
         }
       }
     }
@@ -318,20 +324,24 @@ std::optional<PoseEdge> GraphOrchestrator::add_latest_seq_edge(const PoseNode& n
 }
 
 std::pair<std::vector<PoseEdge>, bool> GraphOrchestrator::add_new_loop_edges() {
+  return add_new_loop_edges(pose_graph_->get_edges());
+}
+
+std::pair<std::vector<PoseEdge>, bool> GraphOrchestrator::add_new_loop_edges(
+    const std::vector<PoseEdge>& all_edges) {
   std::vector<PoseEdge> new_loop_edges;
   bool loop_closed = false;
 
-  auto all_edges = pose_graph_->get_edges();
-  std::vector<PoseEdge> loop_edges;
+  std::vector<const PoseEdge*> loop_edge_ptrs;
   for (const auto& e : all_edges) {
     if (std::abs(e.to_index - e.from_index) >= 15) {
-      loop_edges.push_back(e);
+      loop_edge_ptrs.push_back(&e);
     }
   }
 
-  if (loop_edges.size() > last_loop_edge_count_) {
-    for (size_t i = last_loop_edge_count_; i < loop_edges.size(); ++i) {
-      const auto& edge = loop_edges[i];
+  if (loop_edge_ptrs.size() > last_loop_edge_count_) {
+    for (size_t i = last_loop_edge_count_; i < loop_edge_ptrs.size(); ++i) {
+      const auto& edge = *loop_edge_ptrs[i];
       optimizer_.add_between_factor(
           edge.from_index,
           edge.to_index,
@@ -341,7 +351,7 @@ std::pair<std::vector<PoseEdge>, bool> GraphOrchestrator::add_new_loop_edges() {
           edge.information);
       new_loop_edges.push_back(edge);
     }
-    last_loop_edge_count_ = loop_edges.size();
+    last_loop_edge_count_ = loop_edge_ptrs.size();
     loop_closed = true;
   }
 
@@ -576,7 +586,11 @@ bool GraphOrchestrator::apply_optimized_poses(const PoseNode& node, bool loop_cl
 }
 
 std::optional<PoseEdge> GraphOrchestrator::get_latest_seq_edge(int node_index) const {
-  auto all_edges = pose_graph_->get_edges();
+  return get_latest_seq_edge(node_index, pose_graph_->get_edges());
+}
+
+std::optional<PoseEdge> GraphOrchestrator::get_latest_seq_edge(
+    int node_index, const std::vector<PoseEdge>& all_edges) const {
   for (auto it = all_edges.rbegin(); it != all_edges.rend(); ++it) {
     if (std::abs(it->to_index - it->from_index) == 1 && it->to_index == node_index) {
       return *it;

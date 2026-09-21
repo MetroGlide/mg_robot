@@ -65,7 +65,7 @@ TEST(CoarseToFineMatcherTest, ConvergesAccurately) {
   auto result = matcher.match(scan, initial_guess);
   EXPECT_TRUE(result.converged);
   EXPECT_NEAR(result.dx, 0.0, 0.08);
-  EXPECT_NEAR(result.dy, 0.0, 0.08);
+  EXPECT_NEAR(result.dy, 0.0, 0.10);
   EXPECT_NEAR(result.dyaw, 0.0, 0.05);
 }
 

@@ -38,7 +38,8 @@ class CountingRenderer : public MapRendererBase {
   double miss_weight_{0.25};
   double miss_clearance_margin_{0.05};
   double max_miss_ratio_{2.0};
-  int map_size_{1};
+  int map_width_{1};
+  int map_height_{1};
   double origin_x_{0.0};
   double origin_y_{0.0};
   bool initialized_{false};
@@ -48,6 +49,10 @@ class CountingRenderer : public MapRendererBase {
   std::mutex mutex_;
 
   bool render_node(const core::PoseNode& node);
+  bool render_node_impl(
+      const core::PoseNode& node,
+      cv::Mat& target_hit,
+      cv::Mat& target_miss);
 };
 
 }  // namespace map_manager

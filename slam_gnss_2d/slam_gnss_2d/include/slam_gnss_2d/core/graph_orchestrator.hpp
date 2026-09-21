@@ -118,11 +118,17 @@ class GraphOrchestrator {
   void initialize_with_gnss_if_ready(const SensorFrame& frame);
   void initialize_optimizer_if_needed(const PoseNode& node);
   std::optional<PoseEdge> add_latest_seq_edge(const PoseNode& node);
+  std::optional<PoseEdge> add_latest_seq_edge(
+      const PoseNode& node, const std::vector<PoseEdge>& all_edges);
   std::pair<std::vector<PoseEdge>, bool> add_new_loop_edges();
+  std::pair<std::vector<PoseEdge>, bool> add_new_loop_edges(
+      const std::vector<PoseEdge>& all_edges);
   std::optional<GnssPrior> add_gnss_prior(const SensorFrame& frame, const PoseNode& node);
   bool try_dynamic_reanchor(const PoseNode& node, const SensorFrame& frame);
   bool apply_optimized_poses(const PoseNode& node, bool loop_closed);
   std::optional<PoseEdge> get_latest_seq_edge(int node_index) const;
+  std::optional<PoseEdge> get_latest_seq_edge(
+      int node_index, const std::vector<PoseEdge>& all_edges) const;
   double sigma_from_gnss(const GnssData& gnss) const;
   static std::optional<std::pair<double, double>> estimate_heading_pca(
       const std::vector<std::pair<double, double>>& pts);

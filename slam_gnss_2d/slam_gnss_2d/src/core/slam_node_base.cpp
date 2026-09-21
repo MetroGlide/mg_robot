@@ -24,6 +24,11 @@ SlamNodeBase::~SlamNodeBase() {
 
 void SlamNodeBase::init() {
   config_ = ConfigLoader::build_config(*this);
+  skip_intermediate_rendering_ = config_.map.skip_intermediate_rendering;
+  if (has_parameter("skip_intermediate_rendering")) {
+    skip_intermediate_rendering_ = get_parameter("skip_intermediate_rendering").as_bool();
+  }
+
 
   auto [scan_src, odom_src] = setup_io(config_);
   scan_source_ = scan_src;
@@ -93,6 +98,7 @@ void SlamNodeBase::init() {
       config_.scan_matching.type.c_str(), config_.scan_matching.reference.c_str(),
       config_.topics.scan.c_str(), config_.topics.odom.c_str(),
       config_.map.resolution, config_.map.expansion_margin);
+  last_map_publish_time_ = std::chrono::steady_clock::now();
 }
 
 void SlamNodeBase::on_frame(const SensorFrame& frame) {
@@ -120,7 +126,9 @@ void SlamNodeBase::on_frame(const SensorFrame& frame) {
       visualizer_->publish_path_before_optimize();
     }
     auto nodes = pose_graph_->get_nodes();
-    renderer_->rerender_all(nodes);
+    if (!skip_intermediate_rendering_) {
+      renderer_->rerender_all(nodes);
+    }
     visualizer_->rebuild_path(nodes);
     if (result.loop_closed) {
       RCLCPP_INFO(
@@ -129,8 +137,10 @@ void SlamNodeBase::on_frame(const SensorFrame& frame) {
           node->index);
     }
   } else {
-    if (!renderer_->add_node(*node)) {
-      renderer_->rerender_all(pose_graph_->get_nodes());
+    if (!skip_intermediate_rendering_) {
+      if (!renderer_->add_node(*node)) {
+        renderer_->rerender_all(pose_graph_->get_nodes());
+      }
     }
     visualizer_->publish_path_increment(*node);
   }
@@ -155,10 +165,10 @@ void SlamNodeBase::on_frame(const SensorFrame& frame) {
       result.loop_closed,
       result.rerender_required);
 
-  map_dirty_ = true;
+  map_dirty_ = !skip_intermediate_rendering_;
 }
 
-void SlamNodeBase::publish_map_timer() {
+void SlamNodeBase::publish_map_timer(bool force) {
   visualizer_->publish_anchor(*orchestrator_);
 
   auto now = std::chrono::steady_clock::now();
@@ -174,6 +184,15 @@ void SlamNodeBase::publish_map_timer() {
   if (!map_dirty_) {
     return;
   }
+
+  double min_interval_sec = 1.0 / std::max(config_.map.publish_hz, 0.01);
+      std::chrono::duration<double>(now - last_map_publish_time_).count());
+  if (!force &&
+      std::chrono::duration<double>(now - last_map_publish_time_).count() < min_interval_sec) {
+    return;
+  }
+
+  last_map_publish_time_ = now;
   map_dirty_ = false;
 
   visualizer_->publish_map(*renderer_);
@@ -206,11 +225,11 @@ void SlamNodeBase::finalize() {
 
     visualizer_->rebuild_path(nodes);
     map_dirty_ = true;
-    publish_map_timer();
+    publish_map_timer(true);
     RCLCPP_INFO(get_logger(), "Final map optimization and rendering complete.");
   } else {
     map_dirty_ = true;
-    publish_map_timer();
+    publish_map_timer(true);
     RCLCPP_INFO(get_logger(), "Final map published.");
   }
 }
