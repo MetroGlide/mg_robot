@@ -22,7 +22,7 @@ _compose_opts = $(if $(OPTS),OPTS="$(OPTS)" )
         build build-all build-no-cache build-robot build-real build-robot-no-cache build-real-no-cache build-sim \
         _collect-deps \
         rviz2 rviz2-slam rviz2-navigation down xhost config \
-        test bag-summary bag-plot-gnss bag-plot-scans \
+        test bag-summary bag-plot-gnss bag-plot-scans bag-eval-slam \
         diagnostics system-manager foxglove-bridge web-ui web-ui-dev tui ui-all ui-dev-all
 
 # --- サービス起動 ---
@@ -205,6 +205,26 @@ bag-plot-scans:
 	     exit 1; \
 	   fi && \
 	   python3 /app/tools/scripts/plot_lidar_scans.py \"\$$TARGET_BAG\" $(_resolve_bag_output_opts) $(if $(NODES),--nodes $(NODES) )$(OPTS)"
+
+# --- SLAM 出力の RTK(GNSS) 比較評価 ---
+# SLAM 出力ディレクトリ (pose_graph.json / gnss_transform.yaml / map.yaml) を NavPVT と比較する。
+# 実行例:
+#   make bag-eval-slam SLAM_DIR=/root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_043837/20260921_1145
+#   make bag-eval-slam SLAM_DIR=<dir> TO_TOOLS=1 OPTS="--time-offset 0.2"
+bag-eval-slam:
+	$(COMPOSE) run --rm --no-deps $(if $(BAG),-e BAG="$(BAG)" )$(if $(BAG_PATH),-e BAG_PATH="$(BAG_PATH)" )develop bash -c \
+	  "source /opt/ros/humble/setup.bash && \
+	   source /root/ros2_ws/install/setup.bash && \
+	   TARGET_BAG=\"\$${BAG:-\$${BAG_PATH:-\$$ROSBAG_FILE}}\" && \
+	   if [ -z \"\$$TARGET_BAG\" ]; then \
+	     echo 'エラー: 解析対象の rosbag が指定されていません。.env に ROSBAG_FILE を設定するか、BAG=/path/to/bag を指定してください。' >&2; \
+	     exit 1; \
+	   fi && \
+	   if [ -z \"$(SLAM_DIR)\" ]; then \
+	     echo 'エラー: SLAM_DIR=<pose_graph.json と gnss_transform.yaml を含むディレクトリ> を指定してください。' >&2; \
+	     exit 1; \
+	   fi && \
+	   python3 /app/tools/scripts/eval_slam.py \"\$$TARGET_BAG\" --slam-dir \"$(SLAM_DIR)\" $(_resolve_bag_output_opts) $(OPTS)"
 
 # --- テスト ---
 # 全テスト: make test
