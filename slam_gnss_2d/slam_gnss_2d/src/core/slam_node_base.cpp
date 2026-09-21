@@ -6,6 +6,7 @@
 
 #include "slam_gnss_2d/core/component_factory.hpp"
 #include "slam_gnss_2d/core/config_loader.hpp"
+#include "slam_gnss_2d/core/timing.hpp"
 
 namespace slam_gnss_2d {
 namespace core {
@@ -73,8 +74,7 @@ void SlamNodeBase::init() {
       config_.gnss.dynamic_reanchor.max_residual_rms_m,
       config_.optimization.batch_on_finalize,
       config_.optimization.batch_max_iterations,
-      config_.gnss.lever_arm.x,
-      config_.gnss.lever_arm.y);
+      config_.gnss.lever_arm);
 
   orchestrator_->set_between_robust_kernel(
       config_.optimization.between_robust_kernel, config_.optimization.between_robust_kernel_scale);
@@ -109,8 +109,7 @@ void SlamNodeBase::init() {
 void SlamNodeBase::on_frame(const SensorFrame& frame) {
   const auto t_process_start = std::chrono::steady_clock::now();
   auto result = orchestrator_->process_frame(frame);
-  stage_times_.process_frame_sec +=
-      std::chrono::duration<double>(std::chrono::steady_clock::now() - t_process_start).count();
+  stage_times_.process_frame_sec += elapsed_sec(t_process_start);
   const auto& node = result.node;
   if (!node.has_value()) {
     RCLCPP_DEBUG(
@@ -130,10 +129,7 @@ void SlamNodeBase::on_frame(const SensorFrame& frame) {
   }
 
   if (result.loop_closed) {
-    RCLCPP_INFO(
-        get_logger(),
-        "Loop closed at node #%d%s",
-        node->index, skip_intermediate_rendering_ ? "" : ": full rerender triggered");
+    RCLCPP_INFO(get_logger(), "Loop closed at node #%d", node->index);
   }
 
   // 中間描画をスキップする場合、描画・可視化配信はすべて finalize で一括実行する
@@ -156,8 +152,7 @@ void SlamNodeBase::on_frame(const SensorFrame& frame) {
     visualizer_->publish_path_increment(*node);
   }
   const auto t_publish_start = std::chrono::steady_clock::now();
-  stage_times_.render_sec +=
-      std::chrono::duration<double>(t_publish_start - t_render_start).count();
+  stage_times_.render_sec += std::chrono::duration<double>(t_publish_start - t_render_start).count();
 
   visualizer_->publish_pose_graph_markers(*pose_graph_);
 
@@ -178,8 +173,7 @@ void SlamNodeBase::on_frame(const SensorFrame& frame) {
       result.new_loop_edges,
       result.loop_closed,
       result.rerender_required);
-  stage_times_.publish_sec +=
-      std::chrono::duration<double>(std::chrono::steady_clock::now() - t_publish_start).count();
+  stage_times_.publish_sec += elapsed_sec(t_publish_start);
 
   map_dirty_ = true;
 }
@@ -229,8 +223,7 @@ void SlamNodeBase::finalize() {
 
   const auto t_finalize_start = std::chrono::steady_clock::now();
   auto finalize_result = orchestrator_->finalize();
-  const double batch_sec =
-      std::chrono::duration<double>(std::chrono::steady_clock::now() - t_finalize_start).count();
+  const double batch_sec = elapsed_sec(t_finalize_start);
 
   const auto t_final_render_start = std::chrono::steady_clock::now();
   // 中間描画をスキップした場合は、最適化結果の有無に関わらずここで初めて描画する
@@ -252,8 +245,7 @@ void SlamNodeBase::finalize() {
     publish_map_timer(true);
     RCLCPP_INFO(get_logger(), "Final map published.");
   }
-  const double final_render_sec =
-      std::chrono::duration<double>(std::chrono::steady_clock::now() - t_final_render_start).count();
+  const double final_render_sec = elapsed_sec(t_final_render_start);
 
   RCLCPP_INFO(
       get_logger(),

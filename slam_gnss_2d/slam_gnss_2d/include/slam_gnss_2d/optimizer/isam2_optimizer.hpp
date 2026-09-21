@@ -44,8 +44,7 @@ class ISAM2Optimizer {
       double yaw_variance = 0.0,
       const std::string& robust_kernel_type = "huber",
       double robust_kernel_scale = 1.345,
-      double lever_arm_x = 0.0,
-      double lever_arm_y = 0.0);
+      const gtsam::Point2& lever_arm = gtsam::Point2(0.0, 0.0));
 
   void add_initial_estimate(
       int node_index,

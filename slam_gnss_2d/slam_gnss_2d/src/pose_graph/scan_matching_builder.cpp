@@ -7,17 +7,13 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include "slam_gnss_2d/core/geometry.hpp"
+#include "slam_gnss_2d/core/timing.hpp"
 #include "slam_gnss_2d/scan_matching/multi_res_csm_matcher.hpp"
 
 namespace slam_gnss_2d {
 namespace pose_graph {
 
 namespace {
-
-double elapsed_sec(std::chrono::steady_clock::time_point since) {
-  return std::chrono::duration<double>(std::chrono::steady_clock::now() - since).count();
-}
-
 
 Eigen::Matrix3d make_odom_information() {
   Eigen::Matrix3d info = Eigen::Matrix3d::Zero();
@@ -34,6 +30,7 @@ Eigen::Matrix3d make_odom_fallback_information() {
   info(2, 2) = 5.0;
   return info;
 }
+
 }  // namespace
 
 ScanMatchingBuilder::ScanMatchingBuilder(
@@ -149,7 +146,7 @@ std::optional<core::PoseNode> ScanMatchingBuilder::add_scan(
 
   auto t_ref = std::chrono::steady_clock::now();
   auto ref_res = provider_->get_reference_pts_and_normals();
-  stage_times_.reference_sec += elapsed_sec(t_ref);
+  stage_times_.reference_sec += core::elapsed_sec(t_ref);
   double dx_icp = dx_local;
   double dy_icp = dy_local;
   double dyaw_icp = dyaw_delta;
@@ -161,10 +158,10 @@ std::optional<core::PoseNode> ScanMatchingBuilder::add_scan(
     icp_attempt_count_++;
     auto t_set = std::chrono::steady_clock::now();
     matcher_->set_target_cloud_with_normals(ref_res->first, ref_res->second);
-    stage_times_.set_target_sec += elapsed_sec(t_set);
+    stage_times_.set_target_sec += core::elapsed_sec(t_set);
     auto t_match = std::chrono::steady_clock::now();
     auto result = matcher_->match(scan, initial_guess);
-    stage_times_.match_sec += elapsed_sec(t_match);
+    stage_times_.match_sec += core::elapsed_sec(t_match);
 
     if (!result.converged) {
       failure_streak_++;
@@ -174,13 +171,10 @@ std::optional<core::PoseNode> ScanMatchingBuilder::add_scan(
           nodes_.size(), initial_guess.x, initial_guess.y,
           initial_guess.yaw * 180.0 / M_PI, failure_streak_, max_failure_streak_);
 
-      dx_icp = dx_local;
-      dy_icp = dy_local;
-      dyaw_icp = dyaw_delta;
+      // dx_icp / dy_icp / dyaw_icp は既定でオドメトリの値、score は 0
       edge_info = make_odom_fallback_information();
       odom_fallback_count_++;
       is_odom_fallback = true;
-      score = 0.0;
     } else {
       failure_streak_ = 0;
       icp_success_count_++;
@@ -188,7 +182,6 @@ std::optional<core::PoseNode> ScanMatchingBuilder::add_scan(
       dy_icp = result.dy;
       dyaw_icp = result.dyaw;
       edge_info = result.information;
-      is_odom_fallback = false;
       score = result.score;
 
       bool is_straight_motion = (std::abs(dyaw_delta) < 0.05 && std::abs(dyaw_icp) < 0.05);
@@ -208,12 +201,8 @@ std::optional<core::PoseNode> ScanMatchingBuilder::add_scan(
           dx_local, dy_local, dyaw_delta, dx_icp, dy_icp, dyaw_icp, edge_info);
     }
   } else {
-    dx_icp = dx_local;
-    dy_icp = dy_local;
-    dyaw_icp = dyaw_delta;
     edge_info = make_odom_information();
     is_odom_fallback = true;
-    score = 0.0;
   }
 
   auto [dx_world, dy_world] = core::local_delta_to_world(
@@ -252,7 +241,7 @@ std::optional<core::PoseNode> ScanMatchingBuilder::add_scan(
   if (enable_near_keyframe_links_ && nodes_.size() > static_cast<size_t>(near_link_min_index_diff_)) {
     auto t_near = std::chrono::steady_clock::now();
     add_near_keyframe_links(node);
-    stage_times_.near_link_sec += elapsed_sec(t_near);
+    stage_times_.near_link_sec += core::elapsed_sec(t_near);
   }
 
   last_odom_ = odom;
@@ -405,7 +394,7 @@ void ScanMatchingBuilder::add_near_keyframe_links(const core::PoseNode& current_
           core::OdomData{current_node.scan->timestamp, dx_l, dy_l, dyaw_l},
       });
     }
-    stage_times_.near_target_sec += elapsed_sec(t_target);
+    stage_times_.near_target_sec += core::elapsed_sec(t_target);
     next += batch_size;
 
     auto t_near_match = std::chrono::steady_clock::now();
@@ -414,7 +403,7 @@ void ScanMatchingBuilder::add_near_keyframe_links(const core::PoseNode& current_
     } else if (!requests.empty()) {
       results.push_back(matcher_->match(current_node.scan, requests.front().initial_guess));
     }
-    stage_times_.near_match_sec += elapsed_sec(t_near_match);
+    stage_times_.near_match_sec += core::elapsed_sec(t_near_match);
 
     for (size_t r = 0; r < batch.size() && added_count < near_link_max_links_per_node_; ++r) {
       const auto& cand_node = nodes_[candidates[batch[r]].index];

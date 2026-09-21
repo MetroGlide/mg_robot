@@ -27,19 +27,15 @@ class ScanMatcherBase {
     set_target_cloud(src_pts);
   }
 
-  // 内容が不変な点群を ID (key) 付きで登録し、同じ key の再設定でターゲット構築を省くための API。
-  // 対応しないマッチャは常に false を返し、呼び出し側が通常のターゲット設定にフォールバックする。
-  // 再利用ターゲット API (try_use/set_reusable/match_reusable_targets) に対応しているか
+  // 内容が不変な点群を ID (key) 付きで登録し、同じ key の再設定でターゲット構築を省くための API
+  // (try_use / set_reusable / match_reusable_targets)。対応しているかは supports_reusable_targets() で分かる。
+  // 対応しないマッチャは常に try_use が false を返し、呼び出し側が通常のターゲット設定にフォールバックする。
   virtual bool supports_reusable_targets() const { return false; }
-  virtual bool try_use_reusable_target(int key) {
-    (void)key;
-    return false;
-  }
+  virtual bool try_use_reusable_target(int /*key*/) { return false; }
   virtual void set_reusable_target_cloud_with_normals(
-      int key,
+      int /*key*/,
       const std::vector<Eigen::Vector2d>& src_pts,
       const std::vector<Eigen::Vector2d>& src_normals) {
-    (void)key;
     set_target_cloud_with_normals(src_pts, src_normals);
   }
   virtual void clear_reusable_targets() {}

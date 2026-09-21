@@ -3,6 +3,7 @@
 #include <vector>
 #include <Eigen/Dense>
 
+#include "slam_gnss_2d/core/geometry.hpp"
 #include "slam_gnss_2d/optimizer/isam2_optimizer.hpp"
 #include "slam_gnss_2d/optimizer/gtsam_optimizer.hpp"
 
@@ -61,14 +62,15 @@ TEST(OptimizerTest, GnssPriorWithLeverArmPlacesAntennaOnMeasurement) {
   const double true_yaw = M_PI / 2.0;
   const double lever_x = 0.26;
   const double lever_y = -0.13;
-  const double antenna_x = true_x + std::cos(true_yaw) * lever_x - std::sin(true_yaw) * lever_y;
-  const double antenna_y = true_y + std::sin(true_yaw) * lever_x + std::cos(true_yaw) * lever_y;
+  const auto [antenna_dx, antenna_dy] = local_delta_to_world(lever_x, lever_y, true_yaw);
+  const double antenna_x = true_x + antenna_dx;
+  const double antenna_y = true_y + antenna_dy;
 
   // 方位は強く拘束し、位置は弱く拘束した初期化
   auto run = [&](double lx, double ly) {
     ISAM2Optimizer optimizer(0.1);
     optimizer.initialize(0, true_x + 0.2, true_y - 0.1, true_yaw, 10.0, 0.001);
-    optimizer.add_gnss_prior(0, antenna_x, antenna_y, 0.01, 0.0, "huber", 1.5, lx, ly);
+    optimizer.add_gnss_prior(0, antenna_x, antenna_y, 0.01, 0.0, "huber", 1.5, gtsam::Point2(lx, ly));
     optimizer.update();
     return *optimizer.get_pose(0);
   };

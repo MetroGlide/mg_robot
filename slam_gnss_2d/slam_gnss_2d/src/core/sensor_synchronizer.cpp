@@ -57,12 +57,10 @@ void SensorSynchronizer::on_scan(const ScanDataPtr& scan) {
     return;
   }
 
-  if (deskew_config_.enabled) {
-    deskew_scan(
-        *scan,
-        [this](double t) { return odom_source_->get_odom_at(t); },
-        deskew_config_);
-  }
+  deskew_scan(
+      *scan,
+      [this](double t) { return odom_source_->get_odom_at(t); },
+      deskew_config_);
 
   std::optional<GnssData> gnss = std::nullopt;
   if (gnss_source_) {

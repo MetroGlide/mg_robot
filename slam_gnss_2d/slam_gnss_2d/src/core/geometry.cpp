@@ -119,25 +119,22 @@ std::vector<Eigen::Vector2d> points_world_to_local(
   return local_pts;
 }
 
-std::vector<core::PoseNode> rebase_and_rotate_nodes(
-    const std::vector<core::PoseNode>& nodes, double rot) {
-  std::vector<core::PoseNode> result = nodes;
-  if (result.empty()) {
-    return result;
+std::vector<core::PoseNode> rebase_and_rotate_nodes(std::vector<core::PoseNode> nodes, double rot) {
+  if (nodes.empty()) {
+    return nodes;
   }
-  // 基準は入力の先頭ノード (出力側は書き換えるため、入力のコピーから取る)
   const double origin_x = nodes.front().x;
   const double origin_y = nodes.front().y;
   const double c = std::cos(rot);
   const double s = std::sin(rot);
-  for (auto& n : result) {
+  for (auto& n : nodes) {
     const double dx = n.x - origin_x;
     const double dy = n.y - origin_y;
     n.x = c * dx - s * dy;
     n.y = s * dx + c * dy;
-    n.yaw = n.yaw + rot;
+    n.yaw += rot;
   }
-  return result;
+  return nodes;
 }
 
 std::pair<std::vector<Eigen::Vector2d>, std::vector<Eigen::Vector2d>>

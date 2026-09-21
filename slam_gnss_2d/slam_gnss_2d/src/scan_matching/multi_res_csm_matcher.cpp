@@ -223,6 +223,32 @@ struct MultiResCSMMatcher::Impl {
   // ICP フォールバック (ステートを持つ fine_matcher) の排他制御
   std::mutex icp_mutex;
 
+  // 尤度グリッドの標準偏差はグリッド解像度の kGridSigmaRatio 倍
+  static constexpr double kGridSigmaRatio = 1.5;
+
+  // ターゲットの点群・法線を設定し、尤度グリッドを構築する
+  void fill_target(
+      Target& target,
+      const std::vector<Eigen::Vector2d>& pts,
+      const std::vector<Eigen::Vector2d>& normals) {
+    target.pts = pts;
+    target.normals = normals;
+    target.grid.build(pts, linear_search_window + 1.0, match_threads());
+  }
+
+  // key の再利用ターゲットを LRU キャッシュから取り出し、最近使用した位置に移す。無ければ nullptr
+  std::shared_ptr<Target> find_target(int key) {
+    for (auto it = reusable_targets.begin(); it != reusable_targets.end(); ++it) {
+      if (it->first == key) {
+        auto entry = *it;
+        reusable_targets.erase(it);
+        reusable_targets.push_back(entry);
+        return entry.second;
+      }
+    }
+    return nullptr;
+  }
+
   int match_threads() const {
     const int max_threads = omp_get_max_threads();
     return num_threads > 0 ? std::min(num_threads, max_threads) : max_threads;
@@ -261,7 +287,7 @@ struct MultiResCSMMatcher::Impl {
         angle_variance_penalty(angle_var_pen),
         minimum_distance_penalty(min_dist_pen),
         minimum_angle_penalty(min_angle_pen),
-        scratch_target(grid_res, grid_res * 1.5),
+        scratch_target(grid_res, grid_res * kGridSigmaRatio),
         active_target(&scratch_target),
         num_threads(num_thr) {}
 };
@@ -293,40 +319,32 @@ MultiResCSMMatcher::MultiResCSMMatcher(
           angle_variance_penalty,
           minimum_distance_penalty,
           minimum_angle_penalty,
-          num_threads)) {}
+          num_threads)) {
+  // near-link の候補を並列にマッチングするため、OpenMP の入れ子並列 (外側+マッチング内部) を許可する
+  omp_set_max_active_levels(2);
+}
 
 MultiResCSMMatcher::~MultiResCSMMatcher() = default;
 
 void MultiResCSMMatcher::set_target_cloud(const std::vector<Eigen::Vector2d>& src_pts) {
-  auto& target = impl_->scratch_target;
-  target.pts = src_pts;
-  target.normals.clear();
-  target.grid.build(src_pts, impl_->linear_search_window + 1.0, impl_->match_threads());
-  impl_->active_target = &target;
+  impl_->fill_target(impl_->scratch_target, src_pts, {});
+  impl_->active_target = &impl_->scratch_target;
 }
 
 void MultiResCSMMatcher::set_target_cloud_with_normals(
     const std::vector<Eigen::Vector2d>& src_pts,
     const std::vector<Eigen::Vector2d>& src_normals) {
-  auto& target = impl_->scratch_target;
-  target.pts = src_pts;
-  target.normals = src_normals;
-  target.grid.build(src_pts, impl_->linear_search_window + 1.0, impl_->match_threads());
-  impl_->active_target = &target;
+  impl_->fill_target(impl_->scratch_target, src_pts, src_normals);
+  impl_->active_target = &impl_->scratch_target;
 }
 
 bool MultiResCSMMatcher::try_use_reusable_target(int key) {
-  auto& cache = impl_->reusable_targets;
-  for (auto it = cache.begin(); it != cache.end(); ++it) {
-    if (it->first == key) {
-      auto entry = *it;
-      cache.erase(it);
-      cache.push_back(entry);
-      impl_->active_target = entry.second.get();
-      return true;
-    }
+  const auto target = impl_->find_target(key);
+  if (!target) {
+    return false;
   }
-  return false;
+  impl_->active_target = target.get();
+  return true;
 }
 
 void MultiResCSMMatcher::set_reusable_target_cloud_with_normals(
@@ -334,10 +352,9 @@ void MultiResCSMMatcher::set_reusable_target_cloud_with_normals(
     const std::vector<Eigen::Vector2d>& src_pts,
     const std::vector<Eigen::Vector2d>& src_normals) {
   auto& cache = impl_->reusable_targets;
-  auto target = std::make_shared<Impl::Target>(impl_->grid_resolution, impl_->grid_resolution * 1.5);
-  target->pts = src_pts;
-  target->normals = src_normals;
-  target->grid.build(src_pts, impl_->linear_search_window + 1.0, impl_->match_threads());
+  auto target = std::make_shared<Impl::Target>(
+      impl_->grid_resolution, impl_->grid_resolution * Impl::kGridSigmaRatio);
+  impl_->fill_target(*target, src_pts, src_normals);
 
   cache.erase(
       std::remove_if(cache.begin(), cache.end(), [key](const auto& e) { return e.first == key; }),
@@ -350,9 +367,7 @@ void MultiResCSMMatcher::set_reusable_target_cloud_with_normals(
 }
 
 void MultiResCSMMatcher::clear_reusable_targets() {
-  if (impl_->active_target != &impl_->scratch_target) {
-    impl_->active_target = &impl_->scratch_target;
-  }
+  impl_->active_target = &impl_->scratch_target;
   impl_->reusable_targets.clear();
 }
 
@@ -393,32 +408,18 @@ std::vector<core::MatchResult> MultiResCSMMatcher::match_reusable_targets(
   // キャッシュ済みターゲットを解決する (未登録の key は不収束のまま)
   std::vector<std::shared_ptr<Impl::Target>> targets(requests.size());
   for (size_t i = 0; i < requests.size(); ++i) {
-    if (try_use_reusable_target(requests[i].key)) {
-      for (const auto& entry : impl_->reusable_targets) {
-        if (entry.first == requests[i].key) {
-          targets[i] = entry.second;
-          break;
-        }
-      }
-    }
-  }
-
-  const int num_requests = static_cast<int>(requests.size());
-  const int total_threads = impl_->match_threads();
-  if (num_requests == 1 || total_threads <= 1) {
-    for (int i = 0; i < num_requests; ++i) {
-      if (targets[i]) {
-        results[i] = impl_->run_match(*targets[i], dst_pts, requests[i].initial_guess, total_threads);
-      }
-    }
-    return results;
+    targets[i] = impl_->find_target(requests[i].key);
   }
 
   // 候補ごとのマッチングを並列に実行し、各マッチング内部も入れ子で並列化する。
   // 各マッチングは独立で、結果はスレッド数に依らず決定的。
-  const int inner_threads = std::max(1, std::min(total_threads, omp_get_max_threads() / num_requests));
-  omp_set_max_active_levels(2);
-  #pragma omp parallel for num_threads(num_requests) schedule(static, 1)
+  const int num_requests = static_cast<int>(requests.size());
+  const int total_threads = impl_->match_threads();
+  const bool parallel = num_requests > 1 && total_threads > 1;
+  const int inner_threads = parallel
+      ? std::max(1, std::min(total_threads, omp_get_max_threads() / num_requests))
+      : total_threads;
+  #pragma omp parallel for if(parallel) num_threads(num_requests) schedule(static, 1)
   for (int i = 0; i < num_requests; ++i) {
     if (targets[i]) {
       results[i] = impl_->run_match(*targets[i], dst_pts, requests[i].initial_guess, inner_threads);
@@ -465,22 +466,50 @@ core::MatchResult MultiResCSMMatcher::Impl::run_match(
   const auto& grid = target.grid;
   double inv_pts = 1.0 / static_cast<double>(dst_pts.size());
 
+  // 各角度で重心基準の点群を回転させたもの
+  const auto rotate_centered = [&](const std::vector<double>& thetas) {
+    std::vector<std::vector<Eigen::Vector2d>> rotated(thetas.size());
+    for (size_t a = 0; a < thetas.size(); ++a) {
+      const double c = std::cos(thetas[a]);
+      const double s = std::sin(thetas[a]);
+      rotated[a].resize(centered_dst.size());
+      for (size_t i = 0; i < centered_dst.size(); ++i) {
+        rotated[a][i] = Eigen::Vector2d(
+            c * centered_dst[i].x() - s * centered_dst[i].y(),
+            s * centered_dst[i].x() + c * centered_dst[i].y());
+      }
+    }
+    return rotated;
+  };
+
+  // 初期推定からの角度・距離のずれに対する分散ペナルティ (無効時は 1.0)
+  const auto angle_penalty_at = [&](double theta) {
+    if (!(enable_variance_penalty && angle_variance_penalty > 0.0)) {
+      return 1.0;
+    }
+    const double dyaw = core::angle_diff(theta, initial_guess.yaw);
+    const double var_yaw = angle_variance_penalty * angle_variance_penalty;
+    return std::max(minimum_angle_penalty, std::exp(-0.5 * (dyaw * dyaw) / var_yaw));
+  };
+  const auto distance_penalty_at = [&](double dist_sq) {
+    if (!(enable_variance_penalty && distance_variance_penalty > 0.0)) {
+      return 1.0;
+    }
+    const double var_d = distance_variance_penalty * distance_variance_penalty;
+    return std::max(minimum_distance_penalty, std::exp(-0.5 * dist_sq / var_d));
+  };
+
   // --- Stage 1: Coarse CSM (広域グリッド相関探索) ---
-  int x_steps = static_cast<int>(std::ceil(linear_search_window / linear_step));
-  int y_steps = static_cast<int>(std::ceil(linear_search_window / linear_step));
+  const int linear_steps = static_cast<int>(std::ceil(linear_search_window / linear_step));
   int yaw_steps = static_cast<int>(std::ceil(angular_search_window_rad / angular_step_rad));
 
+  // 並進の探索窓は x, y で同じ
   std::vector<double> x_offsets;
-  x_offsets.reserve(2 * x_steps + 1);
-  for (int i = -x_steps; i <= x_steps; ++i) {
+  x_offsets.reserve(2 * linear_steps + 1);
+  for (int i = -linear_steps; i <= linear_steps; ++i) {
     x_offsets.push_back(i * linear_step);
   }
-
-  std::vector<double> y_offsets;
-  y_offsets.reserve(2 * y_steps + 1);
-  for (int i = -y_steps; i <= y_steps; ++i) {
-    y_offsets.push_back(i * linear_step);
-  }
+  const auto& y_offsets = x_offsets;
 
   std::vector<double> yaw_candidates;
   yaw_candidates.reserve(2 * yaw_steps + 3);
@@ -497,19 +526,8 @@ core::MatchResult MultiResCSMMatcher::Impl::run_match(
                   [](double a, double b) { return std::abs(core::angle_diff(a, b)) < 1e-4; }),
       yaw_candidates.end());
 
-  int num_angles = static_cast<int>(yaw_candidates.size());
-  std::vector<std::vector<Eigen::Vector2d>> rotated_centered(num_angles);
-  for (int a = 0; a < num_angles; ++a) {
-    double theta = yaw_candidates[a];
-    double c = std::cos(theta);
-    double s = std::sin(theta);
-    rotated_centered[a].resize(centered_dst.size());
-    for (size_t i = 0; i < centered_dst.size(); ++i) {
-      rotated_centered[a][i] = Eigen::Vector2d(
-          c * centered_dst[i].x() - s * centered_dst[i].y(),
-          s * centered_dst[i].x() + c * centered_dst[i].y());
-    }
-  }
+  const int num_angles = static_cast<int>(yaw_candidates.size());
+  const auto rotated_centered = rotate_centered(yaw_candidates);
 
   struct Candidate {
     double score{-1.0};
@@ -536,13 +554,7 @@ core::MatchResult MultiResCSMMatcher::Impl::run_match(
     const auto& r_pts = rotated_centered[a];
     size_t n_pts = r_pts.size();
 
-    double angle_penalty = 1.0;
-    if (enable_variance_penalty && angle_variance_penalty > 0.0) {
-      double dyaw = core::angle_diff(theta, initial_guess.yaw);
-      double var_yaw = angle_variance_penalty * angle_variance_penalty;
-      angle_penalty = std::exp(-0.5 * (dyaw * dyaw) / var_yaw);
-      angle_penalty = std::max(minimum_angle_penalty, angle_penalty);
-    }
+    const double angle_penalty = angle_penalty_at(theta);
 
     size_t num_x = x_offsets.size();
     size_t num_y = y_offsets.size();
@@ -604,13 +616,7 @@ core::MatchResult MultiResCSMMatcher::Impl::run_match(
         const int* gy_row = &gy_table[dy_idx * n_pts];
         bool y_valid = (gy_all_valid[dy_idx] != 0);
 
-        double dist_penalty = 1.0;
-        if (enable_variance_penalty && distance_variance_penalty > 0.0) {
-          double dist_sq = dx * dx + dy * dy;
-          double var_d = distance_variance_penalty * distance_variance_penalty;
-          dist_penalty = std::exp(-0.5 * dist_sq / var_d);
-          dist_penalty = std::max(minimum_distance_penalty, dist_penalty);
-        }
+        const double dist_penalty = distance_penalty_at(dx * dx + dy * dy);
 
         double sum_score = 0.0;
         if (x_valid && y_valid) {
@@ -676,19 +682,8 @@ core::MatchResult MultiResCSMMatcher::Impl::run_match(
     fine_yaw_candidates.push_back(core::normalize_angle(best_stage1.theta + i * fine_ang_step_rad));
   }
 
-  int num_fine_angles = static_cast<int>(fine_yaw_candidates.size());
-  std::vector<std::vector<Eigen::Vector2d>> fine_rotated_centered(num_fine_angles);
-  for (int a = 0; a < num_fine_angles; ++a) {
-    double theta = fine_yaw_candidates[a];
-    double c = std::cos(theta);
-    double s = std::sin(theta);
-    fine_rotated_centered[a].resize(centered_dst.size());
-    for (size_t i = 0; i < centered_dst.size(); ++i) {
-      fine_rotated_centered[a][i] = Eigen::Vector2d(
-          c * centered_dst[i].x() - s * centered_dst[i].y(),
-          s * centered_dst[i].x() + c * centered_dst[i].y());
-    }
-  }
+  const int num_fine_angles = static_cast<int>(fine_yaw_candidates.size());
+  const auto fine_rotated_centered = rotate_centered(fine_yaw_candidates);
 
   std::vector<Candidate> thread_best_stage2(max_threads);
   for (int t = 0; t < max_threads; ++t) {
@@ -704,13 +699,7 @@ core::MatchResult MultiResCSMMatcher::Impl::run_match(
     const auto& r_pts = fine_rotated_centered[a];
     size_t n_pts = r_pts.size();
 
-    double angle_penalty = 1.0;
-    if (enable_variance_penalty && angle_variance_penalty > 0.0) {
-      double dyaw = core::angle_diff(theta, initial_guess.yaw);
-      double var_yaw = angle_variance_penalty * angle_variance_penalty;
-      angle_penalty = std::exp(-0.5 * (dyaw * dyaw) / var_yaw);
-      angle_penalty = std::max(minimum_angle_penalty, angle_penalty);
-    }
+    const double angle_penalty = angle_penalty_at(theta);
 
     size_t num_fx = fine_x_offsets.size();
     size_t num_fy = fine_y_offsets.size();
@@ -789,15 +778,9 @@ core::MatchResult MultiResCSMMatcher::Impl::run_match(
         const BilinearY* by_row = &by_table[dy_idx * n_pts];
         bool y_valid = (by_all_valid[dy_idx] != 0);
 
-        double dist_penalty = 1.0;
-        if (enable_variance_penalty && distance_variance_penalty > 0.0) {
-          double total_dx = cx - init_cx;
-          double total_dy = cy - init_cy;
-          double dist_sq = total_dx * total_dx + total_dy * total_dy;
-          double var_d = distance_variance_penalty * distance_variance_penalty;
-          dist_penalty = std::exp(-0.5 * dist_sq / var_d);
-          dist_penalty = std::max(minimum_distance_penalty, dist_penalty);
-        }
+        const double total_dx = cx - init_cx;
+        const double total_dy = cy - init_cy;
+        const double dist_penalty = distance_penalty_at(total_dx * total_dx + total_dy * total_dy);
 
         double sum_score = 0.0;
         if (x_valid && y_valid) {
@@ -946,10 +929,6 @@ core::MatchResult MultiResCSMMatcher::Impl::run_match(
       info,
       csm_converged ? best_stage2.score : 0.0,
   };
-}
-
-std::shared_ptr<ICPMatcher> MultiResCSMMatcher::fine_matcher() const {
-  return impl_->fine_matcher;
 }
 
 }  // namespace scan_matching

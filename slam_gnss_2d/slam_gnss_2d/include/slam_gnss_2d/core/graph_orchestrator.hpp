@@ -10,6 +10,7 @@
 #include <utility>
 #include <vector>
 
+#include "slam_gnss_2d/core/config.hpp"
 #include "slam_gnss_2d/core/data_types.hpp"
 #include "slam_gnss_2d/gnss/anchor_manager.hpp"
 #include "slam_gnss_2d/optimizer/isam2_optimizer.hpp"
@@ -57,8 +58,7 @@ class GraphOrchestrator {
       double dynamic_reanchor_max_residual_rms_m = 1.0,
       bool batch_on_finalize = true,
       int batch_max_iterations = 100,
-      double gnss_lever_arm_x = 0.0,
-      double gnss_lever_arm_y = 0.0);
+      GnssLeverArmConfig gnss_lever_arm = GnssLeverArmConfig{0.0, 0.0});
 
   ScanProcessResult process_frame(const SensorFrame& frame);
   FinalizeResult finalize();
@@ -103,8 +103,7 @@ class GraphOrchestrator {
   bool dynamic_reanchored_{false};
   bool batch_on_finalize_{true};
   int batch_max_iterations_{100};
-  double gnss_lever_arm_x_{0.0};
-  double gnss_lever_arm_y_{0.0};
+  GnssLeverArmConfig gnss_lever_arm_;
 
   int last_node_index_{-1};
   size_t last_loop_edge_count_{0};

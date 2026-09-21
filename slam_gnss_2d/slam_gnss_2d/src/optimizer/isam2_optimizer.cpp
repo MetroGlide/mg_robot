@@ -1,16 +1,13 @@
 #include "slam_gnss_2d/optimizer/isam2_optimizer.hpp"
 
 #include <algorithm>
-#include <cmath>
 #include <cstdio>
-#include <limits>
 #include <string>
 
 #include <gtsam/linear/NoiseModel.h>
 #include <gtsam/nonlinear/LevenbergMarquardtOptimizer.h>
 #include <gtsam/nonlinear/LevenbergMarquardtParams.h>
 #include <gtsam/slam/BetweenFactor.h>
-#include <gtsam/slam/PoseTranslationPrior.h>
 #include <gtsam/slam/PriorFactor.h>
 #include <rclcpp/rclcpp.hpp>
 
@@ -18,6 +15,20 @@ namespace slam_gnss_2d {
 namespace optimizer {
 
 namespace {
+
+// base にロバストカーネル ("huber" | "cauchy") を適用したノイズモデルを返す。それ以外の kernel は base のまま
+gtsam::SharedNoiseModel robustify(
+    const gtsam::SharedNoiseModel& base, const std::string& kernel, double scale) {
+  if (kernel == "huber") {
+    return gtsam::noiseModel::Robust::Create(
+        gtsam::noiseModel::mEstimator::Huber::Create(scale), base);
+  }
+  if (kernel == "cauchy") {
+    return gtsam::noiseModel::Robust::Create(
+        gtsam::noiseModel::mEstimator::Cauchy::Create(scale), base);
+  }
+  return base;
+}
 
 // GNSS アンテナ位置の観測ファクター。アンテナはロボット座標系で lever_arm の位置にあるので、
 // 予測値は pose.transformFrom(lever_arm) (= 位置 + R(yaw) * lever_arm) となる。
@@ -99,14 +110,9 @@ void ISAM2Optimizer::add_between_factor(
   if (!initialized_) {
     return;
   }
-  gtsam::SharedNoiseModel noise = gtsam::noiseModel::Gaussian::Information(information);
-  if (between_robust_kernel_ == "huber") {
-    noise = gtsam::noiseModel::Robust::Create(
-        gtsam::noiseModel::mEstimator::Huber::Create(between_robust_scale_), noise);
-  } else if (between_robust_kernel_ == "cauchy") {
-    noise = gtsam::noiseModel::Robust::Create(
-        gtsam::noiseModel::mEstimator::Cauchy::Create(between_robust_scale_), noise);
-  }
+  const gtsam::SharedNoiseModel noise = robustify(
+      gtsam::noiseModel::Gaussian::Information(information),
+      between_robust_kernel_, between_robust_scale_);
   auto factor = gtsam::BetweenFactor<gtsam::Pose2>(
       from_index, to_index, gtsam::Pose2(dx, dy, dyaw), noise);
   pending_graph_.add(factor);
@@ -121,31 +127,16 @@ void ISAM2Optimizer::add_gnss_prior(
     [[maybe_unused]] double yaw_variance,
     const std::string& robust_kernel_type,
     double robust_kernel_scale,
-    double lever_arm_x,
-    double lever_arm_y) {
+    const gtsam::Point2& lever_arm) {
   std::lock_guard<std::mutex> lock(lock_);
   if (!initialized_) {
     return;
   }
-  auto base_noise = gtsam::noiseModel::Diagonal::Sigmas(
-      gtsam::Vector2(sigma_xy, sigma_xy));
-  gtsam::SharedNoiseModel robust_noise;
-  if (robust_kernel_type == "cauchy") {
-    robust_noise = gtsam::noiseModel::Robust::Create(
-        gtsam::noiseModel::mEstimator::Cauchy::Create(robust_kernel_scale), base_noise);
-  } else {
-    robust_noise = gtsam::noiseModel::Robust::Create(
-        gtsam::noiseModel::mEstimator::Huber::Create(robust_kernel_scale), base_noise);
-  }
-  if (lever_arm_x == 0.0 && lever_arm_y == 0.0) {
-    auto factor = gtsam::PoseTranslationPrior<gtsam::Pose2>(
-        node_index, gtsam::Point2(x, y), robust_noise);
-    pending_graph_.add(factor);
-    gnss_graph_.add(factor);
-    return;
-  }
-  auto factor = LeverArmPositionFactor(
-      node_index, gtsam::Point2(x, y), gtsam::Point2(lever_arm_x, lever_arm_y), robust_noise);
+  // カーネルは huber / cauchy のみ。cauchy 以外は huber として扱う
+  const gtsam::SharedNoiseModel noise = robustify(
+      gtsam::noiseModel::Diagonal::Sigmas(gtsam::Vector2(sigma_xy, sigma_xy)),
+      robust_kernel_type == "cauchy" ? "cauchy" : "huber", robust_kernel_scale);
+  const auto factor = LeverArmPositionFactor(node_index, gtsam::Point2(x, y), lever_arm, noise);
   pending_graph_.add(factor);
   gnss_graph_.add(factor);
 }
@@ -185,12 +176,8 @@ void ISAM2Optimizer::log_indeterminant_variable(gtsam::Key key) const {
       }
       keys += " ";
     }
-    double error = std::numeric_limits<double>::quiet_NaN();
-    try {
-      error = factor->error(linearization_point);
-    } catch (const std::exception&) {
-    }
-    RCLCPP_ERROR(logger, "  factor keys=[%s] error=%.6g", keys.c_str(), error);
+    RCLCPP_ERROR(
+        logger, "  factor keys=[%s] error=%.6g", keys.c_str(), factor->error(linearization_point));
   }
 }
 

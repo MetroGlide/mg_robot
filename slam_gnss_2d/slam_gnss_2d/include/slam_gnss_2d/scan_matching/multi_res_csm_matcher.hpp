@@ -56,8 +56,6 @@ class MultiResCSMMatcher : public ScanMatcherBase {
       const std::vector<Eigen::Vector2d>& dst_pts,
       const core::OdomData& initial_guess);
 
-  std::shared_ptr<ICPMatcher> fine_matcher() const;
-
  private:
   struct Impl;
   std::unique_ptr<Impl> impl_;
