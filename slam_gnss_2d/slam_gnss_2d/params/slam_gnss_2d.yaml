@@ -21,7 +21,7 @@
       miss_weight: 0.50 # [renderer=counting で有効]: missの重み (非対称性: 壁の掠め通過による過剰消去を防止)
       miss_clearance_margin: 0.0 # [renderer=counting で有効]: 終端手前miss停止マージン [m] (0.0で無効化)
       max_miss_ratio: 0.0 # [renderer=counting で有効]: 確証壁に対するmiss上限比率 (復路や交差光線による確定壁の永久保護)
-      skip_intermediate_rendering: false # [全体共通]: 中間描画をスキップし終了時に一括描画 (オフライン処理高速化用)
+      skip_intermediate_rendering: false # [全体共通]: 中間描画をスキップし終了時に一括描画 (オフラインは launch 引数 skip_intermediate_rendering (既定 true) が優先)
 
     # --------------------------------------------------------------------------
     # キーフレーム生成設定

@@ -8,6 +8,7 @@ from launch.actions import DeclareLaunchArgument
 from launch.conditions import IfCondition
 from launch.substitutions import EnvironmentVariable, LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description():
@@ -51,6 +52,14 @@ def generate_launch_description():
         description='Path to parameter YAML file',
     )
 
+    skip_rendering = LaunchConfiguration('skip_intermediate_rendering')
+    declare_skip_rendering = DeclareLaunchArgument(
+        'skip_intermediate_rendering',
+        default_value='true',
+        description='Skip intermediate rendering/visualization and render once at the end '
+                    '(set false to watch the map in RViz while processing)',
+    )
+
     offline_node = Node(
         package='slam_gnss_2d',
         executable='slam_offline_node',
@@ -62,6 +71,7 @@ def generate_launch_description():
                 'bag_path': bag_path,
                 'start_time': start_time,
                 'end_time': end_time,
+                'skip_intermediate_rendering': ParameterValue(skip_rendering, value_type=bool),
             },
         ],
     )
@@ -79,6 +89,7 @@ def generate_launch_description():
         declare_bag_path,
         declare_start_time,
         declare_end_time,
+        declare_skip_rendering,
         declare_rviz,
         declare_rviz_param,
         declare_params_file,

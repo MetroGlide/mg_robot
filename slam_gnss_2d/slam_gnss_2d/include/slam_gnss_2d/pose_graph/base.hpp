@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "slam_gnss_2d/core/data_types.hpp"
@@ -26,6 +27,9 @@ class PoseGraphBuilderBase {
   virtual void replace_nodes(const std::vector<core::PoseNode>& nodes) {
     (void)nodes;
   }
+
+  // 処理ステージごとの所要時間サマリ (終了時のログ出力用)。計測しない実装は空文字列を返す
+  virtual std::string timing_summary() const { return {}; }
 };
 
 using PoseGraphBuilderPtr = std::shared_ptr<PoseGraphBuilderBase>;

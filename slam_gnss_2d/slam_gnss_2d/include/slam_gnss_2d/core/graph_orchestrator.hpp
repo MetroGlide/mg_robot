@@ -22,6 +22,14 @@ struct FinalizeResult {
   bool rerender_required{false};
 };
 
+// process_frame 内の処理ステージごとの累積所要時間 [s]
+struct OrchestratorStageTimes {
+  double add_scan_sec{0.0};        // キーフレーム判定+スキャンマッチング+near-link
+  double gnss_init_sec{0.0};       // GNSS初期化・エッジ登録・リアンカー・GNSS prior
+  double optimize_sec{0.0};        // iSAM2 update + calculateEstimate
+  double apply_poses_sec{0.0};     // 最適化結果のポーズグラフ反映
+};
+
 class GraphOrchestrator {
  public:
   GraphOrchestrator(
@@ -58,8 +66,10 @@ class GraphOrchestrator {
   std::optional<double> init_rotation() const;
   std::vector<PoseNode> get_all_nodes() const;
   std::vector<PoseEdge> get_all_edges() const;
+  const OrchestratorStageTimes& stage_times() const { return stage_times_; }
 
  private:
+  OrchestratorStageTimes stage_times_;
   pose_graph::PoseGraphBuilderPtr pose_graph_;
   bool use_gnss_;
   optimizer::ISAM2Optimizer optimizer_;

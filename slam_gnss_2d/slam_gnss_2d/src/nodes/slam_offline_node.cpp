@@ -17,6 +17,8 @@ class SlamOfflineNode : public core::SlamNodeBase {
     declare_parameter("offline_step_hz", 30.0);
     declare_parameter("start_time", 0.0);
     declare_parameter("end_time", 0.0);
+    // オフラインは既定で中間描画・可視化配信を行わず、終了時に一括描画する (yaml の map.skip_intermediate_rendering より優先)
+    declare_parameter("skip_intermediate_rendering", true);
   }
 
   void init() override {
@@ -61,6 +63,10 @@ class SlamOfflineNode : public core::SlamNodeBase {
 
   void on_frame(const core::SensorFrame& frame) override {
     core::SlamNodeBase::on_frame(frame);
+
+    if (skip_intermediate_rendering_) {
+      return;
+    }
 
     const auto& odom = frame.odom;
     nav_msgs::msg::Odometry msg;

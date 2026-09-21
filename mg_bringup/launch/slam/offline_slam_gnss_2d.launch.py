@@ -9,6 +9,7 @@ from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import EnvironmentVariable, PathJoinSubstitution
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 from mg_utils.launch_argument import LaunchArgumentCreator
 
@@ -34,6 +35,12 @@ def generate_launch_description():
         'end_time',
         default='0.0',
         description='End time in elapsed seconds from rosbag start (0.0: until end of bag)',
+    )
+    skip_rendering_arg = launch_argument_creator.create(
+        'skip_intermediate_rendering',
+        default='true',
+        description='Skip intermediate rendering/visualization and render once at the end '
+                    '(set false to watch the map in RViz while processing)',
     )
     launch_rviz_arg = launch_argument_creator.create(
         'rviz',
@@ -85,6 +92,8 @@ def generate_launch_description():
                 'bag_path': bag_path_arg.launch_config,
                 'start_time': start_time_arg.launch_config,
                 'end_time': end_time_arg.launch_config,
+                'skip_intermediate_rendering': ParameterValue(
+                    skip_rendering_arg.launch_config, value_type=bool),
             },
         ],
     )

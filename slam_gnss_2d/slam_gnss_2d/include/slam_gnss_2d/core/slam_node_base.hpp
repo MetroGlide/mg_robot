@@ -64,6 +64,14 @@ class SlamNodeBase : public rclcpp::Node {
   std::chrono::steady_clock::time_point last_map_publish_time_{std::chrono::steady_clock::time_point::min()};
   bool finalized_{false};
   bool skip_intermediate_rendering_{false};
+
+  // 処理ステージごとの累積所要時間 [s] (finalize 時にログ出力)
+  struct StageTimes {
+    double process_frame_sec{0.0};
+    double render_sec{0.0};
+    double publish_sec{0.0};
+  };
+  StageTimes stage_times_;
 };
 
 }  // namespace core

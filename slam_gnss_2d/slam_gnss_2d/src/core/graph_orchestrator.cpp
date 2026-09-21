@@ -1,6 +1,7 @@
 #include "slam_gnss_2d/core/graph_orchestrator.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <rclcpp/rclcpp.hpp>
 #include <set>
@@ -94,18 +95,30 @@ std::vector<PoseEdge> GraphOrchestrator::get_all_edges() const {
   return pose_graph_->get_edges();
 }
 
+namespace {
+
+double elapsed_sec(std::chrono::steady_clock::time_point since) {
+  return std::chrono::duration<double>(std::chrono::steady_clock::now() - since).count();
+}
+
+}  // namespace
+
 ScanProcessResult GraphOrchestrator::process_frame(const SensorFrame& frame) {
   std::lock_guard<std::mutex> lock(mutex_);
 
+  auto t0 = std::chrono::steady_clock::now();
   auto node = pose_graph_->add_scan(frame.scan, frame.odom);
+  stage_times_.add_scan_sec += elapsed_sec(t0);
   if (!node.has_value()) {
     return ScanProcessResult{
         std::nullopt, false, false, std::nullopt, {}, std::nullopt};
   }
 
+  t0 = std::chrono::steady_clock::now();
   initialize_with_gnss_if_ready(frame);
 
   if (state_ == "INITIALIZING") {
+    stage_times_.gnss_init_sec += elapsed_sec(t0);
     return ScanProcessResult{
         node, false, false, get_latest_seq_edge(node->index), {}, std::nullopt};
   }
@@ -127,6 +140,9 @@ ScanProcessResult GraphOrchestrator::process_frame(const SensorFrame& frame) {
   }
 
   auto new_gnss_prior = add_gnss_prior(frame, *node);
+  stage_times_.gnss_init_sec += elapsed_sec(t0);
+
+  t0 = std::chrono::steady_clock::now();
   try {
     optimizer_.update();
   } catch (const std::exception& e) {
@@ -135,6 +151,9 @@ ScanProcessResult GraphOrchestrator::process_frame(const SensorFrame& frame) {
         "optimizer_.update() exception at node %d: %s", node->index, e.what());
     throw;
   }
+  stage_times_.optimize_sec += elapsed_sec(t0);
+
+  t0 = std::chrono::steady_clock::now();
   bool rerender_required = apply_optimized_poses(*node, loop_closed || reanchored);
 
   auto updated_pose = optimizer_.get_pose(node->index);
@@ -143,6 +162,7 @@ ScanProcessResult GraphOrchestrator::process_frame(const SensorFrame& frame) {
     node->y = std::get<1>(*updated_pose);
     node->yaw = std::get<2>(*updated_pose);
   }
+  stage_times_.apply_poses_sec += elapsed_sec(t0);
 
   return ScanProcessResult{
       node,
@@ -614,6 +634,13 @@ FinalizeResult GraphOrchestrator::finalize() {
       "rejected_status=%d, rejected_sigma=%d, rejected_interval=%d, rejected_innovation=%d",
       gnss_prior_count_, gnss_rejected_status_count_, gnss_rejected_sigma_count_,
       gnss_rejected_interval_count_, gnss_rejected_innovation_count_);
+
+  const std::string builder_timing = pose_graph_->timing_summary();
+  if (!builder_timing.empty()) {
+    RCLCPP_INFO(
+        rclcpp::get_logger("slam_gnss_2d.graph_orchestrator"),
+        "[timing] %s", builder_timing.c_str());
+  }
 
   if (batch_on_finalize_) {
     optimizer_.run_batch_optimization(batch_max_iterations_);

@@ -102,7 +102,10 @@ void SlamNodeBase::init() {
 }
 
 void SlamNodeBase::on_frame(const SensorFrame& frame) {
+  const auto t_process_start = std::chrono::steady_clock::now();
   auto result = orchestrator_->process_frame(frame);
+  stage_times_.process_frame_sec +=
+      std::chrono::duration<double>(std::chrono::steady_clock::now() - t_process_start).count();
   const auto& node = result.node;
   if (!node.has_value()) {
     RCLCPP_DEBUG(
@@ -121,29 +124,35 @@ void SlamNodeBase::on_frame(const SensorFrame& frame) {
         node->index, node->x, node->y, node->yaw * 180.0 / M_PI);
   }
 
+  if (result.loop_closed) {
+    RCLCPP_INFO(
+        get_logger(),
+        "Loop closed at node #%d%s",
+        node->index, skip_intermediate_rendering_ ? "" : ": full rerender triggered");
+  }
+
+  // 中間描画をスキップする場合、描画・可視化配信はすべて finalize で一括実行する
+  if (skip_intermediate_rendering_) {
+    return;
+  }
+
+  const auto t_render_start = std::chrono::steady_clock::now();
   if (result.loop_closed || result.rerender_required) {
     if (result.loop_closed) {
       visualizer_->publish_path_before_optimize();
     }
     auto nodes = pose_graph_->get_nodes();
-    if (!skip_intermediate_rendering_) {
-      renderer_->rerender_all(nodes);
-    }
+    renderer_->rerender_all(nodes);
     visualizer_->rebuild_path(nodes);
-    if (result.loop_closed) {
-      RCLCPP_INFO(
-          get_logger(),
-          "Loop closed at node #%d: full rerender triggered",
-          node->index);
-    }
   } else {
-    if (!skip_intermediate_rendering_) {
-      if (!renderer_->add_node(*node)) {
-        renderer_->rerender_all(pose_graph_->get_nodes());
-      }
+    if (!renderer_->add_node(*node)) {
+      renderer_->rerender_all(pose_graph_->get_nodes());
     }
     visualizer_->publish_path_increment(*node);
   }
+  const auto t_publish_start = std::chrono::steady_clock::now();
+  stage_times_.render_sec +=
+      std::chrono::duration<double>(t_publish_start - t_render_start).count();
 
   visualizer_->publish_pose_graph_markers(*pose_graph_);
 
@@ -164,8 +173,10 @@ void SlamNodeBase::on_frame(const SensorFrame& frame) {
       result.new_loop_edges,
       result.loop_closed,
       result.rerender_required);
+  stage_times_.publish_sec +=
+      std::chrono::duration<double>(std::chrono::steady_clock::now() - t_publish_start).count();
 
-  map_dirty_ = !skip_intermediate_rendering_;
+  map_dirty_ = true;
 }
 
 void SlamNodeBase::publish_map_timer(bool force) {
@@ -211,9 +222,14 @@ void SlamNodeBase::finalize() {
   }
   RCLCPP_INFO(get_logger(), "Finalizing SLAM node...");
 
+  const auto t_finalize_start = std::chrono::steady_clock::now();
   auto finalize_result = orchestrator_->finalize();
+  const double batch_sec =
+      std::chrono::duration<double>(std::chrono::steady_clock::now() - t_finalize_start).count();
 
-  if (finalize_result.rerender_required) {
+  const auto t_final_render_start = std::chrono::steady_clock::now();
+  // 中間描画をスキップした場合は、最適化結果の有無に関わらずここで初めて描画する
+  if (finalize_result.rerender_required || skip_intermediate_rendering_) {
     auto nodes = pose_graph_->get_nodes();
     renderer_->rerender_all(nodes);
 
@@ -231,6 +247,21 @@ void SlamNodeBase::finalize() {
     publish_map_timer(true);
     RCLCPP_INFO(get_logger(), "Final map published.");
   }
+  const double final_render_sec =
+      std::chrono::duration<double>(std::chrono::steady_clock::now() - t_final_render_start).count();
+
+  RCLCPP_INFO(
+      get_logger(),
+      "[timing] nodes=%d process_frame(match+graph+optimize)=%.2fs render=%.2fs publish=%.2fs "
+      "finalize_batch=%.2fs final_render=%.2fs",
+      node_count_, stage_times_.process_frame_sec, stage_times_.render_sec,
+      stage_times_.publish_sec, batch_sec, final_render_sec);
+  const auto& os = orchestrator_->stage_times();
+  RCLCPP_INFO(
+      get_logger(),
+      "[timing] process_frame breakdown: add_scan(match)=%.2fs gnss+edges=%.2fs "
+      "optimize(update+estimate)=%.2fs apply_poses=%.2fs",
+      os.add_scan_sec, os.gnss_init_sec, os.optimize_sec, os.apply_poses_sec);
 }
 
 }  // namespace core
