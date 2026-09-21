@@ -62,4 +62,31 @@ TEST(GeometryTest, ScanToPointsWithLidarOffset) {
   EXPECT_NEAR(pts[idx_zero].y(), 0.0, 0.02);
 }
 
+TEST(GeometryTest, RebaseAndRotateNodesUsesRelativeCoordinatesFromFirstNode) {
+  // オドメトリ原点が遠い (500, -300) 場合でも、先頭ノードからの相対座標で回転される
+  std::vector<core::PoseNode> nodes(3);
+  nodes[0].index = 0; nodes[0].x = 500.0; nodes[0].y = -300.0; nodes[0].yaw = 1.0;
+  nodes[1].index = 1; nodes[1].x = 500.5; nodes[1].y = -300.0; nodes[1].yaw = 1.1;
+  nodes[2].index = 2; nodes[2].x = 500.5; nodes[2].y = -299.0; nodes[2].yaw = 1.2;
+
+  const double rot = M_PI / 2.0;
+  auto out = rebase_and_rotate_nodes(nodes, rot);
+
+  ASSERT_EQ(out.size(), 3u);
+  // 先頭ノードは原点に移る
+  EXPECT_NEAR(out[0].x, 0.0, 1e-9);
+  EXPECT_NEAR(out[0].y, 0.0, 1e-9);
+  // (0.5, 0) を 90 度回転 -> (0, 0.5)、(0.5, 1.0) -> (-1.0, 0.5)
+  EXPECT_NEAR(out[1].x, 0.0, 1e-9);
+  EXPECT_NEAR(out[1].y, 0.5, 1e-9);
+  EXPECT_NEAR(out[2].x, -1.0, 1e-9);
+  EXPECT_NEAR(out[2].y, 0.5, 1e-9);
+  EXPECT_NEAR(out[1].yaw, 1.1 + rot, 1e-9);
+  // 入力は変更されない
+  EXPECT_NEAR(nodes[0].x, 500.0, 1e-9);
+  // 隣接ノード間の距離は回転で変わらない
+  EXPECT_NEAR(std::hypot(out[2].x - out[1].x, out[2].y - out[1].y), 1.0, 1e-9);
+  EXPECT_TRUE(rebase_and_rotate_nodes({}, rot).empty());
+}
+
 }  // namespace slam_gnss_2d

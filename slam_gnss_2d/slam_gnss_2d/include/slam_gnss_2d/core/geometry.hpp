@@ -40,6 +40,11 @@ std::vector<Eigen::Vector2d> points_local_to_world(
 std::vector<Eigen::Vector2d> points_world_to_local(
     const std::vector<Eigen::Vector2d>& world_pts, double origin_x, double origin_y, double yaw);
 
+// 先頭ノードを原点 (0, 0) に移し、全ノードを原点まわりに rot [rad] だけ回転した新しいノード列を返す
+// (各ノードの yaw にも rot を加える)。先頭ノード自身も原点 (0, 0) に移る。
+std::vector<core::PoseNode> rebase_and_rotate_nodes(
+    const std::vector<core::PoseNode>& nodes, double rot);
+
 std::vector<Eigen::Vector2d> normals_local_to_world(
     const std::vector<Eigen::Vector2d>& local_normals, double yaw);
 
@@ -58,6 +63,7 @@ using slam_gnss_2d::world_delta_to_local;
 using slam_gnss_2d::local_delta_to_world;
 using slam_gnss_2d::points_local_to_world;
 using slam_gnss_2d::points_world_to_local;
+using slam_gnss_2d::rebase_and_rotate_nodes;
 using slam_gnss_2d::scan_to_points_and_normals;
 using slam_gnss_2d::normals_local_to_world;
 using slam_gnss_2d::normals_world_to_local;

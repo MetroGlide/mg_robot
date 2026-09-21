@@ -216,17 +216,10 @@ void GraphOrchestrator::initialize_with_gnss_if_ready(const SensorFrame& frame) 
   init_gnss_pts_.clear();
   init_odom_pts_.clear();
 
-  const auto& node0 = nodes.front();
-  double c = std::cos(rot);
-  double s = std::sin(rot);
-
+  const PoseNode node0 = nodes.front();
   optimizer_.initialize(node0.index, 0.0, 0.0, node0.yaw + rot, anchor_sigma_m_, anchor_init_yaw_sigma_rad_);
-  for (auto& n : nodes) {
-    double dx = n.x - node0.x;
-    double dy = n.y - node0.y;
-    n.x = c * dx - s * dy;
-    n.y = s * dx + c * dy;
-    n.yaw = n.yaw + rot;
+  nodes = rebase_and_rotate_nodes(nodes, rot);
+  for (const auto& n : nodes) {
     if (n.index != node0.index) {
       optimizer_.add_initial_estimate(n.index, n.x, n.y, n.yaw);
     }

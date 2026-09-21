@@ -186,7 +186,6 @@ void SlamNodeBase::publish_map_timer(bool force) {
   }
 
   double min_interval_sec = 1.0 / std::max(config_.map.publish_hz, 0.01);
-      std::chrono::duration<double>(now - last_map_publish_time_).count());
   if (!force &&
       std::chrono::duration<double>(now - last_map_publish_time_).count() < min_interval_sec) {
     return;
