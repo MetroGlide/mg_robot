@@ -46,8 +46,8 @@
         linear_step: 0.03 # 並進探索刻み幅 [m] (グリッド解像度0.03mと整合)
         angular_step_deg: 1.0 # 回転探索刻み幅 [deg] (Fine段は0.2度+放物線補間で解析導出)
         grid_resolution: 0.03 # 尤度場グリッド解像度 [m] (3cm)
-        score_threshold: 0.1 # 相関スコア有効判定しきい値
-        enable_variance_penalty: true # [slam_toolbox同等]: オドメトリ予測からの乖離ペナルティ有効化
+        score_threshold: 0.05 # 相関スコア有効判定しきい値
+        enable_variance_penalty: false # [slam_toolbox同等]: オドメトリ予測からの乖離ペナルティ有効化
         distance_variance_penalty: 0.5 # [slam_toolbox同等]: 距離分散ペナルティ係数 (小さいほどオドメトリ直進性を重視)
         angle_variance_penalty: 1.0 # [slam_toolbox同等]: 角度分散ペナルティ係数 (小さいほどオドメトリ回転角を重視)
         minimum_distance_penalty: 0.5 # 距離ペナルティ下限値
@@ -140,13 +140,13 @@
       topics:
         fix: "/gps/fix" # [enabled=true かつ source=navsat_fix で有効]: NavSatFixトピック名
         navpvt: "/navpvt" # [enabled=true かつ source=navpvt で有効]: ublox NavPVTトピック名
-      navpvt_hacc_scale: 1.5 # [enabled=true かつ source=navpvt で有効]: 水平精度(h_acc)に乗算する標準偏差スケール係数
+      navpvt_hacc_scale: 1.2 # [enabled=true かつ source=navpvt で有効]: 水平精度(h_acc)に乗算する標準偏差スケール係数
       min_interval_m: 4.0 # [enabled=true で有効]: GNSS拘束を追加する最小移動間隔 [m]
       max_innovation_m: 0.0 # [enabled=true で有効]: SLAM推定位置とGNSS測定位置の最大許容乖離 [m] (0以下で無効化しデッドロック防止)
-      robust_kernel: "cauchy" # [enabled=true で有効]: GNSSプライオアのロバスト核 ("huber" | "cauchy")
-      robust_kernel_scale: 0.5 # [enabled=true で有効]: ロバスト核のスケールパラメータ
+      robust_kernel: "huber" # [enabled=true で有効]: GNSSプライオアのロバスト核 ("huber" | "cauchy")
+      robust_kernel_scale: 1.5 # [enabled=true で有効]: ロバスト核のスケールパラメータ
       prior:
-        min_fix_status: 1 # [enabled=true で有効]: Prior採用最小測位ステータス (0: 全許可, 1: RTK Float以上, 2: RTK Fixのみ)
+        min_fix_status: 0 # [enabled=true で有効]: Prior採用最小測位ステータス (0: 全許可, 1: RTK Float以上, 2: RTK Fixのみ)
       dynamic_reanchor:
         enabled: true # [enabled=true で有効]: 高精度測位出現時の動的アンカー再計算・大域剛体アライメント
         min_fix_status: 2 # [dynamic_reanchor.enabled=true で有効]: 2: RTK Fix のみ採用
@@ -154,10 +154,10 @@
         min_distance_m: 10.0 # [dynamic_reanchor.enabled=true で有効]: 剛体変換算出に必要な最小移動距離 [m]
         max_residual_rms_m: 1.0 # [dynamic_reanchor.enabled=true で有効]: 剛体変換採用判定の最大許容残差RMS [m]
       validation:
-        max_sigma_m: 1.5 # [enabled=true で有効]: 採用するGNSS位置標準偏差の最大許容値 [m]
+        max_sigma_m: 2.0 # [enabled=true で有効]: 採用するGNSS位置標準偏差の最大許容値 [m]
       anchor:
         min_fix_status: 0 # [enabled=true で有効]: アンカー(マップ原点)決定に必要な最小測位ステータス
-        init_distance_m: 15.0 # [enabled=true で有効]: 初期方位(UTM回転角)推定に必要な最小直線移動距離 [m]
+        init_distance_m: 30.0 # [enabled=true で有効]: 初期方位(UTM回転角)推定に必要な最小直線移動距離 [m]
         sigma_m: 2.0 # [enabled=true で有効]: 原点ノードの位置固定標準偏差 [m]
         init_yaw_sigma_rad: 1.0 # [enabled=true で有効]: 原点ノードの方位角固定標準偏差 [rad]
       sigma:
