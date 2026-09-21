@@ -72,6 +72,7 @@ set(DEPENDENCIES
 # Core library
 add_library(slam_gnss_2d_core
   src/core/geometry.cpp
+  src/core/deskew.cpp
   src/core/config_loader.cpp
   src/core/graph_orchestrator.cpp
   src/core/sensor_synchronizer.cpp
@@ -191,6 +192,9 @@ if(BUILD_TESTING)
 
   ament_add_gtest(test_geometry test/test_geometry.cpp)
   target_link_libraries(test_geometry slam_gnss_2d_core)
+
+  ament_add_gtest(test_deskew test/test_deskew.cpp)
+  target_link_libraries(test_deskew slam_gnss_2d_core)
 
   ament_add_gtest(test_slam_data_saver test/test_slam_data_saver.cpp)
   target_link_libraries(test_slam_data_saver slam_gnss_2d_core)

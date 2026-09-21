@@ -56,7 +56,7 @@ std::vector<Eigen::Vector2d> scan_to_points(const core::ScanData& scan) {
   for (size_t i = 0; i < scan.ranges.size(); ++i) {
     float r = scan.ranges[i];
     if (r >= scan.range_min && r <= scan.range_max) {
-      double angle = scan.angle_min + static_cast<double>(i) * scan.angle_increment;
+      double angle = beam_angle(scan, i);
       double lx = r * std::cos(angle) + scan.lidar_x;
       double ly = r * std::sin(angle) + scan.lidar_y;
       pts.emplace_back(lx, ly);
@@ -150,7 +150,7 @@ scan_to_points_and_normals(const core::ScanData& scan) {
   for (size_t i = 0; i < scan.ranges.size(); ++i) {
     float r = scan.ranges[i];
     if (r >= scan.range_min && r <= scan.range_max) {
-      double angle = scan.angle_min + static_cast<double>(i) * scan.angle_increment;
+      double angle = beam_angle(scan, i);
       double lx = r * std::cos(angle) + scan.lidar_x;
       double ly = r * std::sin(angle) + scan.lidar_y;
       pts.emplace_back(lx, ly);

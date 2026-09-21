@@ -2,16 +2,20 @@
 
 #include <rclcpp/rclcpp.hpp>
 
+#include "slam_gnss_2d/core/deskew.hpp"
+
 namespace slam_gnss_2d {
 namespace core {
 
 SensorSynchronizer::SensorSynchronizer(
     std::shared_ptr<input::ScanSourceBase> scan_source,
     std::shared_ptr<input::OdomSourceBase> odom_source,
-    std::shared_ptr<input::GnssSourceBase> gnss_source)
+    std::shared_ptr<input::GnssSourceBase> gnss_source,
+    DeskewConfig deskew_config)
     : scan_source_(scan_source),
       odom_source_(odom_source),
-      gnss_source_(gnss_source) {
+      gnss_source_(gnss_source),
+      deskew_config_(deskew_config) {
   scan_source_->set_scan_callback(
       [this](const ScanDataPtr& scan) { this->on_scan(scan); });
 }
@@ -51,6 +55,13 @@ void SensorSynchronizer::on_scan(const ScanDataPtr& scan) {
         "No odom for scan ts=%.3f (miss #%d)",
         scan->timestamp, odom_miss_count_);
     return;
+  }
+
+  if (deskew_config_.enabled) {
+    deskew_scan(
+        *scan,
+        [this](double t) { return odom_source_->get_odom_at(t); },
+        deskew_config_);
   }
 
   std::optional<GnssData> gnss = std::nullopt;

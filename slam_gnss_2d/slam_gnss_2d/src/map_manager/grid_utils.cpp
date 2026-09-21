@@ -96,7 +96,7 @@ ScanHitsPixels scan_hits_to_pixels(
     if (r <= scan->range_min || r >= scan->range_max) {
       continue;
     }
-    double angle = scan->angle_min + static_cast<double>(i) * scan->angle_increment;
+    double angle = core::beam_angle(*scan, i);
     double lx = r * std::cos(angle) + lidar_x;
     double ly = r * std::sin(angle) + lidar_y;
     double wx = node.x + cos_yaw * lx - sin_yaw * ly;

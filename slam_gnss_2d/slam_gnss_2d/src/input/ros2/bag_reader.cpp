@@ -165,6 +165,7 @@ bool BagScanSource::step() {
       scan->range_max = msg.range_max;
       scan->lidar_x = lidar_x_;
       scan->lidar_y = lidar_y_;
+      scan->scan_duration = msg.scan_time;
 
       callback_(scan);
     }

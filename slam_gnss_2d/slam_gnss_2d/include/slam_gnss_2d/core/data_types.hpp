@@ -32,7 +32,18 @@ struct ScanData {
   double lidar_x{0.0};
   double lidar_y{0.0};
   double lidar_yaw{0.0};
+  // header.stamp (走査開始時刻) から走査完了までの時間 [s]。0 は不明
+  double scan_duration{0.0};
+  // デスキュー後のビームごとの角度 [rad]。空なら angle_min + i * angle_increment
+  std::vector<float> angles;
 };
+
+// ビーム i の角度 [rad] (デスキュー済みならその値)
+inline double beam_angle(const ScanData& scan, size_t i) {
+  return scan.angles.empty()
+      ? scan.angle_min + static_cast<double>(i) * scan.angle_increment
+      : static_cast<double>(scan.angles[i]);
+}
 
 using ScanDataPtr = std::shared_ptr<ScanData>;
 using ConstScanDataPtr = std::shared_ptr<const ScanData>;

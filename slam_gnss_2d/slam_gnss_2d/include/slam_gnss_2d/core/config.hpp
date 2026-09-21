@@ -11,6 +11,17 @@ struct TopicsConfig {
   std::string odom{"/odom"};
 };
 
+// スキャン内のロボット運動によるゆがみ (モーションディストーション) の補正
+struct DeskewConfig {
+  bool enabled{true};
+  // ビーム番号と計測時刻の対応: +1 は番号が増えるほど後に計測、-1 は番号が増えるほど先に計測
+  int direction{-1};
+  // 最初に計測されるビームの、header.stamp に対する時刻オフセット [s] (stamp が走査開始なら 0)
+  double start_offset_s{-0.03};
+  // 走査時間 [s]。0 ならメッセージの scan_time を使う
+  double duration_s{0.0};
+};
+
 struct MapConfig {
   double resolution{0.05};
   double expansion_margin{20.0};
@@ -202,6 +213,7 @@ struct SlamConfig {
   TopicsConfig topics;
   MapConfig map;
   KeyframeConfig keyframe;
+  DeskewConfig deskew;
   ScanMatchingConfig scan_matching;
   LoopClosureConfig loop_closure;
   GnssConfig gnss;
@@ -214,6 +226,7 @@ struct SlamConfig {
 
 // Alias in outer namespace
 using core::TopicsConfig;
+using core::DeskewConfig;
 using core::MapConfig;
 using core::KeyframeConfig;
 using core::IcpConfig;

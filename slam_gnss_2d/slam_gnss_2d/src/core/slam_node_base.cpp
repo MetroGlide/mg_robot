@@ -42,7 +42,7 @@ void SlamNodeBase::init() {
   }
 
   synchronizer_ = std::make_shared<SensorSynchronizer>(
-      scan_source_, odom_source_, gnss_source_);
+      scan_source_, odom_source_, gnss_source_, config_.deskew);
   synchronizer_->set_frame_callback([this](const SensorFrame& frame) {
     this->on_frame(frame);
   });

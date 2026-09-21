@@ -5,6 +5,7 @@
 #include <optional>
 #include <utility>
 
+#include "slam_gnss_2d/core/config.hpp"
 #include "slam_gnss_2d/core/data_types.hpp"
 #include "slam_gnss_2d/input/base.hpp"
 
@@ -21,7 +22,8 @@ class SensorSynchronizer {
   SensorSynchronizer(
       std::shared_ptr<input::ScanSourceBase> scan_source,
       std::shared_ptr<input::OdomSourceBase> odom_source,
-      std::shared_ptr<input::GnssSourceBase> gnss_source = nullptr);
+      std::shared_ptr<input::GnssSourceBase> gnss_source = nullptr,
+      DeskewConfig deskew_config = DeskewConfig{});
 
   void set_frame_callback(std::function<void(const SensorFrame&)> callback);
   void start();
@@ -33,6 +35,7 @@ class SensorSynchronizer {
   std::shared_ptr<input::OdomSourceBase> odom_source_;
   std::shared_ptr<input::GnssSourceBase> gnss_source_;
   std::function<void(const SensorFrame&)> frame_callback_;
+  DeskewConfig deskew_config_;
 
   int scan_recv_count_{0};
   int odom_miss_count_{0};

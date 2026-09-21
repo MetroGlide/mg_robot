@@ -12,6 +12,10 @@ static void declare_param_if_not_declared(rclcpp::Node& node, const std::string&
 void ConfigLoader::declare_params(rclcpp::Node& node) {
   declare_param_if_not_declared(node, "topics.scan", std::string("/scan_top_lidar"));
   declare_param_if_not_declared(node, "topics.odom", std::string("/odom"));
+  declare_param_if_not_declared(node, "deskew.enabled", true);
+  declare_param_if_not_declared(node, "deskew.direction", -1);
+  declare_param_if_not_declared(node, "deskew.start_offset_s", -0.03);
+  declare_param_if_not_declared(node, "deskew.duration_s", 0.0);
 
   declare_param_if_not_declared(node, "map.resolution", 0.05);
   declare_param_if_not_declared(node, "map.expansion_margin", 20.0);
@@ -149,6 +153,10 @@ SlamConfig ConfigLoader::build_config(const rclcpp::Node& node) {
 
   cfg.topics.scan = node.get_parameter("topics.scan").as_string();
   cfg.topics.odom = node.get_parameter("topics.odom").as_string();
+  cfg.deskew.enabled = node.get_parameter("deskew.enabled").as_bool();
+  cfg.deskew.direction = node.get_parameter("deskew.direction").as_int();
+  cfg.deskew.start_offset_s = node.get_parameter("deskew.start_offset_s").as_double();
+  cfg.deskew.duration_s = node.get_parameter("deskew.duration_s").as_double();
 
   cfg.map.resolution = node.get_parameter("map.resolution").as_double();
   cfg.map.expansion_margin = node.get_parameter("map.expansion_margin").as_double();
