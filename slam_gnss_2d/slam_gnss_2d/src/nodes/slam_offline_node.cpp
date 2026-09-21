@@ -15,6 +15,8 @@ class SlamOfflineNode : public core::SlamNodeBase {
   SlamOfflineNode() : core::SlamNodeBase("slam_gnss_2d_offline_node") {
     declare_parameter("bag_path", "");
     declare_parameter("offline_step_hz", 30.0);
+    declare_parameter("start_time", 0.0);
+    declare_parameter("end_time", 0.0);
   }
 
   void init() override {
@@ -35,8 +37,10 @@ class SlamOfflineNode : public core::SlamNodeBase {
   std::pair<std::shared_ptr<input::ScanSourceBase>, std::shared_ptr<input::OdomSourceBase>>
   setup_io(const core::SlamConfig& cfg) override {
     std::string bag_path = get_parameter("bag_path").as_string();
-    auto scan = std::make_shared<input::BagScanSource>(bag_path, cfg.topics.scan);
-    auto odom = std::make_shared<input::BagOdomSource>(bag_path, cfg.topics.odom);
+    double start_time = get_parameter("start_time").as_double();
+    double end_time = get_parameter("end_time").as_double();
+    auto scan = std::make_shared<input::BagScanSource>(bag_path, cfg.topics.scan, start_time, end_time);
+    auto odom = std::make_shared<input::BagOdomSource>(bag_path, cfg.topics.odom, start_time, end_time);
     bag_scan_source_ = scan;
     return {scan, odom};
   }
@@ -44,12 +48,14 @@ class SlamOfflineNode : public core::SlamNodeBase {
   std::shared_ptr<input::GnssSourceBase>
   setup_gnss_source(const core::SlamConfig& cfg) override {
     std::string bag_path = get_parameter("bag_path").as_string();
+    double start_time = get_parameter("start_time").as_double();
+    double end_time = get_parameter("end_time").as_double();
     if (cfg.gnss.source == "navpvt") {
       return std::make_shared<input::BagNavPVTSource>(
-          bag_path, cfg.gnss.topics.navpvt, cfg.gnss.navpvt_hacc_scale);
+          bag_path, cfg.gnss.topics.navpvt, cfg.gnss.navpvt_hacc_scale, start_time, end_time);
     } else {
       return std::make_shared<input::BagGnssSource>(
-          bag_path, cfg.gnss.topics.fix);
+          bag_path, cfg.gnss.topics.fix, start_time, end_time);
     }
   }
 

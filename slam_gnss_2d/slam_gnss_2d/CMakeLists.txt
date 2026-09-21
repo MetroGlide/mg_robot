@@ -195,6 +195,9 @@ if(BUILD_TESTING)
   ament_add_gtest(test_time_series test/test_time_series.cpp)
   target_link_libraries(test_time_series slam_gnss_2d_core)
 
+  ament_add_gtest(test_bag_time_utils test/test_bag_time_utils.cpp)
+  target_link_libraries(test_bag_time_utils slam_gnss_2d_core)
+
   ament_add_gtest(test_anchor_manager test/test_anchor_manager.cpp)
   target_link_libraries(test_anchor_manager slam_gnss_2d_core)
 

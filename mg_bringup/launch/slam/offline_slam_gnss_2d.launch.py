@@ -25,6 +25,16 @@ def generate_launch_description():
         default=EnvironmentVariable('ROSBAG_FILE', default_value=''),
         description='Path to ROS2 bag directory',
     )
+    start_time_arg = launch_argument_creator.create(
+        'start_time',
+        default='0.0',
+        description='Start time in elapsed seconds from rosbag start (0.0: from beginning)',
+    )
+    end_time_arg = launch_argument_creator.create(
+        'end_time',
+        default='0.0',
+        description='End time in elapsed seconds from rosbag start (0.0: until end of bag)',
+    )
     launch_rviz_arg = launch_argument_creator.create(
         'rviz',
         default=EnvironmentVariable('USE_RVIZ', default_value='false'),
@@ -71,7 +81,11 @@ def generate_launch_description():
         output='screen',
         parameters=[
             params_file_arg.launch_config,
-            {'bag_path': bag_path_arg.launch_config},
+            {
+                'bag_path': bag_path_arg.launch_config,
+                'start_time': start_time_arg.launch_config,
+                'end_time': end_time_arg.launch_config,
+            },
         ],
     )
 

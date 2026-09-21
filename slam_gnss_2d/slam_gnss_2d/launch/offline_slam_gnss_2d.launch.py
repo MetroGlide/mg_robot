@@ -14,6 +14,8 @@ def generate_launch_description():
     pkg_dir = get_package_share_directory('slam_gnss_2d')
 
     bag_path = LaunchConfiguration('bag_path')
+    start_time = LaunchConfiguration('start_time')
+    end_time = LaunchConfiguration('end_time')
     launch_rviz = LaunchConfiguration('rviz')
     rviz_param = LaunchConfiguration('rviz_param')
     params_file = LaunchConfiguration('params_file')
@@ -22,6 +24,16 @@ def generate_launch_description():
         'bag_path',
         default_value=EnvironmentVariable('ROSBAG_FILE', default_value=''),
         description='Path to ROS2 bag directory',
+    )
+    declare_start_time = DeclareLaunchArgument(
+        'start_time',
+        default_value='0.0',
+        description='Start time in elapsed seconds from rosbag start (0.0: from beginning)',
+    )
+    declare_end_time = DeclareLaunchArgument(
+        'end_time',
+        default_value='0.0',
+        description='End time in elapsed seconds from rosbag start (0.0: until end of bag)',
     )
     declare_rviz = DeclareLaunchArgument(
         'rviz',
@@ -46,7 +58,11 @@ def generate_launch_description():
         output='screen',
         parameters=[
             params_file,
-            {'bag_path': bag_path},
+            {
+                'bag_path': bag_path,
+                'start_time': start_time,
+                'end_time': end_time,
+            },
         ],
     )
 
@@ -61,6 +77,8 @@ def generate_launch_description():
 
     return LaunchDescription([
         declare_bag_path,
+        declare_start_time,
+        declare_end_time,
         declare_rviz,
         declare_rviz_param,
         declare_params_file,

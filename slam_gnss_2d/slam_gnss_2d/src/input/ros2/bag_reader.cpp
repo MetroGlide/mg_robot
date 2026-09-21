@@ -51,13 +51,35 @@ MsgT deserialize_bag_message(const std::shared_ptr<rosbag2_storage::SerializedBa
   return msg;
 }
 
+double get_bag_start_time_sec(rosbag2_cpp::Reader& reader) {
+  try {
+    const auto& meta = reader.get_metadata();
+    auto start_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+        meta.starting_time.time_since_epoch()).count();
+    if (start_ns > 0) {
+      return static_cast<double>(start_ns) * 1e-9;
+    }
+  } catch (const std::exception& e) {
+    RCLCPP_WARN(rclcpp::get_logger("slam_gnss_2d.bag_reader"),
+                "Failed to get metadata starting_time: %s", e.what());
+  }
+  return 0.0;
+}
+
 }  // namespace
 
 // -----------------------------------------------------------------------------
 // BagScanSource
 // -----------------------------------------------------------------------------
-BagScanSource::BagScanSource(const std::string& bag_path, const std::string& scan_topic)
-    : bag_path_(bag_path), scan_topic_(scan_topic) {}
+BagScanSource::BagScanSource(
+    const std::string& bag_path,
+    const std::string& scan_topic,
+    double start_time,
+    double end_time)
+    : bag_path_(bag_path),
+      scan_topic_(scan_topic),
+      start_time_(start_time),
+      end_time_(end_time) {}
 
 void BagScanSource::set_scan_callback(
     std::function<void(const core::ScanDataPtr&)> callback) {
@@ -67,6 +89,37 @@ void BagScanSource::set_scan_callback(
 void BagScanSource::start() {
   std::tie(lidar_yaw_, lidar_x_, lidar_y_) = resolve_lidar_tf();
   reader_ = open_reader(bag_path_, {scan_topic_});
+
+  double bag_start = get_bag_start_time_sec(*reader_);
+  time_range_ = compute_bag_time_range(bag_start, start_time_, end_time_);
+
+  if (time_range_.target_start_sec > 0.0) {
+    double seek_target = std::max(time_range_.bag_start_sec, time_range_.target_start_sec - 1.0);
+    int64_t seek_ns = static_cast<int64_t>(seek_target * 1e9);
+    try {
+      reader_->seek(seek_ns);
+      RCLCPP_INFO(
+          rclcpp::get_logger("slam_gnss_2d.bag_reader"),
+          "Seeked bag to %.3f sec (start_time: +%.2fs)",
+          seek_target, start_time_);
+    } catch (const std::exception& ex) {
+      RCLCPP_WARN(
+          rclcpp::get_logger("slam_gnss_2d.bag_reader"),
+          "Failed to seek bag: %s. Falling back to sequential skip.", ex.what());
+    }
+  }
+
+  if (time_range_.target_end_sec > 0.0) {
+    RCLCPP_INFO(
+        rclcpp::get_logger("slam_gnss_2d.bag_reader"),
+        "Processing bag with time range: start=+%.2fs, end=+%.2fs",
+        start_time_, end_time_);
+  } else if (start_time_ > 0.0) {
+    RCLCPP_INFO(
+        rclcpp::get_logger("slam_gnss_2d.bag_reader"),
+        "Processing bag from start=+%.2fs to end of bag",
+        start_time_);
+  }
 }
 
 void BagScanSource::stop() {
@@ -74,29 +127,51 @@ void BagScanSource::stop() {
 }
 
 bool BagScanSource::step() {
-  if (!reader_ || !reader_->has_next()) {
+  if (!reader_) {
     return false;
   }
-  auto bag_msg = reader_->read_next();
-  auto msg = deserialize_bag_message<sensor_msgs::msg::LaserScan>(bag_msg);
-  step_count_++;
 
-  if (callback_) {
+  while (reader_->has_next()) {
+    auto bag_msg = reader_->read_next();
+    auto msg = deserialize_bag_message<sensor_msgs::msg::LaserScan>(bag_msg);
     double stamp = static_cast<double>(msg.header.stamp.sec) +
                    static_cast<double>(msg.header.stamp.nanosec) * 1e-9;
-    auto scan = std::make_shared<core::ScanData>();
-    scan->timestamp = stamp;
-    scan->ranges = msg.ranges;
-    scan->angle_min = msg.angle_min + lidar_yaw_;
-    scan->angle_increment = msg.angle_increment;
-    scan->range_min = msg.range_min;
-    scan->range_max = msg.range_max;
-    scan->lidar_x = lidar_x_;
-    scan->lidar_y = lidar_y_;
 
-    callback_(scan);
+    if (time_range_.bag_start_sec <= 0.0) {
+      time_range_ = compute_bag_time_range(stamp, start_time_, end_time_);
+    }
+
+    if (time_range_.is_before_start(stamp)) {
+      continue;
+    }
+
+    if (time_range_.is_past_end(stamp)) {
+      RCLCPP_INFO(
+          rclcpp::get_logger("slam_gnss_2d.bag_reader"),
+          "Reached bag end_time (+%.2fs, stamp=%.3f). Stopping scan stream.",
+          end_time_, stamp);
+      return false;
+    }
+
+    step_count_++;
+
+    if (callback_) {
+      auto scan = std::make_shared<core::ScanData>();
+      scan->timestamp = stamp;
+      scan->ranges = msg.ranges;
+      scan->angle_min = msg.angle_min + lidar_yaw_;
+      scan->angle_increment = msg.angle_increment;
+      scan->range_min = msg.range_min;
+      scan->range_max = msg.range_max;
+      scan->lidar_x = lidar_x_;
+      scan->lidar_y = lidar_y_;
+
+      callback_(scan);
+    }
+    return true;
   }
-  return true;
+
+  return false;
 }
 
 std::tuple<double, double, double> BagScanSource::resolve_lidar_tf() {
@@ -157,16 +232,45 @@ std::tuple<double, double, double> BagScanSource::resolve_lidar_tf() {
 // -----------------------------------------------------------------------------
 // BagOdomSource
 // -----------------------------------------------------------------------------
-BagOdomSource::BagOdomSource(const std::string& bag_path, const std::string& odom_topic)
-    : bag_path_(bag_path), odom_topic_(odom_topic) {}
+BagOdomSource::BagOdomSource(
+    const std::string& bag_path,
+    const std::string& odom_topic,
+    double start_time,
+    double end_time)
+    : bag_path_(bag_path),
+      odom_topic_(odom_topic),
+      start_time_(start_time),
+      end_time_(end_time) {}
 
 void BagOdomSource::start() {
   auto reader = open_reader(bag_path_, {odom_topic_});
+  double bag_start = get_bag_start_time_sec(*reader);
+  auto time_range = compute_bag_time_range(bag_start, start_time_, end_time_);
+
+  if (time_range.target_start_sec > 0.0) {
+    double seek_target = std::max(time_range.bag_start_sec, time_range.target_start_sec - 5.0);
+    try {
+      reader->seek(static_cast<int64_t>(seek_target * 1e9));
+    } catch (...) {}
+  }
+
   while (reader->has_next()) {
     auto bag_msg = reader->read_next();
     auto msg = deserialize_bag_message<nav_msgs::msg::Odometry>(bag_msg);
     double stamp = static_cast<double>(msg.header.stamp.sec) +
                    static_cast<double>(msg.header.stamp.nanosec) * 1e-9;
+
+    if (time_range.bag_start_sec <= 0.0) {
+      time_range = compute_bag_time_range(stamp, start_time_, end_time_);
+    }
+
+    if (!time_range.is_in_range(stamp, 5.0)) {
+      if (time_range.is_past_end(stamp - 5.0)) {
+        break;
+      }
+      continue;
+    }
+
     double yaw = core::quaternion_to_yaw(
         msg.pose.pose.orientation.x, msg.pose.pose.orientation.y,
         msg.pose.pose.orientation.z, msg.pose.pose.orientation.w);
@@ -199,16 +303,47 @@ std::optional<core::OdomData> BagOdomSource::get_odom_at(double timestamp) {
 // -----------------------------------------------------------------------------
 // BagGnssSource
 // -----------------------------------------------------------------------------
-BagGnssSource::BagGnssSource(const std::string& bag_path, const std::string& gnss_topic)
-    : bag_path_(bag_path), gnss_topic_(gnss_topic) {}
+BagGnssSource::BagGnssSource(
+    const std::string& bag_path,
+    const std::string& gnss_topic,
+    double start_time,
+    double end_time)
+    : bag_path_(bag_path),
+      gnss_topic_(gnss_topic),
+      start_time_(start_time),
+      end_time_(end_time) {}
 
 void BagGnssSource::start() {
   auto reader = open_reader(bag_path_, {gnss_topic_});
+  double bag_start = get_bag_start_time_sec(*reader);
+  auto time_range = compute_bag_time_range(bag_start, start_time_, end_time_);
+
+  if (time_range.target_start_sec > 0.0) {
+    double seek_target = std::max(time_range.bag_start_sec, time_range.target_start_sec - 5.0);
+    try {
+      reader->seek(static_cast<int64_t>(seek_target * 1e9));
+    } catch (...) {}
+  }
+
   std::vector<sensor_msgs::msg::NavSatFix> raw_fixes;
 
   while (reader->has_next()) {
     auto bag_msg = reader->read_next();
     auto msg = deserialize_bag_message<sensor_msgs::msg::NavSatFix>(bag_msg);
+    double stamp = static_cast<double>(msg.header.stamp.sec) +
+                   static_cast<double>(msg.header.stamp.nanosec) * 1e-9;
+
+    if (time_range.bag_start_sec <= 0.0) {
+      time_range = compute_bag_time_range(stamp, start_time_, end_time_);
+    }
+
+    if (!time_range.is_in_range(stamp, 5.0)) {
+      if (time_range.is_past_end(stamp - 5.0)) {
+        break;
+      }
+      continue;
+    }
+
     if (msg.status.status >= 0) {
       raw_fixes.push_back(msg);
     }
@@ -271,16 +406,47 @@ std::vector<core::GnssData> BagGnssSource::get_all_gnss() {
 // BagNavPVTSource
 // -----------------------------------------------------------------------------
 BagNavPVTSource::BagNavPVTSource(
-    const std::string& bag_path, const std::string& navpvt_topic, double hacc_scale)
-    : bag_path_(bag_path), navpvt_topic_(navpvt_topic), hacc_scale_(hacc_scale) {}
+    const std::string& bag_path,
+    const std::string& navpvt_topic,
+    double hacc_scale,
+    double start_time,
+    double end_time)
+    : bag_path_(bag_path),
+      navpvt_topic_(navpvt_topic),
+      hacc_scale_(hacc_scale),
+      start_time_(start_time),
+      end_time_(end_time) {}
 
 void BagNavPVTSource::start() {
   auto reader = open_reader(bag_path_, {navpvt_topic_});
+  double bag_start = get_bag_start_time_sec(*reader);
+  auto time_range = compute_bag_time_range(bag_start, start_time_, end_time_);
+
+  if (time_range.target_start_sec > 0.0) {
+    double seek_target = std::max(time_range.bag_start_sec, time_range.target_start_sec - 5.0);
+    try {
+      reader->seek(static_cast<int64_t>(seek_target * 1e9));
+    } catch (...) {}
+  }
+
   std::vector<std::pair<int64_t, ublox_msgs::msg::NavPVT>> raw_msgs;
 
   while (reader->has_next()) {
     auto bag_msg = reader->read_next();
     auto msg = deserialize_bag_message<ublox_msgs::msg::NavPVT>(bag_msg);
+    double stamp = static_cast<double>(bag_msg->time_stamp) * 1e-9;
+
+    if (time_range.bag_start_sec <= 0.0) {
+      time_range = compute_bag_time_range(stamp, start_time_, end_time_);
+    }
+
+    if (!time_range.is_in_range(stamp, 5.0)) {
+      if (time_range.is_past_end(stamp - 5.0)) {
+        break;
+      }
+      continue;
+    }
+
     if (!(msg.flags & 0x01) || msg.fix_type < 2) {
       continue;
     }

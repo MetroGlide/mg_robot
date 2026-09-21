@@ -13,6 +13,7 @@ endif
 
 # make <service> DETACH=1 でバックグラウンド起動
 _up_flags = $(if $(DETACH),-d,)
+_compose_opts = $(if $(OPTS),OPTS="$(OPTS)" )
 
 .PHONY: slam navigation rosbag-replay gazebo-simulation develop \
         scenario-test scenario-test-full \
@@ -27,33 +28,33 @@ _up_flags = $(if $(DETACH),-d,)
 # --- サービス起動 ---
 
 slam:
-	$(COMPOSE) up $(_up_flags) slam
+	$(_compose_opts)$(COMPOSE) up $(_up_flags) slam
 
 navigation:
-	$(COMPOSE) up $(_up_flags) navigation
+	$(_compose_opts)$(COMPOSE) up $(_up_flags) navigation
 
 rosbag-replay:
-	$(COMPOSE) run --rm -it rosbag-replay
+	$(_compose_opts)$(COMPOSE) run --rm -it rosbag-replay
 
 slam-gnss-2d:
-	$(COMPOSE) up $(_up_flags) slam-gnss-2d
+	$(_compose_opts)$(COMPOSE) up $(_up_flags) slam-gnss-2d
 
 offline-slam-gnss-2d:
-	$(if $(BAG),ROSBAG_FILE=$(BAG) )$(if $(ROSBAG_FILE),ROSBAG_FILE=$(ROSBAG_FILE) )$(COMPOSE) up $(_up_flags) offline-slam-gnss-2d
+	$(if $(BAG),ROSBAG_FILE=$(BAG) )$(if $(ROSBAG_FILE),ROSBAG_FILE=$(ROSBAG_FILE) )$(_compose_opts)$(COMPOSE) up $(_up_flags) offline-slam-gnss-2d
 
 gazebo-simulation:
-	$(COMPOSE) up $(_up_flags) gazebo-simulation
+	$(_compose_opts)$(COMPOSE) up $(_up_flags) gazebo-simulation
 
 # make scenario-test
 # make scenario-test SCENARIO=/app/mg_scenario_test/scenarios/example_waypoints_file.yaml
 # make scenario-test SCENARIO=/app/mg_scenario_test/scenarios/example_inline_goals.yaml HEADLESS=false
 scenario-test:
-	$(if $(SCENARIO),SCENARIO_FILE=$(SCENARIO) )$(if $(HEADLESS),HEADLESS=$(HEADLESS) )$(COMPOSE) up $(_up_flags) scenario-test
+	$(if $(SCENARIO),SCENARIO_FILE=$(SCENARIO) )$(if $(HEADLESS),HEADLESS=$(HEADLESS) )$(_compose_opts)$(COMPOSE) up $(_up_flags) scenario-test
 
 # make scenario-test-full
 # make scenario-test-full SCENARIO=/app/mg_scenario_test/scenarios/example_inline_goals.yaml HEADLESS=false
 scenario-test-full:
-	$(if $(SCENARIO),SCENARIO_FILE=$(SCENARIO) )$(if $(HEADLESS),HEADLESS=$(HEADLESS) )$(COMPOSE) up $(_up_flags) scenario-test-full
+	$(if $(SCENARIO),SCENARIO_FILE=$(SCENARIO) )$(if $(HEADLESS),HEADLESS=$(HEADLESS) )$(_compose_opts)$(COMPOSE) up $(_up_flags) scenario-test-full
 
 develop:
 	$(COMPOSE) up -d develop
@@ -134,7 +135,7 @@ down:
 # 実行例: make reoptimize [INPUT_DIR=/app/maps/latest] [SAVE_DIR=/app/maps/latest_opt] [BAG_PATH=/app/bags/my_bag]
 # ※ .env に各環境変数を設定している場合は引数なしで実行可能
 reoptimize:
-	$(if $(INPUT_DIR),INPUT_DIR=$(INPUT_DIR) )$(if $(SAVE_DIR),SAVE_DIR=$(SAVE_DIR) )$(if $(BAG_PATH),BAG_PATH=$(BAG_PATH) )$(COMPOSE) run --rm reoptimize-slam
+	$(if $(INPUT_DIR),INPUT_DIR=$(INPUT_DIR) )$(if $(SAVE_DIR),SAVE_DIR=$(SAVE_DIR) )$(if $(BAG_PATH),BAG_PATH=$(BAG_PATH) )$(_compose_opts)$(COMPOSE) run --rm reoptimize-slam
 
 # --- rosbag 解析・可視化ツール群 ---
 # 保存先の切り替え:
@@ -208,11 +209,12 @@ bag-plot-scans:
 # --- テスト ---
 # 全テスト: make test
 # 特定パッケージ: make test pkg=mg_waypoint_navigation
+# pytestオプション: make test OPTS="-k test_bag"
 test:
 	$(COMPOSE) run --rm --no-deps develop bash -c \
 	  "cd /app && \
 	   PYTHONPATH=\$$(find /app -maxdepth 1 -mindepth 1 -type d | tr '\n' ':') \
-	   python3 -m pytest $(if $(pkg),$(pkg)/test/,) -v"
+	   python3 -m pytest $(if $(pkg),$(pkg)/test/,) -v $(OPTS)"
 
 # --- ユーティリティ ---
 

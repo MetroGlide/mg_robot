@@ -159,10 +159,22 @@ ros2 launch slam_gnss_2d bringup_slam_gnss_2d.launch.py simulation:=true rviz:=t
 リアルタイム再生を待たずに、bag 内のセンサデータをステップ駆動で高速処理します。
 
 ```bash
+# 全件処理
 ros2 launch slam_gnss_2d offline_slam_gnss_2d.launch.py \
     bag_path:=/root/ros2_data/rosbag/sample_bag \
     rviz:=true
+
+# 区間指定処理（例: bag開始10秒後から60秒目まで処理）
+ros2 launch slam_gnss_2d offline_slam_gnss_2d.launch.py \
+    bag_path:=/root/ros2_data/rosbag/sample_bag \
+    start_time:=10.0 \
+    end_time:=60.0 \
+    rviz:=true
 ```
+
+- `start_time` (double, デフォルト: `0.0`): rosbag 開始からの経過秒 [s]（`0.0` で最初から）
+- `end_time` (double, デフォルト: `0.0`): rosbag 開始からの経過秒 [s]（`0.0` で末尾まで）
+
 
 ### ポーズグラフ再最適化 (reoptimize_node)
 

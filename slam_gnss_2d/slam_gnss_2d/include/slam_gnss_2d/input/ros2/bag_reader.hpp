@@ -13,13 +13,18 @@
 #include "slam_gnss_2d/core/data_types.hpp"
 #include "slam_gnss_2d/gnss/utm.hpp"
 #include "slam_gnss_2d/input/base.hpp"
+#include "slam_gnss_2d/input/time_utils.hpp"
 
 namespace slam_gnss_2d {
 namespace input {
 
 class BagScanSource : public ScanSourceBase {
  public:
-  BagScanSource(const std::string& bag_path, const std::string& scan_topic);
+  BagScanSource(
+      const std::string& bag_path,
+      const std::string& scan_topic,
+      double start_time = 0.0,
+      double end_time = 0.0);
 
   void set_scan_callback(
       std::function<void(const core::ScanDataPtr&)> callback) override;
@@ -30,6 +35,9 @@ class BagScanSource : public ScanSourceBase {
  private:
   std::string bag_path_;
   std::string scan_topic_;
+  double start_time_{0.0};
+  double end_time_{0.0};
+  BagTimeRange time_range_;
   std::function<void(const core::ScanDataPtr&)> callback_;
   std::unique_ptr<rosbag2_cpp::Reader> reader_;
 
@@ -43,7 +51,11 @@ class BagScanSource : public ScanSourceBase {
 
 class BagOdomSource : public OdomSourceBase {
  public:
-  BagOdomSource(const std::string& bag_path, const std::string& odom_topic);
+  BagOdomSource(
+      const std::string& bag_path,
+      const std::string& odom_topic,
+      double start_time = 0.0,
+      double end_time = 0.0);
 
   void start() override;
   void stop() override;
@@ -52,13 +64,19 @@ class BagOdomSource : public OdomSourceBase {
  private:
   std::string bag_path_;
   std::string odom_topic_;
+  double start_time_{0.0};
+  double end_time_{0.0};
   std::vector<core::OdomData> odom_list_;
   std::vector<double> timestamps_;
 };
 
 class BagGnssSource : public GnssSourceBase {
  public:
-  BagGnssSource(const std::string& bag_path, const std::string& gnss_topic);
+  BagGnssSource(
+      const std::string& bag_path,
+      const std::string& gnss_topic,
+      double start_time = 0.0,
+      double end_time = 0.0);
 
   void start() override;
   void stop() override;
@@ -68,6 +86,8 @@ class BagGnssSource : public GnssSourceBase {
  private:
   std::string bag_path_;
   std::string gnss_topic_;
+  double start_time_{0.0};
+  double end_time_{0.0};
   std::vector<core::GnssData> gnss_list_;
   std::vector<double> timestamps_;
 };
@@ -77,7 +97,9 @@ class BagNavPVTSource : public GnssSourceBase {
   BagNavPVTSource(
       const std::string& bag_path,
       const std::string& navpvt_topic,
-      double hacc_scale = 1.0);
+      double hacc_scale = 1.0,
+      double start_time = 0.0,
+      double end_time = 0.0);
 
   void start() override;
   void stop() override;
@@ -88,6 +110,8 @@ class BagNavPVTSource : public GnssSourceBase {
   std::string bag_path_;
   std::string navpvt_topic_;
   double hacc_scale_;
+  double start_time_{0.0};
+  double end_time_{0.0};
   std::vector<core::GnssData> gnss_list_;
   std::vector<double> timestamps_;
 };
