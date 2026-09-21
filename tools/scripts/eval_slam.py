@@ -181,6 +181,16 @@ def residual_stats(err: np.ndarray, h_acc: Optional[np.ndarray] = None) -> Dict[
     return stats
 
 
+def residuals_by_carrier(
+    err: np.ndarray, carr: np.ndarray, h_acc: np.ndarray
+) -> Dict[str, Dict[str, Any]]:
+    """残差ベクトル (N, 2) を RTK 状態 (Fix / Float / None) ごとに集計する。"""
+    return {
+        name: residual_stats(err[carr == code], h_acc[carr == code])
+        for code, name in CARRIER_NAMES.items()
+    }
+
+
 def split_segments(times: np.ndarray, indices: np.ndarray) -> List[np.ndarray]:
     """indices (times 昇順) を、時間ギャップが SEGMENT_MAX_GAP_SEC を超える所で分割する。"""
     if indices.size == 0:
@@ -189,7 +199,7 @@ def split_segments(times: np.ndarray, indices: np.ndarray) -> List[np.ndarray]:
     return np.split(indices, breaks)
 
 
-def wall_thickness_px(map_yaml: str) -> Dict[str, Any]:
+def wall_thickness_stats(map_yaml: str) -> Dict[str, Any]:
     """占有セルの平均壁厚 [m] を、面積/周長から近似する (鮮鋭な壁ほど小さい)。"""
     img, _, resolution, _ = load_map_info(map_yaml)
     occupied = img < 100
@@ -225,8 +235,8 @@ def evaluate(
     times = times[valid]
 
     # UTM 原点周りの回転で並進が巨大になるのを避けるため、anchor 基準のローカル座標で扱う
-    slam_utm = antenna_positions(poses, lever_arm)
-    gnss_utm = gnss[:, 1:3] - anchor_xy
+    slam_xy = antenna_positions(poses, lever_arm)
+    gnss_xy = gnss[:, 1:3] - anchor_xy
     carr = gnss[:, 3].astype(int)
     h_acc = gnss[:, 4]
 
@@ -247,29 +257,21 @@ def evaluate(
     }
 
     # raw: anchor_utm をそのまま使った UTM 整合性
-    raw = {}
-    for code, name in CARRIER_NAMES.items():
-        mask = carr == code
-        raw[name] = residual_stats(slam_utm[mask] - gnss_utm[mask], h_acc[mask])
-    report["raw"] = raw
+    report["raw"] = residuals_by_carrier(slam_xy - gnss_xy, carr, h_acc)
 
     # aligned: 全 Fix サンプルへの SE(2) 整合 (Fix が無ければ Float を使う)
     fit_code = 2 if np.count_nonzero(carr == 2) >= SEGMENT_MIN_SAMPLES else 1
     fit_mask = carr == fit_code
-    fit = fit_rigid(slam_utm[fit_mask], gnss_utm[fit_mask])
+    fit = fit_rigid(slam_xy[fit_mask], gnss_xy[fit_mask])
     report["aligned_fit_carrier"] = CARRIER_NAMES[fit_code]
     if fit is not None:
         t, theta = fit
-        aligned_xy = apply_rigid(slam_utm, t, theta)
+        aligned_xy = apply_rigid(slam_xy, t, theta)
         report["aligned_transform"] = {
             "translation_m": [float(t[0]), float(t[1])],
             "rotation_deg": float(math.degrees(theta)),
         }
-        aligned = {}
-        for code, name in CARRIER_NAMES.items():
-            mask = carr == code
-            aligned[name] = residual_stats(aligned_xy[mask] - gnss_utm[mask], h_acc[mask])
-        report["aligned"] = aligned
+        report["aligned"] = residuals_by_carrier(aligned_xy - gnss_xy, carr, h_acc)
 
     # segment: 連続 Fix 区間ごとの個別整合
     segments = []
@@ -277,11 +279,11 @@ def evaluate(
     for seg in split_segments(times, fix_idx):
         if seg.size < SEGMENT_MIN_SAMPLES:
             continue
-        seg_fit = fit_rigid(slam_utm[seg], gnss_utm[seg])
+        seg_fit = fit_rigid(slam_xy[seg], gnss_xy[seg])
         if seg_fit is None:
             continue
-        seg_xy = apply_rigid(slam_utm[seg], *seg_fit)
-        stats = residual_stats(seg_xy - gnss_utm[seg])
+        seg_xy = apply_rigid(slam_xy[seg], *seg_fit)
+        stats = residual_stats(seg_xy - gnss_xy[seg])
         stats["t_start_rel_s"] = float(times[seg[0]] - nodes[0, 0])
         stats["t_end_rel_s"] = float(times[seg[-1]] - nodes[0, 0])
         stats["rotation_deg"] = float(math.degrees(seg_fit[1]))
@@ -400,13 +402,13 @@ def main() -> None:
         raise SystemExit("エラー: rosbag に有効な /navpvt がありません。")
 
     report = evaluate(
-        nodes, transform, gnss, (args.lever_arm[0], args.lever_arm[1]), args.time_offset)
+        nodes, transform, gnss, tuple(args.lever_arm), args.time_offset)
 
     report["matching"] = matching
 
     map_yaml = args.map or os.path.join(args.slam_dir, "map.yaml")
     if os.path.exists(map_yaml):
-        report["map"] = wall_thickness_px(map_yaml)
+        report["map"] = wall_thickness_stats(map_yaml)
 
     text = format_report(report)
     print(text)

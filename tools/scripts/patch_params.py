@@ -64,9 +64,8 @@ def patch_lines(lines: List[str], updates: Dict[str, str]) -> Tuple[List[str], L
         # ノード名 (トップレベル) と ros__parameters を除いたキーの連なりがパス
         path = ".".join(k for i, (_, k) in enumerate(stack) if i > 0 and k != "ros__parameters")
         if in_params and path in remaining:
-            value_match = VALUE_AND_COMMENT.match(rest)
-            comment = value_match.group(2) or "" if value_match else ""
-            old_value = value_match.group(1) if value_match else ""
+            # VALUE_AND_COMMENT はどんな文字列にもマッチする
+            old_value, comment = VALUE_AND_COMMENT.match(rest).groups(default="")
             new_value = coerce_like(old_value, remaining.pop(path))
             out.append(f"{match.group(1)}{key}: {new_value}{comment}\n")
         else:
