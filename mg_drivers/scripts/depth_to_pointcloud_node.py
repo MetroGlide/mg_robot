@@ -5,7 +5,6 @@ rosbag 再生時にデプス画像とカメラ情報から RealSense 互換の P
 障害物検知ノード (obstacle_detection_3d_node) や RViz に供給します。
 """
 
-import struct
 from typing import Optional
 
 import cv2
@@ -16,8 +15,9 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from sensor_msgs.msg import CameraInfo, Image, PointCloud2, PointField
-from sensor_msgs_py import point_cloud2
 from std_msgs.msg import Header
+
+from mg_utils.point_cloud import build_point_array
 
 
 class DepthToPointCloudNode(Node):
@@ -102,71 +102,22 @@ class DepthToPointCloudNode(Node):
         color_info: CameraInfo,
     ):
         try:
-            depth_img = self._bridge.imgmsg_to_cv2(depth_msg, desired_encoding='passthrough')
             color_img = self._bridge.imgmsg_to_cv2(color_msg, desired_encoding='bgr8')
         except Exception as e:
             self.get_logger().warn(f'Failed to convert images: {e}')
             return
-
-        h, w = depth_img.shape[:2]
-        fx = depth_info.k[0]
-        cx = depth_info.k[2]
-        fy = depth_info.k[4]
-        cy = depth_info.k[5]
-
-        if fx == 0 or fy == 0:
-            return
-
-        self._init_grid(h, w, fx, fy, cx, cy)
-
-        # デプス値の単位変換 (m)
-        depth_m = depth_img[::self._stride, ::self._stride].astype(np.float32) * self._depth_scale
-
-        valid = (depth_m > self._min_depth) & (depth_m < self._max_depth) & np.isfinite(depth_m)
-        if not np.any(valid):
-            return
-
-        z = depth_m[valid]
-        x = self._u_norm[valid] * z
-        y = self._v_norm[valid] * z
-
-        # カラー画像から RGB 取得
-        # RealSense aligned_depth_to_color の場合、デプスとカラーは同一直線・同一解像度
-        color_sub = color_img[::self._stride, ::self._stride]
-        bgr = color_sub[valid]
-        r = bgr[:, 2].astype(np.uint32)
-        g = bgr[:, 1].astype(np.uint32)
-        b = bgr[:, 0].astype(np.uint32)
-
-        # uint32 に pack された rgb 値
-        rgb_packed = (r << 16) | (g << 8) | b
-        rgb_float = rgb_packed.view(np.float32)
-
-        # (x, y, z, rgb) の構造化配列
-        cloud_data = np.zeros(
-            len(z),
-            dtype=[('x', np.float32), ('y', np.float32), ('z', np.float32), ('rgb', np.float32)]
-        )
-        cloud_data['x'] = x
-        cloud_data['y'] = y
-        cloud_data['z'] = z
-        cloud_data['rgb'] = rgb_float
-
-        fields = [
-            PointField(name='x', offset=0, datatype=PointField.FLOAT32, count=1),
-            PointField(name='y', offset=4, datatype=PointField.FLOAT32, count=1),
-            PointField(name='z', offset=8, datatype=PointField.FLOAT32, count=1),
-            PointField(name='rgb', offset=12, datatype=PointField.FLOAT32, count=1),
-        ]
-
-        header = Header()
-        header.stamp = depth_msg.header.stamp
-        header.frame_id = depth_msg.header.frame_id
-
-        cloud_msg = point_cloud2.create_cloud(header, fields, cloud_data)
-        self._pub_points.publish(cloud_msg)
+        # RealSense aligned_depth_to_color の場合、デプスとカラーは同一解像度
+        self._publish_points(depth_msg, depth_info, color_img)
 
     def _on_synced_depth_only(self, depth_msg: Image, depth_info: CameraInfo):
+        self._publish_points(depth_msg, depth_info, None)
+
+    def _publish_points(
+        self,
+        depth_msg: Image,
+        depth_info: CameraInfo,
+        color_img: Optional[np.ndarray],
+    ):
         try:
             depth_img = self._bridge.imgmsg_to_cv2(depth_msg, desired_encoding='passthrough')
         except Exception as e:
@@ -184,34 +135,33 @@ class DepthToPointCloudNode(Node):
 
         self._init_grid(h, w, fx, fy, cx, cy)
 
+        # デプス値の単位変換 (m)
         depth_m = depth_img[::self._stride, ::self._stride].astype(np.float32) * self._depth_scale
-        valid = (depth_m > self._min_depth) & (depth_m < self._max_depth) & np.isfinite(depth_m)
-        if not np.any(valid):
+        bgr = None if color_img is None else color_img[::self._stride, ::self._stride]
+
+        points = build_point_array(
+            depth_m, self._u_norm, self._v_norm, self._min_depth, self._max_depth, bgr)
+        if points is None:
             return
 
-        z = depth_m[valid]
-        x = self._u_norm[valid] * z
-        y = self._v_norm[valid] * z
-
-        cloud_data = np.zeros(
-            len(z),
-            dtype=[('x', np.float32), ('y', np.float32), ('z', np.float32)]
-        )
-        cloud_data['x'] = x
-        cloud_data['y'] = y
-        cloud_data['z'] = z
-
         fields = [
-            PointField(name='x', offset=0, datatype=PointField.FLOAT32, count=1),
-            PointField(name='y', offset=4, datatype=PointField.FLOAT32, count=1),
-            PointField(name='z', offset=8, datatype=PointField.FLOAT32, count=1),
+            PointField(name=name, offset=4 * i, datatype=PointField.FLOAT32, count=1)
+            for i, name in enumerate(('x', 'y', 'z', 'rgb')[:points.shape[1]])
         ]
 
-        header = Header()
-        header.stamp = depth_msg.header.stamp
-        header.frame_id = depth_msg.header.frame_id
-
-        cloud_msg = point_cloud2.create_cloud(header, fields, cloud_data)
+        cloud_msg = PointCloud2()
+        cloud_msg.header = Header()
+        cloud_msg.header.stamp = depth_msg.header.stamp
+        cloud_msg.header.frame_id = depth_msg.header.frame_id
+        cloud_msg.height = 1
+        cloud_msg.width = points.shape[0]
+        cloud_msg.fields = fields
+        cloud_msg.is_bigendian = False
+        cloud_msg.point_step = 4 * points.shape[1]
+        cloud_msg.row_step = cloud_msg.point_step * points.shape[0]
+        cloud_msg.is_dense = True
+        # 点ごとの Python ループを避け、配列のバイト列をそのまま格納する
+        cloud_msg.data = points.tobytes()
         self._pub_points.publish(cloud_msg)
 
 
