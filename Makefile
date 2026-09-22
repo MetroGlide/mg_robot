@@ -15,7 +15,7 @@ endif
 _up_flags = $(if $(DETACH),-d,)
 _compose_opts = $(if $(OPTS),OPTS="$(OPTS)" )
 
-.PHONY: slam navigation rosbag-replay gazebo-simulation develop \
+.PHONY: slam navigation rosbag-replay obstacle-detection-replay gazebo-simulation develop \
         scenario-test scenario-test-full \
         slam-gnss-2d offline-slam-gnss-2d \
         shell shell-develop logs ps restart \
@@ -35,6 +35,11 @@ navigation:
 
 rosbag-replay:
 	$(_compose_opts)$(COMPOSE) run --rm -it rosbag-replay
+
+# rosbag-replay と別端末で起動する。点群復元 + 障害物検出 + RViz
+# make obstacle-detection-replay OPTS="rviz:=false use_color:=true"
+obstacle-detection-replay:
+	$(_compose_opts)$(COMPOSE) run --rm -it obstacle-detection-replay
 
 slam-gnss-2d:
 	$(_compose_opts)$(COMPOSE) up $(_up_flags) slam-gnss-2d
