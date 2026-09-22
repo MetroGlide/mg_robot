@@ -108,10 +108,7 @@ install(TARGETS ${COSTMAP_FOR_BAG_PLAY}
 ################################################################################
 ament_python_install_package(${PROJECT_NAME})
 
-install(PROGRAMS
-  scripts/collision_behavior_node.py
-  DESTINATION lib/${PROJECT_NAME}
-)
+
 
 install(PROGRAMS
   scripts/gnss_amcl_initializer/gnss_amcl_initializer_node.py

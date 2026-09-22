@@ -1,9 +1,7 @@
 <root main_tree_to_execute="MainTree">
   <BehaviorTree ID="MainTree">
-
     <RecoveryNode number_of_retries="10" name="NavigateRecovery">
 
-      <!-- Main sequence -->
       <PipelineSequence name="NavigateWithReplanning">
         <RateController hz="1.0">
           <RecoveryNode number_of_retries="1" name="ComputePathToPose">
@@ -17,24 +15,26 @@
         </RecoveryNode>
       </PipelineSequence>
 
-      <!-- Recovery actions -->
       <ReactiveFallback name="RecoveryFallback">
         <GoalUpdated/>
         <RoundRobin name="RecoveryActions">
-          <Sequence name="ClearingActions">
-            <ClearEntireCostmap name="ClearLocalCostmap-Subtree" service_name="local_costmap/clear_entirely_local_costmap"/>
-            <ClearEntireCostmap name="ClearGlobalCostmap-Subtree" service_name="global_costmap/clear_entirely_global_costmap"/>
+
+          <Sequence name="CollisionBackupRecovery">
+            <Wait wait_duration="2.0"/>
+            <BackUp backup_dist="2.0" backup_speed="0.25"/>
+            <ClearEntireCostmap name="ClearLocalCostmap-Collision" service_name="local_costmap/clear_entirely_local_costmap"/>
           </Sequence>
-          <Spin spin_dist="1.57"/>
+
+          <Sequence name="ClearingAndSpin">
+            <ClearEntireCostmap name="ClearGlobalCostmap-Subtree" service_name="global_costmap/clear_entirely_global_costmap"/>
+            <Spin spin_dist="1.57"/>
+          </Sequence>
+
           <Wait wait_duration="5"/>
-          <Spin spin_dist="-3.14"/>
-          <Wait wait_duration="5"/>
-          <Spin spin_dist="1.57"/>
-          <Wait wait_duration="5"/>
+
         </RoundRobin>
       </ReactiveFallback>
 
     </RecoveryNode>
-
   </BehaviorTree>
 </root>
