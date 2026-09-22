@@ -79,7 +79,7 @@ graph TD
 衝突検知から回避までの一連の振る舞いは、`WaypointSequencerFSM`やPauseRequestを経由せず、**Nav2標準機構の組み合わせで`navigate_to_pose`アクション内部に完結する**（旧`mg_navigation/scripts/collision_behavior_node.py`は廃止済み）。
 
 - **急な動的障害物への即時停止**: `mg_navigation`の`collision_monitor`（`nav2_collision_monitor`）が`cmd_vel_nav`→`cmd_vel_collision`に介入し、`PolygonStop`（速度即ゼロ）と`PolygonApproach`（時間投影による連続減速）の2段構えで低遅延に停止する。RPP（`FollowPath`）自身のコストマップベース衝突チェック（`use_collision_detection`）も併用。
-- **一定時間待つ**: `controller_server`の`progress_checker`（`movement_time_allowance`）が、ロボットが一定時間進まないことを検知すると`FollowPath`アクションを失敗させる。
+- **一定時間待つ**: `controller_server`の`progress_checker`（`movement_time_allowance`）が、ロボットが一定時間進まないことを検知すると`FollowPath`アクションを失敗させる。この値は`controller_server`単一インスタンスの共有設定のため、衝突対応専用ではなく下記`queue_wait`モードのFollowPathにも同じ値が効く点に注意。
 - **解消しなければ回避行動**: 上記の失敗をトリガーに、`mg_navigate_to_pose.xml`の`RecoveryNode`/`RoundRobin`リカバリー（`Wait→BackUp→ClearCostmap`等）が発火する。バックアップ動作自体は`behavior_server`が担当し、`collision_monitor`を経由せず`cmd_vel`に直接publishするため、後退中の安全性は`behavior_server`自身のローカルコストマップベースの衝突チェックに委ねられる。
 - **列に並ぶ区間（queue_wait）**: `set_navigation_mode`アクションで`navigation_mode`を`queue_wait`に切り替えると、`mg_navigate_to_pose_queue_wait.xml`が使われる。こちらはリトライ無制限・`Wait`のみで回避動作を行わず、列に詰める動作を再現する。
 

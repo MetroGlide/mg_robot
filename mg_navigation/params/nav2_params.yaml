@@ -98,13 +98,15 @@ bt_navigator:
 # 以前はNav2パッケージデフォルトに依存していたが、安全に関わるため明示的に設定する。
 # 値はNav2標準デフォルトを踏襲しているが、Docker内での実際のデフォルト値確認および
 # Gazebo/実機での検証を経て最終確定すること。
+# NOTE: Humbleのnav2_behaviors::BehaviorServerが実際に読むのは costmap_topic/footprint_topic
+# のみ（local_/global_の接頭辞や transform_timeout は存在せず無視される）。グローバル
+# コストマップでの衝突チェックはこのバージョンでは行えないため、必要ならNav2アップグレード
+# を検討すること。
 behavior_server:
   ros__parameters:
     use_sim_time: False
-    local_costmap_topic: local_costmap/costmap_raw
-    local_footprint_topic: local_costmap/published_footprint
-    global_costmap_topic: global_costmap/costmap_raw
-    global_footprint_topic: global_costmap/published_footprint
+    costmap_topic: local_costmap/costmap_raw
+    footprint_topic: local_costmap/published_footprint
     cycle_frequency: 10.0
     behavior_plugins: ["spin", "backup", "drive_on_heading", "wait"]
     spin:
@@ -117,7 +119,6 @@ behavior_server:
       plugin: "nav2_behaviors/Wait"
     global_frame: odom
     robot_base_frame: base_footprint
-    transform_timeout: 0.1
     transform_tolerance: 0.1
     # バックアップ/スピン実行中に衝突予測のためシミュレートする時間。値が短すぎると
     # 急な後方障害物の検知が間に合わない可能性があるため要検証。
@@ -506,7 +507,7 @@ collision_monitor:
     # enabled は動的パラメータのため ros2 param set での即時切替も可能。
     PolygonStop:
       type: "polygon"
-      points: [0.6, 0.3, 0.6, -0.3, 0.3, -0.3, 0.3, 0.3]
+      points: &collision_front_polygon [0.6, 0.3, 0.6, -0.3, 0.3, -0.3, 0.3, 0.3]
       action_type: "stop"
       min_points: 4
       enabled: true
@@ -515,7 +516,7 @@ collision_monitor:
 
     PolygonApproach:
       type: "polygon"
-      points: [0.6, 0.3, 0.6, -0.3, 0.3, -0.3, 0.3, 0.3]
+      points: *collision_front_polygon
       action_type: "approach"
       time_before_collision: 2.0
       simulation_time_step: 0.1
@@ -542,11 +543,12 @@ velocity_smoother:
     use_sim_time: False
     smoothing_frequency: 20.0
     scale_velocities: false
+    # feedback: OPEN_LOOP時はOdomSmoother(odom_topic/odom_duration)は生成・参照されない。
+    # 実測速度から滑らかに追従させたい場合はCLOSED_LOOPに変更しodom_topic/odom_durationを
+    # 追加すること（挙動が変わるため今回は変更しない）。
     feedback: "OPEN_LOOP"
     max_accel: [2.5, 0.0, 3.2]
     max_decel: [-2.5, 0.0, -3.2]
-    odom_topic: "odom"
-    odom_duration: 0.1
     deadband_velocity: [0.0, 0.0, 0.0]
     velocity_timeout: 1.0
     # max_velocity: [0.65, 0.0, 3.0] # x, y, theta. default: [0.5, 0.0, 2.0]
