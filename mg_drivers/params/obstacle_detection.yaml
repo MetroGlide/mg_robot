@@ -1,25 +1,61 @@
+# obstacle_detection_3d_node のパラメータ
+#
+# 調整は本ファイルを編集してノードを再起動して行う。
+# 起動時に採用値が INFO ログに出力され、不正値は理由付きのエラーで終了する。
+# 処理速度は stats_period ごとの "stats" ログ（平均/最大 [ms]）で確認できる。
+#
+# パイプライン (base_link 座標系):
+#   点群を base_link へ変換 -> ROI 内の点を 5cm 程度のグリッドに集計
+#   -> セル内の z の幅 (ΔZ) が閾値を超えたセルを障害物とする
+#   -> 障害物セルを連結成分にまとめ、小さい成分をノイズとして除去
+#   -> 残った成分に属する点を ~/points_obstacle に出力（大きさの上限はない）
 obstacle_detection_3d_node:
   ros__parameters:
-    # Step 2: ダウンサンプリング
-    voxel_leaf_size: 0.05          # [m]
+    # ---- 速度に効くパラメータ ----
+    # 入力点の間引き間隔。2 で処理点数がほぼ半分になる。遠方の小物体の検出感度が下がる
+    stride: 1
 
-    # Step 2: CropBox
-    cropbox_x_min: 0.0             # [m]
-    cropbox_x_max: 3.0             # [m]
-    cropbox_y_min: -0.75           # [m]
-    cropbox_y_max: 0.75            # [m]
-    cropbox_z_min: -0.1            # [m]
-    cropbox_z_max: 1.0             # [m]
+    # ROI [m]。base_link 原点基準。狭めるほど速くなる。
+    # z_min は地面が base_link の z=0 付近にある前提の値（地面ノイズ・傾きの余裕を含む）。
+    # z_max はロボットが接触し得る高さに合わせる（これより高い物体は無視される）
+    cropbox_x_min: 0.0
+    cropbox_x_max: 3.0
+    cropbox_y_min: -0.75
+    cropbox_y_max: 0.75
+    cropbox_z_min: 0.1
+    cropbox_z_max: 1.0
 
-    # Step 3: 2.5D ΔZ評価
-    grid_size: 0.05                # [m] グリッド解像度
-    delta_z_threshold: 0.15        # [m] 障害物判定閾値
+    # グリッドの一辺 [m]。大きいほど速く、位置分解能は粗くなる
+    grid_size: 0.05
 
-    # Step 4: Radius Outlier Removal
-    ror_radius_search: 0.2         # [m]
-    ror_min_neighbors: 3           # [個]
+    # ---- 検出感度に効くパラメータ ----
+    # セル内の z の最大-最小がこの値を超えると障害物。
+    # 高さがこの値未満の物体（縁石・倒れた物体など）は検出できない。
+    # 地面のノイズで誤検出する場合は大きく、低い物体を拾いたい場合は小さくする
+    delta_z_threshold: 0.15
 
-    # Step 4: Euclidean Cluster Extraction
-    cluster_tolerance: 0.3         # [m]
-    min_cluster_size: 10           # [点]
-    max_cluster_size: 1000         # [点]
+    # ΔZ 判定に必要なセル内の最小点数。大きいほど疎なセルのノイズに強い（遠方は点が減る）
+    min_points_per_cell: 2
+
+    # セルごとに z の上下から無視する外れ値点数 (0 または 1)。
+    # 1 にすると 1 点だけの飛び画素（フライングピクセル）による誤検出を抑える。
+    # 有効時は 1 セルあたり 4 点以上が必要になる
+    z_outlier_trim: 0
+
+    # 障害物セル同士をつなぐ距離 [m]（grid_size 単位に丸められる）。
+    # 大きいと近接する物体が 1 つのクラスタに併合され、小さいと 1 つの物体が分割され得る
+    cluster_tolerance: 0.15
+
+    # クラスタとして残す最小のセル数。1 セルだけの孤立ノイズを除去する。
+    # 大きいほど小さな障害物が消える
+    min_cluster_cells: 2
+
+    # ---- 出力・診断 ----
+    # クラスタの bbox / ラベルの Marker (~/cluster_markers) を出力するか。false で負荷が少し下がる
+    publish_markers: true
+
+    # 処理時間・点数の統計ログを出力するか
+    publish_stats: true
+
+    # 統計ログの出力間隔 [s]（この間の平均/最大を出力）
+    stats_period: 1.0

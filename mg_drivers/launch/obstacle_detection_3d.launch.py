@@ -23,7 +23,11 @@ def generate_launch_description():
     pkg_name = "mg_drivers"
     pkg_share = get_package_share_directory(pkg_name)
 
-    param_file = os.path.join(pkg_share, "params", "obstacle_detection.yaml")
+    param_file_arg = launch_argument_creator.create(
+        "param_file",
+        default=os.path.join(pkg_share, "params", "obstacle_detection.yaml"),
+        description="obstacle_detection_3d_node のパラメータYAML",
+    )
 
     node = Node(
         package=pkg_name,
@@ -31,7 +35,7 @@ def generate_launch_description():
         name="obstacle_detection_3d_node",
         output="screen",
         parameters=[
-            param_file,
+            param_file_arg.launch_config,
             {"use_sim_time": use_sim_time_arg.launch_config},
             {"use_sensor_data_qos": use_sensor_data_qos_arg.launch_config},
         ],

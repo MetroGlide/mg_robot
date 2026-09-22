@@ -1,12 +1,17 @@
-#include <pcl_conversions/pcl_conversions.h>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 
+#include <Eigen/Geometry>
+#include <algorithm>
+#include <chrono>
+#include <cstdint>
+#include <cstring>
 #include <memory>
+#include <stdexcept>
 #include <string>
-#include <tf2_sensor_msgs/tf2_sensor_msgs.hpp>
 #include <vector>
 
+#include "geometry_msgs/msg/point.hpp"
 #include "obstacle_detection/obstacle_detector.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/point_cloud2.hpp"
@@ -14,235 +19,307 @@
 
 using std::placeholders::_1;
 
+namespace
+{
+
+constexpr char kBaseFrame[] = "base_link";
+
+static_assert(sizeof(obstacle_detection::Point3) == 3 * sizeof(float), "Point3 must be packed");
+
+using Clock = std::chrono::steady_clock;
+
+double elapsedMs(const Clock::time_point & from, const Clock::time_point & to)
+{
+  return std::chrono::duration<double, std::milli>(to - from).count();
+}
+
+// 平均・最大を集計する
+struct StatAccumulator
+{
+  double sum = 0.0;
+  double max = 0.0;
+
+  void add(double v)
+  {
+    sum += v;
+    max = std::max(max, v);
+  }
+};
+
+size_t findFloatFieldOffset(const sensor_msgs::msg::PointCloud2 & msg, const std::string & name)
+{
+  for (const auto & field : msg.fields) {
+    if (field.name == name) {
+      if (field.datatype != sensor_msgs::msg::PointField::FLOAT32) {
+        throw std::runtime_error("PointCloud2 field '" + name + "' is not FLOAT32");
+      }
+      return field.offset;
+    }
+  }
+  throw std::runtime_error("PointCloud2 has no field '" + name + "'");
+}
+
+}  // namespace
+
 class ObstacleDetection3DNode : public rclcpp::Node
 {
 public:
   ObstacleDetection3DNode() : Node("obstacle_detection_3d_node")
   {
-    // Declare parameters
-    this->declare_parameter<bool>("use_sensor_data_qos", false);
-    this->declare_parameter<double>("voxel_leaf_size", 0.05);
-    this->declare_parameter<double>("cropbox_x_min", 0.0);
-    this->declare_parameter<double>("cropbox_x_max", 3.0);
-    this->declare_parameter<double>("cropbox_y_min", -0.75);
-    this->declare_parameter<double>("cropbox_y_max", 0.75);
-    this->declare_parameter<double>("cropbox_z_min", -0.1);
-    this->declare_parameter<double>("cropbox_z_max", 1.0);
-    this->declare_parameter<double>("grid_size", 0.05);
-    this->declare_parameter<double>("delta_z_threshold", 0.15);
-    this->declare_parameter<double>("ror_radius_search", 0.2);
-    this->declare_parameter<int>("ror_min_neighbors", 3);
-    this->declare_parameter<double>("cluster_tolerance", 0.3);
-    this->declare_parameter<int>("min_cluster_size", 10);
-    this->declare_parameter<int>("max_cluster_size", 1000);
-
-    obstacle_detection::ObstacleDetectionParams p;
-    p.voxel_leaf_size = this->get_parameter("voxel_leaf_size").as_double();
-    p.cropbox_x_min = this->get_parameter("cropbox_x_min").as_double();
-    p.cropbox_x_max = this->get_parameter("cropbox_x_max").as_double();
-    p.cropbox_y_min = this->get_parameter("cropbox_y_min").as_double();
-    p.cropbox_y_max = this->get_parameter("cropbox_y_max").as_double();
-    p.cropbox_z_min = this->get_parameter("cropbox_z_min").as_double();
-    p.cropbox_z_max = this->get_parameter("cropbox_z_max").as_double();
-    p.grid_size = this->get_parameter("grid_size").as_double();
-    p.delta_z_threshold = this->get_parameter("delta_z_threshold").as_double();
-    p.ror_radius_search = this->get_parameter("ror_radius_search").as_double();
-    p.ror_min_neighbors = this->get_parameter("ror_min_neighbors").as_int();
-    p.cluster_tolerance = this->get_parameter("cluster_tolerance").as_double();
-    p.min_cluster_size = this->get_parameter("min_cluster_size").as_int();
-    p.max_cluster_size = this->get_parameter("max_cluster_size").as_int();
-
-    detector_ = std::make_unique<obstacle_detection::ObstacleDetector>(p);
+    const auto params = loadParams();
+    detector_ = std::make_unique<obstacle_detection::ObstacleDetector>(params);
 
     tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
-    const bool use_sensor_data_qos =
-      this->get_parameter("use_sensor_data_qos").as_bool();
-    rclcpp::QoS qos = use_sensor_data_qos ?
-      rclcpp::SensorDataQoS() : rclcpp::QoS(10).reliable();
+    const bool use_sensor_data_qos = this->get_parameter("use_sensor_data_qos").as_bool();
+    rclcpp::QoS qos = use_sensor_data_qos ? rclcpp::SensorDataQoS() : rclcpp::QoS(10).reliable();
 
     pub_obstacle_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("~/points_obstacle", qos);
-    pub_markers_ =
-      this->create_publisher<visualization_msgs::msg::MarkerArray>("~/cluster_markers", qos);
+    if (publish_markers_) {
+      pub_markers_ =
+        this->create_publisher<visualization_msgs::msg::MarkerArray>("~/cluster_markers", qos);
+    }
 
     sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
       "points", qos, std::bind(&ObstacleDetection3DNode::pointcloudCallback, this, _1));
+
+    stats_window_start_ = Clock::now();
   }
 
 private:
-  void pointcloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg)
+  // yaml のキーと 1 対 1 で宣言・取得し、不正値は起動時に例外で終了する
+  obstacle_detection::ObstacleDetectionParams loadParams()
   {
-    // RCLCPP_INFO(
-    // this->get_logger(), "Received point cloud with %d points", msg->width * msg->height);
-    // 1. TF transformation
-    sensor_msgs::msg::PointCloud2 transformed_msg;
-    try {
-      geometry_msgs::msg::TransformStamped transform = tf_buffer_->lookupTransform(
-        "base_link", msg->header.frame_id, msg->header.stamp, rclcpp::Duration::from_seconds(0.1));
-      tf2::doTransform(*msg, transformed_msg, transform);
-    } catch (const tf2::TransformException & ex) {
-      RCLCPP_WARN(
-        this->get_logger(), "Could not transform %s to base_link: %s", msg->header.frame_id.c_str(),
-        ex.what());
-      return;
+    this->declare_parameter<bool>("use_sensor_data_qos", false);
+
+    obstacle_detection::ObstacleDetectionParams p;
+    p.stride = this->declare_parameter<int>("stride", p.stride);
+    p.cropbox_x_min = this->declare_parameter<double>("cropbox_x_min", p.cropbox_x_min);
+    p.cropbox_x_max = this->declare_parameter<double>("cropbox_x_max", p.cropbox_x_max);
+    p.cropbox_y_min = this->declare_parameter<double>("cropbox_y_min", p.cropbox_y_min);
+    p.cropbox_y_max = this->declare_parameter<double>("cropbox_y_max", p.cropbox_y_max);
+    p.cropbox_z_min = this->declare_parameter<double>("cropbox_z_min", p.cropbox_z_min);
+    p.cropbox_z_max = this->declare_parameter<double>("cropbox_z_max", p.cropbox_z_max);
+    p.grid_size = this->declare_parameter<double>("grid_size", p.grid_size);
+    p.delta_z_threshold =
+      this->declare_parameter<double>("delta_z_threshold", p.delta_z_threshold);
+    p.min_points_per_cell =
+      this->declare_parameter<int>("min_points_per_cell", p.min_points_per_cell);
+    p.z_outlier_trim = this->declare_parameter<int>("z_outlier_trim", p.z_outlier_trim);
+    p.cluster_tolerance =
+      this->declare_parameter<double>("cluster_tolerance", p.cluster_tolerance);
+    p.min_cluster_cells = this->declare_parameter<int>("min_cluster_cells", p.min_cluster_cells);
+
+    publish_markers_ = this->declare_parameter<bool>("publish_markers", true);
+    publish_stats_ = this->declare_parameter<bool>("publish_stats", true);
+    stats_period_ = this->declare_parameter<double>("stats_period", 1.0);
+    if (stats_period_ <= 0.0) {
+      throw std::invalid_argument("obstacle_detection params: stats_period must be > 0");
     }
 
-    // 2. Convert to PCL
-    pcl::PointCloud<pcl::PointXYZRGB> input_cloud;
-    pcl::fromROSMsg(transformed_msg, input_cloud);
+    obstacle_detection::ObstacleDetector::validate(p);
 
-    // 3. Process
-    pcl::PointCloud<pcl::PointXYZRGB> obstacle_cloud;
-    std::vector<pcl::PointIndices> clusters;
-
-    if (!detector_->process(input_cloud, obstacle_cloud, clusters)) {
-      return;
-    }
-
-    // 4. Publish PointCloud2
-    sensor_msgs::msg::PointCloud2 out_msg;
-    pcl::toROSMsg(obstacle_cloud, out_msg);
-    out_msg.header.frame_id = "base_link";
-    out_msg.header.stamp = msg->header.stamp;
-    pub_obstacle_->publish(out_msg);
-
-    // 5. Publish Markers
-    publishMarkers(obstacle_cloud, clusters, msg->header.stamp);
+    RCLCPP_INFO(
+      this->get_logger(),
+      "params: stride=%d crop x[%.2f,%.2f] y[%.2f,%.2f] z[%.2f,%.2f] grid_size=%.3f "
+      "delta_z_threshold=%.3f min_points_per_cell=%d z_outlier_trim=%d cluster_tolerance=%.3f "
+      "min_cluster_cells=%d publish_markers=%d publish_stats=%d stats_period=%.1f",
+      p.stride, p.cropbox_x_min, p.cropbox_x_max, p.cropbox_y_min, p.cropbox_y_max,
+      p.cropbox_z_min, p.cropbox_z_max, p.grid_size, p.delta_z_threshold, p.min_points_per_cell,
+      p.z_outlier_trim, p.cluster_tolerance, p.min_cluster_cells, publish_markers_, publish_stats_,
+      stats_period_);
+    return p;
   }
 
-  void publishMarkers(
-    const pcl::PointCloud<pcl::PointXYZRGB> & cloud,
-    const std::vector<pcl::PointIndices> & clusters, const rclcpp::Time & stamp)
+  void pointcloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg)
+  {
+    const auto t_start = Clock::now();
+
+    // 1. センサ座標 -> base_link（待たずに最新の変換を使う）
+    Eigen::Isometry3f sensor_to_base = Eigen::Isometry3f::Identity();
+    try {
+      const auto tf = tf_buffer_->lookupTransform(
+        kBaseFrame, msg->header.frame_id, msg->header.stamp, tf2::Duration::zero());
+      const auto & q = tf.transform.rotation;
+      const auto & t = tf.transform.translation;
+      sensor_to_base.linear() =
+        Eigen::Quaternionf(q.w, q.x, q.y, q.z).normalized().toRotationMatrix();
+      sensor_to_base.translation() = Eigen::Vector3f(t.x, t.y, t.z);
+    } catch (const tf2::TransformException & ex) {
+      RCLCPP_WARN_THROTTLE(
+        this->get_logger(), *this->get_clock(), 5000, "Could not transform %s to %s: %s",
+        msg->header.frame_id.c_str(), kBaseFrame, ex.what());
+      return;
+    }
+    const auto t_tf = Clock::now();
+
+    // 2. 検出（生バッファから直接読む）
+    obstacle_detection::PointCloudView view;
+    view.data = msg->data.data();
+    view.num_points = static_cast<size_t>(msg->width) * msg->height;
+    view.point_step = msg->point_step;
+    view.x_offset = findFloatFieldOffset(*msg, "x");
+    view.y_offset = findFloatFieldOffset(*msg, "y");
+    view.z_offset = findFloatFieldOffset(*msg, "z");
+    detector_->process(view, sensor_to_base);
+
+    // 3. 検出ゼロでも空の点群を publish し、コストマップ側のクリアリングを可能にする
+    publishObstacles(msg->header.stamp);
+    if (publish_markers_) {
+      publishMarkers(msg->header.stamp);
+    }
+
+    if (publish_stats_) {
+      const auto t_end = Clock::now();
+      recordStats(
+        elapsedMs(t_start, t_tf), elapsedMs(t_tf, t_end), elapsedMs(t_start, t_end),
+        (this->now() - msg->header.stamp).seconds() * 1000.0);
+    }
+  }
+
+  void publishObstacles(const rclcpp::Time & stamp)
+  {
+    const auto & points = detector_->obstacle_points();
+
+    sensor_msgs::msg::PointCloud2 out;
+    out.header.frame_id = kBaseFrame;
+    out.header.stamp = stamp;
+    out.height = 1;
+    out.width = static_cast<uint32_t>(points.size());
+    out.is_bigendian = false;
+    out.is_dense = true;
+    out.point_step = sizeof(obstacle_detection::Point3);
+    out.row_step = out.point_step * out.width;
+    out.fields.resize(3);
+    const char * names[] = {"x", "y", "z"};
+    for (uint32_t i = 0; i < 3; ++i) {
+      out.fields[i].name = names[i];
+      out.fields[i].offset = i * sizeof(float);
+      out.fields[i].datatype = sensor_msgs::msg::PointField::FLOAT32;
+      out.fields[i].count = 1;
+    }
+    out.data.resize(points.size() * sizeof(obstacle_detection::Point3));
+    if (!points.empty()) {
+      std::memcpy(out.data.data(), points.data(), out.data.size());
+    }
+    pub_obstacle_->publish(out);
+  }
+
+  void publishMarkers(const rclcpp::Time & stamp)
   {
     visualization_msgs::msg::MarkerArray marker_array;
 
-    // Delete all previous markers
+    // 前フレームのマーカーを全消去
     visualization_msgs::msg::Marker delete_all;
     delete_all.action = visualization_msgs::msg::Marker::DELETEALL;
     marker_array.markers.push_back(delete_all);
 
     int id = 0;
-    for (const auto & cluster : clusters) {
-      if (cluster.indices.empty()) continue;
-
-      float min_x = std::numeric_limits<float>::max();
-      float max_x = std::numeric_limits<float>::lowest();
-      float min_y = std::numeric_limits<float>::max();
-      float max_y = std::numeric_limits<float>::lowest();
-      float min_z = std::numeric_limits<float>::max();
-      float max_z = std::numeric_limits<float>::lowest();
-
-      for (const auto & idx : cluster.indices) {
-        const auto & p = cloud.points[idx];
-        min_x = std::min(min_x, p.x);
-        max_x = std::max(max_x, p.x);
-        min_y = std::min(min_y, p.y);
-        max_y = std::max(max_y, p.y);
-        min_z = std::min(min_z, p.z);
-        max_z = std::max(max_z, p.z);
-      }
-
+    int cluster_num = 1;
+    for (const auto & cluster : detector_->clusters()) {
       visualization_msgs::msg::Marker bbox;
-      bbox.header.frame_id = "base_link";
+      bbox.header.frame_id = kBaseFrame;
       bbox.header.stamp = stamp;
       bbox.ns = "obstacle_clusters";
       bbox.id = id++;
       bbox.type = visualization_msgs::msg::Marker::LINE_LIST;
       bbox.action = visualization_msgs::msg::Marker::ADD;
       bbox.pose.orientation.w = 1.0;
-      bbox.scale.x = 0.02;  // Line width
+      bbox.scale.x = 0.02;  // 線幅
       bbox.color.r = 1.0;
-      bbox.color.g = 0.0;
-      bbox.color.b = 0.0;
       bbox.color.a = 1.0;
       bbox.lifetime = rclcpp::Duration::from_seconds(0.5);
 
-      // 8 corners of the bounding box
-      geometry_msgs::msg::Point p1, p2, p3, p4, p5, p6, p7, p8;
-      p1.x = min_x;
-      p1.y = min_y;
-      p1.z = min_z;
-      p2.x = max_x;
-      p2.y = min_y;
-      p2.z = min_z;
-      p3.x = max_x;
-      p3.y = max_y;
-      p3.z = min_z;
-      p4.x = min_x;
-      p4.y = max_y;
-      p4.z = min_z;
-      p5.x = min_x;
-      p5.y = min_y;
-      p5.z = max_z;
-      p6.x = max_x;
-      p6.y = min_y;
-      p6.z = max_z;
-      p7.x = max_x;
-      p7.y = max_y;
-      p7.z = max_z;
-      p8.x = min_x;
-      p8.y = max_y;
-      p8.z = max_z;
-
-      // Bottom rectangle
-      bbox.points.push_back(p1);
-      bbox.points.push_back(p2);
-      bbox.points.push_back(p2);
-      bbox.points.push_back(p3);
-      bbox.points.push_back(p3);
-      bbox.points.push_back(p4);
-      bbox.points.push_back(p4);
-      bbox.points.push_back(p1);
-
-      // Top rectangle
-      bbox.points.push_back(p5);
-      bbox.points.push_back(p6);
-      bbox.points.push_back(p6);
-      bbox.points.push_back(p7);
-      bbox.points.push_back(p7);
-      bbox.points.push_back(p8);
-      bbox.points.push_back(p8);
-      bbox.points.push_back(p5);
-
-      // Vertical lines
-      bbox.points.push_back(p1);
-      bbox.points.push_back(p5);
-      bbox.points.push_back(p2);
-      bbox.points.push_back(p6);
-      bbox.points.push_back(p3);
-      bbox.points.push_back(p7);
-      bbox.points.push_back(p4);
-      bbox.points.push_back(p8);
-
+      // 直方体の 8 頂点。ビット 0,1,2 が x,y,z の min/max に対応する
+      geometry_msgs::msg::Point corners[8];
+      for (int i = 0; i < 8; ++i) {
+        corners[i].x = (i & 1) ? cluster.max_x : cluster.min_x;
+        corners[i].y = (i & 2) ? cluster.max_y : cluster.min_y;
+        corners[i].z = (i & 4) ? cluster.max_z : cluster.min_z;
+      }
+      // 1 ビットだけ異なる頂点同士が辺で結ばれる
+      for (int i = 0; i < 8; ++i) {
+        for (int bit = 1; bit < 8; bit <<= 1) {
+          if (!(i & bit)) {
+            bbox.points.push_back(corners[i]);
+            bbox.points.push_back(corners[i | bit]);
+          }
+        }
+      }
       marker_array.markers.push_back(bbox);
 
-      // Text label
       visualization_msgs::msg::Marker text;
-      text.header.frame_id = "base_link";
+      text.header.frame_id = kBaseFrame;
       text.header.stamp = stamp;
       text.ns = "obstacle_clusters_text";
-      int cluster_num = id / 2 + 1;  // bbox と text で 2ずつ増加するためクラスタ番号は id/2+1
       text.id = id++;
       text.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
       text.action = visualization_msgs::msg::Marker::ADD;
-      text.pose.position.x = (min_x + max_x) / 2.0;
-      text.pose.position.y = (min_y + max_y) / 2.0;
-      text.pose.position.z = max_z + 0.1;
+      text.pose.position.x = (cluster.min_x + cluster.max_x) / 2.0;
+      text.pose.position.y = (cluster.min_y + cluster.max_y) / 2.0;
+      text.pose.position.z = cluster.max_z + 0.1;
       text.pose.orientation.w = 1.0;
-      text.scale.z = 0.1;  // Text height
+      text.scale.z = 0.1;  // 文字の高さ
       text.color.r = 1.0;
       text.color.g = 1.0;
       text.color.b = 1.0;
       text.color.a = 1.0;
-      text.text = "Cluster " + std::to_string(cluster_num) + " (" +
-                  std::to_string(cluster.indices.size()) + " pts)";
+      text.text = "Cluster " + std::to_string(cluster_num++) + " (" +
+                  std::to_string(cluster.num_points) + " pts)";
       text.lifetime = rclcpp::Duration::from_seconds(0.5);
-
       marker_array.markers.push_back(text);
     }
 
     pub_markers_->publish(marker_array);
+  }
+
+  // stats_period ごとに、区間内の平均/最大をログ出力して集計をリセットする
+  void recordStats(double tf_ms, double detect_publish_ms, double total_ms, double latency_ms)
+  {
+    const auto & s = detector_->stats();
+    ++stats_frames_;
+    stat_tf_.add(tf_ms);
+    stat_accumulate_.add(s.accumulate_ms);
+    stat_judge_.add(s.judge_ms);
+    stat_cluster_.add(s.cluster_ms);
+    stat_extract_.add(s.extract_ms);
+    stat_publish_.add(detect_publish_ms - s.accumulate_ms - s.judge_ms - s.cluster_ms - s.extract_ms);
+    stat_total_.add(total_ms);
+    stat_latency_.add(latency_ms);
+    stat_input_pts_.add(static_cast<double>(s.input_points));
+    stat_cropped_pts_.add(static_cast<double>(s.cropped_points));
+    stat_candidate_cells_.add(static_cast<double>(s.candidate_cells));
+    stat_output_pts_.add(static_cast<double>(s.output_points));
+    stat_clusters_.add(static_cast<double>(s.num_clusters));
+
+    const auto now = Clock::now();
+    const double window_s = elapsedMs(stats_window_start_, now) / 1000.0;
+    if (window_s < stats_period_) return;
+
+    const double n = static_cast<double>(stats_frames_);
+    auto avg = [n](const StatAccumulator & a) { return a.sum / n; };
+    RCLCPP_INFO(
+      this->get_logger(),
+      "stats [%.1f fps, %d frames] time avg/max [ms]: tf %.2f/%.2f accumulate %.2f/%.2f "
+      "judge %.2f/%.2f cluster %.2f/%.2f extract %.2f/%.2f publish %.2f/%.2f total %.2f/%.2f "
+      "latency %.1f/%.1f | points avg: input %.0f cropped %.0f output %.0f | "
+      "candidate_cells %.0f clusters %.1f",
+      n / window_s, stats_frames_, avg(stat_tf_), stat_tf_.max, avg(stat_accumulate_),
+      stat_accumulate_.max, avg(stat_judge_), stat_judge_.max, avg(stat_cluster_),
+      stat_cluster_.max, avg(stat_extract_), stat_extract_.max, avg(stat_publish_),
+      stat_publish_.max, avg(stat_total_), stat_total_.max, avg(stat_latency_),
+      stat_latency_.max, avg(stat_input_pts_), avg(stat_cropped_pts_), avg(stat_output_pts_),
+      avg(stat_candidate_cells_), avg(stat_clusters_));
+
+    stats_frames_ = 0;
+    stats_window_start_ = now;
+    for (auto * a :
+         {&stat_tf_, &stat_accumulate_, &stat_judge_, &stat_cluster_, &stat_extract_,
+          &stat_publish_, &stat_total_, &stat_latency_, &stat_input_pts_, &stat_cropped_pts_,
+          &stat_candidate_cells_, &stat_output_pts_, &stat_clusters_}) {
+      *a = StatAccumulator{};
+    }
   }
 
   std::unique_ptr<obstacle_detection::ObstacleDetector> detector_;
@@ -252,6 +329,26 @@ private:
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_obstacle_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_markers_;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_;
+
+  bool publish_markers_ = true;
+  bool publish_stats_ = true;
+  double stats_period_ = 1.0;
+
+  Clock::time_point stats_window_start_;
+  int stats_frames_ = 0;
+  StatAccumulator stat_tf_;
+  StatAccumulator stat_accumulate_;
+  StatAccumulator stat_judge_;
+  StatAccumulator stat_cluster_;
+  StatAccumulator stat_extract_;
+  StatAccumulator stat_publish_;
+  StatAccumulator stat_total_;
+  StatAccumulator stat_latency_;
+  StatAccumulator stat_input_pts_;
+  StatAccumulator stat_cropped_pts_;
+  StatAccumulator stat_candidate_cells_;
+  StatAccumulator stat_output_pts_;
+  StatAccumulator stat_clusters_;
 };
 
 int main(int argc, char ** argv)

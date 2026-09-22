@@ -108,19 +108,38 @@ target_link_libraries(${DEPTH_POSTPROCESS_EXECUTABLE_NAME} ${PCL_LIBRARIES})
 ament_target_dependencies(${DEPTH_POSTPROCESS_EXECUTABLE_NAME} ${DEPENDENCIES})
 
 # obstacle_detection_3d node
+find_package(Eigen3 REQUIRED)
+
+add_library(obstacle_detector STATIC
+  src/obstacle_detection/obstacle_detector.cpp
+)
+target_include_directories(obstacle_detector PUBLIC include)
+target_link_libraries(obstacle_detector Eigen3::Eigen)
+
 set(OBSTACLE_DETECTION_3D_EXECUTABLE_NAME "obstacle_detection_3d_node")
 add_executable(${OBSTACLE_DETECTION_3D_EXECUTABLE_NAME}
   src/obstacle_detection/obstacle_detection_3d_node.cpp
-  src/obstacle_detection/obstacle_detector.cpp
 )
-target_include_directories(${OBSTACLE_DETECTION_3D_EXECUTABLE_NAME} PRIVATE include)
-target_link_libraries(${OBSTACLE_DETECTION_3D_EXECUTABLE_NAME} ${PCL_LIBRARIES})
-ament_target_dependencies(${OBSTACLE_DETECTION_3D_EXECUTABLE_NAME} ${DEPENDENCIES})
+target_link_libraries(${OBSTACLE_DETECTION_3D_EXECUTABLE_NAME} obstacle_detector)
+ament_target_dependencies(${OBSTACLE_DETECTION_3D_EXECUTABLE_NAME}
+  rclcpp
+  geometry_msgs
+  sensor_msgs
+  tf2
+  tf2_ros
+  visualization_msgs
+)
+
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_obstacle_detector test/test_obstacle_detector.cpp)
+  target_link_libraries(test_obstacle_detector obstacle_detector)
+endif()
 
 ################################################################################
 # Install
 ################################################################################
-install(DIRECTORY launch params
+install(DIRECTORY launch params rviz
   DESTINATION share/${PROJECT_NAME}
 )
 
