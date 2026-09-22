@@ -31,7 +31,8 @@ mg_waypoint_navigation/
     waypoint_sequencer.launch.py
     waypoint_editor.launch.py
   behavior_trees/
-    mg_navigate_to_pose_recovery_only_wait.xml
+    mg_navigate_to_pose.xml             # 通常時。FollowPath/ComputePathToPose失敗時にWait/BackUp/ClearCostmap等のリカバリーを行う
+    mg_navigate_to_pose_queue_wait.xml  # queue_waitモード。回避動作なしでWaitのみ（列に詰める動作用）
   rviz/
     waypoint_editor.rviz
   doc/
@@ -46,8 +47,7 @@ mg_waypoint_navigation/
 ```mermaid
 graph TD
     subgraph Requesters["ポーズリクエスタ (複数)"]
-        CR["collision_behavior_node\nrequester_id: collision_behavior"]
-        OR["その他ノード\n任意の requester_id"]
+        OR["TUI等の手動停止\n任意の requester_id"]
     end
 
     subgraph WSN["WaypointSequencerNode"]
@@ -61,7 +61,6 @@ graph TD
 
     Nav2["Nav2 Stack\n(navigate_to_pose)"]
 
-    CR -- "PauseRequest" --> SUB
     OR -- "PauseRequest" --> SUB
     SVC --> FSM
     SUB --> FSM
@@ -70,6 +69,21 @@ graph TD
     FSM --> PUB
     NAV <--> Nav2
 ```
+
+`PauseRequest`はTUIの手動停止など明示的な一時停止要求のための汎用機構であり、衝突対応はこの経路を使わない（下記「衝突対応」参照）。
+
+---
+
+## 衝突対応
+
+衝突検知から回避までの一連の振る舞いは、`WaypointSequencerFSM`やPauseRequestを経由せず、**Nav2標準機構の組み合わせで`navigate_to_pose`アクション内部に完結する**（旧`mg_navigation/scripts/collision_behavior_node.py`は廃止済み）。
+
+- **急な動的障害物への即時停止**: `mg_navigation`の`collision_monitor`（`nav2_collision_monitor`）が`cmd_vel_nav`→`cmd_vel_collision`に介入し、`PolygonStop`（速度即ゼロ）と`PolygonApproach`（時間投影による連続減速）の2段構えで低遅延に停止する。RPP（`FollowPath`）自身のコストマップベース衝突チェック（`use_collision_detection`）も併用。
+- **一定時間待つ**: `controller_server`の`progress_checker`（`movement_time_allowance`）が、ロボットが一定時間進まないことを検知すると`FollowPath`アクションを失敗させる。
+- **解消しなければ回避行動**: 上記の失敗をトリガーに、`mg_navigate_to_pose.xml`の`RecoveryNode`/`RoundRobin`リカバリー（`Wait→BackUp→ClearCostmap`等）が発火する。バックアップ動作自体は`behavior_server`が担当し、`collision_monitor`を経由せず`cmd_vel`に直接publishするため、後退中の安全性は`behavior_server`自身のローカルコストマップベースの衝突チェックに委ねられる。
+- **列に並ぶ区間（queue_wait）**: `set_navigation_mode`アクションで`navigation_mode`を`queue_wait`に切り替えると、`mg_navigate_to_pose_queue_wait.xml`が使われる。こちらはリトライ無制限・`Wait`のみで回避動作を行わず、列に詰める動作を再現する。
+
+パラメータの詳細は`mg_navigation/params/nav2_params.yaml`のコメントを参照。
 
 ---
 

@@ -67,7 +67,7 @@ source /opt/ros/humble/setup.bash && source /root/ros2_ws/install/setup.bash
 | `mg_diagnostics`         | `/diagnostics`トピックへの正常性診断配信                       |
 | `mg_drivers`             | LiDAR/DepthCam/GPS/IMU/モータドライバ群                        |
 | `mg_msgs`                | カスタムメッセージ・サービス定義                               |
-| `mg_navigation`          | Nav2ラッパー(collision_behavior, AMCL watchdog, GNSS初期化)    |
+| `mg_navigation`          | Nav2ラッパー(collision_monitor/behavior_server設定, AMCL watchdog, GNSS初期化) |
 | `mg_scenario_test`       | GazeboシミュレーションでシナリオYAMLを実行する結合テストFW     |
 | `mg_simulation`          | Gazebo Fortress ワールド・launch設定                           |
 | `mg_simulator_client`    | シミュレータ操作クライアント                                   |
