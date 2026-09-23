@@ -1,5 +1,5 @@
 """
-WaypointNavigator のゴール管理・通過点判定・reach_tolerance 反映の単体テスト。
+WaypointNavigator のゴール管理・通過点判定の単体テスト。
 ROS2 不要: conftest.py が ROS2 依存を sys.modules でモックする。
 """
 from __future__ import annotations
@@ -84,9 +84,6 @@ def env():
               "plan_goal_match_tolerance": 0.6}
     node.declare_parameter.side_effect = lambda name, default: SimpleNamespace(
         value=params.get(name, default))
-    params_client = MagicMock()
-    params_client.service_is_ready.return_value = False
-    node.create_client.return_value = params_client
 
     with (
         patch.object(navigator_module, "ActionClient") as MockClient,
@@ -129,7 +126,7 @@ def env():
             sent[i].feedback(msg)
 
         yield SimpleNamespace(
-            nav=nav, node=node, params_client=params_client, sent=sent,
+            nav=nav, node=node, sent=sent,
             results=results, on_result=results.append, accept=accept,
             feedback=feedback, plan=plan_cb,
         )
@@ -299,35 +296,3 @@ def test_stop_point_does_not_use_through_judgement(env):
     env.plan(_path(_straight(0.0, 10.0)))
     env.feedback(9.9, 0.0)
     assert env.results == []
-
-
-# ---------------------------------------------------------------------------
-# reach_tolerance
-# ---------------------------------------------------------------------------
-
-def test_reach_tolerance_is_applied_before_sending_goal(env):
-    env.params_client.service_is_ready.return_value = True
-    params_future = _Future()
-    env.params_client.call_async.return_value = params_future
-
-    env.nav.send_goal(_waypoint(reach_tolerance=0.8), env.on_result)
-    assert env.sent == []
-
-    request = env.params_client.call_async.call_args[0][0]
-    assert request.parameters[0].value.double_value == 0.8
-
-    params_future.complete(SimpleNamespace(
-        results=[SimpleNamespace(successful=True)]))
-    assert len(env.sent) == 1
-
-
-def test_goal_not_sent_if_canceled_while_setting_tolerance(env):
-    env.params_client.service_is_ready.return_value = True
-    params_future = _Future()
-    env.params_client.call_async.return_value = params_future
-
-    env.nav.send_goal(_waypoint(), env.on_result)
-    env.nav.cancel()
-    params_future.complete(SimpleNamespace(
-        results=[SimpleNamespace(successful=True)]))
-    assert env.sent == []

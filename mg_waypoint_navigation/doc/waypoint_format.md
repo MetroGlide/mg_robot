@@ -14,7 +14,7 @@ version: "2.0"
 
 # 全ウェイポイントに適用するデフォルト値 (省略可)
 defaults:
-  reach_tolerance: 0.5       # Nav2 goal_checker の到達判定半径 [m]（ゴール送信前に xy_goal_tolerance へ設定）
+  reach_tolerance: 0.5       # 現在は到達判定に使われない（下記参照）。停止点の到達半径は nav2_params.yaml の general_goal_checker.xy_goal_tolerance
   through_tolerance: 3.0     # 通過点で、Nav2 の完了を待たずに次へ進む半径 [m]
   is_through_point: true     # true=通過点, false=停止点
 
@@ -28,6 +28,7 @@ waypoints:
     on_reached_actions: []    # 到達時アクションリスト (省略可)
 ```
 
+- `reach_tolerance` は読み込み・保存・配信されるが、到達判定には使われない。`controller_server` の `xy_goal_tolerance` を実行時に書き換えると、controller が速度 0 を出し続けてロボットが走り出さなくなるため（Nav2 Humble で再現）、ゴールごとの設定は廃止した。停止点の到達半径は `nav2_params.yaml` の値が全 WP 共通で適用される。
 - `index` は 0 からの連番とする（重複・欠番があると読み込みエラー）。
 - `defaults` を省略した場合は `is_through_point: true` / `through_tolerance: 3.0` になる。**最終ウェイポイントや on_reached_actions を持つウェイポイントも、指定しなければ通過点扱い**（3m 手前で到達とみなしてアクションを実行する）になる。その場で止まってほしい地点は `is_through_point: false` を明示すること。
 - 次の設定は読み込みを拒否せず、警告ログを出す: 隣り合う WP の間隔が後ろの WP の `through_tolerance` より短い通過点（すぐ通過扱いになる）、on_reached_actions を持つ通過点、最終 WP の通過点。
@@ -134,7 +135,7 @@ waypoints:
 ```yaml
 version: "2.0"
 defaults:
-  reach_tolerance: 0.8
+  reach_tolerance: 0.8       # 参考値（到達判定には使われない）
   is_through_point: true
 
 waypoints:
