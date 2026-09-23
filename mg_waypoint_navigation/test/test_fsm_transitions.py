@@ -55,7 +55,7 @@ def env():
         MockNav.return_value = mock_nav
         MockExec.return_value = mock_exec
 
-        mock_nav.send_goal.side_effect = lambda wp, cb: nav_cb.__setitem__(
+        mock_nav.send_goal.side_effect = lambda wp, cb, **kw: nav_cb.__setitem__(
             0, cb)
         mock_exec.execute.side_effect = lambda actions, cb: exec_cb.__setitem__(
             0, cb)
