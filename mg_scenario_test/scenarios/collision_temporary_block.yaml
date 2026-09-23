@@ -1,53 +1,35 @@
-version: "1.0"
-scenario_name: "collision_temporary_block"
-world_name: "warehouse"
+version: "2.0"
+name: collision_temporary_block
+description: >
+  collision_monitor (PolygonStop/PolygonApproach) が至近距離の障害物で停止し、障害物が
+  movement_time_allowance (nav2_params.yaml の progress_checker、現在 5.0 秒) 以内に
+  解消すれば、バックアップ等のリカバリーを行わずに走行を再開できることを確認する。
+profile: mg01
+world: warehouse
+tags: [collision, smoke]
 
-# 目的: collision_monitor(PolygonStop/PolygonApproach)が至近距離の障害物で正しく
-# 停止し、障害物が movement_time_allowance (nav2_params.yaml の progress_checker,
-# 現在5.0秒) 以内に解消すれば、バックアップ等のリカバリー動作を行わずに
-# そのまま走行を再開できることを確認する。
-#
-# 判定について: scenario_runner の成否判定は「waypointへ規定時間内(300秒)に
-# 到達できたか」のみであり、途中でcollision_monitor/PolygonStopが実際に作動したか、
-# バックアップが発火しなかったかまでは自動判定しない。実行中は
-# `ros2 topic echo /collision_monitor_state` 等で目視確認すること。
-
-waypoints_nav_mode: "sequencer"
-sequencer_namespace: "waypoint_sequencer_node"
-start_waypoint_index: 0
+# 判定について: 現時点では「規定時間内に waypoint を通過できたか」のみを自動判定する。
+# collision_monitor が作動したか・BackUp が発火しなかったかは monitors (P4 で追加予定) で
+# 自動判定する。それまでは `ros2 topic echo /collision_monitor_state` 等で目視確認すること。
 
 obstacles:
   person_blocking:
-    model: { type: "fuel", uri: "OpenRobotics/models/MaleVisitorOnPhone" }
+    model: { type: fuel, uri: "OpenRobotics/models/MaleVisitorOnPhone" }
 
-goal_events:
-  - waypoint_index: 0
-    before:
-      - type: reset_pose
-        pose: { frame: "absolute", x: 0.0, y: 0.0, z: 0.05, yaw: 0.0 }
-      - type: set_amcl_initial_pose
-        pose: { frame: "absolute", x: 0.0, y: 0.0, z: 0.0, yaw: 0.0 }
-      - type: delay
-        sec: 3.0
-      - type: set_sequencer_index
-        target_index: 0
-      - type: trigger_waypoint
-        countdown_ms: 0
-    during:
-      - type: delay
-        sec: 5.0
-      # ロボット直前 (collision_monitor の PolygonStop/PolygonApproach 圏内、
-      # footprint前端からおよそ0.5m以内) に障害物を出現させ、急な飛び出しを模擬する
-      - type: spawn_obstacle
-        obstacle: "person_blocking"
-        pose: { frame: "robot_relative", x: 0.5, y: 0.0, z: 0.0, yaw: 3.14 }
-      # movement_time_allowance (5.0秒) より短い時間で退避させ、
-      # バックアップなしで走行再開できることを検証する
-      - type: delay
-        sec: 3.0
-      - type: despawn_obstacle
-        obstacle: "person_blocking"
-    after: []
+setup:
+  - respawn: { pose: { x: 0.0, y: 0.0, yaw: 0.0 }, settle_sec: 3.0 }
 
-finally:
-  - type: cleanup_all_obstacles
+run:
+  mg_sequencer:
+    start_index: 0
+
+timeline:
+  # 走行開始 5 秒後、ロボット直前 (footprint 前端からおよそ 0.5m 以内) に障害物を出現させ、
+  # movement_time_allowance より短い 3 秒で退避させる
+  - name: temporary_block
+    when: { goal_started: { index: 0 } }
+    do:
+      - delay: { sec: 5.0 }
+      - spawn: { obstacle: person_blocking, pose: { frame: robot, x: 0.5, yaw: 3.14 } }
+      - delay: { sec: 3.0 }
+      - despawn: { obstacle: person_blocking }

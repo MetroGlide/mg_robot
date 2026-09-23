@@ -1,73 +1,57 @@
-version: "1.0"
-scenario_name: "waypoints_file_with_events"
-world_name: "warehouse"
+version: "2.0"
+name: waypoints_file_with_events
+description: >
+  既存の waypoint.yaml を NavigateToPose で順に直接走行する例 (sequencer は使わない)。
+  waypoint ごとに障害物の配置・除去を行う。
+profile: mg01
+world: warehouse
+tags: [example, nav2_goals]
 
-# ナビゲーションモード
-# "direct"    : scenario_runner が NavigateToPose を直接送信 (デフォルト)
-# "sequencer" : waypoint_sequencer に走行を委譲。before 内の trigger_waypoint で開始する。
-waypoints_nav_mode: "direct"
-
-# 障害物の名前付き定義
 obstacles:
   person_0:
-    model: { type: "fuel", uri: "OpenRobotics/models/MaleVisitorOnPhone" }
+    model: { type: fuel, uri: "OpenRobotics/models/MaleVisitorOnPhone" }
   person_1:
-    model: { type: "fuel", uri: "OpenRobotics/models/MaleVisitorOnPhone" }
+    model: { type: fuel, uri: "OpenRobotics/models/MaleVisitorOnPhone" }
   barrier_mid:
-    model: { type: "fuel", uri: "OpenRobotics/models/Jersey Barrier" }
+    model: { type: primitive, shape: box, size: { x: 2.0, y: 0.6, z: 0.8 } }
 
-# 既存の waypoints.yaml を参照する (goals: とは排他)
-# コンテナ内のパスを指定する
-# WAYPOINT_PATH 環境変数に対応するファイルを用意すること
-waypoints_file: /root/ros2_data/map/waypoint.yaml
+setup:
+  - respawn: { pose: { x: 0.0, y: 0.0, yaw: 0.0 }, settle_sec: 3.0 }
 
-# waypoints_file 使用時のみ有効。waypoint_index で per-waypoint イベントを定義する。
-goal_events:
-  - waypoint_index: 0
-    before:
-      # ロボットを初期位置にテレポートしてから開始
-      - type: reset_pose
-        pose: { frame: "absolute", x: 0.0, y: 0.0, z: 0.05, yaw: 0.0 }
-      # AMCL 初期位置を現在位置 (ロボット相対オフセット 0) に設定
-      - type: set_amcl_initial_pose
-        pose: { frame: "absolute", x: 0.0, y: 0.0, z: 0.0, yaw: 0.0 }
-      # 収束待ち (目視確認用)
-      - type: delay
-        sec: 3.0
-    during:
-      # waypoint 0 へ向かう途中 6 秒後に人が飛び出す
-      - type: delay
-        sec: 6.0
-      - type: spawn_obstacle
-        obstacle: "person_0"
-        pose: { frame: "robot_relative", x: 2.5, y: 0.3, z: 0.0, yaw: 3.14 }
-    after:
-      - type: despawn_obstacle
-        obstacle: "person_0"
+run:
+  nav2_goals:
+    # プロファイルの worlds.warehouse.waypoints を参照する
+    waypoints_file: "{world.waypoints}"
+    waypoints_format: mg
+    hooks:
+      1:
+        before:
+          - spawn: { obstacle: barrier_mid, pose: { x: 7.0, y: 3.5, z: 0.4, yaw: 1.57 } }
+        after:
+          - despawn: { obstacle: barrier_mid }
 
-  - waypoint_index: 1
-    before:
-      # waypoint 1 へ向かう前に経路上に障害物を置く (絶対座標)
-      - type: spawn_obstacle
-        obstacle: "barrier_mid"
-        pose: { frame: "absolute", x: 7.0, y: 3.5, z: 0.0, yaw: 1.57 }
-    during: []
-    after:
-      - type: despawn_obstacle
-        obstacle: "barrier_mid"
-
-  - waypoint_index: 2
-    before: []
-    during:
-      # waypoint 2 へのナビゲーション中、8 秒後に別の人が出現
-      - type: delay
-        sec: 8.0
-      - type: spawn_obstacle
-        obstacle: "person_1"
-        pose: { frame: "robot_relative", x: 2.0, y: -0.5, z: 0.0, yaw: 3.14 }
-    after:
-      - type: despawn_obstacle
-        obstacle: "person_1"
-
-finally:
-  - type: cleanup_all_obstacles
+timeline:
+  # waypoint 0 へ向かう途中 6 秒後に人が飛び出す
+  - name: person_0_jumps_out
+    when: { goal_started: { index: 0 } }
+    until: { goal_reached: { index: 0 } }
+    do:
+      - delay: { sec: 6.0 }
+      - spawn: { obstacle: person_0, pose: { frame: robot, x: 2.5, y: 0.3, yaw: 3.14 } }
+  - name: person_0_leaves
+    when: { goal_reached: { index: 0 } }
+    required: false
+    do:
+      - despawn: { obstacle: person_0 }
+  # waypoint 2 へ向かう途中 8 秒後に別の人が出現
+  - name: person_1_jumps_out
+    when: { goal_started: { index: 2 } }
+    until: { goal_reached: { index: 2 } }
+    do:
+      - delay: { sec: 8.0 }
+      - spawn: { obstacle: person_1, pose: { frame: robot, x: 2.0, y: -0.5, yaw: 3.14 } }
+  - name: person_1_leaves
+    when: { goal_reached: { index: 2 } }
+    required: false
+    do:
+      - despawn: { obstacle: person_1 }
