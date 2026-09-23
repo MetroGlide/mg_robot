@@ -508,7 +508,7 @@ collision_monitor:
     # enabled は動的パラメータのため ros2 param set での即時切替も可能。
     PolygonStop:
       type: "polygon"
-      points: &collision_front_polygon [0.6, 0.3, 0.6, -0.3, 0.3, -0.3, 0.3, 0.3]
+      points: [0.6, 0.3, 0.6, -0.3, 0.3, -0.3, 0.3, 0.3]
       action_type: "stop"
       min_points: 4
       enabled: true
@@ -517,7 +517,7 @@ collision_monitor:
 
     PolygonApproach:
       type: "polygon"
-      points: *collision_front_polygon
+      points: [0.6, 0.3, 0.6, -0.3, 0.3, -0.3, 0.3, 0.3]
       action_type: "approach"
       time_before_collision: 2.0
       simulation_time_step: 0.1
