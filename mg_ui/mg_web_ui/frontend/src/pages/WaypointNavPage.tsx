@@ -136,14 +136,12 @@ export default function WaypointNavPage({
     client.publish(TOPICS.WAYPOINT_PAUSE_REQUEST, "mg_msgs/msg/PauseRequest", {
       requester_id: "web_ui",
       active: true,
-      heartbeat_period_s: 0.0,
       reason: "manual pause",
     });
   const handleResume = () =>
     client.publish(TOPICS.WAYPOINT_PAUSE_REQUEST, "mg_msgs/msg/PauseRequest", {
       requester_id: "web_ui",
       active: false,
-      heartbeat_period_s: 0.0,
       reason: "",
     });
   const handleJump = () =>

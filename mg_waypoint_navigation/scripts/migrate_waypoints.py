@@ -9,6 +9,11 @@ import argparse
 import os
 import sys
 
+import yaml
+
+from mg_waypoint_navigation.waypoint import WaypointList, WaypointsSaver
+from mg_waypoint_navigation.waypoint_v1_compat import convert_v1_waypoint
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -28,8 +33,6 @@ def main():
         base, ext = os.path.splitext(args.input)
         output_path = base + "_v2" + ext
 
-    import yaml
-
     with open(args.input, "r") as f:
         raw = yaml.safe_load(f)
 
@@ -40,9 +43,6 @@ def main():
     if not isinstance(raw, list):
         print(f"Error: expected a YAML list, got {type(raw).__name__}", file=sys.stderr)
         sys.exit(1)
-
-    from mg_waypoint_navigation.waypoint_v1_compat import convert_v1_waypoint
-    from mg_waypoint_navigation.waypoint import WaypointList, WaypointsSaver
 
     waypoints = WaypointList()
     for wp_raw in raw:

@@ -1,8 +1,12 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import rclpy.node
 
-from mg_waypoint_navigation.waypoint_sequencer.actions.base import BaseAction
+from mg_waypoint_navigation.waypoint import ActionConfig
+from mg_waypoint_navigation.waypoint_sequencer.actions.base import (
+    BaseAction,
+    EndpointCache,
+)
 from mg_waypoint_navigation.waypoint_sequencer.actions.builtins import (
     AmclResetAction,
     LoadMapAction,
@@ -15,10 +19,6 @@ from mg_waypoint_navigation.waypoint_sequencer.actions.generic import (
     GenericServiceAction,
 )
 
-if TYPE_CHECKING:
-    import rclpy.node
-    from mg_waypoint_navigation.waypoint import ActionConfig
-
 _ACTION_REGISTRY = {
     "service": GenericServiceAction,
     "publish": GenericPublishAction,
@@ -29,14 +29,21 @@ _ACTION_REGISTRY = {
     "set_navigation_mode": SetNavigationModeAction,
 }
 
-def build_action(config: "ActionConfig", node: "rclpy.node.Node") -> BaseAction:
+
+def build_action(
+    config: ActionConfig,
+    node: rclpy.node.Node,
+    endpoints: EndpointCache,
+) -> BaseAction:
     cls = _ACTION_REGISTRY.get(config.type)
     if cls is None:
         raise ValueError(f"Unknown action type: {config.type!r}")
-    return cls(config, node)
+    return cls(config, node, endpoints)
+
 
 __all__ = [
     "BaseAction",
+    "EndpointCache",
     "build_action",
     "GenericServiceAction",
     "GenericPublishAction",

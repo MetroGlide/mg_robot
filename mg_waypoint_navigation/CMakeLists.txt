@@ -21,6 +21,8 @@ install(PROGRAMS
 if(BUILD_TESTING)
   find_package(ament_cmake_pytest REQUIRED)
   ament_add_pytest_test(test_fsm_transitions test/test_fsm_transitions.py)
+  ament_add_pytest_test(test_navigator test/test_navigator.py)
+  ament_add_pytest_test(test_waypoints_loader test/test_waypoints_loader.py)
 endif()
 
 ament_package()

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import threading
 import time
-from typing import Callable, Dict, List, Optional
+from typing import Callable, List, Optional, Set
 
 import rclpy.node
 
@@ -21,24 +21,34 @@ from mg_waypoint_navigation.waypoint_sequencer.states import (
 
 
 class CountdownTimer:
-    """指定時間後にコールバックを呼ぶ一発タイマー。スレッドセーフ。"""
+    """指定時間後にコールバックを呼ぶ一発タイマー。
 
-    def __init__(self, on_done: Callable[[], None]):
+    コールバックには開始時の世代番号を渡す。start()/cancel() のたびに世代が進むので、
+    受け側で generation と比較すれば、発火済みで処理待ちだった古いタイマーを無視できる。
+    """
+
+    def __init__(self, on_done: Callable[[int], None]):
         self._on_done = on_done
         self._timer: Optional[threading.Timer] = None
         self._duration_ms: int = 0
         self._start: float = 0.0
+        self._generation: int = 0
+
+    @property
+    def generation(self) -> int:
+        return self._generation
 
     def start(self, duration_ms: int) -> None:
         self.cancel()
         self._duration_ms = max(0, duration_ms)
         self._start = time.monotonic()
         self._timer = threading.Timer(
-            self._duration_ms / 1000.0, self._on_done)
+            self._duration_ms / 1000.0, self._on_done, args=(self._generation,))
         self._timer.daemon = True
         self._timer.start()
 
     def cancel(self) -> None:
+        self._generation += 1
         if self._timer is not None:
             self._timer.cancel()
             self._timer = None
@@ -54,9 +64,8 @@ class CountdownTimer:
 class PauseSlotManager:
     """Named Pause Slot を管理する。"""
 
-    def __init__(self, node: rclpy.node.Node):
-        self._node = node
-        self._slots: Dict[str, float] = {}
+    def __init__(self):
+        self._slots: Set[str] = set()
 
     @property
     def is_active(self) -> bool:
@@ -64,13 +73,13 @@ class PauseSlotManager:
 
     @property
     def requesters(self) -> List[str]:
-        return list(self._slots.keys())
+        return sorted(self._slots)
 
-    def add(self, requester_id: str, heartbeat_period_s: float) -> None:
-        self._slots[requester_id] = heartbeat_period_s
+    def add(self, requester_id: str) -> None:
+        self._slots.add(requester_id)
 
     def remove(self, requester_id: str) -> None:
-        self._slots.pop(requester_id, None)
+        self._slots.discard(requester_id)
 
     def clear_all(self) -> None:
         self._slots.clear()
@@ -84,6 +93,11 @@ class WaypointSequencerFSM:
     - 処理完了後は内部コールバックで次の安定状態へ移行する。
     - 外部から _transition() を呼ばない。
     - IDLE は「未開始」と「途中ウェイポイントのトリガー待ち」を兼ねる（_current_index で区別）。
+    - 通過点を通過 (PASSED) した後は Nav2 のゴールが走り続けている。すぐ次のウェイポイントへ
+      向かう場合はそのゴールを上書きし、それ以外 (アクション実行・終了・トリガー待ち・一時停止)
+      では navigator.cancel() で止める。
+    - pause は一時停止であり、全スロット解除で中断した箇所から自動再開する。
+      ON_ARRIVING 中の pause はアクション完了を待ち、次ウェイポイントへ進む手前で SUSPENDED になる。
     """
 
     def __init__(self, node: rclpy.node.Node):
@@ -98,23 +112,12 @@ class WaypointSequencerFSM:
         self._current_index: int = 0
 
         self._stop_pending: bool = False
-        self._pause_pending: bool = False
         self._pre_suspend_state: SequencerState = SequencerState.IDLE
         self._saved_countdown_ms: int = 0
         self._navigation_mode: str = "normal"
 
         self._countdown_timer = CountdownTimer(self._on_starting_done)
-        self._pause_manager = PauseSlotManager(node)
-
-        self._on_state_changed: Optional[Callable[[
-            SequencerState], None]] = None
-
-    # ------------------------------------------------------------------
-    # 外部コールバック登録
-    # ------------------------------------------------------------------
-
-    def set_on_state_changed(self, cb: Callable[[SequencerState], None]) -> None:
-        self._on_state_changed = cb
+        self._pause_manager = PauseSlotManager()
 
     # ------------------------------------------------------------------
     # 状態参照
@@ -186,6 +189,14 @@ class WaypointSequencerFSM:
 
     def start(self, countdown_ms: int) -> CommandResult:
         with self._lock:
+            if self._pause_manager.is_active and self._state in (
+                SequencerState.IDLE, SequencerState.GOAL_REACHED
+            ):
+                return CommandResult(
+                    False,
+                    f"Paused by {', '.join(self._pause_manager.requesters)}",
+                )
+
             if self._state == SequencerState.IDLE:
                 if self._waypoints.get_size() == 0:
                     return CommandResult(False, "No waypoints loaded")
@@ -231,16 +242,10 @@ class WaypointSequencerFSM:
 
             return CommandResult(False, f"Unhandled state {self._state.value}")
 
-    def pause_request(
-        self,
-        requester_id: str,
-        active: bool,
-        heartbeat_period_s: float,
-        reason: str = "",
-    ) -> None:
+    def pause_request(self, requester_id: str, active: bool) -> None:
         with self._lock:
             if active:
-                self._pause_manager.add(requester_id, heartbeat_period_s)
+                self._pause_manager.add(requester_id)
                 self._apply_pause()
             else:
                 self._pause_manager.remove(requester_id)
@@ -264,6 +269,7 @@ class WaypointSequencerFSM:
         )
 
     def _enter_on_arriving(self, actions) -> None:
+        self._navigator.cancel()
         for action in actions:
             if action.type == "set_navigation_mode":
                 self._navigation_mode = getattr(action, "mode", "normal")
@@ -274,9 +280,10 @@ class WaypointSequencerFSM:
     # 内部完了コールバック
     # ------------------------------------------------------------------
 
-    def _on_starting_done(self) -> None:
+    def _on_starting_done(self, generation: int) -> None:
         with self._lock:
-            if self._state != SequencerState.ON_STARTING:
+            if (self._state != SequencerState.ON_STARTING
+                    or generation != self._countdown_timer.generation):
                 return
             self._enter_navigating()
 
@@ -288,7 +295,7 @@ class WaypointSequencerFSM:
             if result == NavigationResult.CANCELED:
                 return
 
-            if result != NavigationResult.SUCCEEDED:
+            if result not in (NavigationResult.SUCCEEDED, NavigationResult.PASSED):
                 self._node.get_logger().error(
                     f"Navigation to waypoint {self._current_index} failed"
                 )
@@ -303,6 +310,8 @@ class WaypointSequencerFSM:
 
     def _on_arriving_done(self) -> None:
         with self._lock:
+            if self._state != SequencerState.ON_ARRIVING:
+                return
             self._advance_to_next()
 
     # ------------------------------------------------------------------
@@ -312,31 +321,28 @@ class WaypointSequencerFSM:
     def _advance_to_next(self) -> None:
         if self._stop_pending:
             self._stop_pending = False
-            self._pause_pending = False
             self._pause_manager.clear_all()
+            self._navigator.cancel()
             self._transition(SequencerState.IDLE)
-            return
-
-        if self._pause_pending:
-            self._pause_pending = False
-            self._pre_suspend_state = SequencerState.ON_ARRIVING
-            self._transition(SequencerState.SUSPENDED)
             return
 
         waypoint = self._waypoints.get(self._current_index)
         self._current_index += 1
 
-        has_wait_trigger = any(
-            a.type == "wait_trigger" for a in waypoint.on_reached_actions)
-        if has_wait_trigger:
-            if self._current_index >= self._waypoints.get_size():
-                self._transition(SequencerState.GOAL_REACHED)
-            else:
-                self._transition(SequencerState.IDLE)
+        if self._current_index >= self._waypoints.get_size():
+            self._navigator.cancel()
+            self._transition(SequencerState.GOAL_REACHED)
             return
 
-        if self._current_index >= self._waypoints.get_size():
-            self._transition(SequencerState.GOAL_REACHED)
+        if any(a.type == "wait_trigger" for a in waypoint.on_reached_actions):
+            self._navigator.cancel()
+            self._transition(SequencerState.IDLE)
+            return
+
+        if self._pause_manager.is_active:
+            self._navigator.cancel()
+            self._pre_suspend_state = SequencerState.NAVIGATING
+            self._transition(SequencerState.SUSPENDED)
             return
 
         self._enter_navigating()
@@ -346,9 +352,6 @@ class WaypointSequencerFSM:
     # ------------------------------------------------------------------
 
     def _apply_pause(self) -> None:
-        if self._state == SequencerState.ON_ARRIVING:
-            self._pause_pending = True
-            return
         if self._state == SequencerState.ON_STARTING:
             self._saved_countdown_ms = self._countdown_timer.remaining_ms
             self._countdown_timer.cancel()
@@ -364,12 +367,8 @@ class WaypointSequencerFSM:
             return
         if self._pre_suspend_state == SequencerState.ON_STARTING:
             self._enter_on_starting(self._saved_countdown_ms)
-        elif self._pre_suspend_state == SequencerState.NAVIGATING:
-            self._enter_navigating()
-        elif self._pre_suspend_state == SequencerState.ON_ARRIVING:
-            self._advance_to_next()
         else:
-            self._transition(SequencerState.IDLE)
+            self._enter_navigating()
 
     # ------------------------------------------------------------------
     # 状態遷移
@@ -385,5 +384,3 @@ class WaypointSequencerFSM:
         old = self._state
         self._state = new_state
         self._node.get_logger().info(f"FSM: {old.value} -> {new_state.value}")
-        if self._on_state_changed:
-            self._on_state_changed(new_state)

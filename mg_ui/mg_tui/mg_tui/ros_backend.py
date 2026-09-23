@@ -142,7 +142,6 @@ class RosBackend(Node):
         msg = PauseRequest()
         msg.requester_id = 'tui'
         msg.active = active
-        msg.heartbeat_period_s = 0.0
         msg.reason = 'manual' if active else ''
         self._pause_pub.publish(msg)
 

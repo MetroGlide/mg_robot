@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
+import copy
+
 import rclpy
+from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, ReliabilityPolicy
 
-from builtin_interfaces.msg import Time as TimeMsg
-from geometry_msgs.msg import Point
 from std_msgs.msg import ColorRGBA, Int16
 from std_srvs.srv import Trigger
 from visualization_msgs.msg import Marker, MarkerArray
@@ -16,7 +17,7 @@ from mg_msgs.srv import StartSequence
 
 from mg_waypoint_navigation.waypoint import WaypointList, WaypointsLoader
 from mg_waypoint_navigation.waypoint_sequencer.fsm import WaypointSequencerFSM
-from mg_waypoint_navigation.waypoint_sequencer.states import CommandResult, SequencerState
+from mg_waypoint_navigation.waypoint_sequencer.states import SequencerState
 
 
 class WaypointSequencerNode(Node):
@@ -26,7 +27,6 @@ class WaypointSequencerNode(Node):
         self._declare_parameters()
 
         self._fsm = WaypointSequencerFSM(self)
-        self._fsm.set_on_state_changed(self._on_fsm_state_changed)
 
         self._init_ros_communications()
         self._load_waypoints()
@@ -118,10 +118,15 @@ class WaypointSequencerNode(Node):
         self.get_logger().info(
             f"Loaded {waypoints.get_size()} waypoints from {self._load_path}"
         )
+        self._log_waypoint_warnings(waypoints)
 
         if self._publish_list:
             self._publish_waypoints_list(waypoints)
         self._publish_markers(waypoints)
+
+    def _log_waypoint_warnings(self, waypoints: WaypointList):
+        for warning in waypoints.warnings:
+            self.get_logger().warn(warning)
 
     # ------------------------------------------------------------------
     # サービスコールバック
@@ -157,7 +162,9 @@ class WaypointSequencerNode(Node):
         response.success = result.success
         response.message = result.message
         if result.success:
-            self._publish_waypoints_list(waypoints)
+            self._log_waypoint_warnings(waypoints)
+            if self._publish_list:
+                self._publish_waypoints_list(waypoints)
             self._publish_markers(waypoints)
         return response
 
@@ -176,16 +183,7 @@ class WaypointSequencerNode(Node):
         self._fsm.pause_request(
             requester_id=msg.requester_id,
             active=msg.active,
-            heartbeat_period_s=msg.heartbeat_period_s,
-            reason=msg.reason,
         )
-
-    # ------------------------------------------------------------------
-    # FSM 状態変化コールバック
-    # ------------------------------------------------------------------
-
-    def _on_fsm_state_changed(self, new_state: SequencerState):
-        pass
 
     # ------------------------------------------------------------------
     # パブリッシュ
@@ -229,7 +227,7 @@ class WaypointSequencerNode(Node):
             marker.id = wp.index
             marker.type = Marker.ARROW
             marker.action = Marker.ADD
-            marker.pose = wp.pose.pose
+            marker.pose = copy.deepcopy(wp.pose.pose)
             marker.pose.position.z = 1.0
             marker.scale.x = 0.5
             marker.scale.y = 0.25
@@ -247,7 +245,7 @@ class WaypointSequencerNode(Node):
             text_marker.id = wp.index
             text_marker.type = Marker.TEXT_VIEW_FACING
             text_marker.action = Marker.ADD
-            text_marker.pose = wp.pose.pose
+            text_marker.pose = copy.deepcopy(wp.pose.pose)
             text_marker.pose.position.z = 1.5
             text_marker.scale.z = 0.4
             text_marker.color = ColorRGBA(r=1.0, g=1.0, b=1.0, a=1.0)
@@ -260,8 +258,10 @@ class WaypointSequencerNode(Node):
 def main(args=None):
     rclpy.init(args=args)
     node = WaypointSequencerNode()
+    # アクションスレッドのサービス応答や Nav2 の応答を、他のコールバック実行中にも処理できるようにする
+    executor = MultiThreadedExecutor()
     try:
-        rclpy.spin(node)
+        rclpy.spin(node, executor=executor)
     except KeyboardInterrupt:
         pass
     finally:

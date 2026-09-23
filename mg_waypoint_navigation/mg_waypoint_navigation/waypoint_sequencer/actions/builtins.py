@@ -1,64 +1,39 @@
-"""組み込みアクション: load_map, amcl_reset, wait"""
+"""組み込みアクション: load_map, amcl_reset, wait, wait_trigger, set_navigation_mode"""
 from __future__ import annotations
 
 import time
-from typing import TYPE_CHECKING
+
+from nav2_msgs.srv import LoadMap
+from rcl_interfaces.msg import Parameter, ParameterType
+from rcl_interfaces.srv import SetParametersAtomically
+from std_srvs.srv import Empty
 
 from mg_waypoint_navigation.waypoint_sequencer.actions.base import BaseAction
-
-if TYPE_CHECKING:
-    import rclpy.node
-    from mg_waypoint_navigation.waypoint import ActionConfig
 
 
 class LoadMapAction(BaseAction):
     """測位マップ / 計画マップを map_server にロードする"""
 
     def execute(self) -> None:
-        import rclpy
-        from nav2_msgs.srv import LoadMap
-
         if self._config.localization:
-            client = self._node.create_client(LoadMap, "/map_server/load_map")
-            if client.wait_for_service(timeout_sec=5.0):
-                req = LoadMap.Request()
-                req.map_url = self._config.localization
-                future = client.call_async(req)
-                rclpy.spin_until_future_complete(
-                    self._node, future, timeout_sec=10.0)
-            else:
-                self._node.get_logger().error("LoadMap service not available")
+            req = LoadMap.Request()
+            req.map_url = self._config.localization
+            self._call_service(
+                LoadMap, "/map_server/load_map", req, timeout_sec=10.0)
 
         if self._config.planning:
-            client = self._node.create_client(
-                LoadMap, "/planning_map_server/load_map")
-            if client.wait_for_service(timeout_sec=5.0):
-                req = LoadMap.Request()
-                req.map_url = self._config.planning
-                future = client.call_async(req)
-                rclpy.spin_until_future_complete(
-                    self._node, future, timeout_sec=10.0)
-            else:
-                self._node.get_logger().error("Planning LoadMap service not available")
+            req = LoadMap.Request()
+            req.map_url = self._config.planning
+            self._call_service(
+                LoadMap, "/planning_map_server/load_map", req, timeout_sec=10.0)
 
 
 class AmclResetAction(BaseAction):
     """AMCL のパーティクルフィルタをリセットする"""
 
     def execute(self) -> None:
-        import rclpy
-        from std_srvs.srv import Empty
-
-        client = self._node.create_client(
-            Empty, "/reinitialize_global_localization")
-        if client.wait_for_service(timeout_sec=5.0):
-            future = client.call_async(Empty.Request())
-            rclpy.spin_until_future_complete(
-                self._node, future, timeout_sec=5.0)
-        else:
-            self._node.get_logger().error(
-                "reinitialize_global_localization service not available"
-            )
+        self._call_service(
+            Empty, "/reinitialize_global_localization", Empty.Request())
 
 
 class WaitAction(BaseAction):
@@ -85,39 +60,32 @@ class SetNavigationModeAction(BaseAction):
     必要なNav2パラメータ（global_costmapの障害物レイヤー等）を動的に変更する。"""
 
     def execute(self) -> None:
-        import rclpy
-        from rcl_interfaces.srv import SetParametersAtomically
-        from rcl_interfaces.msg import Parameter, ParameterType
-
         mode = self._config.mode
-        client = self._node.create_client(
+        # queue_waitの場合はグローバルコストマップの動的障害物を無視してパスを引かせる
+        enabled = (mode != "queue_wait")
+
+        req = SetParametersAtomically.Request()
+        req.parameters = [
+            self._bool_param("top_obstacle_layer.enabled", enabled),
+            self._bool_param("obstacle_stvl_layer.enabled", enabled),
+        ]
+        response = self._call_service(
             SetParametersAtomically,
-            "/global_costmap/global_costmap/set_parameters_atomically"
+            "/global_costmap/global_costmap/set_parameters_atomically",
+            req,
         )
-        if client.wait_for_service(timeout_sec=5.0):
-            req = SetParametersAtomically.Request()
-
-            # queue_waitの場合はグローバルコストマップの動的障害物を無視してパスを引かせる
-            enabled = (mode != "queue_wait")
-
-            p1 = Parameter()
-            p1.name = "top_obstacle_layer.enabled"
-            p1.value.type = ParameterType.PARAMETER_BOOL
-            p1.value.bool_value = enabled
-
-            p2 = Parameter()
-            p2.name = "obstacle_stvl_layer.enabled"
-            p2.value.type = ParameterType.PARAMETER_BOOL
-            p2.value.bool_value = enabled
-
-            req.parameters = [p1, p2]
-
-            future = client.call_async(req)
-            rclpy.spin_until_future_complete(self._node, future, timeout_sec=5.0)
-
-            if future.result() is not None and future.result().result.successful:
-                self._node.get_logger().info(f"Set navigation mode to '{mode}' (global obstacles enabled: {enabled})")
-            else:
-                self._node.get_logger().error(f"Failed to set navigation mode to '{mode}'")
+        if response is not None and response.result.successful:
+            self._node.get_logger().info(
+                f"Set navigation mode to '{mode}' "
+                f"(global obstacles enabled: {enabled})")
         else:
-            self._node.get_logger().error("global_costmap set_parameters_atomically service not available")
+            self._node.get_logger().error(
+                f"Failed to set navigation mode to '{mode}'")
+
+    @staticmethod
+    def _bool_param(name: str, value: bool) -> Parameter:
+        param = Parameter()
+        param.name = name
+        param.value.type = ParameterType.PARAMETER_BOOL
+        param.value.bool_value = value
+        return param

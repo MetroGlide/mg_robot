@@ -22,7 +22,7 @@ mg_waypoint_navigation/
       actions/
         base.py                    # BaseAction
         generic.py                 # GenericServiceAction / GenericPublishAction
-        builtins.py                # LoadMapAction / AmclResetAction / WaitAction
+        builtins.py                # LoadMapAction / AmclResetAction / WaitAction / WaitTriggerAction / SetNavigationModeAction
   scripts/
     waypoint_sequencer_node.py     # メインノード
     waypoint_editor_node.py        # ウェイポイント編集ノード
@@ -98,38 +98,40 @@ stateDiagram-v2
     ON_STARTING --> SUSPENDED : pause_request(active=true)
     ON_STARTING --> IDLE : stop()
 
+    NAVIGATING --> NAVIGATING : nav success (次WPへ, actions なし)
     NAVIGATING --> ON_ARRIVING : nav success (actions あり)
     NAVIGATING --> GOAL_REACHED : nav success (最終WP, actions なし)
-    NAVIGATING --> IDLE : nav success (wait_trigger) / stop()
+    NAVIGATING --> IDLE : stop()
     NAVIGATING --> ERROR : nav failure
     NAVIGATING --> SUSPENDED : pause_request(active=true)
 
     ON_ARRIVING --> NAVIGATING : done (次WPへ)
     ON_ARRIVING --> GOAL_REACHED : done (最終WP)
     ON_ARRIVING --> IDLE : done (wait_trigger) / stop() deferred
-    ON_ARRIVING --> SUSPENDED : pause_request(active=true) deferred
+    ON_ARRIVING --> SUSPENDED : done (pause スロットあり, 次WPの手前で停止)
 
-    GOAL_REACHED --> ON_STARTING : start() (index=0)
+    GOAL_REACHED --> ON_STARTING : start() (index=0, pause スロットなし)
     GOAL_REACHED --> IDLE : stop()
 
     ERROR --> IDLE : stop()
 
     SUSPENDED --> ON_STARTING : 全スロット解除 (pre=ON_STARTING)
     SUSPENDED --> NAVIGATING : 全スロット解除 (pre=NAVIGATING)
-    SUSPENDED --> IDLE : 全スロット解除 (pre=ON_ARRIVING) / stop()
+    SUSPENDED --> IDLE : stop()
 
     note right of SUSPENDED
-        全スロット解除時:
-        _pre_suspend_state に応じて自動再開
+        pause は一時停止であり、全スロット解除で自動再開する:
         ON_STARTING → 残時間から再開
-        NAVIGATING → 同WPに再送信
-        ON_ARRIVING → 次WPへ前進
+        NAVIGATING → _current_index のWPへ送信
+        (ON_ARRIVING 中の pause は index を進めてから
+         SUSPENDED に入るため、次WPへ進む)
     end note
 
     note right of IDLE
         _current_index が 0 でない場合は
         途中ウェイポイントのトリガー待ち。
         start() で _current_index から再開。
+        pause スロットが残っている間は start() を拒否する。
     end note
 ```
 
@@ -141,8 +143,9 @@ stateDiagram-v2
 
 | 種別    | トピック/サービス名         | 型                               | 説明                                         |
 | ------- | --------------------------- | -------------------------------- | -------------------------------------------- |
-| Service | `~/start`                   | `mg_msgs/StartSequence`          | IDLE/GOAL_REACHED → ON_STARTING              |
-| Service | `~/stop`                    | `std_srvs/Trigger`               | 任意状態 → IDLE                              |
+| Service | `~/start`                   | `mg_msgs/StartSequence`          | IDLE/GOAL_REACHED → ON_STARTING (pause 中は拒否) |
+| Service | `~/stop`                    | `std_srvs/Trigger`               | 任意状態 → IDLE (pause スロットも全解除)     |
+| Service | `~/reload_waypoints`        | `std_srvs/Trigger`               | IDLE/GOAL_REACHED/ERROR 時のみ有効           |
 | Sub     | `~/set_next_waypoint_index` | `std_msgs/Int16`                 | IDLE/SUSPENDED 時のみ有効                    |
 | Sub     | `~/pause_request`           | `mg_msgs/PauseRequest`           | Named Pause Slot 制御 (複数ノードから送信可) |
 | Pub     | `~/status`                  | `mg_msgs/SequencerStatus`        | 10Hz, パラメータで無効化可                   |
@@ -157,6 +160,36 @@ stateDiagram-v2
 | `publish_waypoint_status` | bool   | `true`     | ステータスパブリッシュ有効/無効  |
 | `waypoint_status_freq_hz` | double | `10.0`     | ステータスパブリッシュ周波数     |
 | `publish_waypoints_list`  | bool   | `true`     | ウェイポイントリストパブリッシュ |
+| `bt_xml_normal`           | string | パッケージ内 `mg_navigate_to_pose.xml` | 通常モードの BT |
+| `bt_xml_queue_wait`       | string | パッケージ内 `mg_navigate_to_pose_queue_wait.xml` | queue_wait モードの BT |
+| `goal_checker_set_parameters_service` | string | `/controller_server/set_parameters` | reach_tolerance を反映する先 |
+| `goal_checker_xy_tolerance_param` | string | `general_goal_checker.xy_goal_tolerance` | reach_tolerance を書き込むパラメータ名 |
+| `plan_topic`              | string | `/plan`    | 通過点判定に使う経路のトピック   |
+| `plan_goal_match_tolerance` | double | `0.6`    | 経路の終点をゴールのものとみなす距離 [m]（NavFn の `tolerance` 以上にする） |
+
+### 到達判定
+
+- **停止点** (`is_through_point: false`): Nav2 の goal_checker で判定する。ゴール送信前に、`reach_tolerance` を `xy_goal_tolerance` として動的に設定する（サービスが無い・失敗した場合は警告を出し、現在値のまま送信する）。
+- **通過点** (`is_through_point: true`): 次の 3 条件をすべて満たした時点で通過 (`PASSED`) とする。
+  1. ゴール送信後に受信した `/plan`（planner_server が publish）で、終点がゴールから `plan_goal_match_tolerance` 以内のものを採用済み。前のゴールへの経路は使わない。
+  2. 採用した経路に沿った残り距離が `through_tolerance` 以下。最近傍点は前回位置から経路に沿って 2m 先までだけ探す（経路が自分の近くを再び通る形でも、先の区間を誤って選ばない）。
+  3. ゴールまでの直線距離が `through_tolerance` 以下。
+
+  Nav2 フィードバックの `distance_remaining` は判定に使わない。BT blackboard の経路はゴールをまたいで残るので、新しいゴールの経路を計画し終えるまで、前の経路で計算した値が返るため。
+  `reach_tolerance` も goal_checker に設定されるので、それより前に Nav2 が成功を返した場合も到達になる。
+
+### 通過後のゴールの扱い（preemption）
+
+- 通過した後も Nav2 のゴールは止めない。FSM がすぐ次の WP へ向かう場合は、同じ BT の次のゴールでそのまま**上書き**する（bt_navigator の preemption）。ロボットは減速・停止せずに走り続ける。上書きされた古いゴールは ABORTED で終わるが、無視する。
+- 次のいずれかの場合は `cancel` して止まる: アクション実行（ON_ARRIVING）、最終 WP（GOAL_REACHED）、wait_trigger（IDLE）、pause（SUSPENDED）。
+- BT が異なるゴール（navigation_mode の切り替え）は Nav2 が上書きを受け付けない。キャンセル中のゴールも同様。これらの場合は、走っているゴールの終了を待ってから次のゴールを送る。
+- 上書き直後にすぐ経路を計画し直すため、両方の BT に `GoalUpdatedController` を入れている（RateController の周期を待つと、最大 1〜2 秒のあいだ古い経路を追従してしまうため）。`mg_navigation/params/nav2_params.yaml` の `plugin_lib_names` に `nav2_goal_updated_controller_bt_node` が必要。
+
+### スレッドモデル
+
+- ノードは `MultiThreadedExecutor` で spin する。Nav2 アクションクライアントとアクション用のサービスクライアントは `ReentrantCallbackGroup` に属する。
+- on_reached_actions は `ActionExecutor` の別スレッドで実行する。サービス応答は spin せず `threading.Event` で待つ（ノードは既に executor で spin されているため）。
+- `WaypointNavigator` は、FSM から見た論理ゴールと、Nav2 上で実際に走っているゴールを区別して管理する。論理ゴールには世代 ID を振り、キャンセル後や次ゴール送信後に届いた古い応答・結果を無視する。受理前にキャンセルされたゴールは、受理された直後にキャンセルする。
 
 ---
 
@@ -164,9 +197,11 @@ stateDiagram-v2
 
 複数のノードが独立して一時停止を要求できる仕組み。
 
-- `pause_slots: Dict[str, float]` — `requester_id → heartbeat_period_s`
+- `pause_slots: Set[str]` — `requester_id` の集合
 - スロットが1つでも存在すると SUSPENDED 状態を維持
-- 全スロットが解放された時、`_pre_suspend_state` に応じて自動再開
+- 全スロットが解放された時、`_pre_suspend_state` に応じて中断箇所から自動再開
+- IDLE / GOAL_REACHED / ERROR 中の pause は状態を変えず、スロットだけ登録する（`start()` は拒否される）
+- `stop()` は全スロットを解除する
 
 ---
 
@@ -174,6 +209,7 @@ stateDiagram-v2
 
 アクション実行中に stop/pause が届いた場合:
 
-- `_stop_pending = True` → アクション完了後に IDLE へ
-- `_pause_pending = True` → アクション完了後に SUSPENDED へ
+- stop: `_stop_pending = True` → アクション完了後に IDLE へ
+- pause: アクション完了時点で pause スロットが残っていれば、index を次へ進めてから SUSPENDED へ（途中で解除されていれば、そのまま次WPへ進む）。最終WPなら GOAL_REACHED、wait_trigger 付きなら IDLE を優先する
 - stop が優先 (両方届いた場合は stop)
+- 実行中のアクション自体は中断できない（`wait` やサービス待ちが終わるまで待つ）

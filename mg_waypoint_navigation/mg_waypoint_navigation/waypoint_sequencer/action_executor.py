@@ -2,36 +2,41 @@
 from __future__ import annotations
 
 import threading
-from typing import Callable, List, TYPE_CHECKING
+from typing import Callable, List
 
-if TYPE_CHECKING:
-    import rclpy.node
-    from mg_waypoint_navigation.waypoint import ActionConfig
+import rclpy.node
+
+from mg_waypoint_navigation.waypoint import ActionConfig
+from mg_waypoint_navigation.waypoint_sequencer.actions import (
+    EndpointCache,
+    build_action,
+)
 
 
 class ActionExecutor:
-    """アクションリストを別スレッドで順次実行し、完了時にコールバックを呼ぶ"""
+    """アクションリストを別スレッドで順次実行し、完了時にコールバックを呼ぶ。
 
-    def __init__(self, node: "rclpy.node.Node"):
+    個々のアクションの生成・実行で例外が出てもログに残して次へ進み、
+    done_callback は必ず呼ぶ。
+    """
+
+    def __init__(self, node: rclpy.node.Node):
         self._node = node
+        self._endpoints = EndpointCache(node)
         self._thread: threading.Thread | None = None
 
     def execute(
         self,
-        actions: List["ActionConfig"],
+        actions: List[ActionConfig],
         done_callback: Callable[[], None],
     ) -> None:
-        from mg_waypoint_navigation.waypoint_sequencer.actions import build_action
-
-        built = [build_action(a, self._node) for a in actions]
-
         def _run():
-            for action in built:
+            for config in actions:
                 try:
-                    action.execute()
+                    build_action(config, self._node, self._endpoints).execute()
                 except Exception as e:
                     self._node.get_logger().error(
-                        f"Action {action} raised exception: {e}"
+                        f"Action {config.type} raised exception: {e}"
                     )
             done_callback()
 

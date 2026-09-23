@@ -31,14 +31,12 @@ class InteractiveWaypointMarker:
         self._create_interactive_marker()
 
     def _create_interactive_marker(self):
-        pose_stamped = self.waypoint.pose
-        pose_stamped.pose.position.z += 1.0
-
         index = self.waypoint.index
 
         interactive_marker = InteractiveMarker()
         interactive_marker.header.frame_id = "map"
-        interactive_marker.pose = pose_stamped.pose
+        interactive_marker.pose = copy.deepcopy(self.waypoint.pose.pose)
+        interactive_marker.pose.position.z += 1.0
 
         marker = Marker()
         marker.type = Marker.ARROW
@@ -164,6 +162,7 @@ class InteractiveWaypointMarker:
             pose_stamped = PoseStamped()
             pose_stamped.header.frame_id = "map"
             pose_stamped.pose = feedback.pose
+            pose_stamped.pose.position.z -= 1.0
             self.waypoint.pose = pose_stamped
             print(f"Waypoint {feedback.marker_name} updated.")
             print(f"Pose: {feedback.pose}")
@@ -298,7 +297,7 @@ class InteractiveWaypointsManager:
         i_waypoint = InteractiveWaypointMarker(
             Waypoint(
                 index=index + 1,
-                pose=self.get(index).waypoint.pose,
+                pose=copy.deepcopy(self.get(index).waypoint.pose),
                 navigation=NavigationConfig(
                     reach_tolerance=1.0, is_through_point=True
                 ),
@@ -335,8 +334,8 @@ class WaypointEditorNode(Node):
             self._interactive_marker_server
         )
 
-        self._save_path = self.declare_parameter("save_path").value
-        load_path = self.declare_parameter("load_path").value
+        self._save_path = self.declare_parameter("save_path", "").value
+        load_path = self.declare_parameter("load_path", "").value
         if load_path != "":
             self.load_waypoints_from_file(load_path)
 
@@ -352,6 +351,11 @@ class WaypointEditorNode(Node):
 
     def _save_waypoints_callback(self, request, response):
         file_path = self._save_path
+        if not file_path:
+            response.success = False
+            response.message = "save_path is not set."
+            self.get_logger().error(response.message)
+            return response
         if os.path.exists(file_path):
             response.success = False
             response.message = f"File {file_path} already exists."
@@ -364,6 +368,11 @@ class WaypointEditorNode(Node):
         return response
 
     def _force_save_waypoints_callback(self, request, response):
+        if not self._save_path:
+            response.success = False
+            response.message = "save_path is not set."
+            self.get_logger().error(response.message)
+            return response
         file_path = self.save_waypoints_to_file(self._save_path)
         response.success = True
         response.message = f"Waypoints force saved to {file_path}"
