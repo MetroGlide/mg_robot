@@ -3,6 +3,13 @@
     <RecoveryNode number_of_retries="10" name="NavigateRecovery">
 
       <PipelineSequence name="NavigateWithReplanning">
+        <!-- ゴール上書き (通過点の preemption) 直後に、新しいゴールへの経路をすぐ計画する -->
+        <GoalUpdatedController>
+          <RecoveryNode number_of_retries="1" name="ComputePathOnGoalUpdate">
+            <ComputePathToPose goal="{goal}" path="{path}" planner_id="GridBased"/>
+            <ClearEntireCostmap name="ClearGlobalCostmap-GoalUpdate" service_name="global_costmap/clear_entirely_global_costmap"/>
+          </RecoveryNode>
+        </GoalUpdatedController>
         <RateController hz="1.0">
           <RecoveryNode number_of_retries="1" name="ComputePathToPose">
             <ComputePathToPose goal="{goal}" path="{path}" planner_id="GridBased"/>

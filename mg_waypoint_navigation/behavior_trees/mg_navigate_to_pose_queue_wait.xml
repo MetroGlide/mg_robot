@@ -5,6 +5,10 @@
     <RecoveryNode number_of_retries="99999" name="QueueWaitNavigation">
 
       <PipelineSequence name="NavigateWithReplanning">
+        <!-- ゴール上書き (通過点の preemption) 直後に、新しいゴールへの経路をすぐ計画する -->
+        <GoalUpdatedController>
+          <ComputePathToPose goal="{goal}" path="{path}" planner_id="GridBased"/>
+        </GoalUpdatedController>
         <!-- グローバルパス再計画（センサー入力無効なので既存地図で計算される） -->
         <RateController hz="0.5">
           <ComputePathToPose goal="{goal}" path="{path}" planner_id="GridBased"/>
