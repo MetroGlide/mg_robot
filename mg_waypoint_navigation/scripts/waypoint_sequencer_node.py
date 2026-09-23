@@ -6,8 +6,6 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, ReliabilityPolicy
 
-from builtin_interfaces.msg import Time as TimeMsg
-from geometry_msgs.msg import Point
 from std_msgs.msg import ColorRGBA, Int16
 from std_srvs.srv import Trigger
 from visualization_msgs.msg import Marker, MarkerArray
@@ -19,7 +17,7 @@ from mg_msgs.srv import StartSequence
 
 from mg_waypoint_navigation.waypoint import WaypointList, WaypointsLoader
 from mg_waypoint_navigation.waypoint_sequencer.fsm import WaypointSequencerFSM
-from mg_waypoint_navigation.waypoint_sequencer.states import CommandResult, SequencerState
+from mg_waypoint_navigation.waypoint_sequencer.states import SequencerState
 
 
 class WaypointSequencerNode(Node):
@@ -29,7 +27,6 @@ class WaypointSequencerNode(Node):
         self._declare_parameters()
 
         self._fsm = WaypointSequencerFSM(self)
-        self._fsm.set_on_state_changed(self._on_fsm_state_changed)
 
         self._init_ros_communications()
         self._load_waypoints()
@@ -181,13 +178,6 @@ class WaypointSequencerNode(Node):
             requester_id=msg.requester_id,
             active=msg.active,
         )
-
-    # ------------------------------------------------------------------
-    # FSM 状態変化コールバック
-    # ------------------------------------------------------------------
-
-    def _on_fsm_state_changed(self, new_state: SequencerState):
-        pass
 
     # ------------------------------------------------------------------
     # パブリッシュ

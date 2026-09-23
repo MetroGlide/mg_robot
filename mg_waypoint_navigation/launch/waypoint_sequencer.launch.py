@@ -1,17 +1,11 @@
-import os
-
-from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
-from launch.substitutions import EnvironmentVariable, LaunchConfiguration
+from launch.substitutions import EnvironmentVariable
 from launch_ros.actions import Node
 
 from mg_utils.launch_argument import LaunchArgumentCreator
 
 
 def generate_launch_description():
-    pkg_dir = get_package_share_directory("mg_waypoint_navigation")
-
     launch_argument_creator = LaunchArgumentCreator()
 
     simulation_arg = launch_argument_creator.create(

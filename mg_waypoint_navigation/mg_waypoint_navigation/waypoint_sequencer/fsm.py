@@ -116,16 +116,6 @@ class WaypointSequencerFSM:
         self._countdown_timer = CountdownTimer(self._on_starting_done)
         self._pause_manager = PauseSlotManager()
 
-        self._on_state_changed: Optional[Callable[[
-            SequencerState], None]] = None
-
-    # ------------------------------------------------------------------
-    # 外部コールバック登録
-    # ------------------------------------------------------------------
-
-    def set_on_state_changed(self, cb: Callable[[SequencerState], None]) -> None:
-        self._on_state_changed = cb
-
     # ------------------------------------------------------------------
     # 状態参照
     # ------------------------------------------------------------------
@@ -386,5 +376,3 @@ class WaypointSequencerFSM:
         old = self._state
         self._state = new_state
         self._node.get_logger().info(f"FSM: {old.value} -> {new_state.value}")
-        if self._on_state_changed:
-            self._on_state_changed(new_state)
