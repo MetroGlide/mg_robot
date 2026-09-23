@@ -14,8 +14,8 @@ version: "2.0"
 
 # 全ウェイポイントに適用するデフォルト値 (省略可)
 defaults:
-  reach_tolerance: 0.5       # ゴール到達判定半径 [m]
-  through_tolerance: 3.0     # 通過点の到達判定半径 [m]
+  reach_tolerance: 0.5       # Nav2 goal_checker の到達判定半径 [m]（ゴール送信前に xy_goal_tolerance へ設定）
+  through_tolerance: 3.0     # 通過点で、Nav2 の完了を待たずに次へ進む半径 [m]
   is_through_point: true     # true=通過点, false=停止点
 
 waypoints:
@@ -27,6 +27,10 @@ waypoints:
       is_through_point: false
     on_reached_actions: []    # 到達時アクションリスト (省略可)
 ```
+
+- `index` は 0 からの連番とする（重複・欠番があると読み込みエラー）。
+- `defaults` を省略した場合は `is_through_point: true` / `through_tolerance: 3.0` になる。**最終ウェイポイントや on_reached_actions を持つウェイポイントも、指定しなければ通過点扱い**（3m 手前で到達とみなしてアクションを実行する）になる。その場で止まってほしい地点は `is_through_point: false` を明示すること。
+- 読み込み時に on_reached_actions を検証する（未知の type、必須フィールドの欠落、import できない型の指定はエラー）。不正なファイルは読み込み・reload とも拒否される。
 
 ---
 
@@ -110,6 +114,17 @@ waypoints:
 `~/start` リクエストの `countdown_ms` でカウントダウン後に次のウェイポイントへ進む。
 
 フィールドなし。
+
+### type: set_navigation_mode — ナビゲーションモード切替
+
+```yaml
+- type: set_navigation_mode
+  mode: queue_wait
+```
+
+| フィールド | 型     | デフォルト | 説明                                                             |
+| ---------- | ------ | ---------- | ---------------------------------------------------------------- |
+| `mode`     | string | `normal`   | `normal` / `queue_wait`。以降のゴールで使う BT と global_costmap の障害物レイヤーを切り替える |
 
 ---
 
