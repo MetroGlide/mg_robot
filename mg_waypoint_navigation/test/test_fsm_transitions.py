@@ -301,31 +301,31 @@ class TestPauseResume:
         env.fsm.load_waypoints(_make_wl([]))
         env.fsm.start(0)
         env.fire_countdown()
-        env.fsm.pause_request("p1", True, 1.0)
+        env.fsm.pause_request("p1", True)
         assert env.fsm.state == SequencerState.SUSPENDED
         env.nav.cancel.assert_called()
 
     def test_pause_from_on_starting(self, env):
         env.fsm.load_waypoints(_make_wl([]))
         env.fsm.start(60_000)
-        env.fsm.pause_request("p1", True, 1.0)
+        env.fsm.pause_request("p1", True)
         assert env.fsm.state == SequencerState.SUSPENDED
 
     def test_resume_to_navigating(self, env):
         env.fsm.load_waypoints(_make_wl([]))
         env.fsm.start(0)
         env.fire_countdown()
-        env.fsm.pause_request("p1", True, 1.0)
+        env.fsm.pause_request("p1", True)
         assert env.fsm.state == SequencerState.SUSPENDED
-        env.fsm.pause_request("p1", False, 1.0)
+        env.fsm.pause_request("p1", False)
         assert env.fsm.state == SequencerState.NAVIGATING
 
     def test_resume_to_on_starting(self, env):
         env.fsm.load_waypoints(_make_wl([]))
         env.fsm.start(60_000)
-        env.fsm.pause_request("p1", True, 1.0)
+        env.fsm.pause_request("p1", True)
         assert env.fsm.state == SequencerState.SUSPENDED
-        env.fsm.pause_request("p1", False, 1.0)
+        env.fsm.pause_request("p1", False)
         assert env.fsm.state == SequencerState.ON_STARTING
 
     def test_pause_deferred_from_on_arriving(self, env):
@@ -334,7 +334,7 @@ class TestPauseResume:
         env.fire_countdown()
         env.fire_nav_success()
         assert env.fsm.state == SequencerState.ON_ARRIVING
-        env.fsm.pause_request("p1", True, 1.0)
+        env.fsm.pause_request("p1", True)
         assert env.fsm.state == SequencerState.ON_ARRIVING  # deferred
         env.fire_actions_done()
         assert env.fsm.state == SequencerState.SUSPENDED
@@ -345,9 +345,9 @@ class TestPauseResume:
         env.fsm.start(0)
         env.fire_countdown()
         env.fire_nav_success()
-        env.fsm.pause_request("p1", True, 1.0)
+        env.fsm.pause_request("p1", True)
         env.fire_actions_done()
-        env.fsm.pause_request("p1", False, 1.0)
+        env.fsm.pause_request("p1", False)
         assert env.fsm.state == SequencerState.NAVIGATING
         assert env.nav.send_goal.call_args_list[-1][0][0].index == 1
 
@@ -356,8 +356,8 @@ class TestPauseResume:
         env.fsm.start(0)
         env.fire_countdown()
         env.fire_nav_success()
-        env.fsm.pause_request("p1", True, 1.0)
-        env.fsm.pause_request("p1", False, 1.0)
+        env.fsm.pause_request("p1", True)
+        env.fsm.pause_request("p1", False)
         env.fire_actions_done()
         assert env.fsm.state == SequencerState.NAVIGATING
         assert env.fsm.current_index == 1
@@ -367,7 +367,7 @@ class TestPauseResume:
         env.fsm.start(0)
         env.fire_countdown()
         env.fire_nav_success()
-        env.fsm.pause_request("p1", True, 1.0)
+        env.fsm.pause_request("p1", True)
         env.fire_actions_done()
         assert env.fsm.state == SequencerState.GOAL_REACHED
 
@@ -377,18 +377,18 @@ class TestPauseResume:
         env.fsm.start(0)
         env.fire_countdown()
         env.fire_nav_success()
-        env.fsm.pause_request("p1", True, 1.0)
+        env.fsm.pause_request("p1", True)
         env.fire_actions_done()
         assert env.fsm.state == SequencerState.IDLE
         assert env.fsm.current_index == 1
 
     def test_start_rejected_while_paused_in_idle(self, env):
         env.fsm.load_waypoints(_make_wl([]))
-        env.fsm.pause_request("p1", True, 1.0)
+        env.fsm.pause_request("p1", True)
         result = env.fsm.start(0)
         assert not result.success
         assert env.fsm.state == SequencerState.IDLE
-        env.fsm.pause_request("p1", False, 1.0)
+        env.fsm.pause_request("p1", False)
         assert env.fsm.start(0).success
 
     def test_stale_countdown_is_ignored(self, env):
@@ -404,19 +404,19 @@ class TestPauseResume:
         env.fsm.load_waypoints(_make_wl([]))
         env.fsm.start(0)
         env.fire_countdown()
-        env.fsm.pause_request("p1", True, 1.0)
-        env.fsm.pause_request("p2", True, 1.0)
+        env.fsm.pause_request("p1", True)
+        env.fsm.pause_request("p2", True)
         assert env.fsm.state == SequencerState.SUSPENDED
-        env.fsm.pause_request("p1", False, 1.0)
+        env.fsm.pause_request("p1", False)
         assert env.fsm.state == SequencerState.SUSPENDED  # p2 まだアクティブ
-        env.fsm.pause_request("p2", False, 1.0)
+        env.fsm.pause_request("p2", False)
         assert env.fsm.state == SequencerState.NAVIGATING
 
     def test_stop_from_suspended(self, env):
         env.fsm.load_waypoints(_make_wl([]))
         env.fsm.start(0)
         env.fire_countdown()
-        env.fsm.pause_request("p1", True, 1.0)
+        env.fsm.pause_request("p1", True)
         result = env.fsm.stop()
         assert result.success
         assert env.fsm.state == SequencerState.IDLE
@@ -464,7 +464,7 @@ class TestSetNextIndex:
         env.fsm.load_waypoints(_make_wl([], [], []))
         env.fsm.start(0)
         env.fire_countdown()
-        env.fsm.pause_request("p1", True, 1.0)
+        env.fsm.pause_request("p1", True)
         assert env.fsm.set_next_index(2)
         assert env.fsm.current_index == 2
 
@@ -473,10 +473,10 @@ class TestSetNextIndex:
         env.fsm.start(0)
         env.fire_countdown()
         env.fire_nav_success()
-        env.fsm.pause_request("p1", True, 1.0)
+        env.fsm.pause_request("p1", True)
         env.fire_actions_done()
         assert env.fsm.set_next_index(2)
-        env.fsm.pause_request("p1", False, 1.0)
+        env.fsm.pause_request("p1", False)
         assert env.nav.send_goal.call_args_list[-1][0][0].index == 2
 
     def test_set_index_in_navigating_fails(self, env):

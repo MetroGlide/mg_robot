@@ -177,8 +177,6 @@ class WaypointSequencerNode(Node):
         self._fsm.pause_request(
             requester_id=msg.requester_id,
             active=msg.active,
-            heartbeat_period_s=msg.heartbeat_period_s,
-            reason=msg.reason,
         )
 
     # ------------------------------------------------------------------

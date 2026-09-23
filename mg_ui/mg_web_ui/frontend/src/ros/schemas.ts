@@ -8,7 +8,7 @@ export const SCHEMAS: Record<string, RosSchema> = {
   'mg_msgs/msg/PauseRequest': {
     encoding: 'cdr',
     schemaName: 'mg_msgs/msg/PauseRequest',
-    schema: 'string requester_id\nbool active\nfloat32 heartbeat_period_s\nstring reason',
+    schema: 'string requester_id\nbool active\nstring reason',
   },
   'std_msgs/msg/Int16': {
     encoding: 'cdr',

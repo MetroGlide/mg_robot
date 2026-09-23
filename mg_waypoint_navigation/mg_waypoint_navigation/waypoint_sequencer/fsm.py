@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import threading
 import time
-from typing import Callable, Dict, List, Optional
+from typing import Callable, List, Optional, Set
 
 import rclpy.node
 
@@ -64,9 +64,8 @@ class CountdownTimer:
 class PauseSlotManager:
     """Named Pause Slot を管理する。"""
 
-    def __init__(self, node: rclpy.node.Node):
-        self._node = node
-        self._slots: Dict[str, float] = {}
+    def __init__(self):
+        self._slots: Set[str] = set()
 
     @property
     def is_active(self) -> bool:
@@ -74,13 +73,13 @@ class PauseSlotManager:
 
     @property
     def requesters(self) -> List[str]:
-        return list(self._slots.keys())
+        return sorted(self._slots)
 
-    def add(self, requester_id: str, heartbeat_period_s: float) -> None:
-        self._slots[requester_id] = heartbeat_period_s
+    def add(self, requester_id: str) -> None:
+        self._slots.add(requester_id)
 
     def remove(self, requester_id: str) -> None:
-        self._slots.pop(requester_id, None)
+        self._slots.discard(requester_id)
 
     def clear_all(self) -> None:
         self._slots.clear()
@@ -115,7 +114,7 @@ class WaypointSequencerFSM:
         self._navigation_mode: str = "normal"
 
         self._countdown_timer = CountdownTimer(self._on_starting_done)
-        self._pause_manager = PauseSlotManager(node)
+        self._pause_manager = PauseSlotManager()
 
         self._on_state_changed: Optional[Callable[[
             SequencerState], None]] = None
@@ -250,16 +249,10 @@ class WaypointSequencerFSM:
 
             return CommandResult(False, f"Unhandled state {self._state.value}")
 
-    def pause_request(
-        self,
-        requester_id: str,
-        active: bool,
-        heartbeat_period_s: float,
-        reason: str = "",
-    ) -> None:
+    def pause_request(self, requester_id: str, active: bool) -> None:
         with self._lock:
             if active:
-                self._pause_manager.add(requester_id, heartbeat_period_s)
+                self._pause_manager.add(requester_id)
                 self._apply_pause()
             else:
                 self._pause_manager.remove(requester_id)
