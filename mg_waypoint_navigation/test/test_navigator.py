@@ -1,5 +1,5 @@
 """
-WaypointNavigator のゴール世代管理・キャンセルの単体テスト。
+WaypointNavigator のゴール世代管理・キャンセル・reach_tolerance 反映の単体テスト。
 ROS2 不要: conftest.py が ROS2 依存を sys.modules でモックする。
 """
 from __future__ import annotations
@@ -170,6 +170,34 @@ def test_through_point_cancel_is_success(env):
     handle.cancel_goal_async.assert_called_once()
     _finish(result_future, STATUS_CANCELED)
     assert env.results == [NavigationResult.SUCCEEDED]
+
+
+def test_reach_tolerance_is_applied_before_sending_goal(env):
+    env.params_client.service_is_ready.return_value = True
+    params_future = _Future()
+    env.params_client.call_async.return_value = params_future
+
+    env.nav.send_goal(_waypoint(reach_tolerance=0.8), env.on_result)
+    assert env.send_futures == []
+
+    request = env.params_client.call_async.call_args[0][0]
+    assert request.parameters[0].value.double_value == 0.8
+
+    params_future.complete(SimpleNamespace(
+        results=[SimpleNamespace(successful=True)]))
+    assert len(env.send_futures) == 1
+
+
+def test_goal_not_sent_if_canceled_while_setting_tolerance(env):
+    env.params_client.service_is_ready.return_value = True
+    params_future = _Future()
+    env.params_client.call_async.return_value = params_future
+
+    env.nav.send_goal(_waypoint(), env.on_result)
+    env.nav.cancel()
+    params_future.complete(SimpleNamespace(
+        results=[SimpleNamespace(successful=True)]))
+    assert env.send_futures == []
 
 
 def test_server_unavailable_is_failed(env):

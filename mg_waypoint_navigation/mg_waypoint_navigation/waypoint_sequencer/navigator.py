@@ -10,6 +10,8 @@ import rclpy.node
 from action_msgs.msg import GoalStatus
 from ament_index_python.packages import get_package_share_directory
 from nav2_msgs.action import NavigateToPose
+from rcl_interfaces.msg import Parameter, ParameterType
+from rcl_interfaces.srv import SetParameters
 from rclpy.action import ActionClient
 from rclpy.action.client import ClientGoalHandle
 from rclpy.callback_groups import ReentrantCallbackGroup
@@ -58,6 +60,17 @@ class WaypointNavigator:
             "bt_xml_queue_wait",
             share_dir + "/behavior_trees/mg_navigate_to_pose_queue_wait.xml"
         ).value
+        goal_checker_service = node.declare_parameter(
+            "goal_checker_set_parameters_service",
+            "/controller_server/set_parameters"
+        ).value
+        self._goal_checker_xy_param = node.declare_parameter(
+            "goal_checker_xy_tolerance_param",
+            "general_goal_checker.xy_goal_tolerance"
+        ).value
+        self._set_params_client = node.create_client(
+            SetParameters, goal_checker_service,
+            callback_group=self._callback_group)
 
     @property
     def distance_remaining(self) -> float:
@@ -98,7 +111,10 @@ class WaypointNavigator:
             else self._bt_xml_normal
         )
 
-        self._send_goal_async(goal_id, goal)
+        self._apply_reach_tolerance(
+            waypoint.navigation.reach_tolerance,
+            lambda: self._send_goal_async(goal_id, goal),
+        )
 
     def cancel(self) -> None:
         """現在のゴールをキャンセルする。受理前なら受理直後にキャンセルする。"""
@@ -125,6 +141,36 @@ class WaypointNavigator:
             callback = self._result_callback
         if callback:
             callback(result)
+
+    def _apply_reach_tolerance(
+        self, tolerance: float, on_done: Callable[[], None]
+    ) -> None:
+        """goal_checker の xy_goal_tolerance を設定してから on_done を呼ぶ。失敗しても続行する。"""
+        if not self._set_params_client.service_is_ready():
+            self._node.get_logger().warn(
+                "goal_checker parameter service not available. "
+                f"reach_tolerance={tolerance} is not applied."
+            )
+            on_done()
+            return
+
+        param = Parameter()
+        param.name = self._goal_checker_xy_param
+        param.value.type = ParameterType.PARAMETER_DOUBLE
+        param.value.double_value = float(tolerance)
+        request = SetParameters.Request()
+        request.parameters = [param]
+
+        def _done(future) -> None:
+            response = future.result()
+            if response is None or not all(
+                    r.successful for r in response.results):
+                self._node.get_logger().warn(
+                    f"Failed to set {self._goal_checker_xy_param}={tolerance}"
+                )
+            on_done()
+
+        self._set_params_client.call_async(request).add_done_callback(_done)
 
     def _send_goal_async(self, goal_id: int, goal) -> None:
         with self._lock:
