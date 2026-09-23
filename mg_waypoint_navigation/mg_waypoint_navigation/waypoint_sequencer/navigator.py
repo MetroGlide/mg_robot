@@ -2,15 +2,17 @@
 from __future__ import annotations
 
 import enum
+import threading
+from math import sqrt
 from typing import Callable, Optional
-from math import sqrt, atan2
 
-import rclpy
 import rclpy.node
+from action_msgs.msg import GoalStatus
 from ament_index_python.packages import get_package_share_directory
 from nav2_msgs.action import NavigateToPose
 from rclpy.action import ActionClient
 from rclpy.action.client import ClientGoalHandle
+from rclpy.callback_groups import ReentrantCallbackGroup
 
 from mg_waypoint_navigation.waypoint import Waypoint
 
@@ -22,12 +24,22 @@ class NavigationResult(enum.Enum):
 
 
 class WaypointNavigator:
-    """Nav2 NavigateToPose を呼び出す非同期ラッパー"""
+    """Nav2 NavigateToPose を呼び出す非同期ラッパー。
+
+    ゴールごとに世代 ID を振り、cancel() 後や次ゴール送信後に届いた
+    古いゴールの応答・フィードバック・結果は無視する。
+    """
 
     def __init__(self, node: rclpy.node.Node):
         self._node = node
+        self._callback_group = ReentrantCallbackGroup()
         self._action_client = ActionClient(
-            node, NavigateToPose, "navigate_to_pose")
+            node, NavigateToPose, "navigate_to_pose",
+            callback_group=self._callback_group)
+
+        self._lock = threading.Lock()
+        self._goal_id: int = 0
+        self._active: bool = False
         self._goal_handle: Optional[ClientGoalHandle] = None
         self._result_callback: Optional[Callable[[
             NavigationResult], None]] = None
@@ -37,16 +49,19 @@ class WaypointNavigator:
         self._path_computed: bool = False
         self._waypoint: Optional[Waypoint] = None
 
+        share_dir = get_package_share_directory("mg_waypoint_navigation")
         self._bt_xml_normal = node.declare_parameter(
             "bt_xml_normal",
-            get_package_share_directory("mg_waypoint_navigation")
-            + "/behavior_trees/mg_navigate_to_pose.xml"
+            share_dir + "/behavior_trees/mg_navigate_to_pose.xml"
         ).value
         self._bt_xml_queue_wait = node.declare_parameter(
             "bt_xml_queue_wait",
-            get_package_share_directory("mg_waypoint_navigation")
-            + "/behavior_trees/mg_navigate_to_pose_queue_wait.xml"
+            share_dir + "/behavior_trees/mg_navigate_to_pose_queue_wait.xml"
         ).value
+
+    @property
+    def distance_remaining(self) -> float:
+        return self._distance_remaining
 
     def send_goal(
         self,
@@ -54,19 +69,25 @@ class WaypointNavigator:
         result_callback: Callable[[NavigationResult], None],
         navigation_mode: str = "normal",
     ) -> None:
-        self._result_callback = result_callback
-        self._through_tolerance = (
-            waypoint.navigation.through_tolerance
-            if waypoint.navigation.is_through_point
-            else None
-        )
-        self._through_cancel = False
-        self._path_computed = False
-        self._waypoint = waypoint
+        with self._lock:
+            self._goal_id += 1
+            goal_id = self._goal_id
+            self._active = True
+            self._goal_handle = None
+            self._result_callback = result_callback
+            self._through_tolerance = (
+                waypoint.navigation.through_tolerance
+                if waypoint.navigation.is_through_point
+                else None
+            )
+            self._through_cancel = False
+            self._path_computed = False
+            self._waypoint = waypoint
 
         if not self._action_client.wait_for_server(timeout_sec=5.0):
-            self._node.get_logger().error("navigate_to_pose action server not available")
-            result_callback(NavigationResult.FAILED)
+            self._node.get_logger().error(
+                "navigate_to_pose action server not available")
+            self._finish(goal_id, NavigationResult.FAILED)
             return
 
         goal = NavigateToPose.Goal()
@@ -77,38 +98,71 @@ class WaypointNavigator:
             else self._bt_xml_normal
         )
 
-        future = self._action_client.send_goal_async(
-            goal, feedback_callback=self._feedback_callback
-        )
-        future.add_done_callback(self._goal_response_callback)
-
-    @property
-    def distance_remaining(self) -> float:
-        return self._distance_remaining
+        self._send_goal_async(goal_id, goal)
 
     def cancel(self) -> None:
-        if self._goal_handle is not None:
-            self._goal_handle.cancel_goal_async()
+        """現在のゴールをキャンセルする。受理前なら受理直後にキャンセルする。"""
+        with self._lock:
+            self._active = False
+            handle = self._goal_handle
             self._goal_handle = None
+        if handle is not None:
+            handle.cancel_goal_async()
 
-    def _goal_response_callback(self, future) -> None:
+    # ------------------------------------------------------------------
+    # 内部処理
+    # ------------------------------------------------------------------
+
+    def _is_current(self, goal_id: int) -> bool:
+        return self._active and goal_id == self._goal_id
+
+    def _finish(self, goal_id: int, result: NavigationResult) -> None:
+        with self._lock:
+            if not self._is_current(goal_id):
+                return
+            self._active = False
+            self._goal_handle = None
+            callback = self._result_callback
+        if callback:
+            callback(result)
+
+    def _send_goal_async(self, goal_id: int, goal) -> None:
+        with self._lock:
+            if not self._is_current(goal_id):
+                return
+        future = self._action_client.send_goal_async(
+            goal,
+            feedback_callback=lambda msg: self._feedback_callback(
+                goal_id, msg),
+        )
+        future.add_done_callback(
+            lambda f: self._goal_response_callback(goal_id, f))
+
+    def _goal_response_callback(self, goal_id: int, future) -> None:
         handle = future.result()
         if not handle.accepted:
             self._node.get_logger().warn("NavigateToPose goal rejected")
-            if self._result_callback:
-                self._result_callback(NavigationResult.FAILED)
+            self._finish(goal_id, NavigationResult.FAILED)
             return
 
-        self._goal_handle = handle
-        result_future = handle.get_result_async()
-        result_future.add_done_callback(self._result_done_callback)
+        with self._lock:
+            current = self._is_current(goal_id)
+            if current:
+                self._goal_handle = handle
+        if not current:
+            self._node.get_logger().info(
+                "Canceling stale NavigateToPose goal accepted after cancel")
+            handle.cancel_goal_async()
+            return
 
-    def _result_done_callback(self, future) -> None:
-        from action_msgs.msg import GoalStatus
+        handle.get_result_async().add_done_callback(
+            lambda f: self._result_done_callback(goal_id, f))
 
-        self._goal_handle = None
+    def _result_done_callback(self, goal_id: int, future) -> None:
         status = future.result().status
-        if self._through_cancel:
+        with self._lock:
+            through_cancel = self._through_cancel
+        if through_cancel:
             result = NavigationResult.SUCCEEDED
         elif status == GoalStatus.STATUS_SUCCEEDED:
             result = NavigationResult.SUCCEEDED
@@ -116,39 +170,45 @@ class WaypointNavigator:
             result = NavigationResult.CANCELED
         else:
             result = NavigationResult.FAILED
-
-        if self._result_callback:
-            self._result_callback(result)
+        self._finish(goal_id, result)
 
     def _check_actual_arrival_through_tolerance(self, current_pose) -> bool:
-        if self._waypoint is None:
+        if self._waypoint is None or self._through_tolerance is None:
             return False
-
-        # compute distance to goal from current_pose and self._waypoint.pose
         dx = self._waypoint.pose.pose.position.x - current_pose.position.x
         dy = self._waypoint.pose.pose.position.y - current_pose.position.y
-        distance = sqrt(dx * dx + dy * dy)
+        return sqrt(dx * dx + dy * dy) <= self._through_tolerance
 
-        return distance <= self._through_tolerance if self._through_tolerance is not None else False
+    def _feedback_callback(self, goal_id: int, feedback_msg) -> None:
+        with self._lock:
+            if not self._is_current(goal_id):
+                return
+            old_distance_remaining = self._distance_remaining
+            self._distance_remaining = feedback_msg.feedback.distance_remaining
 
-    def _feedback_callback(self, feedback_msg) -> None:
-        _old_distance_remaining = self._distance_remaining
-        self._distance_remaining = feedback_msg.feedback.distance_remaining
+            if self._through_tolerance is None or self._through_cancel:
+                return
 
-        if self._through_tolerance is None or self._through_cancel:
-            return
+            if not self._path_computed:
+                if (self._distance_remaining > 0.0
+                        and self._distance_remaining != old_distance_remaining):
+                    self._node.get_logger().info(
+                        "Path computed. Distance to goal: "
+                        f"{self._distance_remaining:.2f} m"
+                    )
+                    self._path_computed = True
+                return
 
-        if not self._path_computed:
-            if self._distance_remaining > 0.0 and self._distance_remaining != _old_distance_remaining:
-                self._node.get_logger().info(
-                    f"Path computed. Distance to goal: {self._distance_remaining:.2f} m"
-                )
-                self._path_computed = True
-            return
-        if self._distance_remaining <= self._through_tolerance and self._check_actual_arrival_through_tolerance(feedback_msg.feedback.current_pose.pose):
+            if not (self._distance_remaining <= self._through_tolerance
+                    and self._check_actual_arrival_through_tolerance(
+                        feedback_msg.feedback.current_pose.pose)):
+                return
+
             self._node.get_logger().info(
-                f"Within through tolerance ({self._through_tolerance} m). Canceling goal to proceed to next waypoint."
+                f"Within through tolerance ({self._through_tolerance} m). "
+                "Canceling goal to proceed to next waypoint."
             )
             self._through_cancel = True
-            if self._goal_handle is not None:
-                self._goal_handle.cancel_goal_async()
+            handle = self._goal_handle
+        if handle is not None:
+            handle.cancel_goal_async()
