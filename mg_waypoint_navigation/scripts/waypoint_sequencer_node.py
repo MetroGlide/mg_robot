@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import rclpy
+from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, ReliabilityPolicy
 
@@ -260,8 +261,10 @@ class WaypointSequencerNode(Node):
 def main(args=None):
     rclpy.init(args=args)
     node = WaypointSequencerNode()
+    # アクションスレッドのサービス応答や Nav2 の応答を、他のコールバック実行中にも処理できるようにする
+    executor = MultiThreadedExecutor()
     try:
-        rclpy.spin(node)
+        rclpy.spin(node, executor=executor)
     except KeyboardInterrupt:
         pass
     finally:
