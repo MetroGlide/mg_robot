@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+import copy
+
 import rclpy
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
@@ -158,7 +160,8 @@ class WaypointSequencerNode(Node):
         response.success = result.success
         response.message = result.message
         if result.success:
-            self._publish_waypoints_list(waypoints)
+            if self._publish_list:
+                self._publish_waypoints_list(waypoints)
             self._publish_markers(waypoints)
         return response
 
@@ -228,7 +231,7 @@ class WaypointSequencerNode(Node):
             marker.id = wp.index
             marker.type = Marker.ARROW
             marker.action = Marker.ADD
-            marker.pose = wp.pose.pose
+            marker.pose = copy.deepcopy(wp.pose.pose)
             marker.pose.position.z = 1.0
             marker.scale.x = 0.5
             marker.scale.y = 0.25
@@ -246,7 +249,7 @@ class WaypointSequencerNode(Node):
             text_marker.id = wp.index
             text_marker.type = Marker.TEXT_VIEW_FACING
             text_marker.action = Marker.ADD
-            text_marker.pose = wp.pose.pose
+            text_marker.pose = copy.deepcopy(wp.pose.pose)
             text_marker.pose.position.z = 1.5
             text_marker.scale.z = 0.4
             text_marker.color = ColorRGBA(r=1.0, g=1.0, b=1.0, a=1.0)
