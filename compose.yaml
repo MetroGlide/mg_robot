@@ -201,7 +201,7 @@ services:
       bash -c "
         source /opt/ros/humble/setup.bash &&
         source /root/ros2_ws/install/setup.bash &&
-        ros2 launch mg_scenario_test scenario_test.launch.py scenario_file:=$$SCENARIO_FILE ${OPTS:-}
+        ros2 launch sim_scenario_test scenario.launch.py scenario_file:=$$SCENARIO_FILE ${OPTS:-}
       "
 
   scenario-test-full:
@@ -217,7 +217,7 @@ services:
       bash -c "
         source /opt/ros/humble/setup.bash &&
         source /root/ros2_ws/install/setup.bash &&
-        ros2 launch mg_scenario_test scenario_test.launch.py \
+        ros2 launch sim_scenario_test scenario.launch.py \
           scenario_file:=$$SCENARIO_FILE ${OPTS:-}
       "
 
