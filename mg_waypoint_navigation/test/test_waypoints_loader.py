@@ -10,9 +10,9 @@ import yaml
 from mg_waypoint_navigation.waypoint import WaypointsLoader
 
 
-def _pose():
+def _pose(x=0.0, y=0.0):
     return {
-        "position": {"x": 0.0, "y": 0.0, "z": 0.0},
+        "position": {"x": x, "y": y, "z": 0.0},
         "orientation": {"x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0},
     }
 
@@ -56,3 +56,33 @@ def test_invalid_action_is_rejected(tmp_path, action):
 def test_non_contiguous_indices_are_rejected(tmp_path, indices):
     with pytest.raises(ValueError, match="indices"):
         _load(tmp_path, [{"index": i, "pose": _pose()} for i in indices])
+
+
+def test_no_warnings_for_well_spaced_waypoints(tmp_path):
+    wl = _load(tmp_path, [
+        {"index": 0, "pose": _pose(0.0)},
+        {"index": 1, "pose": _pose(10.0),
+         "navigation": {"is_through_point": False}},
+    ])
+    assert wl.warnings == []
+
+
+def test_warns_close_through_point(tmp_path):
+    wl = _load(tmp_path, [
+        {"index": 0, "pose": _pose(0.0)},
+        {"index": 1, "pose": _pose(2.0)},
+        {"index": 2, "pose": _pose(20.0),
+         "navigation": {"is_through_point": False}},
+    ])
+    assert len(wl.warnings) == 1
+    assert "waypoint 1" in wl.warnings[0]
+
+
+def test_warns_through_point_with_actions_and_last(tmp_path):
+    wl = _load(tmp_path, [
+        {"index": 0, "pose": _pose(0.0),
+         "on_reached_actions": [{"type": "amcl_reset"}]},
+        {"index": 1, "pose": _pose(10.0)},
+    ])
+    assert any("on_reached_actions" in w for w in wl.warnings)
+    assert any("last waypoint 1" in w for w in wl.warnings)

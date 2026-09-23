@@ -30,6 +30,7 @@ waypoints:
 
 - `index` は 0 からの連番とする（重複・欠番があると読み込みエラー）。
 - `defaults` を省略した場合は `is_through_point: true` / `through_tolerance: 3.0` になる。**最終ウェイポイントや on_reached_actions を持つウェイポイントも、指定しなければ通過点扱い**（3m 手前で到達とみなしてアクションを実行する）になる。その場で止まってほしい地点は `is_through_point: false` を明示すること。
+- 次の設定は読み込みを拒否せず、警告ログを出す: 隣り合う WP の間隔が後ろの WP の `through_tolerance` より短い通過点（すぐ通過扱いになる）、on_reached_actions を持つ通過点、最終 WP の通過点。
 - 読み込み時に on_reached_actions を検証する（未知の type、必須フィールドの欠落、import できない型の指定はエラー）。不正なファイルは読み込み・reload とも拒否される。
 
 ---

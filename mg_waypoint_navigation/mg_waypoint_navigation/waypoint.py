@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 from dataclasses import dataclass, field
+from math import hypot
 from typing import Any, Dict, List, Optional
 
 import yaml
@@ -190,6 +191,8 @@ class Waypoint:
 class WaypointList:
     def __init__(self):
         self.waypoints: List[Waypoint] = []
+        # 読み込み時に検出した、動作はするが意図と異なる可能性がある設定
+        self.warnings: List[str] = []
 
     def add(self, waypoint: Waypoint) -> None:
         self.waypoints.append(waypoint)
@@ -249,6 +252,7 @@ class WaypointsLoader:
         )
 
         waypoints = WaypointList()
+        positions: Dict[int, tuple] = {}
         for wp_raw in raw.get("waypoints", []):
             nav_raw = wp_raw.get("navigation", {})
             nav = NavigationConfig(
@@ -263,6 +267,9 @@ class WaypointsLoader:
                 ),
             )
             pose = self._parse_pose(wp_raw["pose"])
+            position_raw = wp_raw["pose"]["position"]
+            positions[wp_raw["index"]] = (
+                float(position_raw["x"]), float(position_raw["y"]))
             actions = [
                 ActionConfig.from_dict(a)
                 for a in wp_raw.get("on_reached_actions", [])
@@ -283,7 +290,40 @@ class WaypointsLoader:
             )
         waypoints.sort_by_index()
         self._validate_indices(waypoints)
+        waypoints.warnings = self._collect_warnings(waypoints, positions)
         return waypoints
+
+    @staticmethod
+    def _collect_warnings(
+        waypoints: WaypointList, positions: Dict[int, tuple]
+    ) -> List[str]:
+        """通過点の設定のうち、意図と異なる可能性があるものを列挙する。"""
+        warnings = []
+        all_waypoints = waypoints.get_all()
+        for i, wp in enumerate(all_waypoints):
+            nav = wp.navigation
+            if not nav.is_through_point:
+                continue
+            if i > 0:
+                prev_x, prev_y = positions[all_waypoints[i - 1].index]
+                x, y = positions[wp.index]
+                distance = hypot(x - prev_x, y - prev_y)
+                if distance < nav.through_tolerance:
+                    warnings.append(
+                        f"waypoint {wp.index} is {distance:.2f} m from waypoint "
+                        f"{all_waypoints[i - 1].index}, shorter than its "
+                        f"through_tolerance {nav.through_tolerance} m; "
+                        "it may be passed immediately")
+            if wp.on_reached_actions:
+                warnings.append(
+                    f"waypoint {wp.index} has on_reached_actions but is a "
+                    f"through point; actions run up to "
+                    f"{nav.through_tolerance} m before it")
+            if i == len(all_waypoints) - 1:
+                warnings.append(
+                    f"last waypoint {wp.index} is a through point; the goal is "
+                    f"reached up to {nav.through_tolerance} m before it")
+        return warnings
 
     @staticmethod
     def _validate_indices(waypoints: WaypointList) -> None:

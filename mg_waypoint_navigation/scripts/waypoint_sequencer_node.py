@@ -118,10 +118,15 @@ class WaypointSequencerNode(Node):
         self.get_logger().info(
             f"Loaded {waypoints.get_size()} waypoints from {self._load_path}"
         )
+        self._log_waypoint_warnings(waypoints)
 
         if self._publish_list:
             self._publish_waypoints_list(waypoints)
         self._publish_markers(waypoints)
+
+    def _log_waypoint_warnings(self, waypoints: WaypointList):
+        for warning in waypoints.warnings:
+            self.get_logger().warn(warning)
 
     # ------------------------------------------------------------------
     # サービスコールバック
@@ -157,6 +162,7 @@ class WaypointSequencerNode(Node):
         response.success = result.success
         response.message = result.message
         if result.success:
+            self._log_waypoint_warnings(waypoints)
             if self._publish_list:
                 self._publish_waypoints_list(waypoints)
             self._publish_markers(waypoints)
