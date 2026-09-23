@@ -69,6 +69,7 @@ def env():
             nav=mock_nav,
             executor=mock_exec,
             fire_nav_success=lambda: nav_cb[0](NavigationResult.SUCCEEDED),
+            fire_nav_passed=lambda: nav_cb[0](NavigationResult.PASSED),
             fire_nav_failed=lambda: nav_cb[0](NavigationResult.FAILED),
             fire_nav_canceled=lambda: nav_cb[0](NavigationResult.CANCELED),
             fire_countdown=lambda: fsm._on_starting_done(
@@ -162,6 +163,38 @@ class TestNormalFlow:
         assert env.fsm.current_index == 2
         env.fire_nav_success()
         assert env.fsm.state == SequencerState.GOAL_REACHED
+
+
+# ---------------------------------------------------------------------------
+# 通過点 (PASSED)
+# ---------------------------------------------------------------------------
+
+class TestPassed:
+    def test_passed_preempts_next_goal_without_cancel(self, env):
+        env.fsm.load_waypoints(_make_wl([], []))
+        env.fsm.start(0)
+        env.fire_countdown()
+        env.fire_nav_passed()
+        assert env.fsm.state == SequencerState.NAVIGATING
+        assert env.fsm.current_index == 1
+        env.nav.cancel.assert_not_called()
+        assert env.nav.send_goal.call_count == 2
+
+    def test_passed_with_actions_cancels(self, env):
+        env.fsm.load_waypoints(_make_wl([ActionConfig(type="wait")], []))
+        env.fsm.start(0)
+        env.fire_countdown()
+        env.fire_nav_passed()
+        assert env.fsm.state == SequencerState.ON_ARRIVING
+        env.nav.cancel.assert_called_once()
+
+    def test_passed_last_waypoint_cancels(self, env):
+        env.fsm.load_waypoints(_make_wl([]))
+        env.fsm.start(0)
+        env.fire_countdown()
+        env.fire_nav_passed()
+        assert env.fsm.state == SequencerState.GOAL_REACHED
+        env.nav.cancel.assert_called_once()
 
 
 # ---------------------------------------------------------------------------

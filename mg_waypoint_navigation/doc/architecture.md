@@ -164,17 +164,32 @@ stateDiagram-v2
 | `bt_xml_queue_wait`       | string | パッケージ内 `mg_navigate_to_pose_queue_wait.xml` | queue_wait モードの BT |
 | `goal_checker_set_parameters_service` | string | `/controller_server/set_parameters` | reach_tolerance を反映する先 |
 | `goal_checker_xy_tolerance_param` | string | `general_goal_checker.xy_goal_tolerance` | reach_tolerance を書き込むパラメータ名 |
+| `plan_topic`              | string | `/plan`    | 通過点判定に使う経路のトピック   |
+| `plan_goal_match_tolerance` | double | `0.6`    | 経路の終点をゴールのものとみなす距離 [m]（NavFn の `tolerance` 以上にする） |
 
 ### 到達判定
 
 - **停止点** (`is_through_point: false`): Nav2 の goal_checker で判定する。ゴール送信前に、`reach_tolerance` を `xy_goal_tolerance` として動的に設定する（サービスが無い・失敗した場合は警告を出し、現在値のまま送信する）。
-- **通過点** (`is_through_point: true`): Nav2 のフィードバックで残距離と直線距離がどちらも `through_tolerance` 以下になった時点でゴールをキャンセルし、到達とみなして次へ進む。`reach_tolerance` も goal_checker に設定されるので、それ以前に Nav2 が成功を返した場合も到達になる。
+- **通過点** (`is_through_point: true`): 次の 3 条件をすべて満たした時点で通過 (`PASSED`) とする。
+  1. ゴール送信後に受信した `/plan`（planner_server が publish）で、終点がゴールから `plan_goal_match_tolerance` 以内のものを採用済み。前のゴールへの経路は使わない。
+  2. 採用した経路に沿った残り距離が `through_tolerance` 以下。最近傍点は前回位置から経路に沿って 2m 先までだけ探す（経路が自分の近くを再び通る形でも、先の区間を誤って選ばない）。
+  3. ゴールまでの直線距離が `through_tolerance` 以下。
+
+  Nav2 フィードバックの `distance_remaining` は判定に使わない。BT blackboard の経路はゴールをまたいで残るので、新しいゴールの経路を計画し終えるまで、前の経路で計算した値が返るため。
+  `reach_tolerance` も goal_checker に設定されるので、それより前に Nav2 が成功を返した場合も到達になる。
+
+### 通過後のゴールの扱い（preemption）
+
+- 通過した後も Nav2 のゴールは止めない。FSM がすぐ次の WP へ向かう場合は、同じ BT の次のゴールでそのまま**上書き**する（bt_navigator の preemption）。ロボットは減速・停止せずに走り続ける。上書きされた古いゴールは ABORTED で終わるが、無視する。
+- 次のいずれかの場合は `cancel` して止まる: アクション実行（ON_ARRIVING）、最終 WP（GOAL_REACHED）、wait_trigger（IDLE）、pause（SUSPENDED）。
+- BT が異なるゴール（navigation_mode の切り替え）は Nav2 が上書きを受け付けない。キャンセル中のゴールも同様。これらの場合は、走っているゴールの終了を待ってから次のゴールを送る。
+- 上書き直後にすぐ経路を計画し直すため、両方の BT に `GoalUpdatedController` を入れている（RateController の周期を待つと、最大 1〜2 秒のあいだ古い経路を追従してしまうため）。`mg_navigation/params/nav2_params.yaml` の `plugin_lib_names` に `nav2_goal_updated_controller_bt_node` が必要。
 
 ### スレッドモデル
 
 - ノードは `MultiThreadedExecutor` で spin する。Nav2 アクションクライアントとアクション用のサービスクライアントは `ReentrantCallbackGroup` に属する。
 - on_reached_actions は `ActionExecutor` の別スレッドで実行する。サービス応答は spin せず `threading.Event` で待つ（ノードは既に executor で spin されているため）。
-- `WaypointNavigator` はゴールごとに世代 ID を振り、キャンセル後や次ゴール送信後に届いた古い応答・結果を無視する。受理前にキャンセルされたゴールは、受理された直後にキャンセルする。
+- `WaypointNavigator` は、FSM から見た論理ゴールと、Nav2 上で実際に走っているゴールを区別して管理する。論理ゴールには世代 ID を振り、キャンセル後や次ゴール送信後に届いた古い応答・結果を無視する。受理前にキャンセルされたゴールは、受理された直後にキャンセルする。
 
 ---
 

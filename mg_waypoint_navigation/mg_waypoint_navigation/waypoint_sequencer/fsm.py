@@ -93,6 +93,9 @@ class WaypointSequencerFSM:
     - 処理完了後は内部コールバックで次の安定状態へ移行する。
     - 外部から _transition() を呼ばない。
     - IDLE は「未開始」と「途中ウェイポイントのトリガー待ち」を兼ねる（_current_index で区別）。
+    - 通過点を通過 (PASSED) した後は Nav2 のゴールが走り続けている。すぐ次のウェイポイントへ
+      向かう場合はそのゴールを上書きし、それ以外 (アクション実行・終了・トリガー待ち・一時停止)
+      では navigator.cancel() で止める。
     - pause は一時停止であり、全スロット解除で中断した箇所から自動再開する。
       ON_ARRIVING 中の pause はアクション完了を待ち、次ウェイポイントへ進む手前で SUSPENDED になる。
     """
@@ -266,6 +269,7 @@ class WaypointSequencerFSM:
         )
 
     def _enter_on_arriving(self, actions) -> None:
+        self._navigator.cancel()
         for action in actions:
             if action.type == "set_navigation_mode":
                 self._navigation_mode = getattr(action, "mode", "normal")
@@ -291,7 +295,7 @@ class WaypointSequencerFSM:
             if result == NavigationResult.CANCELED:
                 return
 
-            if result != NavigationResult.SUCCEEDED:
+            if result not in (NavigationResult.SUCCEEDED, NavigationResult.PASSED):
                 self._node.get_logger().error(
                     f"Navigation to waypoint {self._current_index} failed"
                 )
@@ -318,6 +322,7 @@ class WaypointSequencerFSM:
         if self._stop_pending:
             self._stop_pending = False
             self._pause_manager.clear_all()
+            self._navigator.cancel()
             self._transition(SequencerState.IDLE)
             return
 
@@ -325,14 +330,17 @@ class WaypointSequencerFSM:
         self._current_index += 1
 
         if self._current_index >= self._waypoints.get_size():
+            self._navigator.cancel()
             self._transition(SequencerState.GOAL_REACHED)
             return
 
         if any(a.type == "wait_trigger" for a in waypoint.on_reached_actions):
+            self._navigator.cancel()
             self._transition(SequencerState.IDLE)
             return
 
         if self._pause_manager.is_active:
+            self._navigator.cancel()
             self._pre_suspend_state = SequencerState.NAVIGATING
             self._transition(SequencerState.SUSPENDED)
             return
