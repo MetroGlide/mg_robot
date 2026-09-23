@@ -1,10 +1,23 @@
 from __future__ import annotations
 
+import importlib
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 import yaml
 from geometry_msgs.msg import PoseStamped, Point, Quaternion
+
+
+ACTION_TYPES = (
+    "service",
+    "publish",
+    "load_map",
+    "amcl_reset",
+    "wait",
+    "wait_trigger",
+    "set_navigation_mode",
+)
+NAVIGATION_MODES = ("normal", "queue_wait")
 
 
 @dataclass
@@ -16,7 +29,7 @@ class NavigationConfig:
 
 @dataclass
 class ActionConfig:
-    type: str  # "service" | "publish" | "load_map" | "amcl_reset" | "wait" | "wait_trigger" | "set_navigation_mode"
+    type: str  # ACTION_TYPES のいずれか
 
     # service
     service: str = ""
@@ -100,6 +113,46 @@ class ActionConfig:
             return cls(type=action_type, mode=d.get("mode", "normal"))
         else:
             return cls(type=action_type)
+
+    def validate(self) -> None:
+        """実行時に失敗する定義を読み込み時に検出する。不正なら ValueError。"""
+        if self.type not in ACTION_TYPES:
+            raise ValueError(f"unknown action type {self.type!r}")
+        if self.type == "service":
+            self._require("service", "srv_module", "srv_class")
+            self._require_importable(self.srv_module, self.srv_class)
+        elif self.type == "publish":
+            self._require("topic", "msg_module", "msg_class")
+            self._require_importable(self.msg_module, self.msg_class)
+        elif self.type == "load_map":
+            if not (self.localization or self.planning):
+                raise ValueError(
+                    "load_map requires 'localization' or 'planning'")
+        elif self.type == "wait":
+            if not isinstance(self.countdown_ms, int) or self.countdown_ms < 0:
+                raise ValueError(
+                    f"wait.countdown_ms must be a non-negative int: "
+                    f"{self.countdown_ms!r}")
+        elif self.type == "set_navigation_mode":
+            if self.mode not in NAVIGATION_MODES:
+                raise ValueError(
+                    f"set_navigation_mode.mode must be one of "
+                    f"{NAVIGATION_MODES}: {self.mode!r}")
+
+    def _require(self, *names: str) -> None:
+        for name in names:
+            if not getattr(self, name):
+                raise ValueError(f"{self.type} requires '{name}'")
+
+    def _require_importable(self, module_name: str, class_name: str) -> None:
+        try:
+            module = importlib.import_module(module_name)
+        except ModuleNotFoundError as e:
+            raise ValueError(
+                f"{self.type}: cannot import module {module_name!r}") from e
+        if not hasattr(module, class_name):
+            raise ValueError(
+                f"{self.type}: {class_name!r} not found in {module_name!r}")
 
 
 @dataclass
@@ -214,6 +267,12 @@ class WaypointsLoader:
                 ActionConfig.from_dict(a)
                 for a in wp_raw.get("on_reached_actions", [])
             ]
+            for action in actions:
+                try:
+                    action.validate()
+                except ValueError as e:
+                    raise ValueError(
+                        f"waypoint index {wp_raw['index']}: {e}") from e
             waypoints.add(
                 Waypoint(
                     index=wp_raw["index"],
@@ -223,7 +282,17 @@ class WaypointsLoader:
                 )
             )
         waypoints.sort_by_index()
+        self._validate_indices(waypoints)
         return waypoints
+
+    @staticmethod
+    def _validate_indices(waypoints: WaypointList) -> None:
+        """index が 0 から連番であることを確認する（リスト位置と index を一致させる）。"""
+        indices = [w.index for w in waypoints.get_all()]
+        if indices != list(range(len(indices))):
+            raise ValueError(
+                f"waypoint indices must be 0..{len(indices) - 1} without "
+                f"duplicates or gaps: {indices}")
 
     @staticmethod
     def _parse_pose(pose_raw: dict) -> PoseStamped:
