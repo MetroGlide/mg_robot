@@ -135,7 +135,13 @@ controller_server:
     min_x_velocity_threshold: 0.001
     min_y_velocity_threshold: 0.5
     min_theta_velocity_threshold: 0.001
-    failure_tolerance: 0.5
+    # controller が有効な速度を出せない状態 (前方に障害物、進捗なし等) を許容する時間 [s]。
+    # この間は速度 0 を出して待ち、超えると FollowPath が失敗して BT のリカバリー (Wait/BackUp) に入る。
+    # 一時的な障害物なら消えるまで待つだけで再開できるよう、progress_checker の
+    # movement_time_allowance と同じ 5.0 にしている (0.5 だと出現から 1 秒足らずでリカバリーに入る)。
+    # -1 (無期限) にはしないこと: progress_checker の「進捗なし」の失敗まで無視され、詰まっても
+    # FollowPath が失敗せず、リカバリーにも入れず永久に停止する (Gazebo で確認)。
+    failure_tolerance: 5.0
     progress_checker_plugin: "progress_checker"
     goal_checker_plugins: ["general_goal_checker"]
     controller_plugins: ["FollowPath"]
@@ -194,6 +200,12 @@ local_costmap:
       resolution: 0.05
 
       footprint: "[[0.4, 0.3], [0.4, -0.3], [-0.2, -0.3], [-0.2, 0.3]]"
+      # 膨張レイヤーの内接半径は「フットプリントの原点から最も近い辺までの距離」で決まる。
+      # このフットプリントは原点が後端寄り (後端 0.2m) なので、半幅 (0.3m) より小さい 0.2m になり、
+      # 幅 0.5m 未満の隙間 (例: 間隔 0.8m のコーン) が致死扱いにならず、プランナ (NavFn) が
+      # 通れると誤認してその隙間へ経路を引く。RPP は実フットプリントで衝突と判定して進めず、
+      # 詰まって失敗する。0.1 の余白で内接半径を 0.3m (= 半幅) にして、通れない隙間を塞ぐ。
+      footprint_padding: 0.1
 
       plugins: [
           "top_obstacle_layer",
@@ -300,6 +312,12 @@ global_costmap:
       use_sim_time: False
 
       footprint: "[[0.4, 0.3], [0.4, -0.3], [-0.2, -0.3], [-0.2, 0.3]]"
+      # 膨張レイヤーの内接半径は「フットプリントの原点から最も近い辺までの距離」で決まる。
+      # このフットプリントは原点が後端寄り (後端 0.2m) なので、半幅 (0.3m) より小さい 0.2m になり、
+      # 幅 0.5m 未満の隙間 (例: 間隔 0.8m のコーン) が致死扱いにならず、プランナ (NavFn) が
+      # 通れると誤認してその隙間へ経路を引く。RPP は実フットプリントで衝突と判定して進めず、
+      # 詰まって失敗する。0.1 の余白で内接半径を 0.3m (= 半幅) にして、通れない隙間を塞ぐ。
+      footprint_padding: 0.1
 
       resolution: 0.05
       track_unknown_space: true
@@ -508,7 +526,7 @@ collision_monitor:
     # enabled は動的パラメータのため ros2 param set での即時切替も可能。
     PolygonStop:
       type: "polygon"
-      points: &collision_front_polygon [0.6, 0.3, 0.6, -0.3, 0.3, -0.3, 0.3, 0.3]
+      points: [0.6, 0.3, 0.6, -0.3, 0.3, -0.3, 0.3, 0.3]
       action_type: "stop"
       min_points: 4
       enabled: true
@@ -517,7 +535,7 @@ collision_monitor:
 
     PolygonApproach:
       type: "polygon"
-      points: *collision_front_polygon
+      points: [0.6, 0.3, 0.6, -0.3, 0.3, -0.3, 0.3, 0.3]
       action_type: "approach"
       time_before_collision: 2.0
       simulation_time_step: 0.1

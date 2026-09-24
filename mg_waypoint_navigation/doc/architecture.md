@@ -162,21 +162,19 @@ stateDiagram-v2
 | `publish_waypoints_list`  | bool   | `true`     | ウェイポイントリストパブリッシュ |
 | `bt_xml_normal`           | string | パッケージ内 `mg_navigate_to_pose.xml` | 通常モードの BT |
 | `bt_xml_queue_wait`       | string | パッケージ内 `mg_navigate_to_pose_queue_wait.xml` | queue_wait モードの BT |
-| `goal_checker_set_parameters_service` | string | `/controller_server/set_parameters` | reach_tolerance を反映する先 |
-| `goal_checker_xy_tolerance_param` | string | `general_goal_checker.xy_goal_tolerance` | reach_tolerance を書き込むパラメータ名 |
 | `plan_topic`              | string | `/plan`    | 通過点判定に使う経路のトピック   |
 | `plan_goal_match_tolerance` | double | `0.6`    | 経路の終点をゴールのものとみなす距離 [m]（NavFn の `tolerance` 以上にする） |
 
 ### 到達判定
 
-- **停止点** (`is_through_point: false`): Nav2 の goal_checker で判定する。ゴール送信前に、`reach_tolerance` を `xy_goal_tolerance` として動的に設定する（サービスが無い・失敗した場合は警告を出し、現在値のまま送信する）。
+- **停止点** (`is_through_point: false`): Nav2 の goal_checker で判定する。到達半径は `nav2_params.yaml` の `general_goal_checker.xy_goal_tolerance` で全 WP 共通。`reach_tolerance` は使わない（`xy_goal_tolerance` を実行時に変更すると controller が停止する問題があるため）。
 - **通過点** (`is_through_point: true`): 次の 3 条件をすべて満たした時点で通過 (`PASSED`) とする。
   1. ゴール送信後に受信した `/plan`（planner_server が publish）で、終点がゴールから `plan_goal_match_tolerance` 以内のものを採用済み。前のゴールへの経路は使わない。
   2. 採用した経路に沿った残り距離が `through_tolerance` 以下。最近傍点は前回位置から経路に沿って 2m 先までだけ探す（経路が自分の近くを再び通る形でも、先の区間を誤って選ばない）。
   3. ゴールまでの直線距離が `through_tolerance` 以下。
 
   Nav2 フィードバックの `distance_remaining` は判定に使わない。BT blackboard の経路はゴールをまたいで残るので、新しいゴールの経路を計画し終えるまで、前の経路で計算した値が返るため。
-  `reach_tolerance` も goal_checker に設定されるので、それより前に Nav2 が成功を返した場合も到達になる。
+  goal_checker の `xy_goal_tolerance` 以内に入って Nav2 が成功を返した場合も到達になる。
 
 ### 通過後のゴールの扱い（preemption）
 

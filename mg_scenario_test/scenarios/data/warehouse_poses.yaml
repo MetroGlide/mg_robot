@@ -1,0 +1,5 @@
+# sim_scenario_test 組み込みの waypoint 形式 (poses)。warehouse で到達できることを確認済みのゴール。
+waypoints:
+  - { x: 5.0, y: 2.0, yaw: 0.0 }
+  - { x: 10.0, y: 6.0, yaw: 1.57 }
+  - { x: 5.0, y: 2.0, yaw: 3.14 }

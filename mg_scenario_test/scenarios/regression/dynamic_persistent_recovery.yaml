@@ -1,0 +1,38 @@
+version: "2.0"
+name: dynamic_persistent_recovery
+description: >
+  進路の正面 1.2m に幅 5m の壁が出現して居座る (迂回できない配置)。待機時間
+  (failure_tolerance 5 秒) を超えると FollowPath が失敗し、BT のリカバリー (BackUp) が動くこと、
+  壁の除去後にゴールへ到達できることを確認する。
+  障害物が人 (幅が狭い) だと、ロボットが経路を変えて迂回してしまいリカバリーが起きないため、壁にしている。
+profile: mg01
+world: warehouse
+tags: [full, dynamic_obstacle, recovery, nav2_goals]
+
+obstacles:
+  wall:
+    model: { type: primitive, shape: box, size: { x: 0.3, y: 5.0, z: 1.5 }, static: true }
+
+setup:
+  - respawn: { pose: { x: 0.0, y: 0.0, yaw: 0.0 }, settle_sec: 3.0 }
+
+run:
+  nav2_goals:
+    behavior_tree: "pkg://mg_waypoint_navigation/behavior_trees/mg_navigate_to_pose.xml"
+    goals:
+      - pose: { x: 10.0, y: 6.0, yaw: 1.57 }
+
+timeline:
+  - name: wall_blocks_then_leaves
+    when: { robot_travelled: { distance: 2.0 } }
+    do:
+      - spawn: { obstacle: wall, pose: { frame: robot, x: 1.2, y: 0.0, z: 0.75 } }
+      - delay: { sec: 25.0 }
+      - despawn: { obstacle: wall }
+
+monitors:
+  - bt_node: { node: BackUp, status: RUNNING, expect: occurs }
+
+expect:
+  - reached_all
+  - time_limit: { sec: 180 }

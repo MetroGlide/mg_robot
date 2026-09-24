@@ -1,0 +1,37 @@
+version: "2.0"
+name: waypoint_all_actions
+description: >
+  waypoint の到達時アクション (on_reached_actions) を全種類含む waypoint シーケンスを走行し、
+  各アクションが実行され、その後の走行が破綻しないことを確認する。
+    WP0: publish, service, wait
+    WP1: load_map, wait_trigger (外部の ~/start を待つ。auto_start が再開する)
+    WP2: set_navigation_mode (queue_wait), wait
+    WP3: set_navigation_mode (normal), amcl_reset
+  効果の確認: publish はマーカートピックの受信、load_map は地図の再配信 (/map, /planning_map) で確認する。
+  service / wait / wait_trigger / set_navigation_mode は、シーケンスが最後まで進むこと自体で確認する。
+  amcl_reset は最後の WP に置き、実行成功までを確認する (実行後の走行は行わない)。
+profile: mg01
+world: warehouse
+tags: [full, mg_sequencer, waypoint_actions]
+
+stack_args:
+  waypoints_load_path: "pkg://mg_scenario_test/scenarios/data/actions_waypoints.yaml"
+
+setup:
+  - respawn: { pose: { x: 0.0, y: 0.0, yaw: 0.0 }, settle_sec: 3.0 }
+
+run:
+  mg_sequencer:
+    waypoints_file: "pkg://mg_scenario_test/scenarios/data/actions_waypoints.yaml"
+    waypoint_timeout_sec: 120
+
+monitors:
+  - topic_received: { topic: /scenario_marker, type: String, data: wp0_published }
+  - topic_received: { topic: /map, type: OccupancyGrid }
+  - topic_received: { topic: /planning_map, type: OccupancyGrid }
+  # queue_wait モードの BT (Wait のみ) と normal モードのリカバリー (BackUp) が、平時に動かないこと
+  - bt_node: { node: BackUp, status: RUNNING, expect: never }
+
+expect:
+  - reached_all
+  - time_limit: { sec: 300 }

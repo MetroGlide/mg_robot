@@ -1,0 +1,58 @@
+version: "2.0"
+name: inline_goals_obstacle_avoidance
+description: >
+  インラインで定義した 2 つのゴールへ順に走行する例。静的障害物を事前配置し、
+  走行中に人をロボット前方へ出現させて回避できることを確認する。
+profile: mg01
+world: warehouse
+tags: [example, nav2_goals, smoke]
+
+# 障害物の名前付き定義 (action から参照する)。
+# 大きなメッシュのモデルはソフトウェアレンダリング環境で RTF を大きく下げるため、
+# 壁・バリア類は primitive を推奨する (docs/writing_scenarios.md 参照)
+obstacles:
+  barrier_0:
+    model: { type: primitive, shape: box, size: { x: 2.0, y: 0.6, z: 0.8 } }
+  barrier_1:
+    model: { type: primitive, shape: box, size: { x: 2.0, y: 0.6, z: 0.8 } }
+  person_0:
+    model: { type: fuel, uri: "OpenRobotics/models/MaleVisitorOnPhone" }
+  test_box:
+    model: { type: primitive, shape: box, size: { x: 0.6, y: 0.6, z: 1.2 } }
+
+# 走行前の準備: 初期位置へ移動し、自己位置推定とコストマップを初期化する
+setup:
+  - respawn: { pose: { x: 0.0, y: 0.0, yaw: 0.0 }, settle_sec: 3.0 }
+
+run:
+  nav2_goals:
+    goals:
+      - pose: { x: 5.0, y: 2.0, yaw: 0.0 }
+        before:
+          - spawn: { obstacle: barrier_0, pose: { x: 3.0, y: 1.0, z: 0.4 } }
+          - spawn: { obstacle: test_box, pose: { x: 2.5, y: -0.5, z: 0.6, yaw: 0.785 } }
+        after:
+          - despawn: { obstacle: barrier_0 }
+          - despawn: { obstacle: test_box }
+      - pose: { x: 10.0, y: 6.0, yaw: 1.57 }
+        before:
+          - spawn: { obstacle: barrier_1, pose: { x: 8.0, y: 4.0, z: 0.4 } }
+        after:
+          - despawn: { obstacle: barrier_1 }
+
+timeline:
+  # ゴール 0 への走行開始 5 秒後、ロボット正面 2m に人が飛び出す
+  - name: person_jumps_out
+    when: { goal_started: { index: 0 } }
+    until: { goal_reached: { index: 0 } }
+    do:
+      - delay: { sec: 5.0 }
+      - spawn: { obstacle: person_0, pose: { frame: robot, x: 2.0, yaw: 3.14 } }
+  - name: person_leaves
+    when: { goal_reached: { index: 0 } }
+    required: false
+    do:
+      - despawn: { obstacle: person_0 }
+
+expect:
+  - reached_all

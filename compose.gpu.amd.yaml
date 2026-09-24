@@ -3,3 +3,7 @@ services:
     devices:
       - /dev/kfd
       - /dev/dri
+  scenario-test:
+    devices:
+      - /dev/kfd
+      - /dev/dri

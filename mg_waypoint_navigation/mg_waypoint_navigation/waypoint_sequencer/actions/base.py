@@ -3,12 +3,16 @@ from __future__ import annotations
 
 import abc
 import threading
+import time
 from typing import Any, Dict, Optional, Tuple
 
 import rclpy.node
 from rclpy.callback_groups import ReentrantCallbackGroup
 
 from mg_waypoint_navigation.waypoint import ActionConfig
+
+# publisher を新規に作ったとき、購読側が見つかるまで待つ最大時間 [s]
+_SUBSCRIBER_WAIT_SEC = 1.0
 
 
 class EndpointCache:
@@ -32,10 +36,17 @@ class EndpointCache:
     def get_publisher(self, msg_type: Any, topic: str):
         with self._lock:
             key = (msg_type, topic)
-            if key not in self._publishers:
-                self._publishers[key] = self._node.create_publisher(
-                    msg_type, topic, 1)
-            return self._publishers[key]
+            publisher = self._publishers.get(key)
+            if publisher is not None:
+                return publisher
+            publisher = self._node.create_publisher(msg_type, topic, 1)
+            self._publishers[key] = publisher
+        # 作った直後に 1 回だけ publish すると、購読側の発見が間に合わず取りこぼされるので、
+        # 新規に作ったときだけ購読側が見つかるまで短く待つ (見つからなくても続行する)
+        deadline = time.monotonic() + _SUBSCRIBER_WAIT_SEC
+        while publisher.get_subscription_count() == 0 and time.monotonic() < deadline:
+            time.sleep(0.05)
+        return publisher
 
 
 class BaseAction(abc.ABC):

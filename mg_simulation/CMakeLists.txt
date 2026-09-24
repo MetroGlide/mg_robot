@@ -3,7 +3,7 @@ project(mg_simulation)
 
 find_package(ament_cmake REQUIRED)
 
-install(DIRECTORY launch worlds config models
+install(DIRECTORY launch worlds config models maps
   DESTINATION share/${PROJECT_NAME}
 )
 

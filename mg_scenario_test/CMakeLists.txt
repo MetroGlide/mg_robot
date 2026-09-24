@@ -6,13 +6,11 @@ find_package(ament_cmake_python REQUIRED)
 
 ament_python_install_package(${PROJECT_NAME})
 
-install(PROGRAMS
-  scripts/scenario_test_node.py
-  DESTINATION lib/${PROJECT_NAME}
-)
-
-install(DIRECTORY launch scenarios
+install(DIRECTORY profiles scenarios
   DESTINATION share/${PROJECT_NAME}
 )
+
+# sim_scenario_test がプロファイル名から share/<pkg>/profiles を探せるよう登録する
+ament_index_register_resource("sim_scenario_test.profiles")
 
 ament_package()

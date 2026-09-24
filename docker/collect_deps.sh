@@ -15,6 +15,7 @@ PRUNE_NAMES=(
   "docker"
   "mg_simulation"
   "mg_scenario_test"
+  "sim_scenario_test"
   "mg_simulator_client"
 )
 

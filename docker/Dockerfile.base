@@ -162,7 +162,7 @@ ENV CCACHE_DIR=/root/.ccache
 RUN --mount=type=cache,id=mg-ccache,target=/root/.ccache \
   . /opt/ros/${ROS_DISTRO}/setup.sh && \
   colcon build --symlink-install \
-    --packages-select mg_simulation mg_scenario_test mg_simulator_client ros_tcp_endpoint \
+    --packages-select mg_simulation sim_scenario_test mg_scenario_test mg_simulator_client ros_tcp_endpoint \
     --cmake-args \
       -DCMAKE_C_COMPILER_LAUNCHER=ccache \
       -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \

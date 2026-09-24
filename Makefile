@@ -16,7 +16,7 @@ _up_flags = $(if $(DETACH),-d,)
 _compose_opts = $(if $(OPTS),OPTS="$(OPTS)" )
 
 .PHONY: slam navigation rosbag-replay obstacle-detection-replay gazebo-simulation develop \
-        scenario-test scenario-test-full \
+        scenario-test scenario-test-all scenario-test-attach scenario-validate \
         slam-gnss-2d offline-slam-gnss-2d \
         shell shell-develop logs ps restart \
         build build-all build-no-cache build-robot build-real build-robot-no-cache build-real-no-cache build-sim \
@@ -50,16 +50,34 @@ offline-slam-gnss-2d:
 gazebo-simulation:
 	$(_compose_opts)$(COMPOSE) up $(_up_flags) gazebo-simulation
 
-# make scenario-test
-# make scenario-test SCENARIO=/app/mg_scenario_test/scenarios/example_waypoints_file.yaml
-# make scenario-test SCENARIO=/app/mg_scenario_test/scenarios/example_inline_goals.yaml HEADLESS=false
-scenario-test:
-	$(if $(SCENARIO),SCENARIO_FILE=$(SCENARIO) )$(if $(HEADLESS),HEADLESS=$(HEADLESS) )$(_compose_opts)$(COMPOSE) up $(_up_flags) scenario-test
+# --- シナリオテスト (詳細: mg_scenario_test/README.md) ---
+# シナリオは名前 (mg_scenario_test/scenarios/<name>.yaml) またはパスで指定する。
+# 終了コード: 0=PASSED, 1=FAILED, 2=ERROR。結果は ${ROS2_DATA_PATH}/scenario_results/<日時>/ に保存される。
+_scenario_dir = /app/mg_scenario_test/scenarios
+_scenario_dirs = --scenario-dir $(_scenario_dir)/regression --scenario-dir $(_scenario_dir)/examples
+_scenario_results = --results-dir /root/ros2_data/scenario_results/$$(date +%Y%m%d_%H%M%S)
+_scenario_run = $(COMPOSE) run --rm -e SCENARIO_ARGS
 
-# make scenario-test-full
-# make scenario-test-full SCENARIO=/app/mg_scenario_test/scenarios/example_inline_goals.yaml HEADLESS=false
-scenario-test-full:
-	$(if $(SCENARIO),SCENARIO_FILE=$(SCENARIO) )$(if $(HEADLESS),HEADLESS=$(HEADLESS) )$(_compose_opts)$(COMPOSE) up $(_up_flags) scenario-test-full
+# make scenario-test SCENARIO=nav_basic_goal [GUI=1] [PROFILE=mg01]
+# シミュレータ・ナビゲーションごと起動して 1 本実行する (デフォルトはヘッドレス)。
+# SCENARIO は regression/・examples/ 配下のシナリオ名 (拡張子なし)、またはコンテナ内のパス
+scenario-test:
+	$(_scenario_run)="run $(SCENARIO) $(_scenario_dirs) $(_scenario_results) $(if $(GUI),--gui) $(if $(PROFILE),--profile $(PROFILE))" scenario-test
+
+# make scenario-test-all [TIER=smoke|full] [TAGS=a,b] [REPEAT=N] [EXAMPLES=1]
+# 回帰テスト (scenarios/regression) を、1 本ごとにスタックを起動し直して実行する。
+# TIER=smoke は smoke タグのみ (変更ごとの確認用)、省略または full は全件。EXAMPLES=1 で examples/ も含める。
+# known_issue タグ (既知の問題で失敗するシナリオ) は既定で除外する。KNOWN=1 で含める
+scenario-test-all:
+	$(_scenario_run)="run-all $(_scenario_dir)/regression $(if $(EXAMPLES),$(_scenario_dir)/examples) $(_scenario_results) $(if $(KNOWN),,--exclude-tags known_issue) $(if $(filter smoke,$(TIER)),--tags smoke) $(if $(TAGS),--tags $(TAGS)) $(if $(REPEAT),--repeat $(REPEAT)) $(if $(PROFILE),--profile $(PROFILE))" scenario-test
+
+# make scenario-test-attach SCENARIO=... (make gazebo-simulation と make navigation の起動が前提。開発時の反復用)
+scenario-test-attach:
+	$(_scenario_run)="run $(SCENARIO) $(_scenario_dirs) $(_scenario_results) --attach $(if $(PROFILE),--profile $(PROFILE))" scenario-test
+
+# make scenario-validate  (シミュレータ不要。同梱シナリオの YAML を検証する)
+scenario-validate:
+	$(_scenario_run)="validate $(_scenario_dir)" --no-deps scenario-test
 
 develop:
 	$(COMPOSE) up -d develop

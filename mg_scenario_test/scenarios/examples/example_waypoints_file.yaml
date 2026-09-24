@@ -1,0 +1,56 @@
+version: "2.0"
+name: waypoints_file_with_events
+description: >
+  waypoint ファイル (組み込みの poses 形式) のゴールを NavigateToPose で順に直接走行する例。
+  waypoint の index ごとに障害物の配置・除去を行う。
+profile: mg01
+world: warehouse
+tags: [example, nav2_goals]
+
+obstacles:
+  person_0:
+    model: { type: fuel, uri: "OpenRobotics/models/MaleVisitorOnPhone" }
+  person_1:
+    model: { type: fuel, uri: "OpenRobotics/models/MaleVisitorOnPhone" }
+  barrier_mid:
+    model: { type: primitive, shape: box, size: { x: 2.0, y: 0.6, z: 0.8 } }
+
+setup:
+  - respawn: { pose: { x: 0.0, y: 0.0, yaw: 0.0 }, settle_sec: 3.0 }
+
+run:
+  nav2_goals:
+    waypoints_file: "pkg://mg_scenario_test/scenarios/data/warehouse_poses.yaml"
+    waypoints_format: poses
+    hooks:
+      1:
+        before:
+          - spawn: { obstacle: barrier_mid, pose: { x: 8.0, y: 4.0, z: 0.4 } }
+        after:
+          - despawn: { obstacle: barrier_mid }
+
+timeline:
+  # waypoint 0 へ向かう途中 6 秒後に人が飛び出す
+  - name: person_0_jumps_out
+    when: { goal_started: { index: 0 } }
+    until: { goal_reached: { index: 0 } }
+    do:
+      - delay: { sec: 6.0 }
+      - spawn: { obstacle: person_0, pose: { frame: robot, x: 2.5, y: 0.3, yaw: 3.14 } }
+  - name: person_0_leaves
+    when: { goal_reached: { index: 0 } }
+    required: false
+    do:
+      - despawn: { obstacle: person_0 }
+  # waypoint 2 へ向かう途中 8 秒後に別の人が出現
+  - name: person_1_jumps_out
+    when: { goal_started: { index: 2 } }
+    until: { goal_reached: { index: 2 } }
+    do:
+      - delay: { sec: 8.0 }
+      - spawn: { obstacle: person_1, pose: { frame: robot, x: 2.0, y: -0.5, yaw: 3.14 } }
+  - name: person_1_leaves
+    when: { goal_reached: { index: 2 } }
+    required: false
+    do:
+      - despawn: { obstacle: person_1 }
