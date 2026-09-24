@@ -31,7 +31,7 @@ make scenario-test-all REPEAT=3 TIER=smoke          # 繰り返して安定性�
 | ターゲット | 内容 |
 |---|---|
 | `make scenario-test SCENARIO=<名前\|パス> [GUI=1] [PROFILE=]` | シミュレータ・ナビゲーションごと起動して 1 本実行。名前は `scenarios/regression/`・`examples/` 配下 (拡張子なし) |
-| `make scenario-test-all [TIER=smoke] [TAGS=a,b] [REPEAT=N] [EXAMPLES=1] [KNOWN=1] [PROFILE=]` | 回帰テストを、1 本ごとにスタックを起動し直して実行。`TIER=smoke` で smoke タグのみ、`EXAMPLES=1` で見本も含める、`KNOWN=1` で既知の問題 (`known_issue` タグ) のシナリオも含める |
+| `make scenario-test-all [TIER=smoke] [TAGS=a,b] [REPEAT=N] [EXAMPLES=1] [KNOWN=1] [GUI=1] [PROFILE=]` | 回帰テストを、1 本ごとにスタックを起動し直して実行。`TIER=smoke` で smoke タグのみ、`EXAMPLES=1` で見本も含める、`KNOWN=1` で既知の問題 (`known_issue` タグ) のシナリオも含める、`GUI=1` でシミュレータの GUI を表示 |
 | `make scenario-test-attach SCENARIO=...` | 起動済みのシミュレータ・スタックに接続して実行 (`make gazebo-simulation` と `make navigation` が別途必要。開発時の反復用) |
 | `make scenario-validate` | シナリオ YAML の静的検証 |
 | `make test pkg=mg_scenario_test` | ユニットテスト |

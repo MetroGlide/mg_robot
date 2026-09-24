@@ -36,6 +36,11 @@ frames:
   base: base_footprint            # ロボットのベースフレーム
   map_in_world: { x: 0.0, y: 0.0, yaw: 0.0 }   # ワールド座標系での地図原点の姿勢
 
+robot:
+  # base フレームでのロボットの外形 (多角形の頂点 [x, y])。省略可。
+  # obstacle_clearance monitor が、フットプリントと障害物の距離を測るのに使う
+  footprint: [[0.4, 0.3], [0.4, -0.3], [-0.2, -0.3], [-0.2, 0.3]]
+
 nav2:
   navigate_to_pose_action: navigate_to_pose
   initialpose_topic: /initialpose

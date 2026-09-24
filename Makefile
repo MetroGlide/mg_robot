@@ -64,12 +64,12 @@ _scenario_run = $(COMPOSE) run --rm -e SCENARIO_ARGS
 scenario-test:
 	$(_scenario_run)="run $(SCENARIO) $(_scenario_dirs) $(_scenario_results) $(if $(GUI),--gui) $(if $(PROFILE),--profile $(PROFILE))" scenario-test
 
-# make scenario-test-all [TIER=smoke|full] [TAGS=a,b] [REPEAT=N] [EXAMPLES=1]
+# make scenario-test-all [TIER=smoke|full] [TAGS=a,b] [REPEAT=N] [EXAMPLES=1] [GUI=1]
 # 回帰テスト (scenarios/regression) を、1 本ごとにスタックを起動し直して実行する。
 # TIER=smoke は smoke タグのみ (変更ごとの確認用)、省略または full は全件。EXAMPLES=1 で examples/ も含める。
-# known_issue タグ (既知の問題で失敗するシナリオ) は既定で除外する。KNOWN=1 で含める
+# known_issue タグ (既知の問題で失敗するシナリオ) は既定で除外する。KNOWN=1 で含める。GUI=1 でシミュレータの GUI を表示する
 scenario-test-all:
-	$(_scenario_run)="run-all $(_scenario_dir)/regression $(if $(EXAMPLES),$(_scenario_dir)/examples) $(_scenario_results) $(if $(KNOWN),,--exclude-tags known_issue) $(if $(filter smoke,$(TIER)),--tags smoke) $(if $(TAGS),--tags $(TAGS)) $(if $(REPEAT),--repeat $(REPEAT)) $(if $(PROFILE),--profile $(PROFILE))" scenario-test
+	$(_scenario_run)="run-all $(_scenario_dir)/regression $(if $(EXAMPLES),$(_scenario_dir)/examples) $(_scenario_results) $(if $(KNOWN),,--exclude-tags known_issue) $(if $(filter smoke,$(TIER)),--tags smoke) $(if $(TAGS),--tags $(TAGS)) $(if $(REPEAT),--repeat $(REPEAT)) $(if $(GUI),--gui) $(if $(PROFILE),--profile $(PROFILE))" scenario-test
 
 # make scenario-test-attach SCENARIO=... (make gazebo-simulation と make navigation の起動が前提。開発時の反復用)
 scenario-test-attach:

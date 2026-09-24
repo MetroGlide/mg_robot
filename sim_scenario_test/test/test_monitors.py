@@ -272,3 +272,110 @@ def test_min_stop_duration_requires_a_real_stop():
         clock["t"] = t
         monitor._callback(_odom(v))
     assert monitor.result().status == ResultStatus.PASSED       # 4 秒の停止
+
+
+# ---------------------------------------------------------------------------
+# obstacle_clearance
+# ---------------------------------------------------------------------------
+
+def _odom_twist(linear=0.0, angular=0.0):
+    return SimpleNamespace(twist=SimpleNamespace(twist=SimpleNamespace(
+        linear=SimpleNamespace(x=linear, y=0.0), angular=SimpleNamespace(z=angular))))
+
+
+def _clearance_ctx(robot=None):
+    from sim_scenario_test.loader import parse_scenario
+    from sim_scenario_test.registry import DEFAULT_REGISTRY
+    scenario = parse_scenario({
+        "version": "2.0", "name": "t", "world": "w",
+        "obstacles": {
+            "ped": {"model": {"type": "primitive", "shape": "cylinder",
+                              "size": {"radius": 0.25, "length": 1.7}}},
+            "fuel": {"model": {"type": "fuel", "uri": "Owner/models/Cone"}},
+        },
+        "run": {"fake_goals": {}},
+    }, "t", DEFAULT_REGISTRY)
+    ctx = make_context(scenario, robot=robot or FakeRobot(Pose(0.0, 0.0)))
+    ctx.profile.robot.footprint = [[0.4, 0.3], [0.4, -0.3], [-0.2, -0.3], [-0.2, 0.3]]
+    return ctx
+
+
+def _clearance_monitor(ctx, min_clearance=0.0, obstacles=("ped",)):
+    from sim_scenario_test.builtin.monitors import (
+        ObstacleClearanceMonitor, ObstacleClearanceSpec)
+    return ObstacleClearanceMonitor(
+        ctx, ObstacleClearanceSpec(obstacles=list(obstacles), min_clearance=min_clearance))
+
+
+def test_obstacle_clearance_ignores_obstacle_walking_into_robot():
+    robot = FakeRobot(Pose(0.0, 0.0))
+    ctx = _clearance_ctx(robot)
+    monitor = _clearance_monitor(ctx)
+    assert monitor.result().status == ResultStatus.ERROR
+    for y in (1.5, 1.0, 0.5, 0.0):  # 歩行者だけが動いて、停止中のロボットへ重なる
+        ctx.entity_poses["ped"] = Pose(0.0, y)
+        monitor._callback(_odom_twist())
+    result = monitor.result()
+    assert result.status == ResultStatus.PASSED
+    assert "never approached" in result.message and "0.00" in result.message
+
+
+def test_obstacle_clearance_fails_when_robot_drives_into_obstacle():
+    robot = FakeRobot(Pose(0.0, 0.0))
+    ctx = _clearance_ctx(robot)
+    monitor = _clearance_monitor(ctx)
+    ctx.entity_poses["ped"] = Pose(1.0, 0.0)  # 前端から 0.35
+    monitor._callback(_odom_twist(0.5))
+    robot.pose = Pose(0.2, 0.0)  # 前端から 0.15
+    monitor._callback(_odom_twist(0.5))
+    assert monitor.result().status == ResultStatus.PASSED
+    robot.pose = Pose(0.6, 0.0)  # 前端から -0.25 (重なり)
+    monitor._callback(_odom_twist(0.5))
+    result = monitor.result()
+    assert result.status == ResultStatus.FAILED and "0.00" in result.message
+
+
+def test_obstacle_clearance_ignores_pose_jitter_while_stopped():
+    robot = FakeRobot(Pose(0.0, 0.0))
+    ctx = _clearance_ctx(robot)
+    monitor = _clearance_monitor(ctx)
+    ctx.entity_poses["ped"] = Pose(1.0, 0.0)  # 前端から 0.35
+    monitor._callback(_odom_twist())
+    robot.pose = Pose(0.34, 0.0)  # 自己位置推定の揺れで前へ 0.34m。オドメトリは停止のまま
+    monitor._callback(_odom_twist())
+    assert monitor.result().status == ResultStatus.PASSED
+
+
+def test_obstacle_clearance_ignores_robot_moving_away():
+    robot = FakeRobot(Pose(0.0, 0.0))
+    ctx = _clearance_ctx(robot)
+    monitor = _clearance_monitor(ctx)
+    ctx.entity_poses["ped"] = Pose(0.0, 0.5)  # 側面と重なる
+    monitor._callback(_odom_twist())
+    robot.pose = Pose(-0.5, 0.0)  # ロボットが離れていく
+    monitor._callback(_odom_twist(-0.5))
+    assert monitor.result().status == ResultStatus.PASSED
+
+
+def test_obstacle_clearance_counts_rotation_toward_obstacle():
+    robot = FakeRobot(Pose(0.0, 0.0, 0.0, 0.0))
+    ctx = _clearance_ctx(robot)
+    monitor = _clearance_monitor(ctx, min_clearance=0.1)
+    ctx.entity_poses["ped"] = Pose(0.0, 0.7)  # 左側面から 0.15。左へ旋回すると前端の角が近づく
+    monitor._callback(_odom_twist())
+    robot.pose = Pose(0.0, 0.0, 0.0, 0.5)
+    monitor._callback(_odom_twist(angular=0.5))
+    assert monitor.result().status == ResultStatus.FAILED
+
+
+def test_obstacle_clearance_requires_footprint_and_known_shape():
+    from sim_scenario_test.builtin.monitors import (
+        ObstacleClearanceMonitor, ObstacleClearanceSpec)
+    from sim_scenario_test.errors import ScenarioValidationError
+    ctx = _clearance_ctx()
+    with pytest.raises(ScenarioValidationError, match="no known shape"):
+        ObstacleClearanceMonitor(ctx, ObstacleClearanceSpec(obstacles=["fuel"]))
+    ObstacleClearanceMonitor(ctx, ObstacleClearanceSpec(obstacles=["fuel"], radius=0.2))
+    ctx.profile.robot.footprint = []
+    with pytest.raises(ScenarioValidationError, match="footprint"):
+        ObstacleClearanceMonitor(ctx, ObstacleClearanceSpec(obstacles=["ped"]))

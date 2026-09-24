@@ -138,6 +138,7 @@ timeline:
 |---|---|---|
 | `bt_node` | `node`, `status`=RUNNING (`IDLE`/`RUNNING`/`SUCCESS`/`FAILURE`), `expect`=occurs (`occurs`/`never`), `topic`=/behavior_tree_log | BT のノードが指定の状態になった回数で、発生した／しないことを判定 (例: BackUp が動いたか) |
 | `min_scan_range` | `min_range`, `topic`=/scan | LiDAR の最小測距値が `min_range` [m] 未満になったら FAILED (接触・急接近の近似検出)。データが来なければ ERROR |
+| `obstacle_clearance` | `obstacles` (必須, scenario.obstacles のキー), `min_clearance`=0.0, `speed_threshold`=0.1, `angular_threshold`=0.2, `radius`=省略, `topic`=/odom | **ロボット自身の動きで**、フットプリントと障害物の表面の距離が `min_clearance` [m] 以下 (0 なら接触だけ) になったら FAILED。`set_pose` で動かす障害物 (歩行者) は物理的に押し返されずロボットを通り抜けるため、障害物側の動きで近づいた場合は数えない (前回の障害物の位置と今回のロボットの姿勢で距離を測り、縮まったときだけ数える)。ロボットの並進・角速度が閾値以下のときは対象外 (停止直前の低速や、停止中の自己位置推定の揺れを除く)。プロファイルの `robot.footprint` が必要。形状は primitive (cylinder / sphere / box) から取り、fuel / local は `radius` の円として扱う。ロボット姿勢は TF の推定値のため数 cm の誤差がある。障害物を一度も観測しなければ ERROR |
 | `no_diagnostic_errors` | `names`=[] (空なら全部), `topic`=/diagnostics | ERROR 以上の診断が出たら FAILED |
 | `topic_received` | `topic`, `type` (`String` / `Bool` / `OccupancyGrid`), `data`="" (String の一致), `expect`=occurs, `min_count`=1 | メッセージを `min_count` 回以上受信した／しないことを判定。action の効果の確認 (publish した、地図を再読み込みした等) に使う |
 | `max_speed` | `limit` [m/s], `topic`=/odom | オドメトリの並進速度が `limit` を超えたら FAILED |

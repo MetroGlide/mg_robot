@@ -17,6 +17,16 @@ from sensor_msgs.msg import LaserScan
 from std_msgs.msg import Bool, String
 
 from sim_scenario_test.engine.result import CheckResult, ResultStatus
+from sim_scenario_test.errors import ScenarioError, ScenarioValidationError
+from sim_scenario_test.geometry import (
+    Point,
+    Pose,
+    PoseSpec,
+    polygon_circle_distance,
+    polygon_polygon_distance,
+    rectangle_vertices,
+    transform_polygon,
+)
 from sim_scenario_test.registry import register_monitor
 
 if TYPE_CHECKING:
@@ -24,6 +34,8 @@ if TYPE_CHECKING:
 
 # diagnostic_msgs/DiagnosticStatus.ERROR
 _DIAGNOSTIC_ERROR_LEVEL = 2
+# ロボットの動きで距離が縮まったとみなす最小の変化量 [m] (姿勢の測定ノイズを除く)
+_CLOSING_EPSILON = 1e-4
 
 
 class TopicMonitor:
@@ -137,6 +149,148 @@ class MinScanRangeMonitor(TopicMonitor):
                   if self._min is not None and self._min < self._spec.min_range
                   else ResultStatus.PASSED)
         return CheckResult("", status, f"minimum range {observed} (limit {self._spec.min_range} m)")
+
+
+@dataclass
+class ObstacleClearanceSpec:
+    # 監視する障害物 (scenario.obstacles のキー)
+    obstacles: List[str]
+    # ロボットの動きで、フットプリントと障害物の表面の距離がこの値以下になったら FAILED にする [m]。
+    # 0 なら接触 (重なり) だけを検出する
+    min_clearance: float = 0.0
+    # ロボットが動いているとみなす並進速度 [m/s] と角速度 [rad/s] (どちらかを超えたときだけ評価する)。
+    # 停止直前の低速や、停止中の自己位置推定の揺れ (数 cm) を、ロボットが原因の接近から除く
+    speed_threshold: float = 0.1
+    angular_threshold: float = 0.2
+    # fuel / local モデルなど形状を持たない障害物を、この半径の円として扱う [m]
+    radius: Optional[float] = None
+    # 姿勢を評価するタイミングの元になるトピック (受信するたびに評価する)
+    topic: str = "/odom"
+
+    def validate(self, where: str) -> None:
+        if not self.obstacles:
+            raise ScenarioValidationError(f"{where}: 'obstacles' must not be empty")
+
+
+def _obstacle_shape(model, radius: Optional[float], name: str):
+    """障害物の形状を (半径, None) の円または (None, 矩形の寸法) として返す。"""
+    if model.type == "primitive" and model.shape in ("cylinder", "sphere"):
+        return model.size.get("radius", 0.5), None
+    if model.type == "primitive" and model.shape == "box":
+        return None, (model.size.get("x", 1.0), model.size.get("y", 1.0))
+    if radius is None:
+        raise ScenarioValidationError(
+            f"obstacle_clearance: obstacle '{name}' has no known shape; set 'radius'")
+    return radius, None
+
+
+@register_monitor("obstacle_clearance", ObstacleClearanceSpec)
+class ObstacleClearanceMonitor(TopicMonitor):
+    """ロボットの動きが原因で、フットプリントが障害物へ近づきすぎないことを監視する。
+
+    set_pose で動かす障害物 (歩行者など) は物理的に押し返されず、ロボットを通り抜けられる。
+    障害物が勝手に近づいた場合を除くため、前回の評価から今回までの動きを 2 つに分け、
+    ロボットだけが動いた場合の距離 (前回の障害物の位置 × 今回のロボットの姿勢) が、前回より
+    縮まって min_clearance を下回ったときだけを、ロボットが原因の接近として数える。
+    ロボットが走行・旋回 (speed_threshold / angular_threshold 超) で障害物へ寄った場合が対象で、
+    停止中のロボットへ障害物が寄る場合や、ロボットが離れていく場合は対象外。
+    全期間の最小距離は参考値として出す。
+    ロボットの姿勢は TF (推定値) なので、数 cm の誤差を含む。
+    """
+    MSG_TYPE = Odometry
+
+    def __init__(self, ctx: "ScenarioContext", spec: ObstacleClearanceSpec):
+        super().__init__(ctx, spec.topic)
+        self._spec = spec
+        footprint = ctx.profile.robot.footprint
+        if not footprint:
+            raise ScenarioValidationError(
+                "obstacle_clearance: profile.robot.footprint is not defined")
+        self._footprint: List[Point] = [(x, y) for x, y in footprint]
+        self._shapes = {}
+        for name in spec.obstacles:
+            if name not in ctx.scenario.obstacles:
+                raise ScenarioValidationError(
+                    f"obstacle_clearance: obstacle '{name}' is not defined")
+            self._shapes[name] = _obstacle_shape(
+                ctx.scenario.obstacles[name].model, spec.radius, name)
+        self._received = 0
+        self._observed = False
+        self._min_all: Optional[float] = None
+        # ロボットの動きが原因の最小距離 (障害物名、走行開始からの経過時間 [s]、
+        # ロボットの並進速度 [m/s]、ロボット座標での障害物の位置 (x, y) [m]: 原因の切り分け用)
+        self._min_caused: Optional[float] = None
+        self._min_caused_info = ("", 0.0, 0.0, (0.0, 0.0))
+        self._previous = {}
+
+    def _obstacle_pose(self, name: str) -> Optional[Pose]:
+        world_pose = self._ctx.entity_poses.get(name)
+        if world_pose is None:
+            return None
+        return self._ctx.poses.to_map(PoseSpec(
+            "world", world_pose.x, world_pose.y, world_pose.z, world_pose.yaw))
+
+    def _distance(self, name: str, obstacle: Pose, robot: Pose) -> float:
+        robot_polygon = transform_polygon(self._footprint, robot)
+        radius, box = self._shapes[name]
+        if box is not None:
+            return polygon_polygon_distance(
+                robot_polygon, transform_polygon(rectangle_vertices(*box), obstacle))
+        return polygon_circle_distance(robot_polygon, (obstacle.x, obstacle.y), radius)
+
+    def _on_msg(self, msg) -> None:
+        self._received += 1
+        try:
+            robot = self._ctx.poses.robot.get()
+        except ScenarioError:
+            return
+        twist = msg.twist.twist
+        speed = math.hypot(twist.linear.x, twist.linear.y)
+        moving = (speed > self._spec.speed_threshold
+                  or abs(twist.angular.z) > self._spec.angular_threshold)
+        for name in self._spec.obstacles:
+            obstacle = self._obstacle_pose(name)
+            if obstacle is None:
+                self._previous.pop(name, None)
+                continue
+            self._observed = True
+            distance = self._distance(name, obstacle, robot)
+            self._min_all = distance if self._min_all is None else min(self._min_all, distance)
+            previous = self._previous.get(name)
+            self._previous[name] = (robot, obstacle, distance)
+            if previous is None:
+                continue
+            previous_robot, previous_obstacle, previous_distance = previous
+            caused = self._distance(name, previous_obstacle, robot)
+            if not moving or caused >= previous_distance - _CLOSING_EPSILON:
+                continue
+            if self._min_caused is None or caused < self._min_caused:
+                relative = robot.inverse().compose(previous_obstacle)
+                self._min_caused = caused
+                self._min_caused_info = (
+                    name, self._ctx.elapsed(), speed, (relative.x, relative.y))
+
+    def _evaluate(self) -> CheckResult:
+        if self._received == 0:
+            return CheckResult(
+                "", ResultStatus.ERROR, f"no odometry on {self._spec.topic}")
+        if not self._observed:
+            return CheckResult(
+                "", ResultStatus.ERROR,
+                f"obstacle(s) {self._spec.obstacles} were never observed")
+        reference = f"overall min {self._min_all:.2f} m"
+        if self._min_caused is None:
+            return CheckResult(
+                "", ResultStatus.PASSED, f"robot never approached obstacles ({reference})")
+        name, at, speed, (x, y) = self._min_caused_info
+        status = (ResultStatus.FAILED
+                  if self._min_caused <= self._spec.min_clearance else ResultStatus.PASSED)
+        return CheckResult(
+            "", status,
+            f"min clearance by robot motion {self._min_caused:.2f} m "
+            f"(limit {self._spec.min_clearance} m, '{name}' at t={at:.1f}s, "
+            f"robot speed {speed:.2f} m/s, position in robot frame ({x:.2f}, {y:.2f}); "
+            f"{reference})")
 
 
 @dataclass
