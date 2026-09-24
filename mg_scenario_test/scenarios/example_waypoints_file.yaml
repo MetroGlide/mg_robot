@@ -1,8 +1,8 @@
 version: "2.0"
 name: waypoints_file_with_events
 description: >
-  既存の waypoint.yaml を NavigateToPose で順に直接走行する例 (sequencer は使わない)。
-  waypoint ごとに障害物の配置・除去を行う。
+  waypoint ファイル (組み込みの poses 形式) のゴールを NavigateToPose で順に直接走行する例。
+  waypoint の index ごとに障害物の配置・除去を行う。
 profile: mg01
 world: warehouse
 tags: [example, nav2_goals]
@@ -20,13 +20,12 @@ setup:
 
 run:
   nav2_goals:
-    # プロファイルの worlds.warehouse.waypoints を参照する
-    waypoints_file: "{world.waypoints}"
-    waypoints_format: mg
+    waypoints_file: "pkg://mg_scenario_test/scenarios/data/warehouse_poses.yaml"
+    waypoints_format: poses
     hooks:
       1:
         before:
-          - spawn: { obstacle: barrier_mid, pose: { x: 7.0, y: 3.5, z: 0.4, yaw: 1.57 } }
+          - spawn: { obstacle: barrier_mid, pose: { x: 8.0, y: 4.0, z: 0.4 } }
         after:
           - despawn: { obstacle: barrier_mid }
 
