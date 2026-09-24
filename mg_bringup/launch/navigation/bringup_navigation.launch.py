@@ -44,6 +44,9 @@ def generate_launch_description():
     simulation_arg = launch_argument_creator.create(
         "simulation", default=EnvironmentVariable("SIMULATION")
     )
+    waypoints_load_path_arg = launch_argument_creator.create(
+        "waypoints_load_path", default=EnvironmentVariable("WAYPOINT_PATH")
+    )
     rviz_arg = launch_argument_creator.create(
         "rviz", default=EnvironmentVariable("USE_RVIZ")
     )
@@ -139,6 +142,7 @@ def generate_launch_description():
             "simulation": simulation_arg.launch_config,
             "localization_map": map_path,
             "planning_map": planning_map_path_arg.launch_config,
+            "waypoints_load_path": waypoints_load_path_arg.launch_config,
             "rviz": rviz_arg.launch_config,
             "record_bag": record_bag_arg.launch_config,
         }.items(),
