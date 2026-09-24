@@ -269,56 +269,5 @@
       <pose>-12 15 0 0 0 0</pose>
     </include>
 
-    <!-- Cones -->
-    <include>
-      <uri>
-        https://fuel.gazebosim.org/1.0/OpenRobotics/models/Construction Cone
-      </uri>
-      <name>cone_0</name>
-      <pose>2.0 0 0 0 0 0</pose>
-    </include>
-    <include>
-      <uri>
-        https://fuel.gazebosim.org/1.0/OpenRobotics/models/Construction Cone
-      </uri>
-      <name>cone_1</name>
-      <pose>2.0  0.5 0 0 0 0</pose>
-    </include>
-    <include>
-      <uri>
-        https://fuel.gazebosim.org/1.0/OpenRobotics/models/Construction Cone
-      </uri>
-      <name>cone_2</name>
-      <pose>2.0  1.0 0 0 0 0</pose>
-    </include>
-    <include>
-      <uri>
-        https://fuel.gazebosim.org/1.0/OpenRobotics/models/Construction Cone
-      </uri>
-      <name>cone_3</name>
-      <pose>2.0  1.8 0 0 0 0</pose>
-    </include>
-    <include>
-      <uri>
-        https://fuel.gazebosim.org/1.0/OpenRobotics/models/Construction Cone
-      </uri>
-      <name>cone_4</name>
-      <pose>2.0  2.6 0 0 0 0</pose>
-    </include>
-    <include>
-      <uri>
-        https://fuel.gazebosim.org/1.0/OpenRobotics/models/Construction Cone
-      </uri>
-      <name>cone_5</name>
-      <pose>2.0  -0.8 0 0 0 0</pose>
-    </include>
-    <include>
-      <uri>
-        https://fuel.gazebosim.org/1.0/OpenRobotics/models/Construction Cone
-      </uri>
-      <name>cone_6</name>
-      <pose>2.0  -1.6 0 0 0 0</pose>
-    </include>
-
   </world>
 </sdf>
