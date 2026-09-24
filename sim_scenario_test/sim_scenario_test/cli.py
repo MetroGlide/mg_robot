@@ -6,6 +6,7 @@
 シミュレータを起動して実行する (終了コード: 0=PASSED, 1=FAILED, 2=ERROR):
   scenario_cli.py run <scenario.yaml> [--profile NAME] [--gui] [--attach] [--results-dir DIR]
   scenario_cli.py run-all <scenario.yaml|dir>... [--tags a,b] [--repeat N] [--results-dir DIR]
+  (run / run-all は --remote-stack URL で別のマシンにスタックを起動させられる)
 """
 from __future__ import annotations
 
@@ -30,6 +31,7 @@ from sim_scenario_test.loader import load_scenario
 from sim_scenario_test.plugins import load_plugins
 from sim_scenario_test.profile import load_profile
 from sim_scenario_test.registry import DEFAULT_REGISTRY, KINDS
+from sim_scenario_test.remote_stack import RemoteStackClient
 
 
 def _validate(files: List[str], profile: str) -> int:
@@ -58,6 +60,10 @@ def _list_types(profile: str) -> int:
 
 
 def _run(args: argparse.Namespace) -> int:
+    if args.remote_stack and args.attach:
+        print("--remote-stack and --attach cannot be used together")
+        return 2
+    remote_stack = RemoteStackClient(args.remote_stack) if args.remote_stack else None
     results_dir = args.results_dir or default_results_dir()
     try:
         targets = [resolve_scenario(f, args.scenario_dir) if not os.path.isdir(f) else f
@@ -83,7 +89,7 @@ def _run(args: argparse.Namespace) -> int:
                 record = run_scenario(
                     path, out_dir if attempt == 0 else f"{out_dir}_retry{attempt}",
                     profile=args.profile, gui=args.gui, attach=args.attach,
-                    timeout_sec=args.timeout,
+                    timeout_sec=args.timeout, remote_stack=remote_stack,
                     seed=None if args.seed is None else args.seed + repeat)
                 if not is_infrastructure_error(record):
                     break
@@ -114,6 +120,10 @@ def main(argv: List[str] = None) -> int:
         p_run.add_argument("--gui", action="store_true", help="show simulator GUI")
         p_run.add_argument("--attach", action="store_true",
                            help="use an already running simulator and stack")
+        p_run.add_argument("--remote-stack", default="", metavar="URL",
+                           help="start the navigation stack on another machine via this "
+                                "system manager URL (e.g. http://192.168.0.10:8001); "
+                                "the simulator still runs locally")
         p_run.add_argument("--results-dir", default="")
         p_run.add_argument("--timeout", type=float, default=1800.0,
                            help="wall-clock limit per scenario [s]")

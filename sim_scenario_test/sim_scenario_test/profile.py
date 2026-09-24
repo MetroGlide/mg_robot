@@ -93,6 +93,10 @@ class Profile:
     # world 名 -> 変数 (sim_world, sdf, map, waypoints など任意)
     worlds: Dict[str, Dict[str, str]] = field(default_factory=dict)
 
+    def launch_variables(self, world: str, headless: str, where: str) -> Dict[str, object]:
+        """sim.launch / stack の引数展開に使う変数。"""
+        return {"world": self.world_vars(world, where), "headless": headless}
+
     def world_vars(self, world: str, where: str) -> Dict[str, str]:
         if world not in self.worlds:
             raise ScenarioValidationError(
