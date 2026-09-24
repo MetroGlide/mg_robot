@@ -2,7 +2,7 @@
 
 プロファイル (profiles/mg01.yaml) の plugins に列挙され、読み込み時に以下を登録する。
   driver          : mg_sequencer
-  action          : sequencer_start / sequencer_set_index / sequencer_stop
+  action          : sequencer_start / sequencer_set_index / sequencer_stop / sequencer_pause
   trigger         : sequencer_state
   monitor         : collision_monitor_action
   waypoint_format : mg (mg_waypoint_navigation の waypoint.yaml)
@@ -210,6 +210,21 @@ def sequencer_stop(
 ) -> None:
     """waypoint_sequencer の ~/stop を呼び IDLE に戻す。"""
     sequencer_for(ctx, spec.namespace).stop()
+
+
+@dataclass
+class SequencerPauseSpec:
+    active: bool
+    requester_id: str = "scenario_test"
+    namespace: str = DEFAULT_NAMESPACE
+
+
+@register_action("sequencer_pause", SequencerPauseSpec)
+def sequencer_pause(
+    ctx: "ScenarioContext", spec: SequencerPauseSpec, stop: threading.Event
+) -> None:
+    """waypoint_sequencer に一時停止を要求 (active: true) / 解除 (false) する (Named Pause Slot)。"""
+    sequencer_for(ctx, spec.namespace).pause(spec.requester_id, spec.active)
 
 
 @dataclass

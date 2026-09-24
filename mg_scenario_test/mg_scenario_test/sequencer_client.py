@@ -4,7 +4,7 @@ import threading
 import time
 from typing import TYPE_CHECKING, Callable, List, Optional
 
-from mg_msgs.msg import SequencerStatus
+from mg_msgs.msg import PauseRequest, SequencerStatus
 from mg_msgs.msg import WaypointList as WaypointListMsg
 from mg_msgs.srv import StartSequence
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, ReliabilityPolicy
@@ -39,6 +39,8 @@ class SequencerClient:
         self._stop_client = node.create_client(Trigger, f"/{namespace}/stop")
         self._index_pub = node.create_publisher(
             Int16, f"/{namespace}/set_next_waypoint_index", 1)
+        self._pause_pub = node.create_publisher(
+            PauseRequest, f"/{namespace}/pause_request", 10)
         self._status_sub = node.create_subscription(
             SequencerStatus, f"/{namespace}/status", self._on_status, 10)
 
@@ -78,6 +80,19 @@ class SequencerClient:
         res = call_service(self._node, self._stop_client, Trigger.Request(), timeout_sec)
         if not res.success:
             raise ScenarioError(f"/{self._ns}/stop rejected: {res.message}")
+
+    def pause(self, requester_id: str, active: bool, timeout_sec: float = 5.0) -> None:
+        """Named Pause Slot の一時停止を要求 (active=True) / 解除 (False) する。"""
+        deadline = time.monotonic() + timeout_sec
+        while self._pause_pub.get_subscription_count() == 0:
+            if time.monotonic() > deadline:
+                raise ScenarioError(f"/{self._ns}/pause_request has no subscriber")
+            time.sleep(_POLL_SEC)
+        msg = PauseRequest()
+        msg.requester_id = requester_id
+        msg.active = active
+        msg.reason = "scenario"
+        self._pause_pub.publish(msg)
 
     def set_next_index(self, index: int, timeout_sec: float = 5.0) -> None:
         """次の waypoint index を設定し、status に反映されたことを確認する。"""
