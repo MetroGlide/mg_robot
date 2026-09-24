@@ -56,20 +56,25 @@ gazebo-simulation:
 _scenario_dir = /app/mg_scenario_test/scenarios
 _scenario_dirs = --scenario-dir $(_scenario_dir)/regression --scenario-dir $(_scenario_dir)/examples
 _scenario_results = --results-dir /root/ros2_data/scenario_results/$$(date +%Y%m%d_%H%M%S)
-_scenario_run = $(COMPOSE) run --rm -e SCENARIO_ARGS
+# ROBOT=<実機PCのIP> を指定すると、ナビゲーションスタックを実機PC (mg_system_manager :8001) に起動させ、
+# シミュレータだけをこの PC で起動する。両方のPCの .env に MG_REMOTE_PEER・SCENARIO_ROS_DOMAIN_ID を設定しておく
+_scenario_domain_id := $(shell grep -E '^SCENARIO_ROS_DOMAIN_ID=' .env 2>/dev/null | cut -d= -f2 | tr -d '[:space:]')
+_remote_env = $(if $(ROBOT),-e ROS_DOMAIN_ID=$(or $(_scenario_domain_id),42) -e CYCLONEDDS_URI=file:///app/docker/cyclonedds/remote.xml -e MG_REMOTE_PEER=$(ROBOT),)
+_remote_arg = $(if $(ROBOT),--remote-stack http://$(ROBOT):8001)
+_scenario_run = $(COMPOSE) run --rm $(_remote_env) -e SCENARIO_ARGS
 
-# make scenario-test SCENARIO=nav_basic_goal [GUI=1] [PROFILE=mg01]
+# make scenario-test SCENARIO=nav_basic_goal [GUI=1] [PROFILE=mg01] [ROBOT=<実機PCのIP>]
 # シミュレータ・ナビゲーションごと起動して 1 本実行する (デフォルトはヘッドレス)。
 # SCENARIO は regression/・examples/ 配下のシナリオ名 (拡張子なし)、またはコンテナ内のパス
 scenario-test:
-	$(_scenario_run)="run $(SCENARIO) $(_scenario_dirs) $(_scenario_results) $(if $(GUI),--gui) $(if $(PROFILE),--profile $(PROFILE))" scenario-test
+	$(_scenario_run)="run $(SCENARIO) $(_scenario_dirs) $(_scenario_results) $(_remote_arg) $(if $(GUI),--gui) $(if $(PROFILE),--profile $(PROFILE))" scenario-test
 
-# make scenario-test-all [TIER=smoke|full] [TAGS=a,b] [REPEAT=N] [EXAMPLES=1] [GUI=1]
+# make scenario-test-all [TIER=smoke|full] [TAGS=a,b] [REPEAT=N] [EXAMPLES=1] [GUI=1] [ROBOT=<実機PCのIP>]
 # 回帰テスト (scenarios/regression) を、1 本ごとにスタックを起動し直して実行する。
 # TIER=smoke は smoke タグのみ (変更ごとの確認用)、省略または full は全件。EXAMPLES=1 で examples/ も含める。
 # known_issue タグ (既知の問題で失敗するシナリオ) は既定で除外する。KNOWN=1 で含める。GUI=1 でシミュレータの GUI を表示する
 scenario-test-all:
-	$(_scenario_run)="run-all $(_scenario_dir)/regression $(if $(EXAMPLES),$(_scenario_dir)/examples) $(_scenario_results) $(if $(KNOWN),,--exclude-tags known_issue) $(if $(filter smoke,$(TIER)),--tags smoke) $(if $(TAGS),--tags $(TAGS)) $(if $(REPEAT),--repeat $(REPEAT)) $(if $(GUI),--gui) $(if $(PROFILE),--profile $(PROFILE))" scenario-test
+	$(_scenario_run)="run-all $(_scenario_dir)/regression $(if $(EXAMPLES),$(_scenario_dir)/examples) $(_scenario_results) $(_remote_arg) $(if $(KNOWN),,--exclude-tags known_issue) $(if $(filter smoke,$(TIER)),--tags smoke) $(if $(TAGS),--tags $(TAGS)) $(if $(REPEAT),--repeat $(REPEAT)) $(if $(GUI),--gui) $(if $(PROFILE),--profile $(PROFILE))" scenario-test
 
 # make scenario-test-attach SCENARIO=... (make gazebo-simulation と make navigation の起動が前提。開発時の反復用)
 scenario-test-attach:

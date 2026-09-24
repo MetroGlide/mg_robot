@@ -41,6 +41,37 @@ make scenario-test-all REPEAT=3 TIER=smoke          # 繰り返して安定性�
 
 実行中は Gazebo・Nav2 を専有するため、同時に別のスタック (`make gazebo-simulation` 等) を起動しないでください。
 
+## 開発PC + 実機PCでの実行
+
+開発PCでシミュレータを、実機PCでセンサ・モータドライバ以外 (EKF・Nav2・後処理など) を動かして、実機の構成でシナリオテストを行えます。
+実機PCのスタックはシナリオごとに mg_system_manager から起動・停止され、`stack_args` の上書きや `run-all` もそのまま使えます
+(仕組みは [sim_scenario_test/docs/remote_stack.md](../sim_scenario_test/docs/remote_stack.md))。
+
+準備 (両方のPCで同じコミットを使い、`make build-robot` / `make build-sim` 済みであること):
+
+1. 両方のPCの `.env` に設定する ([.env.example](../.env.example) 参照)。
+   - `SCENARIO_ROS_DOMAIN_ID`: テスト用の domain (両方で同じ値)。通常の `ROS_DOMAIN_ID` と分けることで、実機のドライバへ `/cmd_vel` が届くことを防ぐ
+   - `MG_REMOTE_PEER`: 相手PCの IP (実機PCでは開発PCの IP)。DDS はマルチキャストを使わずユニキャストで探索するので、Wi-Fi でも動く
+   - `MG_DDS_INTERFACE`: 使うインターフェース (任意)
+2. ファイアウォールで、両PC間の UDP (DDS。7400 以降) と、実機PCの TCP 8001 (mg_system_manager) を通す。
+
+実行:
+
+```bash
+# 実機PC: system_manager を起動しておく (実機の slam / navigation は止めておく。動作中は起動を拒否される)
+make system-manager DETACH=1
+
+# 開発PC
+make scenario-test SCENARIO=nav_basic_goal ROBOT=<実機PCのIP>
+make scenario-test-all TIER=smoke ROBOT=<実機PCのIP>
+```
+
+結果は通常と同じ場所に保存され、各シナリオの `stack.log` に実機PC側のスタックのログが残ります。
+
+注意:
+- シミュレータの深度点群・画像もネットワークを流れる。Wi-Fi では帯域が足りず失敗することがあるので、有線を推奨する。
+- 起動に失敗したときは、実機PCの mg_system_manager のログと `stack.log` を確認する (起動失敗は `--infra-retries` で再実行される)。
+
 ## 結果
 
 `${ROS2_DATA_PATH}/scenario_results/<日時>/` に保存されます。
