@@ -49,7 +49,7 @@ make bag-plot-gnss    # GNSS軌跡・Fix状態・精度を可視化（CIRCLES=1�
 make bag-plot-scans   # LiDARスキャン点群を2D画像化（NODES=1:20等でノード指定）
 make scenario-validate  # シナリオYAMLの静的検証（シミュレータ不要）
 make scenario-test SCENARIO=<名前|パス>  # Gazebo+Nav2を起動して1本実行（ヘッドレス、GUI=1で表示）。詳細は mg_scenario_test/README.md
-make scenario-test-all TAGS=smoke REPEAT=3  # シナリオをスタック起動し直しで一括実行
+make scenario-test-all TIER=smoke  # 回帰テストをスタック起動し直しで一括実行（TIER省略で全件。実装変更後はsmokeを実行）
 ```
 
 コンテナ内でROS2コマンドを使う場合:

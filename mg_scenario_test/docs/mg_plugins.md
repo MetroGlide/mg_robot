@@ -44,6 +44,7 @@ sequencer が `ERROR` になったら FAILED です。
 | `sequencer_start` | `countdown_ms`=0, `namespace` | `~/start` を呼ぶ |
 | `sequencer_set_index` | `index`, `namespace` | 次に向かう waypoint index を設定 (IDLE / SUSPENDED 時のみ有効。反映を確認し、されなければ ERROR) |
 | `sequencer_stop` | `namespace` | `~/stop` を呼ぶ |
+| `sequencer_pause` | `active`, `requester_id`=scenario_test, `namespace` | 一時停止を要求 (`active: true`) / 解除 (`false`)。Named Pause Slot (`~/pause_request`) |
 
 ## trigger
 

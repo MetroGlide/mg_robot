@@ -16,12 +16,24 @@ description: >                 # 説明 (任意)
 tags: [smoke, collision]       # run-all の --tags で絞り込む (任意)
 timeout: 180                   # 走行開始からの sim 秒の上限。超えると走行を打ち切り FAILED (任意)
 seed: 0                        # 乱数 (spawn の jitter) の種。--seed で上書き
+stack_args: {...}              # プロファイルの stack.args を、このシナリオ用に上書き・追加する launch 引数
 obstacles: {...}               # 名前付き障害物の定義
 setup: [...]                   # 走行前に順に実行する action
 timeline: [...]                # 走行中のイベント
 monitors: [...]                # 走行中の常時監視
 expect: [...]                  # 判定。省略時は reached_all
 teardown: [...]                # 走行後に実行する action (生成した障害物は自動で削除される)
+```
+
+## stack_args
+
+プロファイルの `stack.args` (ナビゲーションスタックの launch 引数) を、シナリオごとに上書き・追加します
+(`run` / `run-all` のみ。`--attach` では無視)。値は変数展開されます。ロボットが読む waypoint ファイルを
+シナリオごとに差し替えるときなどに使います。
+
+```yaml
+stack_args:
+  waypoints_load_path: "pkg://mg_scenario_test/scenarios/data/through_waypoints.yaml"
 ```
 
 ## obstacles
@@ -127,6 +139,9 @@ timeline:
 | `bt_node` | `node`, `status`=RUNNING (`IDLE`/`RUNNING`/`SUCCESS`/`FAILURE`), `expect`=occurs (`occurs`/`never`), `topic`=/behavior_tree_log | BT のノードが指定の状態になった回数で、発生した／しないことを判定 (例: BackUp が動いたか) |
 | `min_scan_range` | `min_range`, `topic`=/scan | LiDAR の最小測距値が `min_range` [m] 未満になったら FAILED (接触・急接近の近似検出)。データが来なければ ERROR |
 | `no_diagnostic_errors` | `names`=[] (空なら全部), `topic`=/diagnostics | ERROR 以上の診断が出たら FAILED |
+| `topic_received` | `topic`, `type` (`String` / `Bool` / `OccupancyGrid`), `data`="" (String の一致), `expect`=occurs, `min_count`=1 | メッセージを `min_count` 回以上受信した／しないことを判定。action の効果の確認 (publish した、地図を再読み込みした等) に使う |
+| `max_speed` | `limit` [m/s], `topic`=/odom | オドメトリの並進速度が `limit` を超えたら FAILED |
+| `max_stop_duration` | `max_stop_sec`=省略, `min_stop_sec`=0, `speed_threshold`=0.05, `from_goal_started`=0, `until_goal_reached`=0, `topic`=/odom | 区間 (指定ゴールの開始から指定ゴールの到達まで) の連続した停止時間を判定。`max_stop_sec` 超で FAILED (通過点で止まらないこと)、`min_stop_sec` 未満で FAILED (一時停止で止まること) |
 
 ロボット固有の monitor はプラグインが提供します。
 
@@ -137,6 +152,7 @@ timeline:
 | `reached_all` | なし | すべてのゴールに到達した (省略時の既定) |
 | `time_limit` | `sec` | 走行が `sec` 秒 (sim 時間) 以内に終わった |
 | `navigation_fails` | `index`=省略可 | 走行が失敗した (到達不能ゴールなどの異常系テスト)。`index` 指定時はそのゴールで失敗 |
+| `final_pose_error` | `x`, `y`, `tolerance`=0.5, `frame`=map (`map`/`world`) | 走行後のロボット位置が指定点から `tolerance` [m] 以内 (停止精度) |
 
 `expect:` を書いた場合は既定の `reached_all` は追加されません。必要なら明示してください。
 

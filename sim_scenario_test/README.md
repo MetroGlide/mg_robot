@@ -63,11 +63,12 @@ ros2 run sim_scenario_test scenario_cli.py run-all scenarios/ --tags smoke  # �
 | オプション | 内容 |
 |---|---|
 | `--profile NAME` | シナリオの `profile:` を上書きする |
+| `--scenario-dir DIR` | ファイルの代わりに名前 (`<name>` → `<name>.yaml`) を渡したとき、DIR 配下 (再帰) から探す。複数指定可。ディレクトリを渡すと配下 (再帰。`data/` は除く) のシナリオを集める |
 | `--gui` | シミュレータの GUI を表示する (既定はヘッドレス) |
 | `--attach` | 起動済みのシミュレータ・スタックに接続して実行する (起動は行わない) |
 | `--results-dir DIR` | 結果の保存先 (既定 `~/.ros/scenario_results/<日時>`) |
 | `--timeout SEC` | 1 本あたりの壁時計の上限 (既定 1800 秒)。超えると ERROR |
-| `--tags a,b` / `--repeat N` | タグで絞り込み / 各シナリオを N 回繰り返す |
+| `--tags a,b` / `--exclude-tags a,b` / `--repeat N` | いずれかのタグを持つものに絞り込み / いずれかのタグを持つものを除外 / 各シナリオを N 回繰り返す |
 | `--seed N` | シナリオの seed を上書きする (繰り返しごとに +1) |
 
 終了コードは 0=PASSED、1=FAILED、2=ERROR (複数実行では最悪のもの)。

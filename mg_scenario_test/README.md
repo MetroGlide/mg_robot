@@ -19,23 +19,26 @@ Gazebo 上で MG-01 のナビゲーションをシナリオ YAML で自動テス
 **GPU なしだとセンサーの描画がソフトウェアレンダリングになり、メッシュの大きいモデルでシミュレーション速度が大きく落ちます。**
 
 ```bash
-make build svc=scenario-test                        # 初回、およびファイル (launch・スクリプト・Python モジュール) を追加したとき
-make scenario-validate                              # 同梱シナリオの YAML 検証 (シミュレータ不要、数秒)
-make scenario-test SCENARIO=example_inline_goals    # 1 本を起動から判定まで実行 (ヘッドレス)
-make scenario-test SCENARIO=example_inline_goals GUI=1     # Gazebo の GUI を表示 (xhost が必要)
-make scenario-test-all TAGS=smoke                   # タグで絞ってスイート実行
-make scenario-test-all REPEAT=3 TAGS=dynamic        # 繰り返して安定性を見る
+make build svc=scenario-test                        # 初回、およびファイル (launch・スクリプト・Python モジュール・データ) を追加したとき
+make scenario-validate                              # シナリオ YAML の検証 (シミュレータ不要、数秒)
+make scenario-test SCENARIO=nav_basic_goal          # 1 本を起動から判定まで実行 (ヘッドレス)
+make scenario-test SCENARIO=nav_basic_goal GUI=1    # Gazebo の GUI を表示 (xhost が必要)
+make scenario-test-all TIER=smoke                   # 変更のたびに実行する短い確認 (約 6 分)
+make scenario-test-all                              # 回帰テスト全件 (約 20 分)
+make scenario-test-all REPEAT=3 TIER=smoke          # 繰り返して安定性を見る
 ```
 
 | ターゲット | 内容 |
 |---|---|
-| `make scenario-test SCENARIO=<名前\|パス> [GUI=1] [PROFILE=]` | シミュレータ・ナビゲーションごと起動して 1 本実行 |
-| `make scenario-test-all [TAGS=a,b] [REPEAT=N] [PROFILE=]` | `scenarios/` の全シナリオを、1 本ごとにスタックを起動し直して実行 |
+| `make scenario-test SCENARIO=<名前\|パス> [GUI=1] [PROFILE=]` | シミュレータ・ナビゲーションごと起動して 1 本実行。名前は `scenarios/regression/`・`examples/` 配下 (拡張子なし) |
+| `make scenario-test-all [TIER=smoke] [TAGS=a,b] [REPEAT=N] [EXAMPLES=1] [KNOWN=1] [PROFILE=]` | 回帰テストを、1 本ごとにスタックを起動し直して実行。`TIER=smoke` で smoke タグのみ、`EXAMPLES=1` で見本も含める、`KNOWN=1` で既知の問題 (`known_issue` タグ) のシナリオも含める |
 | `make scenario-test-attach SCENARIO=...` | 起動済みのシミュレータ・スタックに接続して実行 (`make gazebo-simulation` と `make navigation` が別途必要。開発時の反復用) |
 | `make scenario-validate` | シナリオ YAML の静的検証 |
 | `make test pkg=mg_scenario_test` | ユニットテスト |
 
-`SCENARIO` は `scenarios/<名前>.yaml` の名前か、コンテナ内のパスで指定します。
+**実装を変えたときの運用**: 変更のたびに `make scenario-test-all TIER=smoke` (約 6 分)、リリース前・夜間に `make scenario-test-all` (全件)。
+不安定さの確認には `REPEAT=3` 以上で繰り返します。シナリオの内容と保証することは [scenarios/README.md](scenarios/README.md) を参照。
+
 実行中は Gazebo・Nav2 を専有するため、同時に別のスタック (`make gazebo-simulation` 等) を起動しないでください。
 
 ## 結果

@@ -112,8 +112,8 @@ Gazebo とナビゲーションを起動し、障害物の出現などを含む�
 
 ```bash
 make scenario-validate                              # シナリオ YAML の検証（シミュレータ不要）
-make scenario-test SCENARIO=example_inline_goals    # 1 本を起動から判定まで実行（ヘッドレス。GUI=1 で表示）
-make scenario-test-all TAGS=smoke                   # タグで絞って一括実行（1 本ごとにスタックを起動し直す）
+make scenario-test SCENARIO=nav_basic_goal          # 1 本を起動から判定まで実行（ヘッドレス。GUI=1 で表示）
+make scenario-test-all TIER=smoke                   # 変更のたびに実行する回帰テスト（約 6 分。省略で全件、1 本ごとにスタックを起動し直す）
 ```
 
 結果は `${ROS2_DATA_PATH}/scenario_results/<日時>/` に保存されます。
