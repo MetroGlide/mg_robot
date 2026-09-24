@@ -524,7 +524,7 @@ collision_monitor:
     base_shift_correction: True
     # 順序重要: STOPを先に評価させる（polygons.cpp のロジック上、STOPが決まった時点で
     # それ以降のpolygonはスキップされるため、より優先度の高いSTOPを先に置く）
-    polygons: ["PolygonStop", "PolygonApproach"]
+    polygons: ["PolygonStop", "PolygonSlowdown", "PolygonApproach"]
 
     # 即時の緊急停止（速度ゼロ）。現地チューニングで enabled を false にする、
     # あるいは approach のみで十分と判断できればブロックごと削除してよい。
@@ -538,9 +538,30 @@ collision_monitor:
       visualize: True
       polygon_pub_topic: "~/polygon_stop"
 
+    # 側方から進路へ入ってくる対象 (横切る歩行者など) に早めに減速して、反応時間を稼ぐ。
+    # ロボットの進路を横切る歩行者は、前方の箱 (Stop / Approach) に入る前に車体の側面・後部へ当たりうる
+    # (Gazebo で、横切る歩行者が車体の右後方に接触した)。そのため両脇 0.8m、前方 1.4m、後方 0.3m と広く取る。
+    # 狭い通路の壁で常に減速するようなら、y を狭める、slowdown_ratio を上げる、
+    # enabled を false にする (ros2 param set で即時に切替可) で調整する。
+    PolygonSlowdown:
+      type: "polygon"
+      points: [1.4, 0.8, 1.4, -0.8, -0.3, -0.8, -0.3, 0.8]
+      action_type: "slowdown"
+      slowdown_ratio: 0.3
+      min_points: 4
+      enabled: true
+      visualize: True
+      polygon_pub_topic: "~/polygon_slowdown"
+
+    # points を指定せず footprint_topic を使う: 現在の速度 (旋回を含む) でフットプリント全体を前方へ
+    # シミュレートし、time_before_collision 以内に接触するなら減速する。旋回中の側面接触も対象になる。
+    # 従来の固定の前方の箱に戻す場合は、footprint_topic を消して次の points を有効にする:
+    #   points: [0.6, 0.3, 0.6, -0.3, 0.3, -0.3, 0.3, 0.3]
+    # 実機の注意: footprint は padding (0.1m) を含むので、LiDAR が車体の一部を検出する配置だと、
+    # 常に接触と判定して止まる。実機では、scan に車体の点が入っていないか確認すること。
     PolygonApproach:
       type: "polygon"
-      points: [0.6, 0.3, 0.6, -0.3, 0.3, -0.3, 0.3, 0.3]
+      footprint_topic: "local_costmap/published_footprint"
       action_type: "approach"
       time_before_collision: 2.0
       simulation_time_step: 0.1

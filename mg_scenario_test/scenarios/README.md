@@ -37,7 +37,7 @@ scenarios/
 | `sequencer_stop_restart` | 走行中に停止して次の index を設定すると、止まったあと (auto_start が) 再開して最後まで到達する | 約 1.5 分 |
 | `dynamic_persistent_recovery` | 迂回できない壁が居座ると、待機時間を超えて BackUp のリカバリーが動き、除去後に到達する | 約 1.5 分 |
 | `full_lap_sequencer` | シミュレーション用 waypoint 9 個 (通過点と wait_trigger の停止点) を 1 周する | 約 3.5 分 |
-| `dynamic_avoid` | 横切る歩行者に接触せず (最小測距 0.10m 以上) 到達する | 約 1 分 |
+| `dynamic_avoid` | 横切る歩行者 (0.6m/s) に、ロボット自身の動きで接触せず (`obstacle_clearance`) 到達する | 約 1 分 |
 
 `smoke` 層は合計約 6 分、full 層を含む全件は約 20 分です。
 
@@ -51,11 +51,7 @@ scenarios/
 
 ## 既知の問題
 
-`known_issue` タグ付き (一括実行から除外):
-
-- **`dynamic_avoid`**: 横切る歩行者 (0.6 m/s) に対して、ロボットが動いている間にフットプリントが歩行者と重なり、4 回中 3 回で FAILED
-  (`obstacle_clearance` モニタ。以前の `min_scan_range` は、停止中のロボットを通り抜ける歩行者も検出して 4 回中 4 回 FAILED だった)。
-  collision_monitor の polygon が前方のみで、側方から横切る対象への減速・停止が足りない。ロボット側の挙動の問題。
+`known_issue` タグ付きのシナリオは、現在ありません。
 
 このほか、シナリオにできなかった (または挙動が不安定で見送った) 項目:
 
@@ -66,6 +62,12 @@ scenarios/
   原点以外への respawn も、開始時に収束しないことがある (地図の特徴が少ない)。GNSS 関連は範囲外。
 
 ## 解決済みの問題 (参考)
+
+- 横切る歩行者 (`dynamic_avoid`) との接触。`min_scan_range` は、`set_pose` で動く歩行者が停止中のロボットを通り抜けた場合も検出していた。
+  `obstacle_clearance` (ロボット自身の動きで近づいた場合だけを判定) に替え、collision_monitor に `PolygonSlowdown`
+  (両脇 0.8m・前方 1.4m・後方 0.3m の広い範囲で減速) を追加し、`PolygonApproach` をフットプリント基準にした。
+  歩行者は、進路の手前で減速したロボットの側面・後部へ入ってくるため、前方の箱だけでは間に合わなかった。
+  `PolygonStop` を前方 1.0m・左右 0.5m に広げると接触は減るが、壁際で止まり続けて `static_avoid_replan` が失敗した。
 
 - 一時的な障害物で、出現から 1 秒足らずで FollowPath が中断されリカバリーに入っていた。
   原因は `controller_server.failure_tolerance: 0.5`。`5.0` (progress_checker の `movement_time_allowance` と同じ) にした。
