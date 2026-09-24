@@ -3,6 +3,11 @@
 # 点ロボットとして計画する NavFn と違い、グローバルコストマップの footprint 全体で衝突判定し、
 # 差動二輪の動き (前進・その場旋回) の経路を作る。通れない隙間へ経路を引いて RPP が詰まる問題を減らせる。
 #
+# 【負荷の目安 (Gazebo、シナリオ through_point_continuity の走行中に計測)】
+#   planner_server の CPU: Smac Lattice 平均 6.7% / NavFn 平均 6.7% (1 コアに対する割合。差はほぼなし)、
+#   メモリ (RSS): 99MB / 93MB。1 回の計画が重くなるのは、経路がない・狭い場所のときで、
+#   その場合は max_planning_time (下記) まで CPU を使う。実機の CPU では、再計測すること。
+#
 # 【実機で負荷が高いとき】
 #   1. 従来の NavFn に戻す: global_planner:=navfn (planner_navfn.yaml を読む)。
 #      NavFn に戻すときは、nav2_params.yaml の inflation_layer / footprint_padding の
