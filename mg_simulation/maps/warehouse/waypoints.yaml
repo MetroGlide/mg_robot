@@ -1,0 +1,119 @@
+version: '2.0'
+defaults:
+  reach_tolerance: 0.5
+  through_tolerance: 1.5
+  is_through_point: true
+waypoints:
+- index: 0
+  on_reached_actions: []
+  pose:
+    orientation:
+      w: 0.9999956905923892
+      x: 0.0
+      y: 0.0
+      z: -0.0029357787127818817
+    position:
+      x: 4.44912052154541
+      y: -0.5385608077049255
+      z: 0.0
+- index: 1
+  on_reached_actions:
+  - type: wait_trigger
+  pose:
+    orientation:
+      w: 0.976561963558197
+      x: 0.0
+      y: 0.0
+      z: 0.2152363359928131
+    position:
+      x: 4.601316452026367
+      y: 5.84699821472168
+      z: 0.0
+  navigation:
+    is_through_point: false
+- index: 2
+  on_reached_actions: []
+  pose:
+    orientation:
+      w: 0.8946844930735371
+      x: 0.0
+      y: 0.0
+      z: -0.446698620832601
+    position:
+      x: 9.977445602416992
+      y: 1.743456482887268
+      z: 0.0
+- index: 3
+  on_reached_actions: []
+  pose:
+    orientation:
+      w: 0.7280704614812193
+      x: 0.0
+      y: 0.0
+      z: -0.6855022998637745
+    position:
+      x: 9.972274780273438
+      y: -5.57971715927124
+      z: 0.0
+- index: 4
+  on_reached_actions: []
+  pose:
+    orientation:
+      w: 0.16226379406700034
+      x: 0.0
+      y: 0.0
+      z: -0.9867474150637446
+    position:
+      x: 8.80712890625
+      y: -23.922698974609375
+      z: 0.0
+- index: 5
+  on_reached_actions: []
+  pose:
+    orientation:
+      w: 0.32060185074806213
+      x: 0.0
+      y: 0.0
+      z: 0.9472140669822693
+    position:
+      x: -4.400450706481934
+      y: -23.027881622314453
+      z: 0.0
+- index: 6
+  on_reached_actions: []
+  pose:
+    orientation:
+      w: 0.7203815829982908
+      x: 0.0
+      y: 0.0
+      z: 0.6935779515504199
+    position:
+      x: -5.352685928344727
+      y: -5.137087345123291
+      z: 0.0
+- index: 7
+  on_reached_actions: []
+  pose:
+    orientation:
+      w: 0.9546305390867585
+      x: 0.0
+      y: 0.0
+      z: 0.2977927699641561
+    position:
+      x: -3.8512063026428223
+      y: -0.04136180877685547
+      z: 0.0
+- index: 8
+  on_reached_actions: []
+  pose:
+    orientation:
+      w: 0.9999990525462124
+      x: 0.0
+      y: 0.0
+      z: 0.0013765560931704283
+    position:
+      x: -0.4289688766002655
+      y: -0.41484832763671875
+      z: 0.0
+  navigation:
+    is_through_point: false
