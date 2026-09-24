@@ -47,6 +47,9 @@ make test pkg=<pkg>   # 特定パッケージのテスト
 make bag-summary      # .env指定のrosbagを解析し同ディレクトリにsummary.mdを出力
 make bag-plot-gnss    # GNSS軌跡・Fix状態・精度を可視化（CIRCLES=1で精度円、SCALE=10で倍率指定、TO_TOOLS=1でtools/data/保存）
 make bag-plot-scans   # LiDARスキャン点群を2D画像化（NODES=1:20等でノード指定）
+make scenario-validate  # シナリオYAMLの静的検証（シミュレータ不要）
+make scenario-test SCENARIO=<名前|パス>  # Gazebo+Nav2を起動して1本実行（ヘッドレス、GUI=1で表示）。詳細は mg_scenario_test/README.md
+make scenario-test-all TAGS=smoke REPEAT=3  # シナリオをスタック起動し直しで一括実行
 ```
 
 コンテナ内でROS2コマンドを使う場合:
@@ -72,7 +75,8 @@ source /opt/ros/humble/setup.bash && source /root/ros2_ws/install/setup.bash
 | `mg_drivers`             | LiDAR/DepthCam/GPS/IMU/モータドライバ群                        |
 | `mg_msgs`                | カスタムメッセージ・サービス定義                               |
 | `mg_navigation`          | Nav2ラッパー(collision_monitor/behavior_server設定, AMCL watchdog, GNSS初期化) |
-| `mg_scenario_test`       | GazeboシミュレーションでシナリオYAMLを実行する結合テストFW     |
+| `mg_scenario_test`       | MG-01用のシナリオテスト（プロファイル・プラグイン・シナリオ。[README](./mg_scenario_test/README.md)） |
+| `sim_scenario_test`      | ロボット非依存のGazebo+Nav2シナリオテスト基盤（mg_*に依存しない。[README](./sim_scenario_test/README.md)） |
 | `mg_simulation`          | Gazebo Fortress ワールド・launch設定                           |
 | `mg_simulator_client`    | シミュレータ操作クライアント                                   |
 | `mg_slam`                | slam_toolbox + KISS-ICP launch・パラメータ                     |

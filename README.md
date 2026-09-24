@@ -106,6 +106,18 @@ make gazebo-simulation USE_GPU=nvidia
 make gazebo-simulation USE_GPU=amd
 ```
 
+### シナリオテスト（Gazebo 自動テスト）
+
+Gazebo とナビゲーションを起動し、障害物の出現などを含むシナリオを実行して合否を判定します（詳細は [mg_scenario_test/README.md](./mg_scenario_test/README.md)）。
+
+```bash
+make scenario-validate                              # シナリオ YAML の検証（シミュレータ不要）
+make scenario-test SCENARIO=example_inline_goals    # 1 本を起動から判定まで実行（ヘッドレス。GUI=1 で表示）
+make scenario-test-all TAGS=smoke                   # タグで絞って一括実行（1 本ごとにスタックを起動し直す）
+```
+
+結果は `${ROS2_DATA_PATH}/scenario_results/<日時>/` に保存されます。
+
 ### RViz2
 
 | コマンド                | 説明                                                      |
@@ -149,7 +161,7 @@ make config              # compose 設定の展開確認
 | `compose.gpu.amd.yaml`    | AMD GPU（`/dev/kfd`, `/dev/dri` デバイスマウント）         |
 
 `USE_GPU` の値に応じて Makefile が自動的に `-f` オプションで override ファイルを適用します。  
-GPU override の対象サービスは `gazebo-simulation` のみです。
+GPU override の対象サービスは `gazebo-simulation` と `scenario-test` です。
 
 ## 依存ファイル収集の仕組み
 

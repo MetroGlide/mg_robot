@@ -5,7 +5,7 @@ description: >
   走行中に人をロボット前方へ出現させて回避できることを確認する。
 profile: mg01
 world: warehouse
-tags: [example, nav2_goals]
+tags: [example, nav2_goals, smoke]
 
 # 障害物の名前付き定義 (action から参照する)。
 # 大きなメッシュのモデルはソフトウェアレンダリング環境で RTF を大きく下げるため、

@@ -4,7 +4,7 @@
 
 | シナリオ | タグ | 内容 | 走行 | 状態 (確認結果) |
 |---|---|---|---|---|
-| `example_inline_goals` | example, nav2_goals | インラインの 2 ゴール。静的障害物を前もって配置し、走行中に人が飛び出す | nav2_goals | PASSED (約 1 分) |
+| `example_inline_goals` | example, nav2_goals, smoke | インラインの 2 ゴール。静的障害物を前もって配置し、走行中に人が飛び出す | nav2_goals | PASSED (約 1 分) |
 | `example_waypoints_file` | example, nav2_goals | `poses` 形式のファイル (`data/warehouse_poses.yaml`) の 3 ゴール。waypoint index ごとの障害物 | nav2_goals | PASSED (約 2 分) |
 | `example_waypoints_sequencer` | example, mg_sequencer | waypoint_sequencer に走行を委ね、通過を status で判定。人の飛び出し | mg_sequencer | PASSED (9 waypoint、約 4 分) |
 | `nav_unreachable_goal` | smoke, negative, nav2_goals | 地図の外のゴールへの走行が失敗すること (異常系) | nav2_goals | PASSED (約 35 秒) |
@@ -22,4 +22,4 @@
 - **`pedestrian_crossing`**: 同一条件で 3 回実行して 1 回、歩行者への急接近 (0.15 m 未満) と走行失敗が起きた。
   ロボット側の挙動のばらつきで、`smoke` には含めていない。
 
-`smoke` タグ (`make scenario-test-all TAGS=smoke`) は、現在 `nav_unreachable_goal` のみです。
+`smoke` タグ (`make scenario-test-all TAGS=smoke`) は、`example_inline_goals` (正常系) と `nav_unreachable_goal` (異常系) で、合計 2 分程度です。
