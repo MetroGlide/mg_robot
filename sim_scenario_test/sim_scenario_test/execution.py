@@ -104,6 +104,18 @@ def run_scenario(
     return RunRecord(result["scenario_name"], status, message, elapsed, out_dir, result["checks"])
 
 
+def run_scenario_dict(raw: dict, out_dir: str, **kwargs) -> RunRecord:
+    """Python の dict で組み立てたシナリオを実行する (pytest からシナリオを書くための入口)。
+
+    dict は YAML と同じ構造。out_dir/scenario.yaml に書き出して run_scenario に渡す。
+    """
+    os.makedirs(out_dir, exist_ok=True)
+    path = os.path.join(out_dir, "scenario.yaml")
+    with open(path, "w") as f:
+        yaml.safe_dump(raw, f, allow_unicode=True, sort_keys=False)
+    return run_scenario(path, out_dir, **kwargs)
+
+
 def _run_with_log(cmd: List[str], log_path: str, timeout_sec: float) -> bool:
     """cmd を実行して出力をログに保存しつつ表示する。タイムアウトしたら True を返す。"""
     with open(log_path, "w") as log:

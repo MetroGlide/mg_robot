@@ -13,6 +13,7 @@ from sim_scenario_test.execution import (
     collect_scenarios,
     exit_code,
     run_scenario,
+    run_scenario_dict,
     write_junit,
 )
 
@@ -111,3 +112,15 @@ def test_collect_scenarios_by_tags(tmp_path):
     assert len(collect_scenarios([str(tmp_path)], [])) == 2
     assert collect_scenarios([str(tmp_path)], ["smoke"]) == [str(tmp_path / "a.yaml")]
     assert collect_scenarios([str(tmp_path / "b.yaml")], []) == [str(tmp_path / "b.yaml")]
+
+
+def test_run_scenario_dict_writes_yaml(fake_launch, tmp_path):
+    import yaml
+    out = tmp_path / "dict_out"
+    raw = {"version": "2.0", "name": "d", "tags": ["x"]}
+    # フェイクは scenario_file の値でモードを決めるため、書き出したパスを見て PASSED 扱いにする
+    fake = tmp_path / "fake2.py"
+    fake.write_text(FAKE_LAUNCH.replace('mode = args["scenario_file"]', 'mode = "PASSED"'))
+    rec = run_scenario_dict(raw, str(out), launch_prefix=[sys.executable, str(fake)])
+    assert rec.status == ResultStatus.PASSED
+    assert yaml.safe_load((out / "scenario.yaml").read_text()) == raw
