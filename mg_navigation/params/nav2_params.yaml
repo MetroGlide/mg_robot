@@ -135,7 +135,13 @@ controller_server:
     min_x_velocity_threshold: 0.001
     min_y_velocity_threshold: 0.5
     min_theta_velocity_threshold: 0.001
-    failure_tolerance: 0.5
+    # controller が有効な速度を出せない状態 (前方に障害物、進捗なし等) を許容する時間 [s]。
+    # この間は速度 0 を出して待ち、超えると FollowPath が失敗して BT のリカバリー (Wait/BackUp) に入る。
+    # 一時的な障害物なら消えるまで待つだけで再開できるよう、progress_checker の
+    # movement_time_allowance と同じ 5.0 にしている (0.5 だと出現から 1 秒足らずでリカバリーに入る)。
+    # -1 (無期限) にはしないこと: progress_checker の「進捗なし」の失敗まで無視され、詰まっても
+    # FollowPath が失敗せず、リカバリーにも入れず永久に停止する (Gazebo で確認)。
+    failure_tolerance: 5.0
     progress_checker_plugin: "progress_checker"
     goal_checker_plugins: ["general_goal_checker"]
     controller_plugins: ["FollowPath"]
