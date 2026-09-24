@@ -222,8 +222,11 @@ local_costmap:
         minimal_group_size: 4
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        inflation_radius: 2.5
-        cost_scaling_factor: 1.0
+        # 膨張の計算量は半径内のセル数に比例するので、半径を小さくすると負荷が減る。
+        # 半径はフットプリントの外接半径 (padding 込みで約 0.64m) 以上にすること (Smac の衝突判定の高速化の条件)。
+        # NavFn に戻す場合 (global_planner:=navfn) は、従来の inflation_radius: 2.5 / cost_scaling_factor: 1.0 も検討する。
+        inflation_radius: 0.8
+        cost_scaling_factor: 3.0
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: True
@@ -434,8 +437,10 @@ global_costmap:
 
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 1.0
-        inflation_radius: 2.5
+        # local_costmap の inflation_layer と同じ理由 (負荷・外接半径) で小さくしている。
+        # 従来値は 2.5 / 1.0 (NavFn に戻す場合 global_planner:=navfn は、この値も検討する)。
+        cost_scaling_factor: 3.0
+        inflation_radius: 1.0
 
       speed_filter:
         plugin: "nav2_costmap_2d::SpeedFilter"
