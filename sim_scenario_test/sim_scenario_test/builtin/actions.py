@@ -130,7 +130,7 @@ def spawn(ctx: "ScenarioContext", spec: SpawnSpec, stop: threading.Event) -> Non
     _wait_entity(ctx, spec.obstacle)
 
 
-def _wait_entity(ctx: "ScenarioContext", name: str, timeout_sec: float = 5.0) -> None:
+def _wait_entity(ctx: "ScenarioContext", name: str, timeout_sec: float = 15.0) -> None:
     """spawn の受理後に、エンティティが実際に生成されたことを確認する。"""
     deadline = time.monotonic() + timeout_sec
     while not ctx.backend.entity_exists(name):

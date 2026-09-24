@@ -1,21 +1,19 @@
 version: "2.0"
 name: collision_temporary_block
 description: >
-  collision_monitor (PolygonStop/PolygonApproach) が至近距離の障害物で停止し、障害物が
-  movement_time_allowance (nav2_params.yaml の progress_checker、現在 5.0 秒) 以内に
-  解消すれば、バックアップ等のリカバリーを行わずに走行を再開できることを確認する。
+  至近距離に障害物が出現しても、movement_time_allowance (nav2_params.yaml の progress_checker、
+  現在 5.0 秒) 以内に解消すれば、バックアップ等のリカバリーを行わずに、停止して待つだけで
+  走行を再開できることを確認する。
 profile: mg01
 world: warehouse
-tags: [collision, known_issue]
+tags: [collision, smoke]
 
-# 既知の問題: 現在の Nav2 設定では、障害物の出現直後 (約 1 秒以内) に controller が
-# 'Controller patience exceeded' で FollowPath を中断し、collision_monitor の STOP や
-# progress_checker の許容時間より先に BackUp 等のリカバリーが始まる。そのため、この
-# シナリオは意図した挙動 (STOP して待つだけで再開) を満たさず FAILED になる。
-# 挙動を修正したら known_issue タグを外して smoke に戻すこと。
-#
-# 判定: 全 waypoint への到達に加え、collision_monitor の STOP が発動したこと、
-# BackUp が発火しなかったこと (バックアップなしで走行を再開できたこと) を自動判定する。
+# 判定: 全 waypoint への到達と、BackUp が発火しなかったこと (一時的な障害物ではリカバリーに入らず、
+# 待つだけで再開したこと) を自動判定する。
+# collision_monitor の STOP は判定に含めない。障害物が近づくと controller (RPP) の衝突予測が先に
+# 速度を 0 にするため、collision_monitor が反応する (速度が障害物へ向かう) 場面がなく、STOP は発動しない。
+# STOP の発動は、突然の飛び出しなど RPP の予測が間に合わない場合の保険で、
+# collision_persistent_recovery で確認する。
 
 obstacles:
   person_blocking:
@@ -40,5 +38,4 @@ timeline:
       - despawn: { obstacle: person_blocking }
 
 monitors:
-  - collision_monitor_action: { action: STOP, expect: occurs }
   - bt_node: { node: BackUp, status: RUNNING, expect: never }

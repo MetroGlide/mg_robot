@@ -1,0 +1,45 @@
+version: "2.0"
+name: cone_line_obstacle
+description: >
+  スタート付近の進路上に、コーンを x=2.0 の直線状に並べた静的障害物 (3D 障害物検出の確認用)。
+  ロボットがコーンの列を避けて (すり抜けるか回り込んで) ゴールへ到達でき、コーンに接触しないことを確認する。
+  コーンはもともと warehouse.sdf に常設されていたが、他のシナリオの走行を妨げるため、このシナリオへ移した。
+profile: mg01
+world: warehouse
+# 既知の問題: 現状はゴールへ到達できず FAILED になる (2 回中 2 回)。コーンの列に近づくと
+# 'Failed to make progress' となり、Spin/Wait/BackUp のリカバリーを繰り返した末に失敗する。
+# 地図上は列の周りを回り込める空間があるため、コーン周辺の障害物レイヤー・膨張半径・RPP の設定など、
+# ナビゲーション側の調査が必要。直したら known_issue タグを外すこと。
+tags: [obstacle_detection, nav2_goals, known_issue]
+
+obstacles:
+  cone_0: &cone { model: { type: fuel, uri: "OpenRobotics/models/Construction Cone" } }
+  cone_1: *cone
+  cone_2: *cone
+  cone_3: *cone
+  cone_4: *cone
+  cone_5: *cone
+  cone_6: *cone
+
+setup:
+  - respawn: { pose: { x: 0.0, y: 0.0, yaw: 0.0 }, settle_sec: 3.0 }
+  - spawn: { obstacle: cone_0, pose: { frame: world, x: 2.0, y: 0.0 } }
+  - spawn: { obstacle: cone_1, pose: { frame: world, x: 2.0, y: 0.5 } }
+  - spawn: { obstacle: cone_2, pose: { frame: world, x: 2.0, y: 1.0 } }
+  - spawn: { obstacle: cone_3, pose: { frame: world, x: 2.0, y: 1.8 } }
+  - spawn: { obstacle: cone_4, pose: { frame: world, x: 2.0, y: 2.6 } }
+  - spawn: { obstacle: cone_5, pose: { frame: world, x: 2.0, y: -0.8 } }
+  - spawn: { obstacle: cone_6, pose: { frame: world, x: 2.0, y: -1.6 } }
+
+run:
+  nav2_goals:
+    goals:
+      - pose: { x: 5.0, y: 0.5, yaw: 0.0 }
+
+monitors:
+  # 上部 LiDAR の最小測距 (コーンへの接触の近似検出)
+  - min_scan_range: { min_range: 0.1, topic: /scan_top_lidar }
+
+expect:
+  - reached_all
+  - time_limit: { sec: 120 }
