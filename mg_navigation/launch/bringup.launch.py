@@ -58,6 +58,10 @@ def generate_launch_description():
     )
     record_bag_arg = launch_argument_creator.create(
         'record_bag', default="false")
+    # グローバルプランナ: params/planner_<名前>.yaml を読み込む (smac_lattice | navfn)。
+    # 実機で計画の負荷が高い場合は global_planner:=navfn で従来の NavFn に戻せる。
+    global_planner_arg = launch_argument_creator.create(
+        'global_planner', default="smac_lattice")
 
     localization_map_yamL_file_arg = launch_argument_creator.create(
         'localization_map', default=os.path.join(pkg_dir, 'map', 'map.yaml'))
@@ -146,6 +150,7 @@ def generate_launch_description():
                               'use_composition': use_composition_arg.launch_config,
                               'use_respawn': use_respawn_arg.launch_config,
                               'planning_map': planning_map_yaml_file_arg.launch_config,
+                              'global_planner': global_planner_arg.launch_config,
                               'container_name': 'nav2_container'}.items()
         ),
 

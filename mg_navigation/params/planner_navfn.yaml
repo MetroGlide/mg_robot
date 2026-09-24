@@ -1,0 +1,15 @@
+# グローバルプランナ: NavFn (launch 引数 global_planner:=navfn)
+#
+# Smac Lattice (planner_smac_lattice.yaml) の導入前に使っていた設定。点ロボットとして計画し、
+# フットプリントは膨張レイヤーの内接半径でしか考慮しない。Smac より計算負荷が小さい。
+#
+# 【NavFn で使うときの注意】
+#   nav2_params.yaml の footprint_padding は、NavFn がコーン列の通れない隙間へ経路を引かないよう、
+#   内接半径を半幅 (0.3m) に合わせる値 (0.1) にしていた。Smac 向けに下げている場合は、この値へ戻すこと。
+planner_server:
+  ros__parameters:
+    GridBased:
+      plugin: "nav2_navfn_planner/NavfnPlanner"
+      tolerance: 0.5
+      use_astar: false
+      allow_unknown: true

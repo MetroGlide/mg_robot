@@ -19,7 +19,7 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, GroupAction, SetEnvironmentVariable
 from launch.conditions import IfCondition
-from launch.substitutions import LaunchConfiguration, PythonExpression
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, PythonExpression
 from launch_ros.actions import LoadComposableNodes
 from launch_ros.actions import Node
 from launch_ros.descriptions import ComposableNode, ParameterFile
@@ -29,6 +29,7 @@ from nav2_common.launch import RewrittenYaml
 def generate_launch_description():
     # Get the launch directory
     bringup_dir = get_package_share_directory('nav2_bringup')
+    mg_navigation_dir = get_package_share_directory('mg_navigation')
 
     namespace = LaunchConfiguration('namespace')
     use_sim_time = LaunchConfiguration('use_sim_time')
@@ -41,6 +42,7 @@ def generate_launch_description():
     log_level = LaunchConfiguration('log_level')
 
     planning_map_yaml_file = LaunchConfiguration('planning_map')
+    global_planner = LaunchConfiguration('global_planner')
 
     lifecycle_nodes = [
         'planning_map_server',
@@ -68,6 +70,18 @@ def generate_launch_description():
             source_file=params_file,
             root_key=namespace,
             param_rewrites=param_substitutions,
+            convert_types=True),
+        allow_substs=True)
+
+    # グローバルプランナ (planner_server.GridBased) の設定。global_planner で
+    # params/planner_<global_planner>.yaml を選び、configured_params の後に読み込んで上書きする。
+    planner_params = ParameterFile(
+        RewrittenYaml(
+            source_file=PathJoinSubstitution(
+                [mg_navigation_dir, 'params',
+                 ['planner_', global_planner, '.yaml']]),
+            root_key=namespace,
+            param_rewrites={},
             convert_types=True),
         allow_substs=True)
 
@@ -108,6 +122,10 @@ def generate_launch_description():
     declare_log_level_cmd = DeclareLaunchArgument(
         'log_level', default_value='info',
         description='log level')
+
+    declare_global_planner_cmd = DeclareLaunchArgument(
+        'global_planner', default_value='smac_lattice',
+        description='Global planner: params/planner_<name>.yaml (smac_lattice or navfn)')
 
     declare_planning_map_yaml_cmd = DeclareLaunchArgument(
         'planning_map',
@@ -157,7 +175,7 @@ def generate_launch_description():
                 output='screen',
                 respawn=use_respawn,
                 respawn_delay=2.0,
-                parameters=[configured_params],
+                parameters=[configured_params, planner_params],
                 arguments=['--ros-args', '--log-level', log_level],
                 remappings=remappings),
             Node(
@@ -273,7 +291,7 @@ def generate_launch_description():
                 package='nav2_planner',
                 plugin='nav2_planner::PlannerServer',
                 name='planner_server',
-                parameters=[configured_params],
+                parameters=[configured_params, planner_params],
                 remappings=remappings),
             ComposableNode(
                 package='nav2_behaviors',
@@ -341,6 +359,7 @@ def generate_launch_description():
     ld.add_action(declare_use_respawn_cmd)
     ld.add_action(declare_log_level_cmd)
     ld.add_action(declare_planning_map_yaml_cmd)
+    ld.add_action(declare_global_planner_cmd)
 
     # Add the actions to launch all of the navigation nodes
     ld.add_action(load_nodes)

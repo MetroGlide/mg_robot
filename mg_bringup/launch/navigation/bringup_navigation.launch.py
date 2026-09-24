@@ -52,6 +52,8 @@ def generate_launch_description():
     )
     record_bag_arg = launch_argument_creator.create(
         "record_bag", default="false")
+    global_planner_arg = launch_argument_creator.create(
+        "global_planner", default="smac_lattice")
 
     use_ekf_arg = launch_argument_creator.create(
         "use_ekf", default="True")
@@ -145,6 +147,7 @@ def generate_launch_description():
             "waypoints_load_path": waypoints_load_path_arg.launch_config,
             "rviz": rviz_arg.launch_config,
             "record_bag": record_bag_arg.launch_config,
+            "global_planner": global_planner_arg.launch_config,
         }.items(),
     )
 
