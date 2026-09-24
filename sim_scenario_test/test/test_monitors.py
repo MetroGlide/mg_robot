@@ -108,3 +108,78 @@ def test_respawn_waits_for_convergence():
     robot.pose = Pose(0.2, 0.0)
     respawn(ctx, spec, threading.Event())
     ctx.nav2.clear_costmaps.assert_called()
+
+
+# ---------------------------------------------------------------------------
+# P5: move_obstacle / jitter / robot_travelled / call_set_bool
+# ---------------------------------------------------------------------------
+
+def test_move_obstacle_interpolates_and_ends_at_target():
+    from sim_scenario_test.builtin.actions import MoveObstacleSpec, move_obstacle
+    backend = FakeBackend()
+    ctx = _scenario_ctx(backend)
+    spawn(ctx, SpawnSpec("box", PoseSpec(x=0.0, y=0.0)), threading.Event())
+    # FakeClock は実時間の 10 倍速: 2 m を 5 m/s (実 0.04 s) で移動
+    move_obstacle(ctx, MoveObstacleSpec("box", PoseSpec(x=2.0, y=0.0), speed=5.0, rate_hz=200.0),
+                  threading.Event())
+    poses = [c[2] for c in backend.calls if c[0] == "set_pose"]
+    assert poses[-1].x == pytest.approx(2.0)
+    assert all(a.x <= b.x for a, b in zip(poses, poses[1:]))
+    assert ctx.entity_poses["box"].x == pytest.approx(2.0)
+
+
+def test_move_obstacle_requires_spawned_entity():
+    from sim_scenario_test.builtin.actions import MoveObstacleSpec, move_obstacle
+    with pytest.raises(ScenarioError, match="not been spawned"):
+        move_obstacle(_scenario_ctx(), MoveObstacleSpec("box", PoseSpec()), threading.Event())
+
+
+def test_move_obstacle_can_be_interrupted():
+    from sim_scenario_test.builtin.actions import MoveObstacleSpec, move_obstacle
+    backend = FakeBackend()
+    ctx = _scenario_ctx(backend)
+    spawn(ctx, SpawnSpec("box", PoseSpec()), threading.Event())
+    stop = threading.Event()
+    stop.set()
+    move_obstacle(ctx, MoveObstacleSpec("box", PoseSpec(x=100.0), speed=0.1), stop)
+    assert len([c for c in backend.calls if c[0] == "set_pose"]) == 1
+
+
+def test_spawn_jitter_is_reproducible():
+    def spawn_x(seed):
+        backend = FakeBackend()
+        ctx = _scenario_ctx(backend)
+        ctx.rng.seed(seed)
+        spawn(ctx, SpawnSpec("box", PoseSpec(x=1.0), jitter=0.5), threading.Event())
+        return [c[2] for c in backend.calls if c[0] == "spawn"][0].x
+
+    assert spawn_x(1) == spawn_x(1)
+    assert spawn_x(1) != spawn_x(2)
+    assert 0.5 <= spawn_x(1) <= 1.5
+
+
+def test_robot_travelled_accumulates_path_length():
+    from sim_scenario_test.builtin.triggers import RobotTravelled, RobotTravelledSpec
+    robot = FakeRobot(Pose(0.0, 0.0))
+    trigger = RobotTravelled(_scenario_ctx(robot=robot), RobotTravelledSpec(distance=2.0))
+    assert not trigger.poll()
+    robot.pose = Pose(1.0, 0.0)
+    assert not trigger.poll()
+    robot.pose = Pose(1.0, 1.5)
+    assert trigger.poll()
+
+
+def test_call_set_bool(monkeypatch):
+    from sim_scenario_test.builtin import actions
+    ctx = _scenario_ctx()
+    calls = []
+
+    def fake_call(node, client, request, timeout):
+        calls.append(request.data)
+        return SimpleNamespace(success=True, message="")
+
+    monkeypatch.setattr(actions, "call_service", fake_call)
+    monkeypatch.setattr(actions, "SetBool", MagicMock())
+    actions.call_set_bool(ctx, actions.CallSetBoolSpec("/x", False), threading.Event())
+    ctx.node.create_client.assert_called_once()
+    assert calls == [False]

@@ -62,6 +62,29 @@ class GoalFailed(_GoalEvent):
 
 
 @dataclass
+class RobotTravelledSpec:
+    distance: float
+
+
+@register_trigger("robot_travelled", RobotTravelledSpec)
+class RobotTravelled:
+    """走行開始からのロボットの移動距離 (経路長) が distance [m] に達したら成立する。"""
+
+    def __init__(self, ctx: "ScenarioContext", spec: RobotTravelledSpec):
+        self._ctx = ctx
+        self._spec = spec
+        self._last = None
+        self._total = 0.0
+
+    def poll(self) -> bool:
+        pose = self._ctx.poses.robot.get()
+        if self._last is not None:
+            self._total += pose.distance_xy(self._last)
+        self._last = pose
+        return self._total >= self._spec.distance
+
+
+@dataclass
 class RobotNearSpec:
     x: float
     y: float

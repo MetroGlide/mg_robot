@@ -34,6 +34,8 @@ class ScenarioRunnerNode(Node):
         self.declare_parameter("scenario_file", "")
         self.declare_parameter("profile", "")
         self.declare_parameter("result_file", "")
+        # 負の値ならシナリオの seed を使う
+        self.declare_parameter("seed", -1)
 
         scenario_file = self.get_parameter("scenario_file").value
         if not scenario_file:
@@ -47,6 +49,7 @@ class ScenarioRunnerNode(Node):
             scenario_file, self.get_parameter("profile").value)
         self.get_logger().info(f"loaded scenario '{scenario.name}' from {scenario_file}")
 
+        seed = self.get_parameter("seed").value
         world_vars = profile.world_vars(scenario.world, "scenario.world")
         backend_cls = DEFAULT_REGISTRY.get("backend", profile.sim.backend, "profile.sim").impl
         poses = PoseResolver(
@@ -62,6 +65,7 @@ class ScenarioRunnerNode(Node):
             backend=backend_cls(self, world_vars["sim_world"]),
             poses=poses,
             nav2=Nav2Interface(self, profile.nav2, profile.frames),
+            seed=seed if seed >= 0 else None,
         )
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()

@@ -104,7 +104,7 @@ class BtNodeMonitor(TopicMonitor):
 class MinScanRangeSpec:
     # この距離 [m] 未満の測距があれば接触とみなして FAILED にする
     min_range: float
-    topic: str = "/scan_front_lidar"
+    topic: str = "/scan"
 
 
 @register_monitor("min_scan_range", MinScanRangeSpec)

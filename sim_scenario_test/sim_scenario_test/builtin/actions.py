@@ -6,8 +6,11 @@ import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from std_srvs.srv import SetBool
+
 from sim_scenario_test.errors import ScenarioError, ScenarioValidationError
 from sim_scenario_test.geometry import Pose, PoseSpec
+from sim_scenario_test.nav2 import call_service
 from sim_scenario_test.registry import register_action
 
 if TYPE_CHECKING:
@@ -75,6 +78,8 @@ def teleport(ctx: "ScenarioContext", spec: TeleportSpec, stop: threading.Event) 
     if entity == ctx.profile.sim.robot_entity:
         world = Pose(world.x, world.y, world.z + ctx.profile.sim.robot_spawn_z, world.yaw)
     ctx.backend.set_entity_pose(entity, world)
+    if entity != ctx.profile.sim.robot_entity:
+        ctx.entity_poses[entity] = world
 
 
 @dataclass
@@ -100,6 +105,8 @@ def clear_costmaps(ctx: "ScenarioContext", spec: None, stop: threading.Event) ->
 class SpawnSpec:
     obstacle: str
     pose: PoseSpec
+    # x, y に ±jitter [m] の一様乱数を加える (シナリオの seed で再現できる)
+    jitter: float = 0.0
 
 
 @register_action("spawn", SpawnSpec)
@@ -110,10 +117,16 @@ def spawn(ctx: "ScenarioContext", spec: SpawnSpec, stop: threading.Event) -> Non
         model = dataclasses.replace(
             model, path=ctx.expand(model.path, f"obstacles.{spec.obstacle}.model.path"))
     world = ctx.poses.to_world(spec.pose)
+    if spec.jitter > 0.0:
+        world = Pose(
+            world.x + ctx.rng.uniform(-spec.jitter, spec.jitter),
+            world.y + ctx.rng.uniform(-spec.jitter, spec.jitter),
+            world.z, world.yaw)
     ctx.logger.info(
         f"[spawn] '{spec.obstacle}' at world ({world.x:.2f}, {world.y:.2f})")
     ctx.backend.spawn_entity(spec.obstacle, model, world)
     ctx.track_spawned(spec.obstacle)
+    ctx.entity_poses[spec.obstacle] = world
     _wait_entity(ctx, spec.obstacle)
 
 
@@ -138,6 +151,65 @@ def despawn(ctx: "ScenarioContext", spec: DespawnSpec, stop: threading.Event) ->
     """配置済みの障害物を削除する。"""
     ctx.backend.remove_entity(spec.obstacle)
     ctx.untrack_spawned(spec.obstacle)
+
+
+@dataclass
+class MoveObstacleSpec:
+    obstacle: str
+    to: PoseSpec
+    # 移動速度 [m/s] と姿勢の更新周期 [Hz]。更新は gz service 経由なので 5 Hz 程度が上限
+    speed: float = 1.0
+    rate_hz: float = 5.0
+
+    def validate(self, where: str) -> None:
+        if self.speed <= 0.0 or self.rate_hz <= 0.0:
+            raise ScenarioValidationError(f"{where}: 'speed' and 'rate_hz' must be > 0")
+
+
+@register_action("move_obstacle", MoveObstacleSpec)
+def move_obstacle(
+    ctx: "ScenarioContext", spec: MoveObstacleSpec, stop: threading.Event
+) -> None:
+    """配置済みの障害物を、現在位置から to まで等速で直線移動させる (移動する歩行者など)。"""
+    start = ctx.entity_poses.get(spec.obstacle)
+    if start is None:
+        raise ScenarioError(f"'{spec.obstacle}' has not been spawned")
+    goal = ctx.poses.to_world(spec.to)
+    distance = start.distance_xy(goal)
+    t0 = ctx.clock.now()
+    while True:
+        travelled = min(spec.speed * (ctx.clock.now() - t0), distance)
+        ratio = 1.0 if distance == 0.0 else travelled / distance
+        pose = Pose(
+            start.x + (goal.x - start.x) * ratio,
+            start.y + (goal.y - start.y) * ratio,
+            goal.z, goal.yaw)
+        ctx.backend.set_entity_pose(spec.obstacle, pose)
+        ctx.entity_poses[spec.obstacle] = pose
+        if ratio >= 1.0 or stop.is_set():
+            return
+        ctx.clock.sleep(1.0 / spec.rate_hz, stop)
+
+
+@dataclass
+class CallSetBoolSpec:
+    service: str
+    value: bool
+
+
+@register_action("call_set_bool", CallSetBoolSpec)
+def call_set_bool(
+    ctx: "ScenarioContext", spec: CallSetBoolSpec, stop: threading.Event
+) -> None:
+    """std_srvs/SetBool サービスを呼ぶ (センサの配信停止など故障の注入に使う)。"""
+    key = f"set_bool:{spec.service}"
+    if key not in ctx.extensions:
+        ctx.extensions[key] = ctx.node.create_client(SetBool, spec.service)
+    request = SetBool.Request()
+    request.data = spec.value
+    response = call_service(ctx.node, ctx.extensions[key], request, 5.0)
+    if not response.success:
+        raise ScenarioError(f"{spec.service} rejected: {response.message}")
 
 
 @dataclass

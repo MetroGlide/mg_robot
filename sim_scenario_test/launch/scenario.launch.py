@@ -10,6 +10,7 @@ from launch.event_handlers import OnProcessExit
 from launch.events import Shutdown
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description():
@@ -19,6 +20,7 @@ def generate_launch_description():
             "profile", default_value="", description="Profile name or path (overrides scenario)"),
         DeclareLaunchArgument(
             "result_file", default_value="", description="Path to write result JSON"),
+        DeclareLaunchArgument("seed", default_value="-1"),
     ]
     runner = Node(
         package="sim_scenario_test",
@@ -28,6 +30,7 @@ def generate_launch_description():
             "scenario_file": LaunchConfiguration("scenario_file"),
             "profile": LaunchConfiguration("profile"),
             "result_file": LaunchConfiguration("result_file"),
+            "seed": ParameterValue(LaunchConfiguration("seed"), value_type=int),
         }],
         output="screen",
     )

@@ -69,7 +69,8 @@ def _run(args: argparse.Namespace) -> int:
             records.append(run_scenario(
                 path, os.path.join(results_dir, name + suffix),
                 profile=args.profile, gui=args.gui, attach=args.attach,
-                timeout_sec=args.timeout))
+                timeout_sec=args.timeout,
+                seed=None if args.seed is None else args.seed + repeat))
     write_junit(records, os.path.join(results_dir, "junit.xml"))
     print(format_summary(records))
     print(f"\nresults: {results_dir}")
@@ -97,6 +98,8 @@ def main(argv: List[str] = None) -> int:
                            help="wall-clock limit per scenario [s]")
         p_run.add_argument("--tags", default="", help="comma separated; any match")
         p_run.add_argument("--repeat", type=int, default=1)
+        p_run.add_argument("--seed", type=int, default=None,
+                           help="override scenario seed (incremented per repeat)")
     args = parser.parse_args(argv)
     if args.command in ("run", "run-all"):
         return _run(args)

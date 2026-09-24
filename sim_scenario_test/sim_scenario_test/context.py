@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import random
 import threading
 import time
 from dataclasses import dataclass, field
@@ -88,6 +89,7 @@ class ScenarioContext:
         backend: "SimulationBackend",
         poses: "PoseResolver",
         nav2: "Nav2Interface",
+        seed: Optional[int] = None,
     ):
         self.node = node
         self.registry = registry
@@ -107,6 +109,9 @@ class ScenarioContext:
         self.run_start_time: Optional[float] = None
         # プラグインが実行中の状態 (クライアント等) を保持するための領域
         self.extensions: Dict[str, Any] = {}
+        self.rng = random.Random(scenario.seed if seed is None else seed)
+        # spawn / move した障害物の最新のワールド座標姿勢
+        self.entity_poses: Dict[str, Any] = {}
         self._spawned: List[str] = []
         self._lock = threading.Lock()
 

@@ -67,6 +67,7 @@ def run_scenario(
     gui: bool = False,
     attach: bool = False,
     timeout_sec: float = 1800.0,
+    seed: Optional[int] = None,
     launch_prefix: Sequence[str] = ("ros2", "launch"),
 ) -> RunRecord:
     """シナリオを 1 本実行して結果を返す。out_dir に result.json / launch.log を残す。"""
@@ -82,6 +83,8 @@ def run_scenario(
     ]
     if profile:
         cmd.append(f"profile:={profile}")
+    if seed is not None:
+        cmd.append(f"seed:={seed}")
     if not attach:
         cmd.append(f"headless:={'false' if gui else 'true'}")
 

@@ -19,6 +19,7 @@ from launch.events import Shutdown
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 from sim_scenario_test.loader import load_scenario
 from sim_scenario_test.template import expand_all
@@ -55,6 +56,7 @@ def _setup(context, *args, **kwargs):
             "scenario_file": scenario_file,
             "profile": profile_name,
             "result_file": result_file,
+            "seed": ParameterValue(LaunchConfiguration("seed"), value_type=int),
         }],
         output="screen",
     )
@@ -72,5 +74,6 @@ def generate_launch_description():
         DeclareLaunchArgument("profile", default_value=""),
         DeclareLaunchArgument("result_file", default_value=""),
         DeclareLaunchArgument("headless", default_value="true"),
+        DeclareLaunchArgument("seed", default_value="-1"),
         OpaqueFunction(function=_setup),
     ])

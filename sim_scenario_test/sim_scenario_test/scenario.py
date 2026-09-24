@@ -44,6 +44,8 @@ class Scenario:
     tags: List[str] = field(default_factory=list)
     # 走行開始からの sim 時間の上限 (秒)。超えると走行を打ち切り FAILED とする
     timeout: Optional[float] = None
+    # 乱数 (spawn の jitter 等) の種。--seed / seed パラメータで上書きできる
+    seed: int = 0
     obstacles: Dict[str, ObstacleSpec] = field(default_factory=dict)
     setup: List[ActionCall] = field(default_factory=list)
     timeline: List[TimelineEntry] = field(default_factory=list)
