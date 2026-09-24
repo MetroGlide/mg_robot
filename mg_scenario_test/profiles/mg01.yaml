@@ -13,10 +13,18 @@ sim:
     file: launch/bringup.launch.py
     args:
       world: "{world.sdf}"
+      headless: "{headless}"
 
 stack:
   package: mg_bringup
   file: launch/navigation/bringup_navigation.launch.py
+  args:
+    map_path: "{world.localization_map}"
+    planning_map_path: "{world.planning_map}"
+    waypoints_load_path: "{world.waypoints}"
+    # sim には GNSS 変換ファイルがなく、GNSS 連携も不要
+    use_slam_gnss_bridge: "false"
+    rviz: "false"
 
 frames:
   map: map
@@ -34,4 +42,6 @@ worlds:
   warehouse:
     sim_world: warehouse
     sdf: pkg://mg_simulation/worlds/warehouse.sdf
-    waypoints: /root/ros2_data/map/waypoint.yaml
+    localization_map: pkg://mg_simulation/maps/warehouse/localization.yaml
+    planning_map: pkg://mg_simulation/maps/warehouse/planning.yaml
+    waypoints: pkg://mg_simulation/maps/warehouse/waypoints.yaml
