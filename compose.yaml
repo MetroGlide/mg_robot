@@ -207,6 +207,29 @@ services:
         ros2 run sim_scenario_test scenario_cli.py $$SCENARIO_ARGS
       "
 
+  # 実機PC側のナビゲーションスタック (センサ・モータドライバを除く)。開発PCのシミュレータと
+  # DDS で接続してシナリオテストを行う。mg_system_manager の /scenario-stack/start から、
+  # STACK_PACKAGE / STACK_FILE / STACK_ARGS を渡して起動される (詳細は mg_scenario_test/README.md)。
+  scenario-remote-stack:
+    <<: *runtime-base
+    environment:
+      - PYTHONUNBUFFERED=1
+      - SIMULATION=true
+      - USE_RVIZ=false
+      - ROS_DOMAIN_ID=${SCENARIO_ROS_DOMAIN_ID:-42}
+      - CYCLONEDDS_URI=file:///app/docker/cyclonedds/remote.xml
+      - MG_REMOTE_PEER=${MG_REMOTE_PEER:-127.0.0.1}
+      - MG_DDS_INTERFACE=${MG_DDS_INTERFACE:-auto}
+      - STACK_PACKAGE=${STACK_PACKAGE:-}
+      - STACK_FILE=${STACK_FILE:-}
+      - STACK_ARGS=${STACK_ARGS:-}
+    command: >
+      bash -c "
+        source /opt/ros/humble/setup.bash &&
+        source /root/ros2_ws/install/setup.bash &&
+        ros2 launch $$(ros2 pkg prefix --share $$STACK_PACKAGE)/$$STACK_FILE $$STACK_ARGS
+      "
+
   develop:
     <<: *develop-base
     command: "/app/docker/docker-entrypoint.sh"
