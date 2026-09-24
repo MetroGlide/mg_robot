@@ -84,3 +84,9 @@ def test_is_ready_checks_world_service(ign):
 def test_missing_local_file_raises(ign):
     with pytest.raises(ScenarioError, match="failed to read SDF"):
         _backend().spawn_entity("m", ModelSpec(type="local", path="/nonexistent.sdf"), Pose())
+
+
+def test_entity_exists_parses_model_list(ign):
+    ign.reply["stdout"] = "Requesting state...\n\nAvailable models:\n    - mg\n    - box_1\n"
+    assert _backend().entity_exists("box_1")
+    assert not _backend().entity_exists("box")

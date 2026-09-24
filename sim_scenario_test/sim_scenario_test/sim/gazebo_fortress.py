@@ -50,6 +50,20 @@ class GazeboFortressBackend(SimulationBackend):
             raise ScenarioError("'ign' command not found (Gazebo Fortress required)") from e
         return f"/world/{self._world}/create" in result.stdout.split()
 
+    def entity_exists(self, name: str) -> bool:
+        try:
+            result = subprocess.run(
+                ["ign", "model", "--list"],
+                capture_output=True, text=True,
+                timeout=self._timeout_ms / 1000.0 + 2.0)
+        except subprocess.TimeoutExpired as e:
+            raise ScenarioError("ign model --list timed out") from e
+        except FileNotFoundError as e:
+            raise ScenarioError("'ign' command not found (Gazebo Fortress required)") from e
+        names = [line.strip()[2:] for line in result.stdout.splitlines()
+                 if line.strip().startswith("- ")]
+        return name in names
+
     def set_entity_pose(self, name: str, pose: Pose) -> None:
         req = f'name: "{name}" {_pose_fields(pose)}'
         self._call_service(

@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import dataclasses
 import threading
+import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from sim_scenario_test.errors import ScenarioValidationError
+from sim_scenario_test.errors import ScenarioError, ScenarioValidationError
 from sim_scenario_test.geometry import Pose, PoseSpec
 from sim_scenario_test.registry import register_action
 
@@ -20,6 +21,9 @@ class RespawnSpec:
     settle_sec: float = 2.0
     set_initial_pose: bool = True
     clear_costmaps: bool = True
+    # 自己位置推定が指定位置からこの距離 [m] 以内に収束するまで待つ (0 以下で確認しない)
+    converge_tolerance: float = 0.5
+    converge_timeout_sec: float = 10.0
 
 
 @register_action("respawn", RespawnSpec)
@@ -33,8 +37,27 @@ def respawn(ctx: "ScenarioContext", spec: RespawnSpec, stop: threading.Event) ->
     if spec.set_initial_pose:
         ctx.nav2.publish_initial_pose(pose_map)
     ctx.clock.sleep(spec.settle_sec, stop)
+    if spec.set_initial_pose and spec.converge_tolerance > 0.0:
+        _wait_converged(ctx, pose_map, spec, stop)
     if spec.clear_costmaps:
         ctx.nav2.clear_costmaps()
+
+
+def _wait_converged(
+    ctx: "ScenarioContext", target: Pose, spec: RespawnSpec, stop: threading.Event
+) -> None:
+    deadline = ctx.clock.now() + spec.converge_timeout_sec
+    while True:
+        error = ctx.poses.robot.get().distance_xy(target)
+        if error <= spec.converge_tolerance:
+            return
+        if stop.is_set():
+            return
+        if ctx.clock.now() > deadline:
+            raise ScenarioError(
+                f"localization did not converge within {spec.converge_timeout_sec:.0f}s "
+                f"(error {error:.2f} m, tolerance {spec.converge_tolerance} m)")
+        ctx.clock.sleep(0.2, stop)
 
 
 @dataclass
@@ -91,6 +114,18 @@ def spawn(ctx: "ScenarioContext", spec: SpawnSpec, stop: threading.Event) -> Non
         f"[spawn] '{spec.obstacle}' at world ({world.x:.2f}, {world.y:.2f})")
     ctx.backend.spawn_entity(spec.obstacle, model, world)
     ctx.track_spawned(spec.obstacle)
+    _wait_entity(ctx, spec.obstacle)
+
+
+def _wait_entity(ctx: "ScenarioContext", name: str, timeout_sec: float = 5.0) -> None:
+    """spawn の受理後に、エンティティが実際に生成されたことを確認する。"""
+    deadline = time.monotonic() + timeout_sec
+    while not ctx.backend.entity_exists(name):
+        if time.monotonic() > deadline:
+            raise ScenarioError(
+                f"'{name}' was accepted by the simulator but does not exist after "
+                f"{timeout_sec:.0f}s (model download failure?)")
+        time.sleep(0.2)
 
 
 @dataclass

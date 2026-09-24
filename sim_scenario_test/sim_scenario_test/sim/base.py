@@ -25,6 +25,10 @@ class SimulationBackend(ABC):
         """対象ワールドが起動し操作可能かを返す。"""
 
     @abstractmethod
+    def entity_exists(self, name: str) -> bool:
+        """ワールド上に name のエンティティが存在するかを返す。"""
+
+    @abstractmethod
     def set_entity_pose(self, name: str, pose: Pose) -> None:
         ...
 

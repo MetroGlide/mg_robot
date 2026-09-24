@@ -35,6 +35,10 @@ class FakeBackend(SimulationBackend):
     def is_ready(self) -> bool:
         return True
 
+    def entity_exists(self, name):
+        return any(c[0] == "spawn" and c[1] == name for c in self.calls) and not any(
+            c[0] == "remove" and c[1] == name for c in self.calls)
+
     def set_entity_pose(self, name, pose):
         self.calls.append(("set_pose", name, pose))
 
