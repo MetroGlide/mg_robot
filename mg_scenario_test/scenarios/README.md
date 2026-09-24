@@ -37,6 +37,7 @@ scenarios/
 | `sequencer_stop_restart` | 走行中に停止して次の index を設定すると、止まったあと (auto_start が) 再開して最後まで到達する | 約 1.5 分 |
 | `dynamic_persistent_recovery` | 迂回できない壁が居座ると、待機時間を超えて BackUp のリカバリーが動き、除去後に到達する | 約 1.5 分 |
 | `full_lap_sequencer` | シミュレーション用 waypoint 9 個 (通過点と wait_trigger の停止点) を 1 周する | 約 3.5 分 |
+| `narrow_corridor_blocked` | 通れない幅 (0.5m) の狭い回廊へ経路を引かず、壁の外側を迂回して到達する。壁に接触しない (`obstacle_clearance`) | 約 1 分 |
 | `dynamic_avoid` | 横切る歩行者 (0.6m/s) に、ロボット自身の動きで接触せず (`obstacle_clearance`) 到達する | 約 1 分 |
 
 `smoke` 層は合計約 6 分、full 層を含む全件は約 20 分です。
@@ -55,9 +56,11 @@ scenarios/
 
 このほか、シナリオにできなかった (または挙動が不安定で見送った) 項目:
 
-- **狭い回廊の通行・非通行**: 回廊の幅と、ロボットが通れる・通れないの境目が一貫しない (膨張半径 2.5 m の設定でコストが
-  回廊全体に広がる、プランナと RPP の判定基準が食い違う、`footprint_padding` の副作用など)。設計の判断待ち。
-  詳細は [../docs/writing_scenarios.md](../docs/writing_scenarios.md) の「つまずきやすい点」を参照。
+- **通れる幅の狭い回廊の通行 (`narrow_corridor_pass`、回帰テストにしていない)**: 幅 1.2m・長さ 4.4m の回廊 (出口以外に抜け道なし) の内側から
+  スタートすると、Smac Lattice が `no valid path found` で計画に失敗する (2 回中 2 回)。差動二輪用のプリミティブ (最小旋回半径 0.5m) では、
+  幅 1.2m の回廊の中で向きを合わせられないと考えられる。回廊が単に脇にあるだけの配置では、コストの低い迂回が選ばれて回廊を通らない。
+  回廊の中の走行が必要な現場では、`global_planner:=navfn` に戻す、回廊を広げる、プリミティブを替える (最小旋回半径の小さいもの) の検討が必要。
+  通れない幅の回廊 (`narrow_corridor_blocked`) は、迂回して到達できる。
 - **走行の途中・終了後に遠くへ再び respawn**: AMCL の watchdog / GNSS 初期化ノードが `/initialpose` を上書きして位置が狂う。
   原点以外への respawn も、開始時に収束しないことがある (地図の特徴が少ない)。GNSS 関連は範囲外。
 
