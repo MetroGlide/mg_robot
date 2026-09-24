@@ -6,11 +6,9 @@ description: >
   コーンはもともと warehouse.sdf に常設されていたが、他のシナリオの走行を妨げるため、このシナリオへ移した。
 profile: mg01
 world: warehouse
-# 既知の問題: 現状はゴールへ到達できず FAILED になる (2 回中 2 回)。コーンの列に近づくと
-# 'Failed to make progress' となり、Spin/Wait/BackUp のリカバリーを繰り返した末に失敗する。
-# 地図上は列の周りを回り込める空間があるため、コーン周辺の障害物レイヤー・膨張半径・RPP の設定など、
-# ナビゲーション側の調査が必要。直したら known_issue タグを外すこと。
-tags: [obstacle_detection, nav2_goals, known_issue]
+# 間隔 0.8m のコーンの隙間はロボット (幅 0.6m) が通れないので、列の端を回り込んで到達する。
+# nav2_params.yaml の footprint_padding が無いと、プランナが通れない隙間へ経路を引いて詰まる。
+tags: [obstacle_detection, nav2_goals]
 
 obstacles:
   cone_0: &cone { model: { type: fuel, uri: "OpenRobotics/models/Construction Cone" } }
