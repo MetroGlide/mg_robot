@@ -300,42 +300,70 @@ def _clearance_ctx(robot=None):
     return ctx
 
 
-def test_obstacle_clearance_ignores_contact_while_robot_is_stopped():
+def _clearance_monitor(ctx, min_clearance=0.0, obstacles=("ped",)):
     from sim_scenario_test.builtin.monitors import (
         ObstacleClearanceMonitor, ObstacleClearanceSpec)
-    ctx = _clearance_ctx()
-    monitor = ObstacleClearanceMonitor(
-        ctx, ObstacleClearanceSpec(obstacles=["ped"], min_clearance=0.05))
+    return ObstacleClearanceMonitor(
+        ctx, ObstacleClearanceSpec(obstacles=list(obstacles), min_clearance=min_clearance))
+
+
+def test_obstacle_clearance_ignores_obstacle_walking_into_robot():
+    robot = FakeRobot(Pose(0.0, 0.0))
+    ctx = _clearance_ctx(robot)
+    monitor = _clearance_monitor(ctx)
     assert monitor.result().status == ResultStatus.ERROR
-    ctx.entity_poses["ped"] = Pose(0.0, 0.5)  # フットプリントの側面から 0.5-0.3-0.25 = -0.05 (重なり)
-    monitor._callback(_odom_twist(linear=0.0))
+    for y in (1.5, 1.0, 0.5, 0.0):  # 歩行者だけが動いて、停止中のロボットへ重なる
+        ctx.entity_poses["ped"] = Pose(0.0, y)
+        monitor._callback(_odom_twist())
     result = monitor.result()
     assert result.status == ResultStatus.PASSED
-    assert "never moved" in result.message
+    assert "never approached" in result.message and "0.00" in result.message
 
 
-def test_obstacle_clearance_fails_when_robot_moves_into_obstacle():
-    from sim_scenario_test.builtin.monitors import (
-        ObstacleClearanceMonitor, ObstacleClearanceSpec)
-    ctx = _clearance_ctx()
-    monitor = ObstacleClearanceMonitor(
-        ctx, ObstacleClearanceSpec(obstacles=["ped"], min_clearance=0.05))
+def test_obstacle_clearance_fails_when_robot_drives_into_obstacle():
+    robot = FakeRobot(Pose(0.0, 0.0))
+    ctx = _clearance_ctx(robot)
+    monitor = _clearance_monitor(ctx)
     ctx.entity_poses["ped"] = Pose(1.0, 0.0)  # 前端から 0.35
-    monitor._callback(_odom_twist(linear=0.5))
+    monitor._callback(_odom_twist(0.5))
+    robot.pose = Pose(0.2, 0.0)  # 前端から 0.15
+    monitor._callback(_odom_twist(0.5))
     assert monitor.result().status == ResultStatus.PASSED
-    ctx.entity_poses["ped"] = Pose(0.5, 0.0)  # 前端から -0.15 (重なり)
-    monitor._callback(_odom_twist(linear=0.5))
+    robot.pose = Pose(0.6, 0.0)  # 前端から -0.25 (重なり)
+    monitor._callback(_odom_twist(0.5))
     result = monitor.result()
     assert result.status == ResultStatus.FAILED and "0.00" in result.message
 
 
-def test_obstacle_clearance_counts_rotation_as_moving():
-    from sim_scenario_test.builtin.monitors import (
-        ObstacleClearanceMonitor, ObstacleClearanceSpec)
-    ctx = _clearance_ctx()
-    monitor = ObstacleClearanceMonitor(
-        ctx, ObstacleClearanceSpec(obstacles=["ped"], min_clearance=0.1))
-    ctx.entity_poses["ped"] = Pose(0.0, 0.6)  # 側面から 0.05
+def test_obstacle_clearance_ignores_pose_jitter_while_stopped():
+    robot = FakeRobot(Pose(0.0, 0.0))
+    ctx = _clearance_ctx(robot)
+    monitor = _clearance_monitor(ctx)
+    ctx.entity_poses["ped"] = Pose(1.0, 0.0)  # 前端から 0.35
+    monitor._callback(_odom_twist())
+    robot.pose = Pose(0.34, 0.0)  # 自己位置推定の揺れで前へ 0.34m。オドメトリは停止のまま
+    monitor._callback(_odom_twist())
+    assert monitor.result().status == ResultStatus.PASSED
+
+
+def test_obstacle_clearance_ignores_robot_moving_away():
+    robot = FakeRobot(Pose(0.0, 0.0))
+    ctx = _clearance_ctx(robot)
+    monitor = _clearance_monitor(ctx)
+    ctx.entity_poses["ped"] = Pose(0.0, 0.5)  # 側面と重なる
+    monitor._callback(_odom_twist())
+    robot.pose = Pose(-0.5, 0.0)  # ロボットが離れていく
+    monitor._callback(_odom_twist(-0.5))
+    assert monitor.result().status == ResultStatus.PASSED
+
+
+def test_obstacle_clearance_counts_rotation_toward_obstacle():
+    robot = FakeRobot(Pose(0.0, 0.0, 0.0, 0.0))
+    ctx = _clearance_ctx(robot)
+    monitor = _clearance_monitor(ctx, min_clearance=0.1)
+    ctx.entity_poses["ped"] = Pose(0.0, 0.7)  # 左側面から 0.15。左へ旋回すると前端の角が近づく
+    monitor._callback(_odom_twist())
+    robot.pose = Pose(0.0, 0.0, 0.0, 0.5)
     monitor._callback(_odom_twist(angular=0.5))
     assert monitor.result().status == ResultStatus.FAILED
 
