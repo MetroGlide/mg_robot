@@ -85,6 +85,21 @@ def collect_scenarios(
     return selected
 
 
+# シナリオの内容とは無関係な、起動・環境側の失敗を示すメッセージ (再実行の対象)
+_INFRASTRUCTURE_MARKERS = (
+    "no result was produced",
+    "readiness timeout",
+    "simulation clock stalled",
+    "timed out after",
+)
+
+
+def is_infrastructure_error(record: "RunRecord") -> bool:
+    """シミュレータの起動失敗など、シナリオの内容とは無関係な ERROR かを返す。"""
+    return record.status == ResultStatus.ERROR and any(
+        marker in record.message for marker in _INFRASTRUCTURE_MARKERS)
+
+
 def read_result(result_file: str) -> Optional[dict]:
     if not os.path.isfile(result_file):
         return None

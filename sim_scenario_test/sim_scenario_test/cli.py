@@ -22,6 +22,7 @@ from sim_scenario_test.execution import (
     default_results_dir,
     exit_code,
     format_summary,
+    is_infrastructure_error,
     run_scenario,
     write_junit,
 )
@@ -76,11 +77,19 @@ def _run(args: argparse.Namespace) -> int:
         for path in scenarios:
             name = os.path.splitext(os.path.basename(path))[0]
             suffix = f"_run{repeat + 1}" if args.repeat > 1 else ""
-            records.append(run_scenario(
-                path, os.path.join(results_dir, name + suffix),
-                profile=args.profile, gui=args.gui, attach=args.attach,
-                timeout_sec=args.timeout,
-                seed=None if args.seed is None else args.seed + repeat))
+            out_dir = os.path.join(results_dir, name + suffix)
+            record = None
+            for attempt in range(args.infra_retries + 1):
+                record = run_scenario(
+                    path, out_dir if attempt == 0 else f"{out_dir}_retry{attempt}",
+                    profile=args.profile, gui=args.gui, attach=args.attach,
+                    timeout_sec=args.timeout,
+                    seed=None if args.seed is None else args.seed + repeat)
+                if not is_infrastructure_error(record):
+                    break
+                print(f"\n[retry] {name}: infrastructure error ({record.message}); "
+                      f"attempt {attempt + 1}/{args.infra_retries + 1}\n")
+            records.append(record)
     write_junit(records, os.path.join(results_dir, "junit.xml"))
     print(format_summary(records))
     print(f"\nresults: {results_dir}")
@@ -112,6 +121,9 @@ def main(argv: List[str] = None) -> int:
         p_run.add_argument("--exclude-tags", default="",
                            help="comma separated; skip scenarios having any of these tags")
         p_run.add_argument("--repeat", type=int, default=1)
+        p_run.add_argument("--infra-retries", type=int, default=1,
+                           help="re-run a scenario this many times when it failed for "
+                                "infrastructure reasons (simulator did not start etc.)")
         p_run.add_argument("--seed", type=int, default=None,
                            help="override scenario seed (incremented per repeat)")
     args = parser.parse_args(argv)

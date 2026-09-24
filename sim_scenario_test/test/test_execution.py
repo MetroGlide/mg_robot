@@ -174,3 +174,14 @@ def test_collect_scenarios_excludes_tags(tmp_path):
     assert got == [str(tmp_path / "a.yaml"), str(tmp_path / "c.yaml")]
     only_smoke = collect_scenarios([str(tmp_path)], ["smoke"], ["known_issue"])
     assert only_smoke == [str(tmp_path / "a.yaml")]
+
+
+def test_infrastructure_errors_are_detected():
+    from sim_scenario_test.execution import is_infrastructure_error
+
+    def rec(status, message):
+        return RunRecord("s", status, message, 1.0, "", [])
+    assert is_infrastructure_error(rec(ResultStatus.ERROR, "execution: readiness timeout (180s)"))
+    assert is_infrastructure_error(rec(ResultStatus.ERROR, "no result was produced (...)"))
+    assert not is_infrastructure_error(rec(ResultStatus.ERROR, "spawn of 'x' failed"))
+    assert not is_infrastructure_error(rec(ResultStatus.FAILED, "readiness timeout"))

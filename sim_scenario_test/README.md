@@ -68,6 +68,7 @@ ros2 run sim_scenario_test scenario_cli.py run-all scenarios/ --tags smoke  # �
 | `--attach` | 起動済みのシミュレータ・スタックに接続して実行する (起動は行わない) |
 | `--results-dir DIR` | 結果の保存先 (既定 `~/.ros/scenario_results/<日時>`) |
 | `--timeout SEC` | 1 本あたりの壁時計の上限 (既定 1800 秒)。超えると ERROR |
+| `--infra-retries N` | シミュレータの起動失敗など、シナリオの内容と無関係な ERROR (準備完了のタイムアウト、結果が出ない、sim 時計の停止) のとき、その走行を N 回まで再実行する (既定 1)。テスト内容による ERROR や FAILED は再実行しない。再実行の結果は `<シナリオ名>_retryN/` に保存 |
 | `--tags a,b` / `--exclude-tags a,b` / `--repeat N` | いずれかのタグを持つものに絞り込み / いずれかのタグを持つものを除外 / 各シナリオを N 回繰り返す |
 | `--seed N` | シナリオの seed を上書きする (繰り返しごとに +1) |
 
