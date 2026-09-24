@@ -124,3 +124,31 @@ def test_run_scenario_dict_writes_yaml(fake_launch, tmp_path):
     rec = run_scenario_dict(raw, str(out), launch_prefix=[sys.executable, str(fake)])
     assert rec.status == ResultStatus.PASSED
     assert yaml.safe_load((out / "scenario.yaml").read_text()) == raw
+
+
+def test_leftover_child_processes_are_killed(tmp_path):
+    """launch 終了後に残った子プロセス (ign gazebo -s 相当) を片付ける。"""
+    import os
+    import time
+    pid_file = tmp_path / "child.pid"
+    script = tmp_path / "leaky_launch.py"
+    script.write_text(
+        "import json, subprocess, sys\n"
+        "args = dict(a.split(':=', 1) for a in sys.argv if ':=' in a)\n"
+        "child = subprocess.Popen(['sleep', '60'])\n"
+        f"open({str(pid_file)!r}, 'w').write(str(child.pid))\n"
+        "json.dump({'scenario_name': 'x', 'status': 'PASSED', 'checks': []},"
+        " open(args['result_file'], 'w'))\n")
+    run_scenario("s", str(tmp_path / "out"), launch_prefix=[sys.executable, str(script)])
+    pid = int(pid_file.read_text())
+    deadline = time.monotonic() + 5.0
+    alive = True
+    while alive and time.monotonic() < deadline:
+        try:
+            os.kill(pid, 0)
+            with open(f"/proc/{pid}/stat") as f:
+                alive = f.read().split()[2] != "Z"   # ゾンビは終了扱い
+        except (ProcessLookupError, FileNotFoundError):
+            alive = False
+        time.sleep(0.1)
+    assert not alive

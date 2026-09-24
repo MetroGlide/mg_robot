@@ -133,6 +133,9 @@ def _run_with_log(cmd: List[str], log_path: str, timeout_sec: float) -> bool:
                 break
             time.sleep(0.5)
         pump.join(timeout=5.0)
+        # ros2 launch の終了後もシミュレータ本体 (ign gazebo -s) などが残ることがある。
+        # 残すと次の実行と同じワールド・トピックで干渉するため、プロセスグループごと片付ける。
+        _kill_group(proc.pid)
     return timed_out
 
 
@@ -142,6 +145,22 @@ def _pump(stream: IO[str], log: IO[str]) -> None:
         log.flush()
         sys.stdout.write(line)
         sys.stdout.flush()
+
+
+def _kill_group(pgid: int, grace_sec: float = 3.0) -> None:
+    """プロセスグループの残存プロセスを SIGTERM → SIGKILL で終了させる。"""
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        try:
+            os.killpg(pgid, sig)
+        except ProcessLookupError:
+            return
+        deadline = time.monotonic() + grace_sec
+        while time.monotonic() < deadline:
+            try:
+                os.killpg(pgid, 0)
+            except ProcessLookupError:
+                return
+            time.sleep(0.1)
 
 
 def _terminate(proc: subprocess.Popen) -> None:
