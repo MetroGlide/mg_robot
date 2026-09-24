@@ -189,6 +189,9 @@ services:
         ros2 launch mg_simulation bringup.launch.py ${OPTS:-}
       "
 
+  # シナリオテスト: シミュレータ・ナビゲーション・実行ノードを 1 コンテナで起動し、
+  # sim_scenario_test の CLI の終了コード (0=PASSED, 1=FAILED, 2=ERROR) を返す。
+  # `make scenario-test` などから SCENARIO_ARGS を渡して使う。
   scenario-test:
     <<: *simulation-base
     environment:
@@ -196,29 +199,12 @@ services:
       - PYTHONUNBUFFERED=1
       - SIMULATION=true
       - IGN_GAZEBO_RESOURCE_PATH=/root/.ignition/fuel
-      - SCENARIO_FILE=${SCENARIO_FILE:-/app/mg_scenario_test/scenarios/example_inline_goals.yaml}
+      - SCENARIO_ARGS=${SCENARIO_ARGS:-}
     command: |
       bash -c "
         source /opt/ros/humble/setup.bash &&
         source /root/ros2_ws/install/setup.bash &&
-        ros2 launch sim_scenario_test scenario.launch.py scenario_file:=$$SCENARIO_FILE ${OPTS:-}
-      "
-
-  scenario-test-full:
-    <<: *simulation-base
-    environment:
-      - DISPLAY=${DISPLAY}
-      - PYTHONUNBUFFERED=1
-      - SIMULATION=true
-      - IGN_GAZEBO_RESOURCE_PATH=/root/.ignition/fuel
-      - SCENARIO_FILE=${SCENARIO_FILE:-/app/mg_scenario_test/scenarios/example_inline_goals.yaml}
-      - HEADLESS=${HEADLESS:-true}
-    command: |
-      bash -c "
-        source /opt/ros/humble/setup.bash &&
-        source /root/ros2_ws/install/setup.bash &&
-        ros2 launch sim_scenario_test scenario.launch.py \
-          scenario_file:=$$SCENARIO_FILE ${OPTS:-}
+        ros2 run sim_scenario_test scenario_cli.py $$SCENARIO_ARGS
       "
 
   develop:
