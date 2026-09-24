@@ -2,12 +2,11 @@ version: "2.0"
 name: dynamic_avoid
 description: >
   ロボットの進路を歩行者 (移動する障害物, 0.6m/s) が横切る。ロボットが 1m 進んだ時点で歩行者が進路の脇から
-  反対側へ歩き出す。歩行者に接触せず (上部 LiDAR の最小測距が 0.10m 以上)、停止・回避して
-  ゴールへ到達できることを確認する。歩行者の初期位置は seed で再現できる乱数で揺らす。
+  反対側へ歩き出す。ロボットが動いている間に、フットプリントと歩行者の距離が 0.05m 未満にならず、
+  停止・回避してゴールへ到達できることを確認する。歩行者の初期位置は seed で再現できる乱数で揺らす。
 profile: mg01
 world: warehouse
-# 既知の問題: 現状は、横切る歩行者との距離が 0.05〜0.08m まで縮まり FAILED になる (4 回中 4 回)。
-# 歩行者は set_pose で動かすので (物理的には押されない)、ロボットが減速・停止しないまま接近していることを示す。
+# 既知の問題: 現状は、ロボットが動いている間にフットプリントが歩行者と重なり FAILED になる (4 回中 3 回)。
 # collision_monitor の polygon は前方のみで、側方から横切る対象への減速・停止が足りない。
 # 直したら known_issue タグを外すこと。
 tags: [full, dynamic_obstacle, avoid, known_issue, nav2_goals]
@@ -43,8 +42,9 @@ timeline:
           speed: 0.6
 
 monitors:
-  # sim で実際にデータが出ているのは上部 LiDAR のみ (前方 LiDAR は何も配信しない)
-  - min_scan_range: { min_range: 0.10, topic: /scan_top_lidar }
+  # 歩行者は set_pose で動かすので物理的に押し返されず、停止中のロボットを通り抜ける。
+  # LiDAR の測距ではロボットが当てたのか区別できないため、ロボットが動いている間の距離だけを見る。
+  - obstacle_clearance: { obstacles: [pedestrian], min_clearance: 0.05 }
 
 expect:
   - reached_all

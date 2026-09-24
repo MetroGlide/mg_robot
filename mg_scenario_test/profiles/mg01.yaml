@@ -32,6 +32,10 @@ frames:
   # Gazebo ワールド原点と地図原点は一致させている
   map_in_world: {x: 0.0, y: 0.0, yaw: 0.0}
 
+robot:
+  # nav2_params.yaml の footprint (padding なしの実寸)
+  footprint: [[0.4, 0.3], [0.4, -0.3], [-0.2, -0.3], [-0.2, 0.3]]
+
 readiness:
   timeout_sec: 180.0
   lifecycle_managers:

@@ -47,6 +47,21 @@ class FramesSpec:
 
 
 @dataclass
+class RobotSpec:
+    # base フレームにおけるロボットの外形 (多角形の頂点 [x, y] の列)。
+    # obstacle_clearance など、ロボットと障害物の距離を測る monitor が使う。
+    footprint: List[List[float]] = field(default_factory=list)
+
+    def validate(self, where: str) -> None:
+        if self.footprint and len(self.footprint) < 3:
+            raise ScenarioValidationError(f"{where}: 'footprint' needs at least 3 vertices")
+        for i, vertex in enumerate(self.footprint):
+            if len(vertex) != 2:
+                raise ScenarioValidationError(
+                    f"{where}: footprint[{i}] must be [x, y], got {vertex!r}")
+
+
+@dataclass
 class Nav2Spec:
     navigate_to_pose_action: str = "navigate_to_pose"
     initialpose_topic: str = "/initialpose"
@@ -72,6 +87,7 @@ class Profile:
     sim: SimSpec = field(default_factory=SimSpec)
     stack: Optional[LaunchSpec] = None
     frames: FramesSpec = field(default_factory=FramesSpec)
+    robot: RobotSpec = field(default_factory=RobotSpec)
     nav2: Nav2Spec = field(default_factory=Nav2Spec)
     readiness: ReadinessSpec = field(default_factory=ReadinessSpec)
     # world 名 -> 変数 (sim_world, sdf, map, waypoints など任意)

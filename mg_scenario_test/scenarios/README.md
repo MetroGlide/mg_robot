@@ -53,7 +53,8 @@ scenarios/
 
 `known_issue` タグ付き (一括実行から除外):
 
-- **`dynamic_avoid`**: 横切る歩行者 (0.6 m/s) との距離が 0.05〜0.08 m まで縮まり、4 回中 4 回で FAILED。
+- **`dynamic_avoid`**: 横切る歩行者 (0.6 m/s) に対して、ロボットが動いている間にフットプリントが歩行者と重なり、4 回中 3 回で FAILED
+  (`obstacle_clearance` モニタ。以前の `min_scan_range` は、停止中のロボットを通り抜ける歩行者も検出して 4 回中 4 回 FAILED だった)。
   collision_monitor の polygon が前方のみで、側方から横切る対象への減速・停止が足りない。ロボット側の挙動の問題。
 
 このほか、シナリオにできなかった (または挙動が不安定で見送った) 項目:

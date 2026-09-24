@@ -151,6 +151,7 @@ def despawn(ctx: "ScenarioContext", spec: DespawnSpec, stop: threading.Event) ->
     """配置済みの障害物を削除する。"""
     ctx.backend.remove_entity(spec.obstacle)
     ctx.untrack_spawned(spec.obstacle)
+    ctx.entity_poses.pop(spec.obstacle, None)
 
 
 @dataclass

@@ -17,6 +17,15 @@ from sensor_msgs.msg import LaserScan
 from std_msgs.msg import Bool, String
 
 from sim_scenario_test.engine.result import CheckResult, ResultStatus
+from sim_scenario_test.errors import ScenarioError, ScenarioValidationError
+from sim_scenario_test.geometry import (
+    Point,
+    PoseSpec,
+    polygon_circle_distance,
+    polygon_polygon_distance,
+    rectangle_vertices,
+    transform_polygon,
+)
 from sim_scenario_test.registry import register_monitor
 
 if TYPE_CHECKING:
@@ -137,6 +146,120 @@ class MinScanRangeMonitor(TopicMonitor):
                   if self._min is not None and self._min < self._spec.min_range
                   else ResultStatus.PASSED)
         return CheckResult("", status, f"minimum range {observed} (limit {self._spec.min_range} m)")
+
+
+@dataclass
+class ObstacleClearanceSpec:
+    # 監視する障害物 (scenario.obstacles のキー)
+    obstacles: List[str]
+    # ロボットが動いている間の、フットプリントと障害物の表面の距離がこれ未満なら FAILED にする [m]
+    min_clearance: float = 0.0
+    # 動いているとみなす並進速度 [m/s] と角速度 [rad/s] (どちらかを超えたら動いている)
+    speed_threshold: float = 0.05
+    angular_threshold: float = 0.1
+    # fuel / local モデルなど形状を持たない障害物を、この半径の円として扱う [m]
+    radius: Optional[float] = None
+    topic: str = "/odom"
+
+    def validate(self, where: str) -> None:
+        if not self.obstacles:
+            raise ScenarioValidationError(f"{where}: 'obstacles' must not be empty")
+
+
+def _obstacle_shape(model, radius: Optional[float], name: str):
+    """障害物の形状を (半径, None) の円または (None, 矩形の寸法) として返す。"""
+    if model.type == "primitive" and model.shape in ("cylinder", "sphere"):
+        return model.size.get("radius", 0.5), None
+    if model.type == "primitive" and model.shape == "box":
+        return None, (model.size.get("x", 1.0), model.size.get("y", 1.0))
+    if radius is None:
+        raise ScenarioValidationError(
+            f"obstacle_clearance: obstacle '{name}' has no known shape; set 'radius'")
+    return radius, None
+
+
+@register_monitor("obstacle_clearance", ObstacleClearanceSpec)
+class ObstacleClearanceMonitor(TopicMonitor):
+    """ロボットが動いている間に、フットプリントが障害物へ近づきすぎないことを監視する。
+
+    set_pose で動かす障害物 (歩行者など) は物理的に押し返されず、停止中のロボットを
+    通り抜けられる。LiDAR の測距ではロボットが当てたのか区別できないため、
+    ロボットが動いている間の距離だけを判定する。停止中を含む全期間の最小距離は参考値として出す。
+    ロボットの姿勢は TF (推定値) なので、数 cm の誤差を含む。
+    """
+    MSG_TYPE = Odometry
+
+    def __init__(self, ctx: "ScenarioContext", spec: ObstacleClearanceSpec):
+        super().__init__(ctx, spec.topic)
+        self._spec = spec
+        footprint = ctx.profile.robot.footprint
+        if not footprint:
+            raise ScenarioValidationError(
+                "obstacle_clearance: profile.robot.footprint is not defined")
+        self._footprint: List[Point] = [(x, y) for x, y in footprint]
+        self._shapes = {}
+        for name in spec.obstacles:
+            if name not in ctx.scenario.obstacles:
+                raise ScenarioValidationError(
+                    f"obstacle_clearance: obstacle '{name}' is not defined")
+            self._shapes[name] = _obstacle_shape(
+                ctx.scenario.obstacles[name].model, spec.radius, name)
+        self._received = 0
+        self._observed = False
+        self._min_all: Optional[float] = None
+        self._min_moving: Optional[float] = None
+        self._min_moving_name = ""
+
+    def _distance(self, name: str, robot_polygon: List[Point]) -> Optional[float]:
+        world_pose = self._ctx.entity_poses.get(name)
+        if world_pose is None:
+            return None
+        pose = self._ctx.poses.to_map(PoseSpec(
+            "world", world_pose.x, world_pose.y, world_pose.z, world_pose.yaw))
+        radius, box = self._shapes[name]
+        if box is not None:
+            return polygon_polygon_distance(
+                robot_polygon, transform_polygon(rectangle_vertices(*box), pose))
+        return polygon_circle_distance(robot_polygon, (pose.x, pose.y), radius)
+
+    def _on_msg(self, msg) -> None:
+        self._received += 1
+        try:
+            robot = self._ctx.poses.robot.get()
+        except ScenarioError:
+            return
+        robot_polygon = transform_polygon(self._footprint, robot)
+        twist = msg.twist.twist
+        moving = (math.hypot(twist.linear.x, twist.linear.y) > self._spec.speed_threshold
+                  or abs(twist.angular.z) > self._spec.angular_threshold)
+        for name in self._spec.obstacles:
+            distance = self._distance(name, robot_polygon)
+            if distance is None:
+                continue
+            self._observed = True
+            self._min_all = distance if self._min_all is None else min(self._min_all, distance)
+            if moving and (self._min_moving is None or distance < self._min_moving):
+                self._min_moving = distance
+                self._min_moving_name = name
+
+    def _evaluate(self) -> CheckResult:
+        if self._received == 0:
+            return CheckResult(
+                "", ResultStatus.ERROR, f"no odometry on {self._spec.topic}")
+        if not self._observed:
+            return CheckResult(
+                "", ResultStatus.ERROR,
+                f"obstacle(s) {self._spec.obstacles} were never observed")
+        reference = f"overall min {self._min_all:.2f} m"
+        if self._min_moving is None:
+            return CheckResult(
+                "", ResultStatus.PASSED, f"robot never moved near obstacles ({reference})")
+        status = (ResultStatus.FAILED
+                  if self._min_moving < self._spec.min_clearance else ResultStatus.PASSED)
+        return CheckResult(
+            "", status,
+            f"min clearance while moving {self._min_moving:.2f} m "
+            f"(limit {self._spec.min_clearance} m, '{self._min_moving_name}'; {reference})")
 
 
 @dataclass
