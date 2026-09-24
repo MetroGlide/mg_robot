@@ -23,7 +23,7 @@ _compose_opts = $(if $(OPTS),OPTS="$(OPTS)" )
         _collect-deps \
         rviz2 rviz2-slam rviz2-navigation down xhost config \
         test bag-summary bag-plot-gnss bag-plot-scans bag-eval-slam \
-        diagnostics system-manager foxglove-bridge web-ui web-ui-dev tui ui-all ui-dev-all
+        diagnostics system-manager foxglove-bridge web-ui web-ui-dev ui-all ui-dev-all
 
 # --- サービス起動 ---
 
@@ -295,12 +295,6 @@ ui-dev-all:
 
 web-ui-dev:
 	$(COMPOSE) up web-ui-dev
-
-tui:
-	$(COMPOSE) run --rm -it develop bash -c \
-	  "source /opt/ros/humble/setup.bash && \
-	   source /root/ros2_ws/install/setup.bash && \
-	   ros2 run mg_tui tui_node.py"
 
 xhost:
 	xhost +local:docker

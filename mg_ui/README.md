@@ -7,7 +7,6 @@ MG-01 の状態表示・操作 UI パッケージ群。
 | パッケージ          | 説明                                                               |
 | ------------------- | ------------------------------------------------------------------ |
 | `mg_web_ui`         | React フロントエンド + foxglove_bridge + HTTP 静的配信ノード       |
-| `mg_tui`            | ターミナル UI（rclpy + Textual）                                   |
 | `mg_system_manager` | SLAM / Navigation の起動・停止を ROS2 サービス経由で実行するノード |
 
 正常性診断は `mg_diagnostics/`（プロジェクトルート）で管理しています。
@@ -41,23 +40,6 @@ make web-ui-dev
 ```
 
 > foxglove_bridge は `make web-ui` または `make slam` / `make navigation` 側で起動していること。
-
-## TUI（SSH / 制御 PC ターミナル）
-
-```bash
-make tui
-```
-
-キーバインド:
-
-| キー | 操作                      |
-| ---- | ------------------------- |
-| `s`  | Waypoint navigation START |
-| `x`  | STOP                      |
-| `p`  | PAUSE                     |
-| `r`  | RESUME                    |
-| `m`  | Save map                  |
-| `q`  | Quit                      |
 
 ## 診断・システム管理
 

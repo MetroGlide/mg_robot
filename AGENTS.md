@@ -125,7 +125,6 @@ node_name:
 | サブパッケージ      | 技術                                            |
 | ------------------- | ----------------------------------------------- |
 | `mg_web_ui`         | React 18 + TypeScript + Vite + Tailwind CSS     |
-| `mg_tui`            | Python TUI ([README](./mg_ui/mg_tui/README.md)) |
 | `mg_system_manager` | FastAPI + Docker SDK（ROS2非依存）              |
 
 **mg_web_ui フロントエンド:**
