@@ -4,6 +4,7 @@
   driver          : mg_sequencer
   action          : sequencer_start / sequencer_set_index / sequencer_stop
   trigger         : sequencer_state
+  monitor         : collision_monitor_action
   waypoint_format : mg (mg_waypoint_navigation の waypoint.yaml)
 """
 from __future__ import annotations
@@ -26,6 +27,7 @@ from sim_scenario_test.registry import (
 from sim_scenario_test.spec import ActionCall
 from sim_scenario_test.waypoints import IndexedPose
 
+from mg_scenario_test import monitors  # noqa: F401  monitor を登録する
 from mg_scenario_test.sequencer_client import SequencerClient
 from mg_scenario_test.sequencer_tracker import Progress
 

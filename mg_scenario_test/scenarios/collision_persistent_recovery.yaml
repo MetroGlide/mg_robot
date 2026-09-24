@@ -9,9 +9,8 @@ profile: mg01
 world: warehouse
 tags: [collision]
 
-# 判定について: 現時点では「規定時間内に waypoint を通過できたか」のみを自動判定する。
-# BackUp/ClearCostmap が発火したかは monitors (P4 で追加予定) で自動判定する。
-# それまでは bt_navigator のログ等で目視確認すること。
+# 判定: 全 waypoint への到達に加え、collision_monitor の STOP が発動したこと、
+# BackUp が発火したこと (リカバリーが動作したこと) を自動判定する。
 
 obstacles:
   person_blocking:
@@ -33,3 +32,7 @@ timeline:
       - spawn: { obstacle: person_blocking, pose: { frame: robot, x: 0.5, yaw: 3.14 } }
       - delay: { sec: 20.0 }
       - despawn: { obstacle: person_blocking }
+
+monitors:
+  - collision_monitor_action: { action: STOP, expect: occurs }
+  - bt_node: { node: BackUp, status: RUNNING, expect: occurs }

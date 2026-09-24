@@ -6,11 +6,16 @@ description: >
   解消すれば、バックアップ等のリカバリーを行わずに走行を再開できることを確認する。
 profile: mg01
 world: warehouse
-tags: [collision, smoke]
+tags: [collision, known_issue]
 
-# 判定について: 現時点では「規定時間内に waypoint を通過できたか」のみを自動判定する。
-# collision_monitor が作動したか・BackUp が発火しなかったかは monitors (P4 で追加予定) で
-# 自動判定する。それまでは `ros2 topic echo /collision_monitor_state` 等で目視確認すること。
+# 既知の問題: 現在の Nav2 設定では、障害物の出現直後 (約 1 秒以内) に controller が
+# 'Controller patience exceeded' で FollowPath を中断し、collision_monitor の STOP や
+# progress_checker の許容時間より先に BackUp 等のリカバリーが始まる。そのため、この
+# シナリオは意図した挙動 (STOP して待つだけで再開) を満たさず FAILED になる。
+# 挙動を修正したら known_issue タグを外して smoke に戻すこと。
+#
+# 判定: 全 waypoint への到達に加え、collision_monitor の STOP が発動したこと、
+# BackUp が発火しなかったこと (バックアップなしで走行を再開できたこと) を自動判定する。
 
 obstacles:
   person_blocking:
@@ -33,3 +38,7 @@ timeline:
       - spawn: { obstacle: person_blocking, pose: { frame: robot, x: 0.5, yaw: 3.14 } }
       - delay: { sec: 3.0 }
       - despawn: { obstacle: person_blocking }
+
+monitors:
+  - collision_monitor_action: { action: STOP, expect: occurs }
+  - bt_node: { node: BackUp, status: RUNNING, expect: never }
