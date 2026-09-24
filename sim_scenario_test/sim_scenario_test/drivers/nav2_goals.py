@@ -41,6 +41,7 @@ class Nav2GoalsSpec:
     hooks: Dict[int, GoalHooks] = field(default_factory=dict)
     # ゴール 1 つあたりの制限 (sim 時間の秒)
     goal_timeout_sec: float = 300.0
+    # 使う BT の XML パス (pkg:// に対応)。省略時は Nav2 の既定
     behavior_tree: str = ""
 
     def validate(self, where: str) -> None:
@@ -129,7 +130,9 @@ class Nav2GoalsDriver(RunDriver):
         goal.pose.orientation.z = qz
         goal.pose.orientation.w = qw
 
-        if not nav.goToPose(goal, self.spec.behavior_tree):
+        bt = (self.ctx.expand(self.spec.behavior_tree, "run.nav2_goals.behavior_tree")
+              if self.spec.behavior_tree else "")
+        if not nav.goToPose(goal, bt):
             return "goal rejected"
         deadline = self.ctx.clock.now() + self.spec.goal_timeout_sec
         while not nav.isTaskComplete():

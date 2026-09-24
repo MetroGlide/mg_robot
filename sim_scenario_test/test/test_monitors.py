@@ -183,3 +183,92 @@ def test_call_set_bool(monkeypatch):
     actions.call_set_bool(ctx, actions.CallSetBoolSpec("/x", False), threading.Event())
     ctx.node.create_client.assert_called_once()
     assert calls == [False]
+
+
+# ---------------------------------------------------------------------------
+# 回帰テスト用の monitor / expectation
+# ---------------------------------------------------------------------------
+
+def _odom(vx, vy=0.0):
+    return SimpleNamespace(twist=SimpleNamespace(twist=SimpleNamespace(
+        linear=SimpleNamespace(x=vx, y=vy))))
+
+
+def test_topic_received_counts_matching_messages():
+    from sim_scenario_test.builtin.monitors import TopicReceivedMonitor, TopicReceivedSpec
+    monitor = TopicReceivedMonitor(
+        MagicMock(), TopicReceivedSpec(topic="/m", data="hello", min_count=2))
+    monitor._callback(SimpleNamespace(data="other"))
+    monitor._callback(SimpleNamespace(data="hello"))
+    assert monitor.result().status == ResultStatus.FAILED
+    monitor._callback(SimpleNamespace(data="hello"))
+    assert monitor.result().status == ResultStatus.PASSED
+
+
+def test_topic_received_never():
+    from sim_scenario_test.builtin.monitors import TopicReceivedMonitor, TopicReceivedSpec
+    monitor = TopicReceivedMonitor(MagicMock(), TopicReceivedSpec(topic="/m", expect="never"))
+    assert monitor.result().status == ResultStatus.PASSED
+    monitor._callback(SimpleNamespace(data="x"))
+    assert monitor.result().status == ResultStatus.FAILED
+
+
+def test_max_speed_monitor():
+    from sim_scenario_test.builtin.monitors import MaxSpeedMonitor, MaxSpeedSpec
+    monitor = MaxSpeedMonitor(MagicMock(), MaxSpeedSpec(limit=1.0))
+    assert monitor.result().status == ResultStatus.ERROR
+    monitor._callback(_odom(0.8, 0.0))
+    assert monitor.result().status == ResultStatus.PASSED
+    monitor._callback(_odom(0.9, 0.9))
+    assert monitor.result().status == ResultStatus.FAILED
+
+
+def test_max_stop_duration_only_counts_inside_window():
+    from sim_scenario_test.builtin.monitors import MaxStopDurationMonitor, MaxStopDurationSpec
+    ctx = _scenario_ctx()
+    clock = {"t": 0.0}
+    ctx.clock.now = lambda: clock["t"]
+    spec = MaxStopDurationSpec(max_stop_sec=1.0, until_goal_reached=1)
+    monitor = MaxStopDurationMonitor(ctx, spec)
+    monitor._callback(_odom(0.0))                    # 区間の外: 数えない
+    assert monitor.result().status == ResultStatus.ERROR
+    ctx.events.emit("goal_started", index=0)
+    for t, v in ((0.0, 0.5), (1.0, 0.0), (2.5, 0.0), (3.0, 0.5)):
+        clock["t"] = t
+        monitor._callback(_odom(v))
+    result = monitor.result()
+    assert result.status == ResultStatus.FAILED and "1.5" in result.message
+    ctx.events.emit("goal_reached", index=1)         # 区間の終わり以降の停止は数えない
+    clock["t"] = 10.0
+    monitor._callback(_odom(0.0))
+    clock["t"] = 20.0
+    monitor._callback(_odom(0.0))
+    assert "1.5" in monitor.result().message
+
+
+def test_final_pose_error_expectation():
+    from sim_scenario_test.builtin.expectations import FinalPoseErrorSpec, final_pose_error
+    from sim_scenario_test.engine.result import Outcome
+    ctx = _scenario_ctx(robot=FakeRobot(Pose(4.9, 2.1)))
+    assert final_pose_error(ctx, FinalPoseErrorSpec(5.0, 2.0, 0.3), Outcome()).status \
+        == ResultStatus.PASSED
+    assert final_pose_error(ctx, FinalPoseErrorSpec(6.0, 2.0, 0.3), Outcome()).status \
+        == ResultStatus.FAILED
+
+
+def test_min_stop_duration_requires_a_real_stop():
+    from sim_scenario_test.builtin.monitors import MaxStopDurationMonitor, MaxStopDurationSpec
+    ctx = _scenario_ctx()
+    clock = {"t": 0.0}
+    ctx.clock.now = lambda: clock["t"]
+    monitor = MaxStopDurationMonitor(
+        ctx, MaxStopDurationSpec(min_stop_sec=3.0, until_goal_reached=1))
+    ctx.events.emit("goal_started", index=0)
+    for t, v in ((0.0, 0.5), (1.0, 0.0), (2.0, 0.0), (3.0, 0.5)):
+        clock["t"] = t
+        monitor._callback(_odom(v))
+    assert monitor.result().status == ResultStatus.FAILED       # 停止は 1 秒だけ
+    for t, v in ((4.0, 0.0), (8.0, 0.0), (9.0, 0.5)):
+        clock["t"] = t
+        monitor._callback(_odom(v))
+    assert monitor.result().status == ResultStatus.PASSED       # 4 秒の停止

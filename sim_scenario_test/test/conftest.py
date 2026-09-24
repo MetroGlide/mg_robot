@@ -18,6 +18,8 @@ _ROS2_MODULES = [
     "diagnostic_msgs",
     "diagnostic_msgs.msg",
     "nav2_msgs.msg",
+    "nav_msgs",
+    "nav_msgs.msg",
     "std_msgs",
     "std_msgs.msg",
     "std_srvs",

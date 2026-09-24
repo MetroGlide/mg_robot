@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Literal, Optional
 
 from sim_scenario_test.engine.result import CheckResult, Outcome, ResultStatus
+from sim_scenario_test.geometry import PoseSpec
 from sim_scenario_test.registry import register_expectation
 
 if TYPE_CHECKING:
@@ -35,6 +36,25 @@ def time_limit(ctx: "ScenarioContext", spec: TimeLimitSpec, outcome: Outcome) ->
     elapsed = finished.time - ctx.run_start_time
     status = ResultStatus.PASSED if elapsed <= spec.sec else ResultStatus.FAILED
     return CheckResult("", status, f"{elapsed:.1f}s (limit {spec.sec:.1f}s)")
+
+
+@dataclass
+class FinalPoseErrorSpec:
+    x: float
+    y: float
+    tolerance: float = 0.5
+    frame: Literal["map", "world"] = "map"
+
+
+@register_expectation("final_pose_error", FinalPoseErrorSpec)
+def final_pose_error(
+    ctx: "ScenarioContext", spec: FinalPoseErrorSpec, outcome: Outcome
+) -> CheckResult:
+    """走行後のロボット位置が、指定した点から tolerance [m] 以内にあること (停止精度)。"""
+    target = ctx.poses.to_map(PoseSpec(frame=spec.frame, x=spec.x, y=spec.y))
+    error = ctx.poses.robot.get().distance_xy(target)
+    status = ResultStatus.PASSED if error <= spec.tolerance else ResultStatus.FAILED
+    return CheckResult("", status, f"error {error:.2f} m (tolerance {spec.tolerance} m)")
 
 
 @dataclass
