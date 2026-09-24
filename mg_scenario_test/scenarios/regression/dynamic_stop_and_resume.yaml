@@ -1,41 +1,39 @@
 version: "2.0"
-name: collision_temporary_block
+name: dynamic_stop_and_resume
 description: >
-  至近距離に障害物が出現しても、movement_time_allowance (nav2_params.yaml の progress_checker、
-  現在 5.0 秒) 以内に解消すれば、バックアップ等のリカバリーを行わずに、停止して待つだけで
-  走行を再開できることを確認する。
+  走行中に人が目の前 (0.6m) に飛び出しても、3 秒で立ち去れば、リカバリー (BackUp) に入らず
+  停止して待つだけで走行を再開し、ゴールへ到達することを確認する。
+  nav2_params.yaml の controller_server.failure_tolerance (待機時間) が有効に働いていることの回帰確認。
 profile: mg01
 world: warehouse
-tags: [collision, smoke]
-
-# 判定: 全 waypoint への到達と、BackUp が発火しなかったこと (一時的な障害物ではリカバリーに入らず、
-# 待つだけで再開したこと) を自動判定する。
-# collision_monitor の STOP は判定に含めない。障害物が近づくと controller (RPP) の衝突予測が先に
-# 速度を 0 にするため、collision_monitor が反応する (速度が障害物へ向かう) 場面がなく、STOP は発動しない。
-# STOP の発動は、突然の飛び出しなど RPP の予測が間に合わない場合の保険で、
-# collision_persistent_recovery で確認する。
+tags: [smoke, dynamic_obstacle, nav2_goals]
 
 obstacles:
-  person_blocking:
+  person:
     model: { type: fuel, uri: "OpenRobotics/models/MaleVisitorOnPhone" }
 
 setup:
   - respawn: { pose: { x: 0.0, y: 0.0, yaw: 0.0 }, settle_sec: 3.0 }
 
 run:
-  mg_sequencer:
-    start_index: 0
+  nav2_goals:
+    behavior_tree: "pkg://mg_waypoint_navigation/behavior_trees/mg_navigate_to_pose.xml"
+    goals:
+      - pose: { x: 5.0, y: 2.0, yaw: 0.0 }
 
 timeline:
-  # 走行開始 5 秒後、ロボット直前 (footprint 前端からおよそ 0.5m 以内) に障害物を出現させ、
-  # movement_time_allowance より短い 3 秒で退避させる
-  - name: temporary_block
-    when: { goal_started: { index: 0 } }
+  - name: person_jumps_out
+    when: { robot_travelled: { distance: 1.0 } }
     do:
-      - delay: { sec: 5.0 }
-      - spawn: { obstacle: person_blocking, pose: { frame: robot, x: 0.5, yaw: 3.14 } }
+      - spawn: { obstacle: person, pose: { frame: robot, x: 0.6, yaw: 3.14 } }
       - delay: { sec: 3.0 }
-      - despawn: { obstacle: person_blocking }
+      - despawn: { obstacle: person }
 
 monitors:
+  # collision_monitor の STOP は判定に含めない: 障害物が近づくと controller (RPP) の衝突予測が先に
+  # 速度を 0 にするため、STOP は発動しない
   - bt_node: { node: BackUp, status: RUNNING, expect: never }
+
+expect:
+  - reached_all
+  - time_limit: { sec: 90 }

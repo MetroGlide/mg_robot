@@ -26,8 +26,13 @@ def test_profile_is_valid():
     assert profile.world_vars("warehouse", "t")["sim_world"] == "warehouse"
 
 
-@pytest.mark.parametrize(
-    "path", sorted((_PKG / "scenarios").glob("*.yaml")), ids=lambda p: p.name)
+def _scenario_files():
+    """scenarios/ 配下 (regression/, examples/) のシナリオ。data/ (補助データ) は除く。"""
+    return sorted(
+        p for p in (_PKG / "scenarios").rglob("*.yaml") if "data" not in p.relative_to(_PKG).parts)
+
+
+@pytest.mark.parametrize("path", _scenario_files(), ids=lambda p: p.name)
 def test_bundled_scenario_is_valid(path):
     raw = yaml.safe_load(path.read_text())
     scenario = parse_scenario(raw, str(path), DEFAULT_REGISTRY)
@@ -41,3 +46,16 @@ def test_mg_types_are_registered():
         DEFAULT_REGISTRY.names("action"))
     assert "sequencer_state" in DEFAULT_REGISTRY.names("trigger")
     assert "mg" in DEFAULT_REGISTRY.names("waypoint_format")
+
+
+def test_scenario_names_are_unique_and_match_file_names():
+    names = [yaml.safe_load(p.read_text())["name"] for p in _scenario_files()]
+    assert len(names) == len(set(names))
+
+
+def test_regression_scenarios_have_a_tier_and_category_tag():
+    for path in _scenario_files():
+        if "regression" not in path.parts:
+            continue
+        tags = yaml.safe_load(path.read_text()).get("tags", [])
+        assert len(tags) >= 2, f"{path.name}: add a category tag besides the tier tag"

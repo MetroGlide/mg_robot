@@ -1,0 +1,33 @@
+version: "2.0"
+name: static_avoid_replan
+description: >
+  走行中に進路の正面へ壁 (幅 5m) が出現しても、再計画して迂回しゴールへ到達することを確認する。
+profile: mg01
+world: warehouse
+tags: [smoke, static_obstacle, replan, nav2_goals]
+
+obstacles:
+  wall:
+    model: { type: primitive, shape: box, size: { x: 0.3, y: 5.0, z: 1.5 }, static: true }
+
+setup:
+  - respawn: { pose: { x: 0.0, y: 0.0, yaw: 0.0 }, settle_sec: 3.0 }
+
+run:
+  nav2_goals:
+    goals:
+      - pose: { x: 10.0, y: 6.0, yaw: 1.57 }
+
+timeline:
+  - name: wall_appears
+    when: { robot_travelled: { distance: 3.0 } }
+    do:
+      # ロボットの進行方向に対して垂直な壁を、正面 2m に置く
+      - spawn: { obstacle: wall, pose: { frame: robot, x: 2.0, y: 0.0, z: 0.75 } }
+
+monitors:
+  - min_scan_range: { min_range: 0.1, topic: /scan_top_lidar }
+
+expect:
+  - reached_all
+  - time_limit: { sec: 120 }

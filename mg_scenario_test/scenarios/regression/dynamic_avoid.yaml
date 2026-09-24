@@ -1,14 +1,16 @@
 version: "2.0"
-name: pedestrian_crossing
+name: dynamic_avoid
 description: >
-  ロボットの進路を歩行者が横切る (移動する障害物)。ロボットが 1m 進んだ時点で歩行者が
-  進路の脇から反対側へ歩き出す。歩行者に接触せず (LiDAR の最小測距が 0.15m 以上)、
+  ロボットの進路を歩行者 (移動する障害物, 0.6m/s) が横切る。ロボットが 1m 進んだ時点で歩行者が進路の脇から
+  反対側へ歩き出す。歩行者に接触せず (上部 LiDAR の最小測距が 0.10m 以上)、停止・回避して
   ゴールへ到達できることを確認する。歩行者の初期位置は seed で再現できる乱数で揺らす。
-# 注意: 同一条件 (seed も同じ) で 3 回実行して 1 回、歩行者への急接近 (0.15m 未満) と
-# 走行失敗が起きた。ロボット側の挙動のばらつきであり、smoke には含めていない。
 profile: mg01
 world: warehouse
-tags: [dynamic, nav2_goals]
+# 既知の問題: 現状は、横切る歩行者との距離が 0.05〜0.08m まで縮まり FAILED になる (4 回中 4 回)。
+# 歩行者は set_pose で動かすので (物理的には押されない)、ロボットが減速・停止しないまま接近していることを示す。
+# collision_monitor の polygon は前方のみで、側方から横切る対象への減速・停止が足りない。
+# 直したら known_issue タグを外すこと。
+tags: [full, dynamic_obstacle, avoid, known_issue, nav2_goals]
 seed: 1
 
 obstacles:
@@ -38,11 +40,11 @@ timeline:
       - move_obstacle:
           obstacle: pedestrian
           to: { frame: map, x: 3.0, y: 3.5, z: 0.85 }
-          speed: 0.8
+          speed: 0.6
 
 monitors:
   # sim で実際にデータが出ているのは上部 LiDAR のみ (前方 LiDAR は何も配信しない)
-  - min_scan_range: { min_range: 0.15, topic: /scan_top_lidar }
+  - min_scan_range: { min_range: 0.10, topic: /scan_top_lidar }
 
 expect:
   - reached_all

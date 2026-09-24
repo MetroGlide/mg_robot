@@ -1,38 +1,38 @@
 version: "2.0"
-name: collision_persistent_recovery
+name: dynamic_persistent_recovery
 description: >
-  至近距離の障害物が movement_time_allowance (現在 5.0 秒) を超えて居座った場合に
-  FollowPath が失敗し、mg_navigate_to_pose.xml の RoundRobin リカバリー
-  (Wait -> BackUp -> ClearCostmap 等) が発火したうえで、障害物除去後に目的地へ
-  到達できることを確認する。
+  進路の正面 1.2m に幅 5m の壁が出現して居座る (迂回できない配置)。待機時間
+  (failure_tolerance 5 秒) を超えると FollowPath が失敗し、BT のリカバリー (BackUp) が動くこと、
+  壁の除去後にゴールへ到達できることを確認する。
+  障害物が人 (幅が狭い) だと、ロボットが経路を変えて迂回してしまいリカバリーが起きないため、壁にしている。
 profile: mg01
 world: warehouse
-tags: [collision]
-
-# 判定: 全 waypoint への到達に加え、collision_monitor の STOP が発動したこと、
-# BackUp が発火したこと (リカバリーが動作したこと) を自動判定する。
+tags: [full, dynamic_obstacle, recovery, nav2_goals]
 
 obstacles:
-  person_blocking:
-    model: { type: fuel, uri: "OpenRobotics/models/MaleVisitorOnPhone" }
+  wall:
+    model: { type: primitive, shape: box, size: { x: 0.3, y: 5.0, z: 1.5 }, static: true }
 
 setup:
   - respawn: { pose: { x: 0.0, y: 0.0, yaw: 0.0 }, settle_sec: 3.0 }
 
 run:
-  mg_sequencer:
-    start_index: 0
+  nav2_goals:
+    behavior_tree: "pkg://mg_waypoint_navigation/behavior_trees/mg_navigate_to_pose.xml"
+    goals:
+      - pose: { x: 10.0, y: 6.0, yaw: 1.57 }
 
 timeline:
-  # 走行開始 5 秒後にロボット直前へ出現させ、20 秒居座らせてリカバリーを少なくとも 1 周発火させる
-  - name: persistent_block
-    when: { goal_started: { index: 0 } }
+  - name: wall_blocks_then_leaves
+    when: { robot_travelled: { distance: 2.0 } }
     do:
-      - delay: { sec: 5.0 }
-      - spawn: { obstacle: person_blocking, pose: { frame: robot, x: 0.5, yaw: 3.14 } }
-      - delay: { sec: 20.0 }
-      - despawn: { obstacle: person_blocking }
+      - spawn: { obstacle: wall, pose: { frame: robot, x: 1.2, y: 0.0, z: 0.75 } }
+      - delay: { sec: 25.0 }
+      - despawn: { obstacle: wall }
 
 monitors:
-  - collision_monitor_action: { action: STOP, expect: occurs }
   - bt_node: { node: BackUp, status: RUNNING, expect: occurs }
+
+expect:
+  - reached_all
+  - time_limit: { sec: 180 }

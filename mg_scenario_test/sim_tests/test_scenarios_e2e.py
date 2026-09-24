@@ -27,8 +27,10 @@ pytestmark = pytest.mark.skipif(
 _SCENARIOS = pathlib.Path(__file__).resolve().parents[1] / "scenarios"
 
 
-@pytest.mark.parametrize(
-    "path", collect_scenarios([str(_SCENARIOS)], ["smoke"]), ids=lambda p: os.path.basename(p))
+_SMOKE = collect_scenarios([str(_SCENARIOS / "regression")], ["smoke"], ["known_issue"])
+
+
+@pytest.mark.parametrize("path", _SMOKE, ids=lambda p: os.path.basename(p))
 def test_smoke_scenarios(path, tmp_path):
     record = run_scenario(path, str(tmp_path))
     assert record.status == ResultStatus.PASSED, record.message

@@ -1,0 +1,24 @@
+version: "2.0"
+name: nav_basic_goal
+description: >
+  障害物のない基本走行。単一ゴールに時間内に到達し、停止位置の誤差が許容内で、
+  速度が上限を超えないことを確認する (ナビゲーション全体の最小の生存確認)。
+profile: mg01
+world: warehouse
+tags: [smoke, basic, nav2_goals]
+
+setup:
+  - respawn: { pose: { x: 0.0, y: 0.0, yaw: 0.0 }, settle_sec: 3.0 }
+
+run:
+  nav2_goals:
+    goals:
+      - pose: { x: 5.0, y: 2.0, yaw: 0.0 }
+
+monitors:
+  - max_speed: { limit: 1.2 }          # 目標速度 (desired_linear_vel) は 1.0 m/s
+
+expect:
+  - reached_all
+  - time_limit: { sec: 60 }
+  - final_pose_error: { x: 5.0, y: 2.0, tolerance: 0.5 }

@@ -1,5 +1,5 @@
 version: "2.0"
-name: cone_line_obstacle
+name: static_avoid_cones
 description: >
   スタート付近の進路上に、コーンを x=2.0 の直線状に並べた静的障害物 (3D 障害物検出の確認用)。
   ロボットがコーンの列を避けて (すり抜けるか回り込んで) ゴールへ到達でき、コーンに接触しないことを確認する。
@@ -8,7 +8,7 @@ profile: mg01
 world: warehouse
 # 間隔 0.8m のコーンの隙間はロボット (幅 0.6m) が通れないので、列の端を回り込んで到達する。
 # nav2_params.yaml の footprint_padding が無いと、プランナが通れない隙間へ経路を引いて詰まる。
-tags: [obstacle_detection, nav2_goals]
+tags: [smoke, static_obstacle, obstacle_detection, nav2_goals]
 
 obstacles:
   cone_0: &cone { model: { type: fuel, uri: "OpenRobotics/models/Construction Cone" } }
