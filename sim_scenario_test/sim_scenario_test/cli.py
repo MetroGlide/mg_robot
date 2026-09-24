@@ -18,6 +18,7 @@ from sim_scenario_test.errors import ScenarioValidationError
 from sim_scenario_test.execution import (
     RunRecord,
     collect_scenarios,
+    resolve_scenario,
     default_results_dir,
     exit_code,
     format_summary,
@@ -31,6 +32,7 @@ from sim_scenario_test.registry import DEFAULT_REGISTRY, KINDS
 
 
 def _validate(files: List[str], profile: str) -> int:
+    files = collect_scenarios(files, [])
     failed = 0
     for path in files:
         try:
@@ -56,8 +58,16 @@ def _list_types(profile: str) -> int:
 
 def _run(args: argparse.Namespace) -> int:
     results_dir = args.results_dir or default_results_dir()
+    try:
+        targets = [resolve_scenario(f, args.scenario_dir) if not os.path.isdir(f) else f
+                   for f in args.files]
+    except FileNotFoundError as e:
+        print(e)
+        return 2
     scenarios = collect_scenarios(
-        args.files, [t for t in args.tags.split(",") if t] if args.tags else [])
+        targets,
+        [t for t in args.tags.split(",") if t],
+        [t for t in args.exclude_tags.split(",") if t])
     if not scenarios:
         print("no scenarios selected")
         return 2
@@ -90,6 +100,8 @@ def main(argv: List[str] = None) -> int:
         p_run = sub.add_parser(name, help=help_text)
         p_run.add_argument("files", nargs="+")
         p_run.add_argument("--profile", default="")
+        p_run.add_argument("--scenario-dir", action="append", default=[],
+                           help="directory searched for <name>.yaml when a name is given")
         p_run.add_argument("--gui", action="store_true", help="show simulator GUI")
         p_run.add_argument("--attach", action="store_true",
                            help="use an already running simulator and stack")
@@ -97,6 +109,8 @@ def main(argv: List[str] = None) -> int:
         p_run.add_argument("--timeout", type=float, default=1800.0,
                            help="wall-clock limit per scenario [s]")
         p_run.add_argument("--tags", default="", help="comma separated; any match")
+        p_run.add_argument("--exclude-tags", default="",
+                           help="comma separated; skip scenarios having any of these tags")
         p_run.add_argument("--repeat", type=int, default=1)
         p_run.add_argument("--seed", type=int, default=None,
                            help="override scenario seed (incremented per repeat)")

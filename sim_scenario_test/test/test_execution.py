@@ -152,3 +152,25 @@ def test_leftover_child_processes_are_killed(tmp_path):
             alive = False
         time.sleep(0.1)
     assert not alive
+
+
+def test_resolve_scenario_and_recursive_collection(tmp_path):
+    from sim_scenario_test.execution import resolve_scenario
+    (tmp_path / "regression").mkdir()
+    (tmp_path / "data").mkdir()
+    (tmp_path / "regression" / "a.yaml").write_text("tags: [smoke]\n")
+    (tmp_path / "data" / "wp.yaml").write_text("waypoints: []\n")
+    assert resolve_scenario("a", [str(tmp_path)]) == str(tmp_path / "regression" / "a.yaml")
+    with pytest.raises(FileNotFoundError):
+        resolve_scenario("wp", [str(tmp_path)])            # data/ は検索対象外
+    assert collect_scenarios([str(tmp_path)], []) == [str(tmp_path / "regression" / "a.yaml")]
+
+
+def test_collect_scenarios_excludes_tags(tmp_path):
+    (tmp_path / "a.yaml").write_text("tags: [smoke]\n")
+    (tmp_path / "b.yaml").write_text("tags: [smoke, known_issue]\n")
+    (tmp_path / "c.yaml").write_text("tags: [other]\n")
+    got = collect_scenarios([str(tmp_path)], [], ["known_issue"])
+    assert got == [str(tmp_path / "a.yaml"), str(tmp_path / "c.yaml")]
+    only_smoke = collect_scenarios([str(tmp_path)], ["smoke"], ["known_issue"])
+    assert only_smoke == [str(tmp_path / "a.yaml")]

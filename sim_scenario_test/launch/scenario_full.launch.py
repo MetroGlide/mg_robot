@@ -25,9 +25,9 @@ from sim_scenario_test.loader import load_scenario
 from sim_scenario_test.template import expand_all
 
 
-def _include(spec, variables, where):
+def _include(spec, variables, where, overrides=None):
     path = os.path.join(get_package_share_directory(spec.package), spec.file)
-    args = expand_all(spec.args, variables, where)
+    args = expand_all({**spec.args, **(overrides or {})}, variables, where)
     return IncludeLaunchDescription(
         PythonLaunchDescriptionSource(path), launch_arguments=args.items())
 
@@ -46,7 +46,8 @@ def _setup(context, *args, **kwargs):
     if profile.sim.launch is not None:
         actions.append(_include(profile.sim.launch, variables, "profile.sim.launch.args"))
     if profile.stack is not None:
-        actions.append(_include(profile.stack, variables, "profile.stack.args"))
+        actions.append(_include(
+            profile.stack, variables, "profile.stack.args", scenario.stack_args))
 
     runner = Node(
         package="sim_scenario_test",

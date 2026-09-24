@@ -75,3 +75,8 @@ def test_robot_near_rejects_robot_frame():
 def test_negative_delay():
     with pytest.raises(ScenarioValidationError, match="sec"):
         _parse(setup=[{"delay": {"sec": -1}}])
+
+
+def test_stack_args_are_parsed():
+    s = _parse(stack_args={"waypoints_load_path": "pkg://x/y.yaml"})
+    assert s.stack_args == {"waypoints_load_path": "pkg://x/y.yaml"}

@@ -33,23 +33,55 @@ class RunRecord:
     checks: List[dict]
 
 
-def collect_scenarios(paths: Sequence[str], tags: Sequence[str]) -> List[str]:
-    """ファイルまたはディレクトリからシナリオ YAML を集める。tags 指定時はいずれかを持つものだけ。"""
+DATA_DIR_NAME = "data"
+
+
+def _yaml_files(directory: str) -> List[str]:
+    """ディレクトリ配下 (再帰) のシナリオ YAML。data という名前のディレクトリ (補助データ) は除く。"""
+    found: List[str] = []
+    for root, dirs, names in os.walk(directory):
+        dirs[:] = sorted(d for d in dirs if d != DATA_DIR_NAME)
+        found += [os.path.join(root, n) for n in sorted(names) if n.endswith(".yaml")]
+    return found
+
+
+def resolve_scenario(name_or_path: str, search_dirs: Sequence[str]) -> str:
+    """パス、または search_dirs 配下の <name>.yaml (再帰検索) をシナリオファイルに解決する。"""
+    if os.path.isfile(name_or_path):
+        return name_or_path
+    for directory in search_dirs:
+        for path in _yaml_files(directory):
+            if os.path.basename(path) == f"{name_or_path}.yaml":
+                return path
+    raise FileNotFoundError(
+        f"scenario '{name_or_path}' not found (searched: {list(search_dirs)})")
+
+
+def collect_scenarios(
+    paths: Sequence[str], tags: Sequence[str], exclude_tags: Sequence[str] = ()
+) -> List[str]:
+    """ファイルまたはディレクトリからシナリオ YAML を集める。
+
+    tags 指定時はいずれかを持つものだけ、exclude_tags のいずれかを持つものは除く。
+    """
     files: List[str] = []
     for path in paths:
         if os.path.isdir(path):
-            files += sorted(
-                os.path.join(path, f) for f in os.listdir(path) if f.endswith(".yaml"))
+            files += _yaml_files(path)
         else:
             files.append(path)
-    if not tags:
+    if not tags and not exclude_tags:
         return files
     selected = []
     for path in files:
         with open(path, "r") as f:
             raw = yaml.safe_load(f)
-        if set(tags) & set(raw.get("tags", [])):
-            selected.append(path)
+        scenario_tags = set(raw.get("tags", []))
+        if tags and not set(tags) & scenario_tags:
+            continue
+        if set(exclude_tags) & scenario_tags:
+            continue
+        selected.append(path)
     return selected
 
 
