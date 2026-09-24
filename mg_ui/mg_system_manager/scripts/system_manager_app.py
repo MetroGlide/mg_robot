@@ -64,7 +64,12 @@ COMPOSE_SERVICES: dict[str, str] = {
     "rviz2-navigation": "rviz2-navigation",
     "rviz2-slam": "rviz2-slam",
     "reoptimize-slam": "reoptimize-slam",
+    "scenario-remote-stack": "scenario-remote-stack",
 }
+
+# 実機のハードウェアを使うサービス。動作中はシナリオテスト用スタックを起動しない
+_HARDWARE_SERVICES = ("slam", "navigation", "slam-gnss-2d")
+_SCENARIO_STACK_SERVICE = "scenario-remote-stack"
 
 
 class DockerManager:
@@ -209,6 +214,57 @@ class DockerManager:
             logger.error(
                 "compose restart exception service=%s: %s", service, e)
             return False, str(e)
+
+    def start_scenario_stack(
+        self, package: str, file: str, args: dict[str, str]
+    ) -> tuple[bool, str]:
+        status = self.get_status()
+        running = [s for s in _HARDWARE_SERVICES if status.get(s) == "running"]
+        if running:
+            return False, f"hardware services are running: {running}"
+        logger.info("start_scenario_stack package=%s file=%s args=%s",
+                    package, file, args)
+        env = os.environ.copy()
+        env["HOME"] = self._host_home
+        env["STACK_PACKAGE"] = package
+        env["STACK_FILE"] = file
+        env["STACK_ARGS"] = " ".join(f"{k}:={v}" for k, v in args.items())
+        try:
+            result = subprocess.run(
+                ["docker", "compose", "up", "-d", "--force-recreate",
+                 _SCENARIO_STACK_SERVICE],
+                capture_output=True,
+                text=True,
+                timeout=120,
+                cwd=self._host_project_dir,
+                env=env,
+            )
+            if result.returncode == 0:
+                return True, result.stdout.strip()
+            logger.error("scenario stack start failed rc=%d stderr=%s",
+                         result.returncode, result.stderr.strip())
+            return False, result.stderr.strip()
+        except Exception as e:
+            logger.error("scenario stack start exception: %s", e)
+            return False, str(e)
+
+    def stop_scenario_stack(self) -> tuple[bool, str]:
+        container = self._get_container(_SCENARIO_STACK_SERVICE)
+        if container is None:
+            return True, "not running"
+        try:
+            container.stop(timeout=30)
+            container.remove()
+            return True, ""
+        except Exception as e:
+            logger.error("scenario stack stop failed: %s", e)
+            return False, str(e)
+
+    def scenario_stack_logs(self) -> str:
+        container = self._get_container(_SCENARIO_STACK_SERVICE)
+        if container is None:
+            return ""
+        return container.logs(tail=20000).decode(errors="replace")
 
     def start_rosbag(self, file: str, topics: list[str]) -> tuple[bool, str]:
         logger.info("start_rosbag file=%s topics=%s", file, topics)
@@ -610,6 +666,53 @@ async def reset_sim_robot_pose(body: ResetPoseRequest):
         None, manager.reset_sim_robot_pose, body.x, body.y, body.z, body.yaw
     )
     return _result(ok, msg)
+
+
+_SCENARIO_STACK_PATH_RE = re.compile(r"^[a-zA-Z0-9/_\-\.]+$")
+_SCENARIO_STACK_KEY_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+
+
+def _scenario_stack_allowed_packages() -> list[str]:
+    configured = os.environ.get("SCENARIO_STACK_ALLOWED_PACKAGES", "mg_bringup")
+    return [p.strip() for p in configured.split(",") if p.strip()]
+
+
+class ScenarioStackStartRequest(BaseModel):
+    package: str
+    file: str
+    args: dict[str, str] = {}
+
+
+@app.post("/scenario-stack/start")
+async def scenario_stack_start(body: ScenarioStackStartRequest):
+    if body.package not in _scenario_stack_allowed_packages():
+        return _result(False, f"package not allowed: {body.package}")
+    if not _SCENARIO_STACK_PATH_RE.match(body.file) or ".." in body.file:
+        return _result(False, "invalid file")
+    for key, value in body.args.items():
+        if not _SCENARIO_STACK_KEY_RE.match(key):
+            return _result(False, f"invalid arg name: {key}")
+        if not _SCENARIO_STACK_PATH_RE.match(value):
+            return _result(False, f"invalid arg value for {key}")
+    loop = asyncio.get_event_loop()
+    ok, msg = await loop.run_in_executor(
+        None, manager.start_scenario_stack, body.package, body.file, body.args
+    )
+    return _result(ok, msg)
+
+
+@app.post("/scenario-stack/stop")
+async def scenario_stack_stop():
+    loop = asyncio.get_event_loop()
+    ok, msg = await loop.run_in_executor(None, manager.stop_scenario_stack)
+    return _result(ok, msg)
+
+
+@app.get("/scenario-stack/logs")
+async def scenario_stack_logs():
+    loop = asyncio.get_event_loop()
+    logs = await loop.run_in_executor(None, manager.scenario_stack_logs)
+    return {"logs": logs}
 
 
 _ROSBAG_FILE_RE = re.compile(r"^[a-zA-Z0-9/_\-\.]+$")
