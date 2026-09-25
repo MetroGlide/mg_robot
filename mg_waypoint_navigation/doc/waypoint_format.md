@@ -60,11 +60,11 @@ waypoints:
 
 ```yaml
 - type: publish
-  topic: /gnss_odometry_node/select_static_transform
+  topic: /example_topic
   msg_module: std_msgs.msg
   msg_class: String
   data:
-    data: "transform_label_A"
+    data: "example"
 ```
 
 | フィールド   | 型     | 説明                                   |
@@ -176,10 +176,10 @@ waypoints:
       orientation: {x: 0.0, y: 0.0, z: 0.707, w: 0.707}
     on_reached_actions:
       - type: publish
-        topic: /gnss_odometry_node/select_static_transform
+        topic: /example_topic
         msg_module: std_msgs.msg
         msg_class: String
-        data: {data: "label_B"}
+        data: {data: "example"}
 ```
 
 ---
@@ -192,7 +192,7 @@ waypoints:
 | アクション定義        | `on_reached_action: [string]` enum | `on_reached_actions: [{type, ...}]` dict |
 | reach_tolerance       | トップレベルフィールド             | `navigation.reach_tolerance`             |
 | is_through_point      | トップレベルフィールド             | `navigation.is_through_point`            |
-| gnss_transform_label  | トップレベルフィールド             | `publish` アクションで代替               |
+| gnss_transform_label  | トップレベルフィールド             | 廃止 (対応するノードが無い)              |
 | localization_map_yaml | トップレベルフィールド             | `load_map` アクションで代替              |
 
 ---
@@ -211,10 +211,11 @@ ros2 run mg_waypoint_navigation migrate_waypoints.py input.yaml output_v2.yaml
 | ----------------------------- | ------------- | ---------------------------------------------------------------------- |
 | `front_lidar_off`             | `service`     | `/front_lidar_publish_controller_node/change_publish_state` data=false |
 | `front_lidar_on`              | `service`     | 同 data=true                                                           |
-| `amcl_on`                     | `service`     | `/amcl/enable` data=true                                               |
-| `amcl_off`                    | `service`     | `/amcl/enable` data=false                                              |
-| `gps_on`                      | `service`     | `/gnss_odometry_node/change_publish_state` data=true                   |
-| `gps_off`                     | `service`     | `/gnss_odometry_node/change_publish_state` data=false                  |
+| `amcl_on`                     | `service`     | `/amcl_publish_controller_node/change_publish_state` data=true (AMCL の出力を EKF に入れる) |
+| `amcl_off`                    | `service`     | `/amcl_publish_controller_node/change_publish_state` data=false        |
+| `gps_on`                      | `service`     | `/slam_gnss_nav_bridge/change_publish_state` data=true (`/odom/gps` の配信) |
+| `gps_off`                     | `service`     | `/slam_gnss_nav_bridge/change_publish_state` data=false                |
 | `reload_map`                  | `load_map`    | `localization_map_yaml` / `planning_map_yaml` を引き継ぎ               |
 | `wait_trigger`                | `wait_trigger`| トリガー待ち専用アクション                                             |
-| `select_gnss_transform_label` | `publish`     | `gnss_transform_label` フィールドを data.data に変換                   |
+
+v1 の `gnss_transform_label` (複数の GNSS 変換を切り替える機能) は、対応するノードが無くなったため変換しません。

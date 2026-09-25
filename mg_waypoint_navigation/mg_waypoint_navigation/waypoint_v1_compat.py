@@ -22,28 +22,28 @@ _V1_ACTION_MAP = {
     ),
     "amcl_on": lambda: ActionConfig(
         type="service",
-        service="/amcl/enable",
+        service="/amcl_publish_controller_node/change_publish_state",
         srv_module="std_srvs.srv",
         srv_class="SetBool",
         request={"data": True},
     ),
     "amcl_off": lambda: ActionConfig(
         type="service",
-        service="/amcl/enable",
+        service="/amcl_publish_controller_node/change_publish_state",
         srv_module="std_srvs.srv",
         srv_class="SetBool",
         request={"data": False},
     ),
     "gps_on": lambda: ActionConfig(
         type="service",
-        service="/gnss_odometry_node/change_publish_state",
+        service="/slam_gnss_nav_bridge/change_publish_state",
         srv_module="std_srvs.srv",
         srv_class="SetBool",
         request={"data": True},
     ),
     "gps_off": lambda: ActionConfig(
         type="service",
-        service="/gnss_odometry_node/change_publish_state",
+        service="/slam_gnss_nav_bridge/change_publish_state",
         srv_module="std_srvs.srv",
         srv_class="SetBool",
         request={"data": False},
@@ -76,18 +76,6 @@ def convert_v1_waypoint(wp_raw: dict) -> Waypoint:
                 action.localization = wp_raw.get("localization_map_yaml", "")
                 action.planning = wp_raw.get("planning_map_yaml", "")
             actions.append(action)
-
-    gnss_label = wp_raw.get("gnss_transform_label", "")
-    if gnss_label:
-        actions.append(
-            ActionConfig(
-                type="publish",
-                topic="/gnss_odometry_node/select_static_transform",
-                msg_module="std_msgs.msg",
-                msg_class="String",
-                data={"data": gnss_label},
-            )
-        )
 
     return Waypoint(
         index=wp_raw["index"],
