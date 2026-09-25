@@ -67,7 +67,7 @@ def test_failure_rate_counts_runs_with_large_p95():
 
 def test_dataset_definitions_are_valid():
     for name in ("same_run_043837", "map043837_eval051635", "map043837_eval051635_short",
-                 "map043837_eval051635_twist_glitch"):
+                 "map043837_eval051635_movingstart", "map043837_eval051635_twist_glitch"):
         variables = load_dataset(resolve_dataset_path(name))
         assert variables["DATASET_NAME"] == name
         assert variables["MAP_YAML"].endswith("map.yaml")

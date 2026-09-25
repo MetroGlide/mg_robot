@@ -1,0 +1,16 @@
+# 動いている最中から再生を始める評価 (AMCL が自然に破綻しやすい厳しい条件)。
+# map043837_eval051635 と同じ地図・走行で、ロボットが走っている 800 s から 180 s を評価する。
+# 初期化 (真値の姿勢) の直後の収束前に走り出すため、AMCL が進行方向にずれて固まることがあり
+# (同じ条件で試行の約半数)、そのとき EKF は AMCL を信頼して GNSS を棄却する。
+# ずれの検知と復旧の仕組み (localization_supervisor) の効果を、破綻した試行の割合で比べるのに使う。
+name: map043837_eval051635_movingstart
+description: 動いている最中から始める評価 (地図 043837、評価 051635 の 800-980 s)
+map:
+  localization_yaml: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_043837/20260921_2248/map.yaml
+  gnss_transform: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_043837/20260921_2248/gnss_transform.yaml
+  slam_dir: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_043837/20260921_2248
+eval:
+  bag: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_051635
+  slam_dir: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_051635/20260921_2243
+  start_offset: 800.0
+  duration: 180.0

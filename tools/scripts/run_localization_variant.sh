@@ -95,6 +95,13 @@ eval "$(python3 tools/scripts/loc_dataset.py "$DATASET")"
 [ -n "$START_OVERRIDE" ] && START_OFFSET="$START_OVERRIDE"
 [ -n "$DURATION_OVERRIDE" ] && DURATION="$DURATION_OVERRIDE"
 
+# 真値の初期姿勢を与えるときは、AMCL が自分の初期値 (nav2_params.yaml の initial_pose = 原点) を配信して
+# EKF を引っ張らないよう止める (大きな地図では AMCL の最初のスキャン処理に十数秒かかり、その間に
+# 原点の姿勢が EKF に届いてしまう)
+if [ "$INIT_MODE" = "gt" ]; then
+  AMCL_UPDATES+=("amcl:set_initial_pose=false")
+fi
+
 # 変種のパラメータファイルを、リポジトリの値から複製して書き換える
 VARIANT_REL="tools/data/variants/loc_${NAME}"
 mkdir -p "$VARIANT_REL"
