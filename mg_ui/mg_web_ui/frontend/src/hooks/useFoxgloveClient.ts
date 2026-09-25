@@ -37,6 +37,14 @@ export function useFoxgloveClient(): FoxgloveClientHandle {
     return () => connection.stop();
   }, [connection]);
 
+  // 見えていないタブでは、地図・点群などのデータを受け取り続けない
+  useEffect(() => {
+    const update = () => connection.setPaused(document.hidden);
+    update();
+    document.addEventListener("visibilitychange", update);
+    return () => document.removeEventListener("visibilitychange", update);
+  }, [connection]);
+
   const status = useSyncExternalStore(
     (onChange) => connection.onStatusChange(onChange),
     () => connection.status,

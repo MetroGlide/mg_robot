@@ -85,6 +85,7 @@ export class FoxgloveConnection {
   >();
   private readonly topicBySubId = new Map<number, string>();
   private readonly lastMessageAt = new Map<string, number>();
+  private paused = false;
   private listenerCounter = 0;
   private subCounter = 0;
 
@@ -165,6 +166,16 @@ export class FoxgloveConnection {
       if (current.size === 0) this.listeners.delete(key);
       this.reconcile();
     };
+  }
+
+  /**
+   * true の間はサーバ側の購読をすべて止める(リスナーの登録は残す)。
+   * 見えていないタブでデータを受け続けないために使う。false に戻すと購読を張り直す。
+   */
+  setPaused(paused: boolean): void {
+    if (this.paused === paused) return;
+    this.paused = paused;
+    this.reconcile();
   }
 
   /** トピックの最後のメッセージを受信した時刻(ms)。未受信なら null。 */
@@ -448,7 +459,7 @@ export class FoxgloveConnection {
     if (!this.isOpen()) return;
 
     for (const [key, listeners] of this.listeners) {
-      if (listeners.size === 0) continue;
+      if (this.paused || listeners.size === 0) continue;
       const channel = this.channels.get(key);
       if (!channel) continue;
       const current = this.active.get(key);
@@ -457,7 +468,7 @@ export class FoxgloveConnection {
       this.subscribeServer(key, channel);
     }
     for (const key of [...this.active.keys()]) {
-      if ((this.listeners.get(key)?.size ?? 0) === 0) {
+      if (this.paused || (this.listeners.get(key)?.size ?? 0) === 0) {
         this.unsubscribeServer(key);
       }
     }

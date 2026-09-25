@@ -260,6 +260,56 @@ describe("subscribe", () => {
   });
 });
 
+describe("pause", () => {
+  it("drops server subscriptions while paused and restores them afterwards", () => {
+    const connection = createConnection();
+    const received: unknown[] = [];
+    connection.subscribe("/cmd_vel", (m) => received.push(m));
+    const ws = sockets[0];
+    ws.open();
+    ws.receiveJson({ op: "advertise", channels: [channel(7, "/cmd_vel")] });
+
+    connection.setPaused(true);
+    expect(ws.sentJson("unsubscribe")).toHaveLength(1);
+
+    connection.setPaused(false);
+    const subs = ws.sentJson("subscribe");
+    expect(subs).toHaveLength(2);
+    ws.receiveBinary(messageFrame(subs[1].subscriptions[0].id, 1));
+    expect(received).toHaveLength(1);
+  });
+
+  it("does not subscribe new listeners while paused", () => {
+    const connection = createConnection();
+    const ws = sockets[0];
+    ws.open();
+    ws.receiveJson({ op: "advertise", channels: [channel(7, "/cmd_vel")] });
+    connection.setPaused(true);
+
+    connection.subscribe("/cmd_vel", () => {});
+
+    expect(ws.sentJson("subscribe")).toHaveLength(0);
+    connection.setPaused(false);
+    expect(ws.sentJson("subscribe")).toHaveLength(1);
+  });
+
+  it("keeps services and publishing working while paused", async () => {
+    const connection = createConnection();
+    const ws = sockets[0];
+    ws.open();
+    ws.receiveJson({
+      op: "advertiseServices",
+      services: [{ id: 4, name: "/trigger" }],
+    });
+    connection.setPaused(true);
+
+    const call = connection.callService("/trigger", {});
+    ws.receiveJson({ op: "serviceCallFailure", callId: 1, message: "x" });
+
+    await expect(call).rejects.toThrow("x");
+  });
+});
+
 describe("services", () => {
   const SERVICE = {
     op: "advertiseServices",
