@@ -12,7 +12,7 @@ import SlamPage from "./pages/SlamPage";
 import SlamGnss2DPage from "./pages/SlamGnss2DPage";
 import SystemPage from "./pages/SystemPage";
 import SettingPage from "./pages/SettingPage";
-import NavBar from "./components/NavBar";
+import NavBar from "./components/layout/NavBar";
 import ConnectionBadge from "./components/ConnectionBadge";
 import SettingModal from "./components/SettingModal";
 

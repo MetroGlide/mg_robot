@@ -6,7 +6,7 @@ import { SERVICES } from "../../ros/services";
 import { loadSettings, saveSettings } from "../../utils/settingsApi";
 import { getSysManagerUrl } from "../../utils/systemManagerConfig";
 import SectionCard from "../layout/SectionCard";
-import ContainerStatusCard from "./ContainerStatusCard";
+import ContainerStatusCard from "../status/ContainerStatusCard";
 import ValueConfirmDialog from "../ui/ValueConfirmDialog";
 
 const RATE_OPTIONS = [0.5, 1.0, 1.5, 2.0] as const;

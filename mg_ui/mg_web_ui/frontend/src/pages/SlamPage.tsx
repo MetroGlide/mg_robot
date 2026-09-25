@@ -3,12 +3,12 @@ import { FoxgloveClientHandle } from "../hooks/useFoxgloveClient";
 import { SystemManagerHandle } from "../hooks/useSystemManagerClient";
 import { useSimulation } from "../contexts/SimulationContext";
 import { useRosbagReplay } from "../contexts/RosbagReplayContext";
-import RobotPageLayout from "../components/RobotPageLayout";
-import ApiLogSection from "../components/sections/ApiLogSection";
-import ContainerStatusCard from "../components/sections/ContainerStatusCard";
-import ServiceControlCard from "../components/sections/ServiceControlCard";
+import RobotPageLayout from "../components/layout/RobotPageLayout";
+import ApiLogPanel from "../components/panels/ApiLogPanel";
+import ContainerStatusCard from "../components/status/ContainerStatusCard";
+import ServiceControlCard from "../components/status/ServiceControlCard";
 import SectionCard from "../components/layout/SectionCard";
-import SimulationPoseSection from "../components/sections/SimulationPoseSection";
+import SimulationPoseSection from "../components/status/SimulationPoseSection";
 import RosbagReplaySection from "../components/sections/RosbagReplaySection";
 
 export default function SlamPage({
@@ -145,7 +145,7 @@ export default function SlamPage({
     {
       id: "log",
       label: "Log",
-      children: <ApiLogSection logs={sysManager.logs} />,
+      children: <ApiLogPanel logs={sysManager.logs} />,
     },
   ];
 
