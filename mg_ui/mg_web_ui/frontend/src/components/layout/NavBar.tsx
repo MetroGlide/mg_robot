@@ -5,6 +5,7 @@ const links = [
   { to: "/waypoint", label: "Waypoint Nav" },
   { to: "/slam", label: "SLAM Toolbox" },
   { to: "/slam-gnss-2d", label: "SLAM-GNSS-2D" },
+  { to: "/scenario-test", label: "Scenario Test" },
   { to: "/system", label: "System" },
 ];
 

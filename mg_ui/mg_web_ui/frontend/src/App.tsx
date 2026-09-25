@@ -17,6 +17,7 @@ const SlamPage = lazy(() => import("./pages/SlamPage"));
 const SlamGnss2DPage = lazy(() => import("./pages/SlamGnss2DPage"));
 const SystemPage = lazy(() => import("./pages/SystemPage"));
 const SettingPage = lazy(() => import("./pages/SettingPage"));
+const ScenarioTestPage = lazy(() => import("./pages/ScenarioTestPage"));
 
 export default function App() {
   const client = useFoxgloveClient();
@@ -70,6 +71,15 @@ export default function App() {
                       path="/system"
                       element={
                         <SystemPage client={client} sysManager={sysManager} />
+                      }
+                    />
+                    <Route
+                      path="/scenario-test"
+                      element={
+                        <ScenarioTestPage
+                          client={client}
+                          sysManager={sysManager}
+                        />
                       }
                     />
                     <Route path="/setting" element={<SettingPage />} />
