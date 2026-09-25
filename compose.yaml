@@ -319,7 +319,8 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     command: >
       bash -c "
-        python3 /app/mg_ui/mg_system_manager/scripts/system_manager_app.py
+        cd /app/mg_ui/mg_system_manager &&
+        python3 -m mg_system_manager
       "
 
   foxglove-bridge:
