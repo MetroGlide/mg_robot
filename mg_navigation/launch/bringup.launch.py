@@ -36,6 +36,14 @@ def generate_launch_description():
     # ナビゲーション (planner / controller など) とウェイポイントシーケンサを起動しない
     use_navigation_arg = launch_argument_creator.create(
         'use_navigation', default="true")
+    use_gnss_amcl_initializer_arg = launch_argument_creator.create(
+        'use_gnss_amcl_initializer', default="true")
+    # 自己位置の監視ノード (none | watchdog | supervisor)
+    localization_monitor_arg = launch_argument_creator.create(
+        'localization_monitor', default="watchdog")
+    supervisor_params_file_arg = launch_argument_creator.create(
+        'supervisor_params_file',
+        default=os.path.join(pkg_dir, 'params', 'localization_supervisor.yaml'))
     use_waypoints_follower_arg = launch_argument_creator.create(
         'use_waypoints_follower', default="true")
     waypoints_load_path_arg = launch_argument_creator.create(
@@ -140,6 +148,9 @@ def generate_launch_description():
                               'params_file': params_file,
                               'use_composition': use_composition_arg.launch_config,
                               'use_respawn': use_respawn_arg.launch_config,
+                              'use_gnss_amcl_initializer': use_gnss_amcl_initializer_arg.launch_config,
+                              'localization_monitor': localization_monitor_arg.launch_config,
+                              'supervisor_params_file': supervisor_params_file_arg.launch_config,
                               'container_name': 'nav2_container'}.items()
         ),
 

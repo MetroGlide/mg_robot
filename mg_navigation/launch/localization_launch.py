@@ -40,6 +40,9 @@ def generate_launch_description():
     container_name_full = (namespace, '/', container_name)
     use_respawn = LaunchConfiguration('use_respawn')
     log_level = LaunchConfiguration('log_level')
+    use_gnss_amcl_initializer = LaunchConfiguration('use_gnss_amcl_initializer')
+    localization_monitor = LaunchConfiguration('localization_monitor')
+    supervisor_params_file = LaunchConfiguration('supervisor_params_file')
 
     lifecycle_nodes = [
         'map_server',
@@ -109,6 +112,20 @@ def generate_launch_description():
     declare_log_level_cmd = DeclareLaunchArgument(
         'log_level', default_value='info',
         description='log level')
+
+    declare_use_gnss_amcl_initializer_cmd = DeclareLaunchArgument(
+        'use_gnss_amcl_initializer', default_value='true',
+        description='GNSS から AMCL の初期姿勢を与えるノードを起動するか')
+
+    declare_localization_monitor_cmd = DeclareLaunchArgument(
+        'localization_monitor', default_value='watchdog',
+        description='自己位置の監視ノード (none | watchdog | supervisor)')
+
+    declare_supervisor_params_file_cmd = DeclareLaunchArgument(
+        'supervisor_params_file',
+        default_value=os.path.join(
+            get_package_share_directory('mg_navigation'), 'params', 'localization_supervisor.yaml'),
+        description='localization_supervisor_node のパラメータファイル')
 
     load_nodes = GroupAction(
         condition=IfCondition(PythonExpression(['not ', use_composition])),
@@ -213,7 +230,8 @@ def generate_launch_description():
 
     gnss_amcl_initializer_node_timer = TimerAction(
         period=10.0,
-        actions=[gnss_amcl_initializer_node]
+        actions=[gnss_amcl_initializer_node],
+        condition=IfCondition(use_gnss_amcl_initializer),
     )
 
     # AMCL watchdog node: monitor amcl covariance and trigger reinitialization when needed
@@ -229,7 +247,23 @@ def generate_launch_description():
 
     amcl_watchdog_node_timer = TimerAction(
         period=12.0,
-        actions=[amcl_watchdog_node]
+        actions=[amcl_watchdog_node],
+        condition=IfCondition(PythonExpression(["'", localization_monitor, "' == 'watchdog'"])),
+    )
+
+    # Localization supervisor: AMCL のずれを検知して EKF から切り離し、EKF の姿勢で復旧する
+    localization_supervisor_node = Node(
+        package='mg_navigation',
+        executable='localization_supervisor_node.py',
+        name='localization_supervisor_node',
+        output='screen',
+        parameters=[supervisor_params_file, {'use_sim_time': use_sim_time}],
+    )
+
+    localization_supervisor_node_timer = TimerAction(
+        period=12.0,
+        actions=[localization_supervisor_node],
+        condition=IfCondition(PythonExpression(["'", localization_monitor, "' == 'supervisor'"])),
     )
 
     # Create the launch description and populate
@@ -248,6 +282,9 @@ def generate_launch_description():
     ld.add_action(declare_container_name_cmd)
     ld.add_action(declare_use_respawn_cmd)
     ld.add_action(declare_log_level_cmd)
+    ld.add_action(declare_use_gnss_amcl_initializer_cmd)
+    ld.add_action(declare_localization_monitor_cmd)
+    ld.add_action(declare_supervisor_params_file_cmd)
 
     # Add the actions to launch all of the localiztion nodes
     ld.add_action(load_nodes)
@@ -256,5 +293,6 @@ def generate_launch_description():
     ld.add_action(change_amcl_publish_state_node)
     ld.add_action(gnss_amcl_initializer_node_timer)
     ld.add_action(amcl_watchdog_node_timer)
+    ld.add_action(localization_supervisor_node_timer)
 
     return ld

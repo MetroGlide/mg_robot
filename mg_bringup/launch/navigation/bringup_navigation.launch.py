@@ -5,7 +5,8 @@ import launch
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription
 from launch_ros.actions import Node
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, EnvironmentVariable
+from launch.substitutions import (
+    EnvironmentVariable, IfElseSubstitution, LaunchConfiguration, PathJoinSubstitution)
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from ament_index_python.packages import get_package_share_directory
 
@@ -72,11 +73,27 @@ def generate_launch_description():
         "use_gps", default="true")
     use_realsense_arg = launch_argument_creator.create(
         "use_realsense", default="true")
+    # 実機ではホイールオドメトリを補正して /odom に出す (シミュレータの /odom はそのまま使う)。
+    # false にすると、ドライバの /odom をそのまま使う従来の構成に戻る。
+    use_odom_corrector_arg = launch_argument_creator.create(
+        "use_odom_corrector",
+        default=IfElseSubstitution(simulation_arg.launch_config, "false", "true"))
+    # ファイル名 (mg_drivers/params 配下) または絶対パス
+    odom_corrector_params_file_arg = launch_argument_creator.create(
+        "odom_corrector_params_file", default="wheel_odom_corrector.yaml")
 
     # false にすると自己位置推定 (map_server / AMCL / EKF など) だけを起動する。
     # rosbag を再生して自己位置推定を評価するときに使う。
     use_navigation_arg = launch_argument_creator.create(
         "use_navigation", default="true")
+    # GNSS から AMCL の初期姿勢を与えるノードと、自己位置の監視ノード (none | watchdog | supervisor)
+    use_gnss_amcl_initializer_arg = launch_argument_creator.create(
+        "use_gnss_amcl_initializer", default="true")
+    localization_monitor_arg = launch_argument_creator.create(
+        "localization_monitor", default="watchdog")
+    supervisor_params_file_arg = launch_argument_creator.create(
+        "supervisor_params_file", default=os.path.join(
+            navigation_pkg_share, "params", "localization_supervisor.yaml"))
     nav2_params_file_arg = launch_argument_creator.create(
         "nav2_params_file", default=os.path.join(
             navigation_pkg_share, "params", "nav2_params.yaml"))
@@ -106,6 +123,8 @@ def generate_launch_description():
             "use_lidar": use_lidar_arg.launch_config,
             "use_gps": use_gps_arg.launch_config,
             "use_realsense": use_realsense_arg.launch_config,
+            "use_odom_corrector": use_odom_corrector_arg.launch_config,
+            "odom_corrector_params_file": odom_corrector_params_file_arg.launch_config,
         }.items(),
     )
 
@@ -164,6 +183,9 @@ def generate_launch_description():
             "global_planner": global_planner_arg.launch_config,
             "use_navigation": use_navigation_arg.launch_config,
             "params_file": nav2_params_file_arg.launch_config,
+            "use_gnss_amcl_initializer": use_gnss_amcl_initializer_arg.launch_config,
+            "localization_monitor": localization_monitor_arg.launch_config,
+            "supervisor_params_file": supervisor_params_file_arg.launch_config,
         }.items(),
     )
 
