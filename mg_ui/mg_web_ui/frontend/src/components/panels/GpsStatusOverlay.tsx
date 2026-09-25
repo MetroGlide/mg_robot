@@ -43,7 +43,7 @@ export default function GpsStatusOverlay({ fix }: GpsStatusOverlayProps) {
   }
 
   return (
-    <div className="bg-gray-900/85 border border-gray-600/50 rounded-lg backdrop-blur-sm p-2 space-y-1 w-40">
+    <div className="bg-gray-900/85 border border-gray-600/50 rounded-lg p-2 space-y-1 w-40">
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium text-gray-400">GPS</span>
         <span className={`text-xs font-mono font-bold ${statusColor}`}>

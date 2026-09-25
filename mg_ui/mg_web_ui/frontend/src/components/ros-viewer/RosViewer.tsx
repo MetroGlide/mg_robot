@@ -24,6 +24,24 @@ import PoseArrowInteraction, {
 export type ViewerMode = "2d" | "3d";
 export type ViewerInteractionMode = "none" | PoseInteractionMode;
 
+// 描画は要求があったときだけ行う(frameloop="demand")。カメラ操作と React の更新は自動で描画を要求する。
+// TF など React を経由しない更新も画面に反映するため、一定間隔でも描画を要求する。
+// 実機・タブレットの負荷を下げたい場合は間隔を長くする(既定 50ms = 20fps)。
+const RENDER_INTERVAL_MS = 50;
+// 高 DPI の端末で描画解像度が大きくなりすぎないようにする
+const MAX_DEVICE_PIXEL_RATIO = 1.5;
+
+function RenderTicker() {
+  const invalidate = useThree((state) => state.invalidate);
+
+  useEffect(() => {
+    const id = setInterval(invalidate, RENDER_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [invalidate]);
+
+  return null;
+}
+
 function YawControl2D({ enabled = true }: { enabled?: boolean }) {
   const { camera, gl } = useThree();
   const dragging = useRef(false);
@@ -299,6 +317,7 @@ function Scene({
       ) : (
         <OrbitControls ref={orbitControlsRef} makeDefault />
       )}
+      <RenderTicker />
       <CameraStatePersistence mode={mode} />
       <CameraResetter mode={mode} resetToken={resetToken} />
       <ambientLight intensity={1} />
@@ -438,6 +457,8 @@ export default function RosViewer({
             : { fov: 60, position: [0, -20, 20], near: 0.1, far: 10000 }
         }
         gl={{ antialias: false }}
+        frameloop="demand"
+        dpr={[1, MAX_DEVICE_PIXEL_RATIO]}
       >
         <Suspense fallback={null}>
           <Scene
@@ -454,14 +475,14 @@ export default function RosViewer({
       <div className="absolute top-2 right-2 flex gap-1 pointer-events-auto">
         <button
           onClick={() => setResetToken((t) => t + 1)}
-          className="bg-gray-800/80 hover:bg-gray-700 text-white text-xs font-medium px-2.5 py-1 rounded border border-gray-600 backdrop-blur-sm"
+          className="bg-gray-800/80 hover:bg-gray-700 text-white text-xs font-medium px-2.5 py-1 rounded border border-gray-600"
           title="視点をデフォルトに戻す"
         >
           Reset
         </button>
         <button
           onClick={() => handleSetViewMode(viewMode === "2d" ? "3d" : "2d")}
-          className="bg-gray-800/80 hover:bg-gray-700 text-white text-xs font-medium px-2.5 py-1 rounded border border-gray-600 backdrop-blur-sm"
+          className="bg-gray-800/80 hover:bg-gray-700 text-white text-xs font-medium px-2.5 py-1 rounded border border-gray-600"
         >
           {viewMode === "2d" ? "3D" : "2D"}
         </button>
@@ -469,7 +490,7 @@ export default function RosViewer({
           onClick={() =>
             handleSetCameraTarget(cameraTarget === "map" ? "robot" : "map")
           }
-          className={`text-xs font-medium px-2.5 py-1 rounded border backdrop-blur-sm ${
+          className={`text-xs font-medium px-2.5 py-1 rounded border ${
             cameraTarget === "robot"
               ? "bg-blue-600/80 border-blue-500 text-white"
               : "bg-gray-800/80 border-gray-600 text-white hover:bg-gray-700"
