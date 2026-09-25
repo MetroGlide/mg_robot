@@ -384,7 +384,7 @@ docker run --rm -v $PWD:/app -v ~/ros2_data:/root/ros2_data mg_develop:latest \
 
 - 出力: `<評価 bag>/eval_loc/<データセット>/<名前>/{params/, run_N/, summary.md}`。`run_N/eval_localization.md` に試行ごとの評価、`summary.md` に試行をまとめた表が入ります。
 - 起動前に、関連パッケージ (`slam_gnss_2d` `mg_msgs` `mg_bringup` `mg_navigation` `mg_drivers`) をコンテナ内で増分ビルドします。ソースの変更はイメージの再ビルドなしで反映されます。
-- 書き換えられるのは 1 行の値 (スカラー) だけです。キーが元のファイルに無い場合はエラーになります。
+- 書き換えられるのは既存のキーの値です。複数行にまたがるリスト (`odom0_config` など) も、`ekf.odom0_config="[true, true, ...]"` のように新しい値を 1 行で渡すとまとめて置き換えられます。キーが元のファイルに無い場合はエラーになります。
 - 実機と同じく、ホイールオドメトリは補正ノードを通して `/odom/raw` → `/odom` になります。
 - ROS の通信は `ROS_LOCALHOST_ONLY=1` とランダムな `ROS_DOMAIN_ID` で隔離しており、実機や他のコンテナと混ざりません。複数の変種を並列に実行できます。
 - 初期姿勢が AMCL に届かなかった試行は無効として 1 回だけやり直します。

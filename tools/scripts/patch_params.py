@@ -6,7 +6,7 @@ patch_params.py
 ノード配下の `ros__parameters` 内のキーを、ドット区切りのパスで指定する。
 `ノード名:パス=値` の形でノードを指定できる (複数ノードを含む YAML で、同じキーが複数のノードにある場合に使う)。
 ノード名を省略すると、最初に見つかったノードのキーを書き換える。
-書き換えられるのは 1 行に書かれた値 (スカラー) だけで、複数行にまたがるリストは対象外。
+複数行にまたがるリスト ([ ... ]) は、`key=[a, b, c]` のように新しい値を 1 行で渡すと、まとめて置き換える。
 
 例:
   patch_params.py in.yaml out.yaml deskew.enabled=true deskew.direction=-1
@@ -33,6 +33,11 @@ def coerce_like(old_value: str, new_value: str) -> str:
     return new_value
 
 
+def bracket_depth(text: str) -> int:
+    """行 (コメントを除く) で、開いたまま閉じていない [ の数。"""
+    return text.count("[") - text.count("]")
+
+
 def split_spec(spec: str) -> Tuple[Optional[str], str]:
     """`ノード名:パス` を (ノード名, パス) に分ける。ノード名が無ければ (None, パス)。"""
     if ":" in spec:
@@ -52,7 +57,10 @@ def patch_lines(lines: List[str], updates: Dict[str, str]) -> Tuple[List[str], L
     current_node = ""
     out: List[str] = []
 
-    for line in lines:
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        index += 1
         match = KEY_LINE.match(line.rstrip("\n"))
         if not match:
             out.append(line)
@@ -87,6 +95,13 @@ def patch_lines(lines: List[str], updates: Dict[str, str]) -> Tuple[List[str], L
         if spec is not None:
             # VALUE_AND_COMMENT はどんな文字列にもマッチする
             old_value, comment = VALUE_AND_COMMENT.match(rest).groups(default="")
+            # 値が複数行にまたがるリスト ([ を開いて ] がその行で閉じない) なら、閉じるまでの行を 1 行にまとめる
+            depth = bracket_depth(old_value)
+            if depth > 0:
+                comment = ""
+                while depth > 0 and index < len(lines):
+                    depth += bracket_depth(VALUE_AND_COMMENT.match(lines[index]).group(1))
+                    index += 1
             new_value = coerce_like(old_value, remaining.pop(spec))
             out.append(f"{match.group(1)}{key}: {new_value}{comment}\n")
         else:
