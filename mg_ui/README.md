@@ -114,8 +114,13 @@ mg_system_manager/
   docker_ops.py     ComposeRunner: docker compose の実行、コンテナ検索、サービスごとの排他
   log_hub.py        コンテナログの配信（サービスごとに docker logs を 1 本、接続ごとに上限付きバッファ）
   settings_store.py UI 設定の保存（キー単位のマージ）
+  scenario_results.py シナリオ一覧と、シナリオテストの結果（progress.json・result.json・ログ）の読み出し
   routers/          エンドポイント
 ```
+
+- `docker compose` は `.env` の `USE_GPU` に応じて GPU 用の compose ファイルを重ねて実行する（Makefile と同じ）。
+- シナリオテストの API は `routers/scenario_test.py`（`/scenario/...`）。`scenario-test` / `scenario-env` は `SERVICES` の汎用ルート
+  （`/<service>/start` など）と重ならないよう `/scenario/` の下に置いている。使い方は [mg_scenario_test/README.md](../mg_scenario_test/README.md#web-ui-から実行する)。
 
 - コンテナは compose のプロジェクト（`COMPOSE_PROJECT_NAME`、未設定ならディレクトリ名）で絞り込む。
   `docker compose run` で作られた one-off コンテナも対象で、同じサービスに複数ある場合は動作中のものを優先する。

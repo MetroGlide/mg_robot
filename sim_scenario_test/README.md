@@ -81,6 +81,27 @@ ros2 run sim_scenario_test scenario_cli.py run-all scenarios/ --tags smoke  # �
 ルートに `junit.xml` を保存します。`FAILED` は「ロボットが期待どおりに動かなかった」、
 `ERROR` は「テスト基盤・セットアップの失敗 (起動しない、障害物が生成されない、シミュレータが止まった等)」を意味します。
 
+実行中は `<results-dir>/progress.json` に進み具合を書き出します (一時ファイルに書いてから置き換えるので、書きかけは読まれません)。
+Web UI などから監視するためのものです。
+
+| キー | 内容 |
+|---|---|
+| `started_at` / `options` | 開始時刻、実行時のオプション (`attach`・`gui`・`remote_stack`・`repeat`・`tags` など) |
+| `entries[]` | 実行予定の走行ごとに `name`・`file`・`result_dir` (`<results-dir>` からの相対パス)・`status` (`PENDING` → `RUNNING` → `PASSED` / `FAILED` / `ERROR`)・`message`・`elapsed_sec`・`attempt` (インフラ再試行の回数) |
+| `finished` / `exit_code` | 全体が終わったか、終了コード。途中で強制終了されると `finished` は `false` のまま残る |
+
+## attach モード用の環境
+
+`--attach` はシミュレータとナビゲーションスタックを起動しません。起動しておくには、プロファイルの `sim.launch` と `stack` だけを
+include する launch を使います (scenario_runner は起動しない)。
+
+```bash
+ros2 launch sim_scenario_test scenario_env.launch.py profile:=<name> world:=<world> headless:=false
+```
+
+シナリオごとにシミュレータを起動し直さないので、GUI を開いたまま続けて確認できます。ただしスタックの状態 (自己位置など) が
+前のシナリオから引き継がれるため、結果の判定には使わず、確認・反復開発用に使ってください。
+
 ## テスト
 
 ```bash
