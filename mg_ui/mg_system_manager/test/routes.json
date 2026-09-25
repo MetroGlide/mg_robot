@@ -1,0 +1,180 @@
+{
+ "/diagnostics/restart": [
+  "POST"
+ ],
+ "/diagnostics/start": [
+  "POST"
+ ],
+ "/diagnostics/stop": [
+  "POST"
+ ],
+ "/foxglove-bridge/restart": [
+  "POST"
+ ],
+ "/foxglove-bridge/start": [
+  "POST"
+ ],
+ "/foxglove-bridge/stop": [
+  "POST"
+ ],
+ "/gazebo-simulation/restart": [
+  "POST"
+ ],
+ "/gazebo-simulation/start": [
+  "POST"
+ ],
+ "/gazebo-simulation/stop": [
+  "POST"
+ ],
+ "/map-preview/restart": [
+  "POST"
+ ],
+ "/map-preview/start": [
+  "POST"
+ ],
+ "/map-preview/stop": [
+  "POST"
+ ],
+ "/map/common/save": [
+  "POST"
+ ],
+ "/navigation/restart": [
+  "POST"
+ ],
+ "/navigation/start": [
+  "POST"
+ ],
+ "/navigation/stop": [
+  "POST"
+ ],
+ "/reoptimize-slam/restart": [
+  "POST"
+ ],
+ "/reoptimize-slam/start": [
+  "POST"
+ ],
+ "/reoptimize-slam/stop": [
+  "POST"
+ ],
+ "/rosbag-replay/env": [
+  "GET"
+ ],
+ "/rosbag-replay/start": [
+  "POST"
+ ],
+ "/rosbag-replay/stop": [
+  "POST"
+ ],
+ "/rviz2-navigation/restart": [
+  "POST"
+ ],
+ "/rviz2-navigation/start": [
+  "POST"
+ ],
+ "/rviz2-navigation/stop": [
+  "POST"
+ ],
+ "/rviz2-slam/restart": [
+  "POST"
+ ],
+ "/rviz2-slam/start": [
+  "POST"
+ ],
+ "/rviz2-slam/stop": [
+  "POST"
+ ],
+ "/rviz2/restart": [
+  "POST"
+ ],
+ "/rviz2/start": [
+  "POST"
+ ],
+ "/rviz2/stop": [
+  "POST"
+ ],
+ "/scenario-remote-stack/restart": [
+  "POST"
+ ],
+ "/scenario-remote-stack/start": [
+  "POST"
+ ],
+ "/scenario-remote-stack/stop": [
+  "POST"
+ ],
+ "/scenario-stack/logs": [
+  "GET"
+ ],
+ "/scenario-stack/start": [
+  "POST"
+ ],
+ "/scenario-stack/stop": [
+  "POST"
+ ],
+ "/scenario-test/restart": [
+  "POST"
+ ],
+ "/scenario-test/start": [
+  "POST"
+ ],
+ "/scenario-test/stop": [
+  "POST"
+ ],
+ "/services": [
+  "GET"
+ ],
+ "/settings": [
+  "GET",
+  "PATCH"
+ ],
+ "/simulation/reset-pose": [
+  "POST"
+ ],
+ "/slam-gnss-2d/restart": [
+  "POST"
+ ],
+ "/slam-gnss-2d/start": [
+  "POST"
+ ],
+ "/slam-gnss-2d/stop": [
+  "POST"
+ ],
+ "/slam/restart": [
+  "POST"
+ ],
+ "/slam/start": [
+  "POST"
+ ],
+ "/slam/stop": [
+  "POST"
+ ],
+ "/slam_gnss_2d/map/save": [
+  "POST"
+ ],
+ "/slam_gnss_2d/maps": [
+  "GET"
+ ],
+ "/slam_gnss_2d/preview/start": [
+  "POST"
+ ],
+ "/slam_gnss_2d/preview/stop": [
+  "POST"
+ ],
+ "/slam_gnss_2d/reoptimize/start": [
+  "POST"
+ ],
+ "/slam_gnss_2d/reoptimize/stop": [
+  "POST"
+ ],
+ "/status": [
+  "GET"
+ ],
+ "/waypoint-editor/restart": [
+  "POST"
+ ],
+ "/waypoint-editor/start": [
+  "POST"
+ ],
+ "/waypoint-editor/stop": [
+  "POST"
+ ]
+}
