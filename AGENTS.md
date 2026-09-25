@@ -120,19 +120,20 @@ node_name:
 
 ## mg_ui
 
-[mg_ui/README.md](./mg_ui/README.md) を参照。
+構成・開発ガイド（層構成、依存の向き、ROS 通信と機能追加のルール）は [mg_ui/README.md](./mg_ui/README.md) を参照。
 
 | サブパッケージ      | 技術                                            |
 | ------------------- | ----------------------------------------------- |
 | `mg_web_ui`         | React 18 + TypeScript + Vite + Tailwind CSS     |
-| `mg_system_manager` | FastAPI + Docker SDK（ROS2非依存）              |
+| `mg_system_manager` | FastAPI + Docker SDK（`python3 -m mg_system_manager`） |
 
 **mg_web_ui フロントエンド:**
 
-- ROS通信: foxglove_bridge `ws://localhost:8765`
+- ROS通信: foxglove_bridge `ws://localhost:8765`（[ros/foxgloveConnection.ts](./mg_ui/mg_web_ui/frontend/src/ros/foxgloveConnection.ts)）
 - 主要フック: `useFoxgloveClient`, `useTopicSubscriber`, `useServiceCaller`, `useNav2Status`, `useSystemManagerClient`
 - トピック・サービス定義: [ros/topics.ts](./mg_ui/mg_web_ui/frontend/src/ros/topics.ts), [ros/services.ts](./mg_ui/mg_web_ui/frontend/src/ros/services.ts)
 - foxglove経由でROS型を扱う場合はschema名が必要 → [ros/schemas.ts](./mg_ui/mg_web_ui/frontend/src/ros/schemas.ts) を参照
+- 変更後は `make ui-lint` と `make ui-test` を実行する
 
 ## テスト
 
