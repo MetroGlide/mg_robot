@@ -1,10 +1,12 @@
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from mg_system_manager.config import DEFAULT_ORIGIN_REGEX, Settings
 from mg_system_manager.docker_ops import ComposeRunner
+from mg_system_manager.log_hub import LogHub
 from mg_system_manager.routers import (
     logs,
     maps,
@@ -27,9 +29,18 @@ def create_app(
     runner: ComposeRunner | None = None,
     settings_store: SettingsStore | None = None,
 ) -> FastAPI:
-    app = FastAPI()
+    runner = runner if runner is not None else ComposeRunner(settings)
+    log_hub = LogHub(runner)
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI):
+        yield
+        await log_hub.close()
+
+    app = FastAPI(lifespan=lifespan)
     app.state.settings = settings
-    app.state.runner = runner if runner is not None else ComposeRunner(settings)
+    app.state.runner = runner
+    app.state.log_hub = log_hub
     app.state.settings_store = (
         settings_store if settings_store is not None
         else SettingsStore(settings.settings_dir))

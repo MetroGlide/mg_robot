@@ -9,10 +9,15 @@ const MAX_LOG_ENTRIES = 500;
 const FLUSH_INTERVAL_MS = 100;
 const RECONNECT_DELAY_MS = 3000;
 
-interface StreamMessage {
+interface StreamEntry {
   service?: unknown;
   line?: unknown;
   error?: unknown;
+}
+
+interface StreamBatch {
+  entries?: StreamEntry[];
+  dropped?: number;
 }
 
 export function useDockerLogStream(subscribedServices: string[]) {
@@ -87,23 +92,29 @@ export function useDockerLogStream(subscribedServices: string[]) {
       };
 
       ws.onmessage = (event) => {
+        let batch: StreamBatch;
         try {
-          const parsed: StreamMessage = JSON.parse(event.data);
-          if (parsed.error) {
-            // Keep websocket protocol simple: backend errors are informational.
-            console.warn("log stream error", parsed);
-            return;
+          batch = JSON.parse(event.data);
+        } catch {
+          return;
+        }
+        if (batch.dropped) {
+          console.warn(`log stream dropped ${batch.dropped} lines`);
+        }
+        for (const entry of batch.entries ?? []) {
+          if (entry.error) {
+            // バックエンドのエラーは情報として扱う
+            console.warn("log stream error", entry);
+            continue;
           }
-          if (typeof parsed.service !== "string" || typeof parsed.line !== "string") {
-            return;
+          if (typeof entry.service !== "string" || typeof entry.line !== "string") {
+            continue;
           }
           pendingRef.current.push({
             id: ++entryIdRef.current,
-            service: parsed.service,
-            line: parsed.line,
+            service: entry.service,
+            line: entry.line,
           });
-        } catch {
-          // Ignore malformed payloads.
         }
       };
 

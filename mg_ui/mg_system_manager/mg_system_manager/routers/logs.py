@@ -6,59 +6,14 @@ from typing import Any
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from mg_system_manager.config import SERVICE_KEYS
-from mg_system_manager.docker_ops import ComposeRunner
+from mg_system_manager.log_hub import LogHub, Subscriber
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-_RETRY_INTERVAL_S = 5.0
-
-
-async def _stream_container_logs(
-    runner: ComposeRunner, queue: asyncio.Queue, service: str
-) -> None:
-    while True:
-        container = runner.get_container(service)
-        if container is None:
-            await queue.put(
-                {"service": service, "error": "container not found"}
-            )
-            await asyncio.sleep(_RETRY_INTERVAL_S)
-            continue
-
-        container_ref = container.name or container.id
-        if not container_ref:
-            await queue.put(
-                {"service": service, "error": "container reference missing"}
-            )
-            await asyncio.sleep(_RETRY_INTERVAL_S)
-            continue
-
-        proc = await asyncio.create_subprocess_exec(
-            "docker",
-            "logs",
-            "-f",
-            "--since",
-            "0s",
-            container_ref,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
-        )
-
-        try:
-            assert proc.stdout is not None
-            async for line in proc.stdout:
-                text = line.decode(errors="replace").rstrip("\n")
-                if text:
-                    await queue.put({"service": service, "line": text})
-            await proc.wait()
-            await asyncio.sleep(_RETRY_INTERVAL_S)
-        except asyncio.CancelledError:
-            if proc.returncode is None:
-                proc.terminate()
-                await proc.wait()
-            raise
+MAX_BUFFERED_ENTRIES = 2000
+FLUSH_INTERVAL_S = 0.1
 
 
 def _filter_log_services(raw_services: Any) -> set[str]:
@@ -71,6 +26,19 @@ def _filter_log_services(raw_services: Any) -> set[str]:
     }
 
 
+async def _send_batches(websocket: WebSocket, subscriber: Subscriber) -> None:
+    """バッファの中身を一定間隔でまとめて送る。
+
+    {"entries": [{service, line} | {service, error}], "dropped": 捨てた件数}
+    """
+    while True:
+        await subscriber.ready.wait()
+        await asyncio.sleep(FLUSH_INTERVAL_S)
+        entries, dropped = subscriber.drain()
+        if entries or dropped:
+            await websocket.send_json({"entries": entries, "dropped": dropped})
+
+
 @router.websocket("/logs/stream")
 async def logs_stream(websocket: WebSocket):
     state = websocket.app.state
@@ -80,60 +48,22 @@ async def logs_stream(websocket: WebSocket):
         return
 
     await websocket.accept()
-    runner: ComposeRunner = state.runner
-    send_queue: asyncio.Queue[dict] = asyncio.Queue()
-    tasks: dict[str, asyncio.Task[None]] = {}
-
-    async def _sender() -> None:
-        while True:
-            msg = await send_queue.get()
-            await websocket.send_json(msg)
-
-    sender_task: asyncio.Task[None] = asyncio.create_task(_sender())
-
-    def _bind_done_callback(service: str):
-        def _on_done(task: asyncio.Task[None]) -> None:
-            if tasks.get(service) is task:
-                tasks.pop(service, None)
-
-        return _on_done
-
-    async def _cancel_removed(removed_services: set[str]) -> None:
-        removed_tasks: list[asyncio.Task[None]] = []
-        for service in removed_services:
-            task = tasks.pop(service, None)
-            if task is None:
-                continue
-            task.cancel()
-            removed_tasks.append(task)
-        if removed_tasks:
-            await asyncio.gather(*removed_tasks, return_exceptions=True)
-
+    hub: LogHub = state.log_hub
+    subscriber = Subscriber(MAX_BUFFERED_ENTRIES)
+    sender = asyncio.create_task(_send_batches(websocket, subscriber))
     try:
         while True:
-            raw_message = await websocket.receive_text()
             try:
-                payload = json.loads(raw_message)
+                payload = json.loads(await websocket.receive_text())
             except json.JSONDecodeError:
                 continue
-
-            desired_services = _filter_log_services(payload.get("services"))
-            current_services = set(tasks.keys())
-
-            await _cancel_removed(current_services - desired_services)
-
-            for service in desired_services - current_services:
-                task = asyncio.create_task(
-                    _stream_container_logs(runner, send_queue, service))
-                task.add_done_callback(_bind_done_callback(service))
-                tasks[service] = task
+            if not isinstance(payload, dict):
+                continue
+            hub.set_services(
+                subscriber, _filter_log_services(payload.get("services")))
     except WebSocketDisconnect:
         pass
     finally:
-        remaining_tasks = list(tasks.values())
-        for task in remaining_tasks:
-            task.cancel()
-        if remaining_tasks:
-            await asyncio.gather(*remaining_tasks, return_exceptions=True)
-        sender_task.cancel()
-        await asyncio.gather(sender_task, return_exceptions=True)
+        hub.remove_subscriber(subscriber)
+        sender.cancel()
+        await asyncio.gather(sender, return_exceptions=True)
