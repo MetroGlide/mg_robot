@@ -41,6 +41,11 @@ ekf_global_node:
 # Whether we'll allow old measurements to cause a re-publication of the updated state
         permit_corrected_publication: false
 
+# 遅れて届く測定値 (AMCL は約 0.2 秒遅れ) を、その時刻の状態まで戻して取り込み直す。
+# true にするときは history_length (秒) を、測定値の遅れより長く設定する。
+        smooth_lagged_data: false
+        history_length: 0.0
+
 # Whether to publish the acceleration state. Defaults to false if unspecified.
         publish_acceleration: false
 
@@ -166,7 +171,8 @@ ekf_global_node:
         pose0_differential: false
         pose0_relative: false
         pose0_queue_size: 5
-        # pose0_rejection_threshold: 2.0  # Note the difference in parameter name
+        # AMCL の外れ値を弾くマハラノビス距離のしきい値。大きい値は棄却しない
+        pose0_rejection_threshold: 1.0e9
         # pose0_nodelay: false
 
 
