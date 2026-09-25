@@ -1,7 +1,44 @@
 # mg_drivers
 
 LiDAR / DepthCam / GPS / IMU / モータドライバ群と、Realsense 点群から立体障害物を検出する
-`obstacle_detection_3d_node` を含むパッケージ。本 README は `obstacle_detection_3d_node` を中心に記載する。
+`obstacle_detection_3d_node`、ホイールオドメトリを補正する `wheel_odom_corrector_node` を含むパッケージ。
+
+## wheel_odom_corrector_node
+
+ホイールオドメトリ (`wheel_odometry_node` が出す `/odom`) の、スケールとバイアスを補正して、EKF が使う速度の共分散を設定する。
+ナビゲーションの自己位置推定 (`ekf_global_node`) の入力を、補正済みの `/odom` にするためのノード。
+
+```
+wheel_odometry_node ─ /odom/raw ─► wheel_odom_corrector_node ─ /odom ─► odometry_tf_broadcaster (odom→base_footprint)
+                                                                    └─► ekf_global_node (速度), Nav2
+```
+
+補正のモデル (差動二輪、車体座標系):
+
+| パラメータ | 意味 | 補正 |
+| :--- | :--- | :--- |
+| `k_v` | 並進のスケール (車輪半径) | `dx' = k_v · dx` |
+| `k_w` | 旋回のスケール (実効トレッド幅) | `dyaw' = k_w · dyaw + c · dx'` |
+| `yaw_bias_per_meter` (`c`) | 走行距離あたりに曲がる量 [rad/m] (左右の車輪半径差) | 同上 |
+| `time_offset` | 生のオドメトリの遅れ [s] | スタンプを過去へずらす |
+| `covariance_vx` / `covariance_vyaw` | EKF が使う速度の共分散 | — |
+
+- パラメータは `params/wheel_odom_corrector.yaml`。値は `tools/scripts/calib_wheel_odom.py` で走行ログから推定する ([tools/README.md](../tools/README.md))。
+- `enabled: false` にすると補正せずに生の値を通す (共分散は設定する)。
+- 補正は姿勢の増分に対して行い、姿勢が `reset_jump_m` 以上飛んだ (ドライバの再起動など) ときは生の姿勢に合わせ直す。
+- 補正の計算は ROS に依存しない `scripts/wheel_odom_correction.py` にあり、`make test pkg=mg_drivers` で単体テストする。
+
+起動引数 (`mg_bringup` の `bringup_navigation.launch.py` から `mg_drivers` の launch まで同じ名前で伝わる):
+
+| 引数 | 既定 | 内容 |
+| :--- | :--- | :--- |
+| `use_odom_corrector` | ナビゲーション: 実機 `true` / シミュレータ `false`。それ以外の launch (SLAM など): `false` | `true` でドライバの出力先を `/odom/raw` に変え、補正ノードを起動する |
+| `odom_corrector_params_file` | `wheel_odom_corrector.yaml` | `params/` 配下のファイル名、または絶対パス |
+
+**元に戻す方法**: `use_odom_corrector:=false` で、ドライバが `/odom` を直接出す従来の構成になる。
+SLAM (slam_gnss_2d / slam_toolbox) は補正を使わず、従来どおり生の `/odom` を使う。
+
+**負荷**: 20 Hz のメッセージを 1 つ変換する Python ノードで、ごくわずか。
 
 ## obstacle_detection_3d_node
 

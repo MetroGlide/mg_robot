@@ -4,7 +4,7 @@ import launch
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, ExecuteProcess
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from ament_index_python.packages import get_package_share_directory
 from launch_ros.actions import Node
@@ -31,6 +31,11 @@ def generate_launch_description():
         "use_gps", default="true")
     use_sensor_data_qos_arg = launch_argument_creator.create(
         "use_sensor_data_qos", default="false")
+    use_odom_corrector_arg = launch_argument_creator.create(
+        "use_odom_corrector", default="false")
+    # ファイル名 (mg_drivers/params 配下) または絶対パス
+    odom_corrector_params_file_arg = launch_argument_creator.create(
+        "odom_corrector_params_file", default="wheel_odom_corrector.yaml")
 
 
     pkg_name = "mg_drivers"
@@ -38,6 +43,23 @@ def generate_launch_description():
 
     sensors_processing_group = launch.actions.GroupAction(
         [
+            # Wheel odometry corrector (/odom/raw -> /odom)
+            Node(
+                package=pkg_name,
+                executable="wheel_odom_corrector_node.py",
+                name="wheel_odom_corrector_node",
+                output="screen",
+                parameters=[
+                    PathJoinSubstitution([
+                        pkg_share, "params", odom_corrector_params_file_arg.launch_config]),
+                    {"use_sim_time": simulation_arg.launch_config},
+                ],
+                condition=launch.conditions.IfCondition(
+                    launch.substitutions.AndSubstitution(
+                        use_odom_arg.launch_config, use_odom_corrector_arg.launch_config)
+                ),
+            ),
+
             # Wheel odometry tf broadcaster
             Node(
                 package=pkg_name,

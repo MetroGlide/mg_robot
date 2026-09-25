@@ -5,7 +5,7 @@ import launch
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, ExecuteProcess
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import IfElseSubstitution, LaunchConfiguration
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from ament_index_python.packages import get_package_share_directory
 from launch_ros.actions import Node
@@ -21,6 +21,9 @@ def generate_launch_description():
         "use_odom", default="true")
     odom_port_arg = launch_argument_creator.create(
         "odom_port", default="/dev/ttyRobot-odom")
+    # true のとき、生のオドメトリを /odom/raw に出し、wheel_odom_corrector_node が補正して /odom に出す
+    use_odom_corrector_arg = launch_argument_creator.create(
+        "use_odom_corrector", default="false")
 
     use_lidar_arg = launch_argument_creator.create(
         "use_lidar", default="true")
@@ -79,6 +82,10 @@ def generate_launch_description():
                     "odometry.always_publish": False,
                     "odometry.error_recovery_count": 4,
                 }],
+                remappings=[
+                    ("odom", IfElseSubstitution(
+                        use_odom_corrector_arg.launch_config, "odom/raw", "odom")),
+                ],
                 condition=launch.conditions.IfCondition(
                     use_odom_arg.launch_config),
             ),

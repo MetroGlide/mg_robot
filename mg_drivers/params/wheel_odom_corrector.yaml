@@ -1,0 +1,22 @@
+wheel_odom_corrector_node:
+  ros__parameters:
+    # false にすると補正せずに生の値を通す (共分散は設定する)
+    enabled: true
+    # 並進のスケール (車輪半径)
+    k_v: 1.0
+    # 旋回のスケール (実効トレッド幅)
+    k_w: 1.0
+    # 走行距離あたりに曲がる量 [rad/m] (左右の車輪半径差)
+    yaw_bias_per_meter: 0.0
+    # 生のオドメトリの遅れ [s]。スタンプをこの分だけ過去へずらす
+    time_offset: 0.0
+    # 姿勢が飛んだとみなす 1 メッセージあたりの移動量 [m]。飛んだら生の姿勢に合わせ直す
+    reset_jump_m: 2.0
+    # 姿勢の共分散 (EKF は姿勢を使わない)
+    covariance_x: 10.0
+    covariance_y: 10.0
+    covariance_yaw: 0.4
+    # 速度の共分散 (EKF が使う)。tools/scripts/calib_wheel_odom.py の推奨値で決める
+    covariance_vx: 0.5
+    covariance_vy: 0.0
+    covariance_vyaw: 0.78

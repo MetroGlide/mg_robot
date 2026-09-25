@@ -32,6 +32,10 @@ def generate_launch_description():
         "use_rs_imu", default="true")
     use_realsense_arg = launch_argument_creator.create(
         "use_realsense", default="true")
+    use_odom_corrector_arg = launch_argument_creator.create(
+        "use_odom_corrector", default="false")
+    odom_corrector_params_file_arg = launch_argument_creator.create(
+        "odom_corrector_params_file", default="wheel_odom_corrector.yaml")
 
 
     pkg_name = "mg_drivers"
@@ -48,6 +52,7 @@ def generate_launch_description():
             "use_lidar": use_lidar_arg.launch_config,
             "use_gps": use_gps_arg.launch_config,
             "use_rs_imu": use_rs_imu_arg.launch_config,
+            "use_odom_corrector": use_odom_corrector_arg.launch_config,
         }.items(),
         condition=launch.conditions.UnlessCondition(
             simulation_arg.launch_config)
@@ -64,6 +69,8 @@ def generate_launch_description():
             "use_lidar": use_lidar_arg.launch_config,
             "use_gps": use_gps_arg.launch_config,
             "use_realsense": use_realsense_arg.launch_config,
+            "use_odom_corrector": use_odom_corrector_arg.launch_config,
+            "odom_corrector_params_file": odom_corrector_params_file_arg.launch_config,
         }.items(),
     )
 
