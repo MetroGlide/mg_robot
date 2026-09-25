@@ -19,6 +19,7 @@ tools/
 │   ├── pose_graph.py      # slam_gnss_2d 出力 (pose_graph.json / gnss_transform.yaml) の読込・補間・アンカー間の座標移動
 │   ├── loc_metrics.py     # 自己位置推定の評価指標 (誤差・飛び・NEES・遅れ・復旧) ※numpy のみ
 │   └── faults.py          # 故障注入定義 (YAML) の読込
+├── datasets/localization/ # 自己位置推定の再生評価のデータセット定義 (地図・評価走行・真値の組)
 ├── test/                  # tools のテスト (make test pkg=tools)
 ├── data/                  # 一時解析データ・可視化画像出力先 (Git追跡除外)
 └── scripts/               # 実行可能 CLI スクリプト群
@@ -31,6 +32,12 @@ tools/
     ├── diff_bag_list.py             # 記録対象トピックと現在アクティブなトピックの比較
     ├── eval_slam.py                 # SLAM 出力の RTK(GNSS) 比較評価 (make bag-eval-slam)
     ├── eval_localization.py         # 自己位置推定 (EKF 融合) の評価 (make bag-eval-localization)
+    ├── run_localization_variant.sh  # 自己位置推定のパラメータ変種を rosbag 再生で評価 (ホスト側の入口)
+    ├── localization_replay.sh       # 上記の本体 (コンテナ内で スタック起動・再生・記録・評価)
+    ├── loc_init_pose.py             # 再生評価で AMCL と EKF の初期姿勢を真値から与える
+    ├── loc_recorder.py              # 再生評価の出力をシミュレーション時刻で rosbag2 に記録する
+    ├── loc_dataset.py               # データセット定義 (datasets/localization/) の読込
+    ├── compare_localization.py      # 変種ごとの評価結果の比較表
     ├── run_slam_variant.sh          # パラメータ変種のオフラインSLAM実行〜評価までを一括実行
     ├── patch_params.py              # コメント付きパラメータ YAML の値を書き換え
     ├── record.sh                    # rosbag 記録 (MCAP)
@@ -330,6 +337,54 @@ make bag-eval-localization BAG=<bag> GT_DIR=<評価 bag の SLAM 出力> MAP_GT_
 - `--start` / `--end`: 評価する区間 (先頭からの経過秒)
 - `--ok-threshold` / `--hold-sec`: 復旧とみなす位置誤差と、その誤差以下でいる時間
 - `--map-frame` / `--odom-frame` / `--base-frame` / `--*-topic`: フレーム名とトピック名の変更
+
+### 12. `run_localization_variant.sh` (自己位置推定の再生評価)
+
+自己位置推定のスタック (`map_server` / AMCL / GNSS ブリッジ / EKF) だけを起動し、rosbag のセンサデータ
+(`/odom` `/scan_top_lidar` `/navpvt` `/gps/fix`) を再生して、推定結果を `eval_localization.py` で評価します。
+パラメータを変えた「変種」を同じ条件で試して比べるためのものです。実機は使いません。
+
+```bash
+# 現状のパラメータでベースラインを測る (既定は短縮版データセット、3 回)
+tools/scripts/run_localization_variant.sh baseline
+# パラメータを書き換えた変種 (プレフィックス: ekf. / amcl. / bridge.)
+tools/scripts/run_localization_variant.sh lag_on ekf.smooth_lagged_data=true ekf.history_length=1.0
+tools/scripts/run_localization_variant.sh light_amcl amcl.max_particles=2000 amcl.max_beams=240 --cpus 4
+# 本番のデータセット (10 分)
+tools/scripts/run_localization_variant.sh baseline --dataset map043837_eval051635
+# 変種同士を比べる
+docker run --rm -v $PWD:/app -v ~/ros2_data:/root/ros2_data mg_develop:latest \
+  python3 /app/tools/scripts/compare_localization.py <出力ディレクトリ1> <出力ディレクトリ2>
+```
+
+| オプション | 内容 |
+| :--- | :--- |
+| `--dataset <名前\|パス>` | `tools/datasets/localization/` の定義。既定 `map043837_eval051635_short` |
+| `--runs N` | 繰り返す回数 (既定 3)。AMCL は乱数を使うため、分布で比べる |
+| `--init gt\|gnss` | 初期姿勢。`gt` は真値を与える (既定)、`gnss` は GNSS による初期化に任せて初期化も評価する |
+| `--start S` / `--duration D` | 評価する区間 (データセットの値を上書き) |
+| `--rate R` | 再生速度 (既定 1.0)。処理が間に合わなくなるため実時間が基本 |
+| `--cpus N` | コンテナが使える CPU 数。開発 PC は実機より速いため、実機相当に絞って AMCL の遅延を見る |
+
+- 出力: `<評価 bag>/eval_loc/<データセット>/<名前>/{params/, run_N/, summary.md}`。`run_N/eval_localization.md` に試行ごとの評価、`summary.md` に試行をまとめた表が入ります。
+- 起動前に、関連パッケージ (`slam_gnss_2d` `mg_msgs` `mg_bringup` `mg_navigation` `mg_drivers`) をコンテナ内で増分ビルドします。ソースの変更はイメージの再ビルドなしで反映されます。
+- 書き換えられるのは 1 行の値 (スカラー) だけです。キーが元のファイルに無い場合はエラーになります。
+- ROS の通信は `ROS_LOCALHOST_ONLY=1` とランダムな `ROS_DOMAIN_ID` で隔離しており、実機や他のコンテナと混ざりません。
+
+#### データセット
+
+`tools/datasets/localization/*.yaml` に、地図 (`localization_yaml` / `gnss_transform` / `slam_dir`)、評価する走行 (`bag` / `slam_dir`)、区間 (`start_offset` / `duration`) を定義します。
+
+| データセット | 内容 |
+| :--- | :--- |
+| `same_run_043837` | 地図を作った走行をそのまま評価。手早いチェック用。地図がその走行に合わせ込まれているため楽観的な結果になる |
+| `map043837_eval051635` | 別走行 (地図は 043837、評価は 051635 の 470〜1070 s)。本番用 |
+| `map043837_eval051635_short` | 上の 470〜650 s だけ。動作確認と粗い比較用 |
+
+別走行では、評価する走行の SLAM 出力 (`pose_graph.json`) を、UTM 経由で地図の座標系へ移して真値にします。次の点に注意してください。
+- 真値と地図の位置合わせの精度は、2 つの SLAM を作ったときの GNSS の精度で決まります。RTK Fix が少ない bag (051635 は Fixed 0%) では約 1 m ずれるため、絶対値ではなく**変種同士の相対比較**に使ってください。評価レポートには、走行全体を SE(2) 整合した後の誤差 (地図に対する整合性) を併記します。
+- 評価する走行が、地図の範囲外を通る区間では AMCL が使えず破綻します。区間は地図がカバーする範囲に絞ってください (051635 は地図 043837 に対して 0〜138 s / 462〜1586 s / 1636〜1856 s が範囲内)。
+- `--init gt` では、初期姿勢を与えた直後の 10 秒 (`EVAL_SKIP`) を評価から除きます。
 
 ### テスト
 
