@@ -23,4 +23,6 @@ export interface SystemManagerHandle {
   containers: Record<string, string>
   logs: ApiLog[]
   callApi: CallApi
+  /** コンテナの状態を今すぐ取得し直す */
+  refresh: () => Promise<void>
 }
