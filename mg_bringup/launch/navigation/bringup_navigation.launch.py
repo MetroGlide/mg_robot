@@ -140,7 +140,8 @@ def generate_launch_description():
         output='screen',
         parameters=[
             bridge_params_file_arg.launch_config,
-            {'gnss_transform_file': gnss_transform_file_arg.launch_config},
+            {'use_sim_time': simulation_arg.launch_config,
+             'gnss_transform_file': gnss_transform_file_arg.launch_config},
         ],
         condition=launch.conditions.IfCondition(
             use_slam_gnss_bridge_arg.launch_config),
