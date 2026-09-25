@@ -6,11 +6,47 @@ def test_settings_empty_by_default(client):
     assert client.get("/settings").json() == {}
 
 
-def test_settings_roundtrip(client):
-    body = client.post("/settings", json={"teleop": {"maxLinear": 0.3}}).json()
+def test_patch_settings_roundtrip(client):
+    body = client.patch(
+        "/settings", json={"teleop": {"maxLinear": 0.3}}).json()
 
     assert body == {"success": True, "message": ""}
     assert client.get("/settings").json() == {"teleop": {"maxLinear": 0.3}}
+
+
+def test_patch_settings_keeps_other_keys(client):
+    client.patch("/settings", json={"viewer": {"mode": "3d"}})
+
+    client.patch("/settings", json={"teleop": {"maxLinear": 0.3}})
+
+    assert client.get("/settings").json() == {
+        "viewer": {"mode": "3d"}, "teleop": {"maxLinear": 0.3}}
+
+
+def test_patch_settings_null_deletes_key(client):
+    client.patch("/settings", json={"a": 1, "b": 2})
+
+    client.patch("/settings", json={"a": None})
+
+    assert client.get("/settings").json() == {"b": 2}
+
+
+def test_patch_settings_rejects_non_object(client):
+    assert client.patch("/settings", json=[1, 2]).status_code == 422
+
+
+def test_corrupt_settings_file_is_moved_aside(client, settings):
+    (settings.settings_dir / "ui_settings.json").write_text("{broken")
+
+    assert client.get("/settings").json() == {}
+    assert (settings.settings_dir / "ui_settings.corrupt").exists()
+
+    client.patch("/settings", json={"a": 1})
+    assert client.get("/settings").json() == {"a": 1}
+
+
+def test_post_settings_is_removed(client):
+    assert client.post("/settings", json={"a": 1}).status_code == 405
 
 
 @pytest.mark.parametrize("origin", [
