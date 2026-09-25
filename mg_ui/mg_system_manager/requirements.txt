@@ -1,5 +1,6 @@
 fastapi
 uvicorn[standard]
 docker
+pyyaml
 # テスト（fastapi.testclient）用
 httpx

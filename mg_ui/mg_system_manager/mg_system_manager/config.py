@@ -59,12 +59,15 @@ SERVICES = (
     ServiceSpec("map-preview", "Map Preview"),
     ServiceSpec("reoptimize-slam", "Reoptimize SLAM"),
     ServiceSpec("scenario-remote-stack", "Scenario Remote Stack"),
+    ServiceSpec("scenario-env", "Scenario Env"),
 )
 
 SERVICE_KEYS = frozenset(spec.key for spec in SERVICES)
 HARDWARE_SERVICE_KEYS = tuple(spec.key for spec in SERVICES if spec.hardware)
 
 SCENARIO_STACK_SERVICE = "scenario-remote-stack"
+SCENARIO_TEST_SERVICE = "scenario-test"
+SCENARIO_ENV_SERVICE = "scenario-env"
 MAP_PREVIEW_SERVICE = "map-preview"
 REOPTIMIZE_SERVICE = "reoptimize-slam"
 ROSBAG_REPLAY_SERVICE = "rosbag-replay"
@@ -82,6 +85,13 @@ def _default_compose_project(host_project_dir: str) -> str:
     return re.sub(r"[^a-z0-9_-]", "", Path(host_project_dir).name.lower())
 
 
+def _compose_files(use_gpu: str | None) -> tuple[str, ...]:
+    """Makefile と同じく、USE_GPU に応じて GPU 用の compose ファイルを重ねる。"""
+    if use_gpu in ("nvidia", "amd"):
+        return ("compose.yaml", f"compose.gpu.{use_gpu}.yaml")
+    return ()
+
+
 @dataclass(frozen=True)
 class Settings:
     project_dir: str
@@ -93,6 +103,13 @@ class Settings:
     settings_dir: Path
     allowed_origins: list[str]
     scenario_stack_allowed_packages: list[str]
+    # シナリオテスト。パスは system_manager と scenario-test コンテナで共通のもの
+    scenario_dirs: list[str]
+    scenario_results_dir: Path
+    scenario_profile: str
+    scenario_ros_domain_id: str
+    # docker compose に -f で渡すファイル。空なら compose の既定(compose.yaml)
+    compose_files: tuple[str, ...] = ()
 
     def is_origin_allowed(self, origin: str) -> bool:
         return (origin in self.allowed_origins
@@ -119,9 +136,23 @@ class Settings:
             scenario_stack_allowed_packages=(
                 _split_csv(os.environ.get("SCENARIO_STACK_ALLOWED_PACKAGES"))
                 or ["mg_bringup"]),
+            scenario_dirs=(
+                _split_csv(os.environ.get("SCENARIO_DIRS"))
+                or [f"{project_dir}/mg_scenario_test/scenarios/regression",
+                    f"{project_dir}/mg_scenario_test/scenarios/examples"]),
+            scenario_results_dir=Path(os.environ.get(
+                "SCENARIO_RESULTS_DIR", "/root/ros2_data/scenario_results")),
+            scenario_profile=os.environ.get("SCENARIO_PROFILE", "mg01"),
+            scenario_ros_domain_id=(
+                os.environ.get("SCENARIO_ROS_DOMAIN_ID") or "42"),
+            compose_files=_compose_files(os.environ.get("USE_GPU")),
         )
 
 
 PATH_RE = re.compile(r"^[a-zA-Z0-9/_\-\.]+$")
 MAP_NAME_RE = re.compile(r"^[a-zA-Z0-9_\-]+$")
 ARG_KEY_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+# シナリオ名・run の id・結果ディレクトリ名
+SCENARIO_NAME_RE = re.compile(r"^[a-zA-Z0-9_\-]+$")
+# 実機PCのアドレス (IPv4 またはホスト名)
+HOST_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9\.\-]*$")

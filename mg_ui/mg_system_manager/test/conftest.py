@@ -32,6 +32,11 @@ def settings(tmp_path) -> Settings:
         settings_dir=tmp_path / "ui",
         allowed_origins=["http://localhost:8080"],
         scenario_stack_allowed_packages=["mg_bringup"],
+        scenario_dirs=[str(tmp_path / "scenarios" / "regression"),
+                       str(tmp_path / "scenarios" / "examples")],
+        scenario_results_dir=tmp_path / "results",
+        scenario_profile="mg01",
+        scenario_ros_domain_id="42",
     )
 
 

@@ -207,6 +207,23 @@ services:
         ros2 run sim_scenario_test scenario_cli.py $$SCENARIO_ARGS
       "
 
+  # シナリオテストの attach モード用に、プロファイルのシミュレータとナビゲーションスタックだけを起動したままにする。
+  # `make scenario-env` や mg_system_manager の /scenario-env/start から SCENARIO_ENV_ARGS を渡して起動する。
+  scenario-env:
+    <<: *simulation-base
+    environment:
+      - DISPLAY=${DISPLAY}
+      - PYTHONUNBUFFERED=1
+      - SIMULATION=true
+      - IGN_GAZEBO_RESOURCE_PATH=/root/.ignition/fuel
+      - SCENARIO_ENV_ARGS=${SCENARIO_ENV_ARGS:-profile:=mg01 world:=warehouse}
+    command: >
+      bash -c "
+        source /opt/ros/humble/setup.bash &&
+        source /root/ros2_ws/install/setup.bash &&
+        ros2 launch sim_scenario_test scenario_env.launch.py $$SCENARIO_ENV_ARGS
+      "
+
   # 実機PC側のナビゲーションスタック (センサ・モータドライバを除く)。開発PCのシミュレータと
   # DDS で接続してシナリオテストを行う。mg_system_manager の /scenario-stack/start から、
   # STACK_PACKAGE / STACK_FILE / STACK_ARGS を渡して起動される (詳細は mg_scenario_test/README.md)。

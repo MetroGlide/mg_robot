@@ -13,10 +13,12 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from typing import List
+from typing import List, Tuple
 
 from sim_scenario_test.errors import ScenarioValidationError
 from sim_scenario_test.execution import (
+    PlannedRun,
+    ProgressWriter,
     RunRecord,
     collect_scenarios,
     resolve_scenario,
@@ -78,28 +80,45 @@ def _run(args: argparse.Namespace) -> int:
     if not scenarios:
         print("no scenarios selected")
         return 2
-    records: List[RunRecord] = []
+    planned: List[Tuple[int, PlannedRun]] = []
     for repeat in range(args.repeat):
         for path in scenarios:
             name = os.path.splitext(os.path.basename(path))[0]
             suffix = f"_run{repeat + 1}" if args.repeat > 1 else ""
-            out_dir = os.path.join(results_dir, name + suffix)
-            record = None
-            for attempt in range(args.infra_retries + 1):
-                record = run_scenario(
-                    path, out_dir if attempt == 0 else f"{out_dir}_retry{attempt}",
-                    profile=args.profile, gui=args.gui, attach=args.attach,
-                    timeout_sec=args.timeout, remote_stack=remote_stack,
-                    seed=None if args.seed is None else args.seed + repeat)
-                if not is_infrastructure_error(record):
-                    break
-                print(f"\n[retry] {name}: infrastructure error ({record.message}); "
-                      f"attempt {attempt + 1}/{args.infra_retries + 1}\n")
-            records.append(record)
+            planned.append((repeat, PlannedRun(
+                name, path, os.path.join(results_dir, name + suffix))))
+    progress = ProgressWriter(results_dir, [run for _, run in planned], {
+        "command": args.command,
+        "attach": args.attach,
+        "gui": args.gui,
+        "remote_stack": args.remote_stack,
+        "repeat": args.repeat,
+        "tags": args.tags,
+        "exclude_tags": args.exclude_tags,
+    })
+    records: List[RunRecord] = []
+    for index, (repeat, run) in enumerate(planned):
+        record = None
+        for attempt in range(args.infra_retries + 1):
+            out_dir = run.out_dir if attempt == 0 else f"{run.out_dir}_retry{attempt}"
+            progress.start(index, out_dir, attempt)
+            record = run_scenario(
+                run.scenario_file, out_dir,
+                profile=args.profile, gui=args.gui, attach=args.attach,
+                timeout_sec=args.timeout, remote_stack=remote_stack,
+                seed=None if args.seed is None else args.seed + repeat)
+            if not is_infrastructure_error(record):
+                break
+            print(f"\n[retry] {run.name}: infrastructure error ({record.message}); "
+                  f"attempt {attempt + 1}/{args.infra_retries + 1}\n")
+        progress.finish(index, record)
+        records.append(record)
     write_junit(records, os.path.join(results_dir, "junit.xml"))
     print(format_summary(records))
     print(f"\nresults: {results_dir}")
-    return exit_code(records)
+    code = exit_code(records)
+    progress.close(code)
+    return code
 
 
 def main(argv: List[str] = None) -> int:

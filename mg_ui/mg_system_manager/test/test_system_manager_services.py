@@ -1,4 +1,8 @@
-from sm_fakes import FakeContainer
+import dataclasses
+
+from mg_system_manager.config import Settings
+from mg_system_manager.docker_ops import ComposeRunner
+from sm_fakes import FakeContainer, FakeDockerClient
 
 
 def test_status_returns_service_to_state(client, containers):
@@ -32,6 +36,20 @@ def test_start_runs_compose_up_in_host_project_dir(client, compose_calls):
     assert call["command"] == ["docker", "compose", "up", "-d", "slam"]
     assert call["cwd"] == "/host/project"
     assert call["env"]["HOME"] == "/host/home"
+
+
+def test_gpu_compose_file_is_added_like_makefile(
+        settings, compose_calls, monkeypatch):
+    monkeypatch.setenv("USE_GPU", "nvidia")
+    gpu_settings = dataclasses.replace(
+        settings, compose_files=Settings.from_env().compose_files)
+    runner = ComposeRunner(gpu_settings, client=FakeDockerClient([]))
+
+    runner.up("gazebo-simulation")
+
+    assert compose_calls.calls[0]["command"] == [
+        "docker", "compose", "-f", "compose.yaml",
+        "-f", "compose.gpu.nvidia.yaml", "up", "-d", "gazebo-simulation"]
 
 
 def test_start_failure_returns_stderr(client, compose_calls):

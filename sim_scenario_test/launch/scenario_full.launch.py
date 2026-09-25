@@ -4,33 +4,21 @@
 プロファイルの sim.launch / stack.launch を include し、scenario_runner の終了で全体を終了する。
 launch_stack:=false のときは stack を起動しない (別のマシンで起動済みのスタックに接続する)。
 """
-import os
-
-from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
     EmitEvent,
-    IncludeLaunchDescription,
     OpaqueFunction,
     RegisterEventHandler,
 )
 from launch.event_handlers import OnProcessExit
 from launch.events import Shutdown
-from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 
+from sim_scenario_test.launch_include import include_launch
 from sim_scenario_test.loader import load_scenario
-from sim_scenario_test.template import expand_all
-
-
-def _include(spec, variables, where, overrides=None):
-    path = os.path.join(get_package_share_directory(spec.package), spec.file)
-    args = expand_all({**spec.args, **(overrides or {})}, variables, where)
-    return IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(path), launch_arguments=args.items())
 
 
 def _setup(context, *args, **kwargs):
@@ -43,11 +31,11 @@ def _setup(context, *args, **kwargs):
         scenario.world, LaunchConfiguration("headless").perform(context), "scenario.world")
     actions = []
     if profile.sim.launch is not None:
-        actions.append(_include(profile.sim.launch, variables, "profile.sim.launch.args"))
+        actions.append(include_launch(profile.sim.launch, variables, "profile.sim.launch.args"))
     # 実機PCなど別の場所でスタックを起動する場合 (--remote-stack) は include しない
     launch_stack = LaunchConfiguration("launch_stack").perform(context) == "true"
     if profile.stack is not None and launch_stack:
-        actions.append(_include(
+        actions.append(include_launch(
             profile.stack, variables, "profile.stack.args", scenario.stack_args))
 
     runner = Node(

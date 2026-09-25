@@ -32,7 +32,8 @@ make scenario-test-all REPEAT=3 TIER=smoke          # 繰り返して安定性�
 |---|---|
 | `make scenario-test SCENARIO=<名前\|パス> [GUI=1] [PROFILE=]` | シミュレータ・ナビゲーションごと起動して 1 本実行。名前は `scenarios/regression/`・`examples/` 配下 (拡張子なし) |
 | `make scenario-test-all [TIER=smoke] [TAGS=a,b] [REPEAT=N] [EXAMPLES=1] [KNOWN=1] [GUI=1] [PROFILE=]` | 回帰テストを、1 本ごとにスタックを起動し直して実行。`TIER=smoke` で smoke タグのみ、`EXAMPLES=1` で見本も含める、`KNOWN=1` で既知の問題 (`known_issue` タグ) のシナリオも含める、`GUI=1` でシミュレータの GUI を表示 |
-| `make scenario-test-attach SCENARIO=...` | 起動済みのシミュレータ・スタックに接続して実行 (`make gazebo-simulation` と `make navigation` が別途必要。開発時の反復用) |
+| `make scenario-env [GUI=1] [PROFILE=mg01] [WORLD=warehouse]` / `make scenario-env-stop` | attach 用に、プロファイルのシミュレータとナビゲーションをバックグラウンドで起動したままにする / 止める |
+| `make scenario-test-attach SCENARIO=...` | 起動済みのシミュレータ・スタック (`make scenario-env`) に接続して実行。シミュレータを起動し直さないので GUI を開いたまま続けて確認できる。スタックの状態を引き継ぐため確認・反復開発用 |
 | `make scenario-validate` | シナリオ YAML の静的検証 |
 | `make test pkg=mg_scenario_test` | ユニットテスト |
 
@@ -40,6 +41,29 @@ make scenario-test-all REPEAT=3 TIER=smoke          # 繰り返して安定性�
 不安定さの確認には `REPEAT=3` 以上で繰り返します。シナリオの内容と保証することは [scenarios/README.md](scenarios/README.md) を参照。
 
 実行中は Gazebo・Nav2 を専有するため、同時に別のスタック (`make gazebo-simulation` 等) を起動しないでください。
+
+## Web UI から実行する
+
+mg_web_ui の **Scenario Test** ページから、シナリオの選択・実行・停止、進み具合とログ、結果 (checks・events・ログ) と過去の実行を確認できます。
+操作は mg_system_manager の `/scenario/` の API が行います (中身は `make scenario-test*` と同じ `docker compose run scenario-test`)。
+
+```bash
+# シミュレータを動かす PC (開発PC) で
+make build svc=scenario-test     # 初回
+make system-manager DETACH=1
+make web-ui-dev                  # または make web-ui
+```
+
+- UI の Settings で、system_manager の URL を**シミュレータを動かす PC** の `http://<IP>:8001` にしておく (実機PC側を指していると実行できない)。
+- 実行方法:
+  - **シナリオごとに起動し直す**: `make scenario-test-all` と同じ条件。GUI の表示も選べる
+  - **起動済みの環境で実行する (attach)**: ページの「起動済み環境」を先に起動する (`make scenario-env` と同じ)。
+    シミュレータを起動し直さないので、GUI を開いたまま続けて目で確認できる。自己位置などが前のシナリオから引き継がれるため、
+    続けて実行すると失敗することがある (結果の判定には「起動し直す」を使う)。停止したシナリオの障害物が残ったら環境を再起動する
+- **実機PCのアドレス**を入力すると、`ROBOT=` と同じくナビゲーションを実機PCで動かす (下の「開発PC + 実機PCでの実行」の準備が済んでいること)。attach とは併用できない。
+- **ライブ表示**をオンにすると、接続中の foxglove_bridge から地図・ロボット・経路を表示する (シミュレータと同じ PC の bridge に接続しているとき)。
+- 同時に動くと干渉するため、実行中の二重起動、`gazebo-simulation`・`scenario-env`・`navigation`/`slam` の動作中の通常実行は拒否される。
+- 結果は `make` と同じ `${ROS2_DATA_PATH}/scenario_results/<日時>/` に保存され、`progress.json` がある実行が履歴に表示される。
 
 ## 開発PC + 実機PCでの実行
 
@@ -79,6 +103,7 @@ make scenario-test-all TIER=smoke ROBOT=<実機PCのIP>
 ```
 <日時>/
   junit.xml                    # スイート全体の JUnit
+  progress.json                # 実行中の進み具合 (Web UI が読む)
   <シナリオ名>[_runN]/
     result.json                # チェックごとの結果、走行中のイベント (goal_reached など) と時刻
     launch.log                 # シミュレータ・Nav2・runner の全ログ

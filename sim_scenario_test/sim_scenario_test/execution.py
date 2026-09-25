@@ -313,6 +313,78 @@ def format_summary(records: Sequence[RunRecord]) -> str:
     return "\n".join(lines)
 
 
+PROGRESS_FILE = "progress.json"
+PENDING = "PENDING"
+RUNNING = "RUNNING"
+
+
+@dataclass
+class PlannedRun:
+    name: str
+    scenario_file: str
+    out_dir: str
+
+
+class ProgressWriter:
+    """スイートの進み具合を <results_dir>/progress.json に書き出す (Web UI などからの監視用)。
+
+    書きかけのファイルを読まれないよう、一時ファイルに書いてから置き換える。
+    result_dir は results_dir からの相対パスで記録する。
+    """
+
+    def __init__(self, results_dir: str, planned: Sequence[PlannedRun], options: dict):
+        self._results_dir = results_dir
+        self._data = {
+            "started_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "options": options,
+            "entries": [
+                {
+                    "name": run.name,
+                    "file": run.scenario_file,
+                    "result_dir": os.path.relpath(run.out_dir, results_dir),
+                    "status": PENDING,
+                    "message": "",
+                    "elapsed_sec": 0.0,
+                    "attempt": 0,
+                }
+                for run in planned
+            ],
+            "finished": False,
+            "exit_code": None,
+        }
+        self._write()
+
+    def start(self, index: int, out_dir: str, attempt: int) -> None:
+        self._data["entries"][index].update({
+            "status": RUNNING,
+            "result_dir": os.path.relpath(out_dir, self._results_dir),
+            "attempt": attempt,
+            "started_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        })
+        self._write()
+
+    def finish(self, index: int, record: RunRecord) -> None:
+        self._data["entries"][index].update({
+            "status": record.status.value,
+            "message": record.message,
+            "elapsed_sec": round(record.elapsed_sec, 1),
+        })
+        self._write()
+
+    def close(self, code: int) -> None:
+        self._data["finished"] = True
+        self._data["exit_code"] = code
+        self._write()
+
+    def _write(self) -> None:
+        os.makedirs(self._results_dir, exist_ok=True)
+        path = os.path.join(self._results_dir, PROGRESS_FILE)
+        tmp = path + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(self._data, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, path)
+
+
 def default_results_dir() -> str:
     return os.path.join(os.path.expanduser("~"), ".ros", "scenario_results",
                         time.strftime("%Y%m%d_%H%M%S"))

@@ -92,6 +92,15 @@
  "/rviz2/stop": [
   "POST"
  ],
+ "/scenario-env/restart": [
+  "POST"
+ ],
+ "/scenario-env/start": [
+  "POST"
+ ],
+ "/scenario-env/stop": [
+  "POST"
+ ],
  "/scenario-remote-stack/restart": [
   "POST"
  ],
@@ -118,6 +127,36 @@
  ],
  "/scenario-test/stop": [
   "POST"
+ ],
+ "/scenario/env/start": [
+  "POST"
+ ],
+ "/scenario/env/stop": [
+  "POST"
+ ],
+ "/scenario/list": [
+  "GET"
+ ],
+ "/scenario/run/start": [
+  "POST"
+ ],
+ "/scenario/run/stop": [
+  "POST"
+ ],
+ "/scenario/runs": [
+  "GET"
+ ],
+ "/scenario/runs/{run_id}": [
+  "GET"
+ ],
+ "/scenario/runs/{run_id}/{entry}/log": [
+  "GET"
+ ],
+ "/scenario/runs/{run_id}/{entry}/result": [
+  "GET"
+ ],
+ "/scenario/status": [
+  "GET"
  ],
  "/services": [
   "GET"
