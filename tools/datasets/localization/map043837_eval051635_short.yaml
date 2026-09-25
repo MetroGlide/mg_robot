@@ -1,9 +1,7 @@
 # 別走行での評価の短縮版 (動作確認・パラメータの粗い比較用)。
-# map043837_eval051635 と同じ地図・走行で、地図の内側にある 540 s からの 180 s だけを評価する。
-# (470-540 s は、評価する走行が地図の端に入った直後で、地図の特徴が乏しく AMCL が使いにくい。
-#  そこを含めるのは本番のデータセット map043837_eval051635)
+# map043837_eval051635 と同じ地図・走行で、800 s からの 180 s だけを評価する。
 name: map043837_eval051635_short
-description: 別走行での評価の短縮版 (地図 043837、評価 051635 の 540-720 s)
+description: 別走行での評価の短縮版 (地図 043837、評価 051635 の 800-980 s)
 map:
   localization_yaml: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_043837/20260921_2248/map.yaml
   gnss_transform: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_043837/20260921_2248/gnss_transform.yaml
@@ -11,5 +9,5 @@ map:
 eval:
   bag: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_051635
   slam_dir: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_051635/20260921_2243
-  start_offset: 540.0
+  start_offset: 800.0
   duration: 180.0
