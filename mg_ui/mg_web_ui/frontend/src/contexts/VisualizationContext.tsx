@@ -8,6 +8,7 @@ import {
   ReactNode,
 } from "react";
 import { loadSettings, saveSettings } from "../utils/settingsApi";
+import { presetSettings, VisualizationPreset } from "./visualizationPresets";
 
 export type LayerKey =
   | "map"
@@ -70,6 +71,8 @@ interface VisualizationContextType {
   toggleLayer: (key: LayerKey) => void;
   toggleOverlay: (key: OverlayKey) => void;
   setGpsMapSize: (size: GpsMapSize) => void;
+  /** レイヤーとオーバーレイをプリセットの内容にまとめて切り替える */
+  applyPreset: (preset: VisualizationPreset) => void;
 }
 
 const VisualizationContext = createContext<VisualizationContextType>({
@@ -81,6 +84,7 @@ const VisualizationContext = createContext<VisualizationContextType>({
   toggleLayer: () => {},
   toggleOverlay: () => {},
   setGpsMapSize: () => {},
+  applyPreset: () => {},
 });
 
 export function VisualizationProvider({ children }: { children: ReactNode }) {
@@ -165,6 +169,17 @@ export function VisualizationProvider({ children }: { children: ReactNode }) {
     persist(enabled, layers, overlays, size);
   };
 
+  const applyPreset = (preset: VisualizationPreset) => {
+    const next = presetSettings(
+      preset,
+      { layers: DEFAULT_LAYERS, overlays: DEFAULT_OVERLAYS },
+      overlays,
+    );
+    setLayers(next.layers);
+    setOverlays(next.overlays);
+    persist(enabled, next.layers, next.overlays, gpsMapSize);
+  };
+
   return (
     <VisualizationContext.Provider
       value={{
@@ -176,6 +191,7 @@ export function VisualizationProvider({ children }: { children: ReactNode }) {
         toggleLayer,
         toggleOverlay,
         setGpsMapSize,
+        applyPreset,
       }}
     >
       {children}

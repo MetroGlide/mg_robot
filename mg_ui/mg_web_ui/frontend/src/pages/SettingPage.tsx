@@ -8,6 +8,12 @@ import {
   GpsMapSize,
 } from "../contexts/VisualizationContext";
 import { useTeleop } from "../contexts/TeleopContext";
+import {
+  PRESET_DESCRIPTIONS,
+  PRESET_LABELS,
+  VisualizationPreset,
+} from "../contexts/visualizationPresets";
+import ActionButton from "../components/ui/ActionButton";
 import Toggle from "../components/ui/Toggle";
 import {
   getSysManagerUrl,
@@ -15,6 +21,8 @@ import {
   setSysManagerUrl,
   resetSysManagerUrl,
 } from "../utils/systemManagerConfig";
+
+const PRESETS: VisualizationPreset[] = ["light", "standard", "full"];
 
 interface LayerGroup {
   label: string;
@@ -120,6 +128,7 @@ export default function SettingPage() {
     toggleOverlay,
     gpsMapSize,
     setGpsMapSize,
+    applyPreset,
   } = useVisualization();
   const {
     maxLinear,
@@ -254,6 +263,31 @@ export default function SettingPage() {
             <p className="text-xs text-gray-500">
               Disable to stop all visualization topic subscriptions.
             </p>
+
+            {enabled && (
+              <div className="space-y-2 pt-2 border-t border-gray-700">
+                <p className="text-xs text-gray-400">
+                  Preset（レイヤーとオーバーレイをまとめて切り替えます）
+                </p>
+                <div className="flex gap-2">
+                  {PRESETS.map((preset) => (
+                    <ActionButton
+                      key={preset}
+                      label={PRESET_LABELS[preset]}
+                      size="sm"
+                      onClick={() => applyPreset(preset)}
+                    />
+                  ))}
+                </div>
+                <ul className="text-xs text-gray-500 space-y-0.5">
+                  {PRESETS.map((preset) => (
+                    <li key={preset}>
+                      {PRESET_LABELS[preset]}: {PRESET_DESCRIPTIONS[preset]}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             {enabled && (
               <div className="space-y-4 pt-2 border-t border-gray-700">
