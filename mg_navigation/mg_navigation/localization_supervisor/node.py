@@ -26,6 +26,7 @@ from geometry_msgs.msg import PoseWithCovarianceStamped
 from mg_msgs.msg import LocalizationStatus
 from nav2_msgs.msg import SpeedLimit
 from nav_msgs.msg import OccupancyGrid, Odometry
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, QoSDurabilityPolicy, QoSReliabilityPolicy, qos_profile_sensor_data
 from rclpy.time import Time
@@ -34,10 +35,13 @@ from std_srvs.srv import SetBool
 
 from .checks import Pose2, amcl_gnss_d2, compose, implied_map_odom, pose_jump
 from .scan_check import (
-    LocalDistanceField, OccupancyMap, build_local_distance_field, match_ratio, scan_points_in_map)
+    LocalDistanceField, OccupancyMap, build_local_distance_field, match_gain, match_ratio,
+    scan_points_in_map, search_offsets)
 from .state_machine import Action, Checks, MachineConfig, State, SupervisorMachine
 
 UNAVAILABLE = -1.0
+UNAVAILABLE_VALUES = {
+    'd2': UNAVAILABLE, 'jump': UNAVAILABLE, 'diff': UNAVAILABLE, 'ratio': UNAVAILABLE, 'gain': UNAVAILABLE}
 
 
 def yaw_from_quaternion(q) -> float:
@@ -73,6 +77,7 @@ class LocalizationSupervisorNode(Node):
         self._prev_map_odom: Optional[Pose2] = None
         self._gps: Optional[Tuple[float, float, float, float, str]] = None       # (時刻, x, y, 分散, child_frame)
         self._scan: Optional[LaserScan] = None
+        self._scan_rx = 0.0
         self._map: Optional[OccupancyMap] = None
         self._field: Optional[LocalDistanceField] = None
         self._field_center: Optional[Tuple[float, float]] = None
@@ -81,6 +86,9 @@ class LocalizationSupervisorNode(Node):
         # 直近の EKF の map->odom (時刻, 姿勢)。AMCL が飛んだ後の復旧で、飛ぶ前の状態に巻き戻すために持つ
         self._map_odom_history: Deque[Tuple[float, Pose2]] = deque()
         self._suspect_since: Optional[float] = None
+        # 正常なときのスキャンの一致率 (しきい値の基準)
+        self._ratio_history: Deque[float] = deque(maxlen=p['scan_baseline_window'])
+        self._search_offsets = search_offsets(p['scan_search_range_m'], p['scan_search_step_m'])
 
         self.create_subscription(PoseWithCovarianceStamped, '/amcl_pose_origin', self._on_amcl, 10)
         self.create_subscription(Odometry, '/odom/gps', self._on_gps, 10)
@@ -102,7 +110,7 @@ class LocalizationSupervisorNode(Node):
         self._applied_attach = True
         self._gate_pending = False
 
-        self._values = {'d2': UNAVAILABLE, 'jump': UNAVAILABLE, 'diff': UNAVAILABLE, 'ratio': UNAVAILABLE}
+        self._values = dict(UNAVAILABLE_VALUES)
         self._last_event = ''
         self.create_timer(p['period_sec'], self._on_timer)
         self.get_logger().info('localization_supervisor_node started')
@@ -115,7 +123,7 @@ class LocalizationSupervisorNode(Node):
             'amcl_gate_service': '/amcl_publish_controller_node/change_publish_state',
             'speed_limit_topic': '/speed_limit',
             # 判定のしきい値
-            'gnss_max_sigma_m': 0.5,             # これ以下の精度の GNSS だけを AMCL との比較に使う
+            'gnss_max_sigma_m': 2.0,             # これ以下の精度の GNSS だけを AMCL との比較に使う
             'gnss_max_age_sec': 3.0,
             'gnss_d2_threshold': 16.0,           # 2 自由度のマハラノビス距離の二乗
             'gnss_extra_std_m': 0.3,             # 時刻のずれなどによる位置の不確かさ
@@ -123,9 +131,18 @@ class LocalizationSupervisorNode(Node):
             'jump_threshold_m': 1.0,
             'jump_threshold_rad': 0.35,
             'ignore_jump_after_init_sec': 5.0,
+            'scan_max_age_sec': 2.0,             # これより古いスキャンは使わない
             'scan_radius_m': 25.0,
             'scan_tolerance_m': 0.3,
-            'scan_ratio_threshold': 0.5,         # 一致した点の割合がこれ未満なら異常
+            # 一致した点の割合が、正常なときの中央値の scan_ratio_factor 倍 (下限 scan_ratio_min) 未満なら異常
+            'scan_ratio_min': 0.1,
+            'scan_ratio_factor': 0.5,
+            'scan_baseline_min_samples': 20,     # 基準の中央値を使い始める、正常なときの一致率の数
+            'scan_baseline_window': 120,         # 基準に使う、直近の正常なときの一致率の数
+            # 姿勢の周り (±scan_search_range_m) でずらしたほうが、一致した割合がこれ以上増えるなら異常
+            'scan_gain_threshold': 0.25,
+            'scan_search_range_m': 1.0,
+            'scan_search_step_m': 0.25,
             'scan_max_points': 180,
             'diff_threshold_m': 2.0,
             # 状態遷移
@@ -138,7 +155,8 @@ class LocalizationSupervisorNode(Node):
             # 復旧
             'history_sec': 60.0,                 # 巻き戻し用に map->odom を残す時間
             'rollback_margin_sec': 3.0,          # 異常が始まる何秒前の状態まで戻すか
-            'reinit_gnss_max_sigma_m': 0.5,
+            'reinit_min_gain': 0.05,             # 復旧の候補を入れ替えるのに必要な、スキャンの一致率の差
+            'reinit_gnss_max_sigma_m': 1.5,
             'reinit_position_std_m': 0.5,
             'reinit_yaw_std_rad': 0.3,
             # DEGRADED のときの動作: warn (通知のみ) | slow (速度を制限する)
@@ -164,6 +182,7 @@ class LocalizationSupervisorNode(Node):
 
     def _on_scan(self, msg: LaserScan) -> None:
         self._scan = msg
+        self._scan_rx = self._now()
 
     def _on_map(self, msg: OccupancyGrid) -> None:
         data = np.array(msg.data, dtype=np.int8).reshape(msg.info.height, msg.info.width)
@@ -237,11 +256,14 @@ class LocalizationSupervisorNode(Node):
         self._values['diff'] = diff
         return diff > p['diff_threshold_m']
 
-    def _scan_ratio_at(self, pose: Pose2) -> Optional[float]:
-        """pose (map->base) でスキャンを地図に重ねたときに一致した点の割合。判断できなければ None。"""
+    def _scan_stats_at(self, pose: Pose2, with_gain: bool = False) -> Optional[Tuple[float, float]]:
+        """pose (map->base) でスキャンを地図に重ねたときの (一致した点の割合, 利得)。判断できなければ None。
+
+        利得は、姿勢の周りでずらしたほうが大きく一致するときの、一致した割合の増え方 (with_gain のときだけ求める)。
+        """
         p = self._p
         scan = self._scan
-        if scan is None or self._map is None:
+        if scan is None or self._map is None or self._now() - self._scan_rx > p['scan_max_age_sec']:
             return None
         if self._base_lidar is None:
             self._base_lidar = self._lookup_pose(p['base_frame'], scan.header.frame_id)
@@ -258,8 +280,27 @@ class LocalizationSupervisorNode(Node):
             np.asarray(scan.ranges, dtype=float), scan.angle_min, scan.angle_increment,
             scan.range_min, min(scan.range_max, p['scan_radius_m']), pose, self._base_lidar,
             p['scan_max_points'])
+        if with_gain:
+            return match_gain(self._field, points, p['scan_tolerance_m'], self._search_offsets)
         result = match_ratio(self._field, points, p['scan_tolerance_m'])
-        return None if result is None else result[0]
+        return None if result is None else (result[0], 0.0)
+
+    def _scan_ratio_at(self, pose: Pose2) -> Optional[float]:
+        stats = self._scan_stats_at(pose)
+        return None if stats is None else stats[0]
+
+    def _ratio_threshold(self) -> float:
+        """一致率の異常のしきい値。正常なときの一致率の中央値の scan_ratio_factor 倍 (下限 scan_ratio_min)。
+
+        一致率の絶対値は地図の質や LiDAR の特性で決まる (この環境では正しい姿勢でも 0.3 前後) ので、
+        絶対値ではなく、この環境で正常なときの値を基準にする。
+        """
+        p = self._p
+        threshold = p['scan_ratio_min']
+        if len(self._ratio_history) >= p['scan_baseline_min_samples']:
+            baseline = float(np.median(np.asarray(self._ratio_history)))
+            threshold = max(threshold, p['scan_ratio_factor'] * baseline)
+        return threshold
 
     def _check_scan(self) -> Optional[bool]:
         p = self._p
@@ -268,11 +309,16 @@ class LocalizationSupervisorNode(Node):
         ekf = self._lookup_pose(p['map_frame'], p['base_frame'], stamp)
         if ekf is None:
             return None
-        ratio = self._scan_ratio_at(ekf)
-        if ratio is None:
+        stats = self._scan_stats_at(ekf, with_gain=True)
+        if stats is None:
             return None
+        ratio, gain = stats
         self._values['ratio'] = ratio
-        return ratio < p['scan_ratio_threshold']
+        self._values['gain'] = gain
+        anomaly = ratio < self._ratio_threshold() or gain > p['scan_gain_threshold']
+        if not anomaly and self._machine.state == State.NORMAL:
+            self._ratio_history.append(ratio)
+        return anomaly
 
     # ---------------------------------------------------------------- 行動
 
@@ -341,12 +387,16 @@ class LocalizationSupervisorNode(Node):
         candidates = self._candidate_poses(now)
         if not candidates:
             return 'reinit skipped: no pose available'
+        # 候補は EKF の姿勢を先頭に並んでいる。スキャンの一致が reinit_min_gain 以上よく合う候補があれば
+        # そちらを選ぶ (僅差のときは先頭のまま)。スキャンで比べられなければ、GNSS の候補があればそれを選ぶ
         best = candidates[0]
         best_ratio = self._scan_ratio_at(best[1])
         for candidate in candidates[1:]:
             ratio = self._scan_ratio_at(candidate[1])
-            # スキャンで比べられれば一致の良い方。比べられなければ GNSS を優先する
-            if ratio is None or best_ratio is None or ratio > best_ratio:
+            if best_ratio is None or ratio is None:
+                if candidate[0] == 'gnss':
+                    best, best_ratio = candidate, ratio
+            elif ratio > best_ratio + p['reinit_min_gain']:
                 best, best_ratio = candidate, ratio
         name, pose, std = best
         msg = PoseWithCovarianceStamped()
@@ -380,7 +430,7 @@ class LocalizationSupervisorNode(Node):
         now = self._now()
         if now == 0.0:
             return
-        self._values = {'d2': UNAVAILABLE, 'jump': UNAVAILABLE, 'diff': UNAVAILABLE, 'ratio': UNAVAILABLE}
+        self._values = dict(UNAVAILABLE_VALUES)
         checks = Checks(
             gnss=self._check_gnss(now), jump=self._check_jump(now),
             scan=self._check_scan(), diff=self._check_diff(now))
@@ -417,6 +467,7 @@ class LocalizationSupervisorNode(Node):
         msg.amcl_jump_m = float(self._values['jump'])
         msg.amcl_ekf_diff_m = float(self._values['diff'])
         msg.scan_match_ratio = float(self._values['ratio'])
+        msg.scan_match_gain = float(self._values['gain'])
         msg.last_event = self._last_event
         self._status_pub.publish(msg)
 
@@ -439,7 +490,7 @@ def main(args=None) -> None:
     node = LocalizationSupervisorNode()
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):
         pass
     finally:
         node.destroy_node()

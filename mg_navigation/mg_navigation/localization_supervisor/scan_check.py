@@ -91,6 +91,34 @@ def scan_points_in_map(
     return np.stack([map_lidar[0] + c * px - s * py, map_lidar[1] + s * px + c * py], axis=1)
 
 
+def search_offsets(range_m: float, step_m: float) -> np.ndarray:
+    """±range_m を step_m 刻みで x, y にずらす格子の、ずらし量 (K, 2)。"""
+    axis = np.arange(-range_m, range_m + 1e-9, step_m)
+    xs, ys = np.meshgrid(axis, axis)
+    return np.stack([xs.ravel(), ys.ravel()], axis=1)
+
+
+def match_gain(
+    field: LocalDistanceField, points_xy: np.ndarray, tolerance: float,
+    offsets: np.ndarray, min_points: int = 30,
+) -> Optional[Tuple[float, float]]:
+    """姿勢の周りで点を offsets だけずらして最もよく一致する割合と、ずらさないときの割合の差 (利得) を返す。
+
+    Returns: (ずらさないときの一致した割合, 利得)。ずらさないほうが最もよく一致していれば利得は 0。
+    利得が大きいのは、姿勢が地図に対してずれていて、近くにもっと合う位置があるとき。
+    地図の質や LiDAR の特性による一致率の絶対値の高低に左右されにくい。判断できなければ None。
+    """
+    base = match_ratio(field, points_xy, tolerance, min_points)
+    if base is None:
+        return None
+    best = base[0]
+    for offset in offsets:
+        shifted = match_ratio(field, points_xy + offset, tolerance, min_points)
+        if shifted is not None and shifted[0] > best:
+            best = shifted[0]
+    return base[0], best - base[0]
+
+
 def match_ratio(
     field: LocalDistanceField, points_xy: np.ndarray, tolerance: float, min_points: int = 30,
 ) -> Optional[Tuple[float, float]]:

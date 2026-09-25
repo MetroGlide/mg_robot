@@ -89,6 +89,29 @@ def test_match_ratio_high_at_true_pose_low_when_shifted():
     assert ratio_bad < ratio_good - 0.2
 
 
+def test_match_gain_is_small_at_true_pose_and_large_when_shifted():
+    occupancy = _wall_map()
+    truth = (2.0, -1.0, 0.3)
+    ranges, angle_min, angle_inc = _room_scan(truth)
+    field = sc.build_local_distance_field(occupancy, 0.0, 0.0, 15.0)
+    lidar = (0.0, 0.0, 0.0)
+    offsets = sc.search_offsets(1.0, 0.25)
+    assert offsets.shape == (81, 2)
+    good = sc.scan_points_in_map(ranges, angle_min, angle_inc, 0.05, 30.0, truth, lidar)
+    ratio_good, gain_good = sc.match_gain(field, good, 0.3, offsets)
+    shifted = (truth[0] + 0.75, truth[1] - 0.5, truth[2])
+    bad = sc.scan_points_in_map(ranges, angle_min, angle_inc, 0.05, 30.0, shifted, lidar)
+    ratio_bad, gain_bad = sc.match_gain(field, bad, 0.3, offsets)
+    assert gain_good == pytest.approx(0.0, abs=0.02)
+    assert ratio_good > 0.95
+    assert gain_bad > 0.3
+
+
+def test_match_gain_none_without_enough_points():
+    field = sc.LocalDistanceField(np.zeros((10, 10)), 0.0, 0.0, 0.1)
+    assert sc.match_gain(field, np.zeros((5, 2)), 0.3, sc.search_offsets(0.5, 0.25)) is None
+
+
 def test_local_distance_field_none_without_structure_and_lookup_outside():
     empty = sc.OccupancyMap(np.zeros((100, 100), dtype=np.int8), 0.1, 0.0, 0.0)
     assert sc.build_local_distance_field(empty, 5.0, 5.0, 4.0) is None

@@ -18,6 +18,7 @@ float32 amcl_gnss_d2       # AMCL と GNSS の位置の差のマハラノビス�
 float32 amcl_jump_m        # 連続する AMCL の推定が示す map→odom の位置の飛び [m]
 float32 amcl_ekf_diff_m    # AMCL と EKF の位置の差 [m]
 float32 scan_match_ratio   # EKF の姿勢でスキャンを地図に重ねたときに一致した点の割合 (0-1)
+float32 scan_match_gain    # EKF の姿勢の周りでずらしたほうが、一致した点の割合がどれだけ増えるか (0 なら今の姿勢が最良)
 
 # 直近に起きたこと (例: "isolated: amcl_gnss", "reinit from ekf", "recovered")
 string last_event
