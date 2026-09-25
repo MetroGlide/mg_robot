@@ -14,11 +14,17 @@ import threading
 import time
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
-from typing import IO, List, Optional, Sequence
+from typing import IO, Callable, List, Optional, Sequence
 
 import yaml
 
 from sim_scenario_test.engine.result import EXIT_CODES, ResultStatus
+from sim_scenario_test.remote_stack import (
+    RemoteStackClient,
+    RemoteStackError,
+    StackLaunch,
+    resolve_stack,
+)
 
 EXIT_ERROR = EXIT_CODES[ResultStatus.ERROR]
 
@@ -91,6 +97,7 @@ _INFRASTRUCTURE_MARKERS = (
     "readiness timeout",
     "simulation clock stalled",
     "timed out after",
+    "remote stack",
 )
 
 
@@ -116,8 +123,52 @@ def run_scenario(
     timeout_sec: float = 1800.0,
     seed: Optional[int] = None,
     launch_prefix: Sequence[str] = ("ros2", "launch"),
+    remote_stack: Optional[RemoteStackClient] = None,
+    stack_resolver: Callable[[str, str], StackLaunch] = resolve_stack,
 ) -> RunRecord:
-    """シナリオを 1 本実行して結果を返す。out_dir に result.json / launch.log を残す。"""
+    """シナリオを 1 本実行して結果を返す。out_dir に result.json / launch.log を残す。
+
+    remote_stack を渡すと、ナビゲーションスタックはそのクライアント経由で別のマシンに起動させ、
+    シミュレータと scenario_runner だけをローカルで起動する。スタックは実行後に必ず停止する。
+    """
+    name = os.path.splitext(os.path.basename(scenario_file))[0]
+    if remote_stack is None:
+        return _run_local(scenario_file, out_dir, profile, gui, attach, timeout_sec, seed,
+                          launch_prefix, launch_stack=True)
+    os.makedirs(out_dir, exist_ok=True)
+    try:
+        remote_stack.start(stack_resolver(scenario_file, profile))
+    except RemoteStackError as e:
+        return RunRecord(name, ResultStatus.ERROR, f"remote stack failed to start: {e}",
+                         0.0, out_dir, [])
+    try:
+        return _run_local(scenario_file, out_dir, profile, gui, attach, timeout_sec, seed,
+                          launch_prefix, launch_stack=False)
+    finally:
+        _finish_remote_stack(remote_stack, out_dir)
+
+
+def _finish_remote_stack(remote_stack: RemoteStackClient, out_dir: str) -> None:
+    """リモートのスタックのログを保存して停止する。失敗しても走行の結果は変えない。"""
+    try:
+        with open(os.path.join(out_dir, "stack.log"), "w") as f:
+            f.write(remote_stack.logs())
+        remote_stack.stop()
+    except RemoteStackError as e:
+        print(f"[remote stack] cleanup failed: {e}")
+
+
+def _run_local(
+    scenario_file: str,
+    out_dir: str,
+    profile: str,
+    gui: bool,
+    attach: bool,
+    timeout_sec: float,
+    seed: Optional[int],
+    launch_prefix: Sequence[str],
+    launch_stack: bool,
+) -> RunRecord:
     os.makedirs(out_dir, exist_ok=True)
     result_file = os.path.join(out_dir, "result.json")
     if os.path.exists(result_file):
@@ -134,6 +185,8 @@ def run_scenario(
         cmd.append(f"seed:={seed}")
     if not attach:
         cmd.append(f"headless:={'false' if gui else 'true'}")
+        if not launch_stack:
+            cmd.append("launch_stack:=false")
 
     name = os.path.splitext(os.path.basename(scenario_file))[0]
     start = time.monotonic()

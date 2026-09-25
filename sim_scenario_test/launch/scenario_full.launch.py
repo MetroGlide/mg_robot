@@ -2,6 +2,7 @@
 """シミュレータ・ナビゲーションスタック・シナリオ実行ノードを 1 つの launch で起動する。
 
 プロファイルの sim.launch / stack.launch を include し、scenario_runner の終了で全体を終了する。
+launch_stack:=false のときは stack を起動しない (別のマシンで起動済みのスタックに接続する)。
 """
 import os
 
@@ -38,14 +39,14 @@ def _setup(context, *args, **kwargs):
     result_file = LaunchConfiguration("result_file").perform(context)
     scenario, profile = load_scenario(scenario_file, profile_name)
 
-    variables = {
-        "world": profile.world_vars(scenario.world, "scenario.world"),
-        "headless": LaunchConfiguration("headless").perform(context),
-    }
+    variables = profile.launch_variables(
+        scenario.world, LaunchConfiguration("headless").perform(context), "scenario.world")
     actions = []
     if profile.sim.launch is not None:
         actions.append(_include(profile.sim.launch, variables, "profile.sim.launch.args"))
-    if profile.stack is not None:
+    # 実機PCなど別の場所でスタックを起動する場合 (--remote-stack) は include しない
+    launch_stack = LaunchConfiguration("launch_stack").perform(context) == "true"
+    if profile.stack is not None and launch_stack:
         actions.append(_include(
             profile.stack, variables, "profile.stack.args", scenario.stack_args))
 
@@ -75,6 +76,7 @@ def generate_launch_description():
         DeclareLaunchArgument("profile", default_value=""),
         DeclareLaunchArgument("result_file", default_value=""),
         DeclareLaunchArgument("headless", default_value="true"),
+        DeclareLaunchArgument("launch_stack", default_value="true"),
         DeclareLaunchArgument("seed", default_value="-1"),
         OpaqueFunction(function=_setup),
     ])

@@ -66,6 +66,7 @@ ros2 run sim_scenario_test scenario_cli.py run-all scenarios/ --tags smoke  # �
 | `--scenario-dir DIR` | ファイルの代わりに名前 (`<name>` → `<name>.yaml`) を渡したとき、DIR 配下 (再帰) から探す。複数指定可。ディレクトリを渡すと配下 (再帰。`data/` は除く) のシナリオを集める |
 | `--gui` | シミュレータの GUI を表示する (既定はヘッドレス) |
 | `--attach` | 起動済みのシミュレータ・スタックに接続して実行する (起動は行わない) |
+| `--remote-stack URL` | ナビゲーションスタックを別のマシン (実機PCなど) に起動させ、シミュレータはローカルで起動する ([docs/remote_stack.md](docs/remote_stack.md))。`--attach` とは併用できない |
 | `--results-dir DIR` | 結果の保存先 (既定 `~/.ros/scenario_results/<日時>`) |
 | `--timeout SEC` | 1 本あたりの壁時計の上限 (既定 1800 秒)。超えると ERROR |
 | `--infra-retries N` | シミュレータの起動失敗など、シナリオの内容と無関係な ERROR (準備完了のタイムアウト、結果が出ない、sim 時計の停止) のとき、その走行を N 回まで再実行する (既定 1)。テスト内容による ERROR や FAILED は再実行しない。再実行の結果は `<シナリオ名>_retryN/` に保存 |
@@ -94,4 +95,5 @@ make test pkg=sim_scenario_test      # ROS・シミュレータ不要のユニ�
 | [docs/scenario_format.md](docs/scenario_format.md) | シナリオ YAML (v2.0) の全項目と組み込みの型 |
 | [docs/profile_reference.md](docs/profile_reference.md) | ロボットプロファイルの全項目、変数展開 |
 | [docs/plugin_development.md](docs/plugin_development.md) | プラグイン (独自の型) の作り方 |
+| [docs/remote_stack.md](docs/remote_stack.md) | スタックを別のマシンで起動するときの流れと HTTP プロトコル |
 | [docs/python_scenarios.md](docs/python_scenarios.md) | Python / pytest でシナリオを書く方法 |
