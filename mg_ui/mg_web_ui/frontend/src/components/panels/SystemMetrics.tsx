@@ -68,7 +68,7 @@ export default function SystemMetrics({
 
   return (
     <div
-      className={`bg-gray-900/85 border border-gray-600/50 rounded-lg backdrop-blur-sm ${compact ? "p-2 space-y-1.5" : "p-3 space-y-2"}`}
+      className={`bg-gray-900/85 border border-gray-600/50 rounded-lg ${compact ? "p-2 space-y-1.5" : "p-3 space-y-2"}`}
     >
       {!compact && (
         <p className="text-xs font-medium text-gray-400 mb-1">System</p>

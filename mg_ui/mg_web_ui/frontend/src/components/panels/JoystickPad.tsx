@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback } from "react";
+import { useRef, useEffect } from "react";
 import { FoxgloveClientHandle } from "../../hooks/useFoxgloveClient";
 import { useTeleop } from "../../contexts/TeleopContext";
 import { TOPICS } from "../../ros/interfaces";
@@ -11,6 +11,9 @@ interface JoystickPadProps {
 const RADIUS = 52;
 const THUMB_R = 16;
 const PUBLISH_INTERVAL_MS = 100;
+// 停止コマンドは 1 回だけだと取りこぼされうるので、間隔をあけて繰り返す
+const STOP_REPEAT_COUNT = 3;
+const STOP_REPEAT_INTERVAL_MS = 50;
 
 export default function JoystickPad({ client, onVelChange }: JoystickPadProps) {
   const { maxLinear, maxAngular } = useTeleop();
@@ -20,54 +23,84 @@ export default function JoystickPad({ client, onVelChange }: JoystickPadProps) {
   const dragging = useRef(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const publishVel = useCallback(
-    (linear: number, angular: number) => {
-      if (client.status !== "connected") return;
-      client.publish(TOPICS.CMD_VEL, "geometry_msgs/msg/Twist", {
-        linear: { x: linear, y: 0.0, z: 0.0 },
-        angular: { x: 0.0, y: 0.0, z: angular },
-      });
-      onVelChange?.(linear, angular);
-    },
-    [client, onVelChange],
+  // 最新の値を ref に持たせ、イベントハンドラの張り直しを避ける
+  const limitsRef = useRef({ maxLinear, maxAngular });
+  limitsRef.current = { maxLinear, maxAngular };
+  const clientRef = useRef(client);
+  clientRef.current = client;
+  const onVelChangeRef = useRef(onVelChange);
+  onVelChangeRef.current = onVelChange;
+
+  const { advertise } = client;
+  useEffect(
+    () => advertise(TOPICS.CMD_VEL, "geometry_msgs/msg/Twist"),
+    [advertise],
   );
-
-  const startPublish = useCallback(() => {
-    if (intervalRef.current) return;
-    intervalRef.current = setInterval(() => {
-      publishVel(velRef.current.linear, velRef.current.angular);
-    }, PUBLISH_INTERVAL_MS);
-  }, [publishVel]);
-
-  const stopPublish = useCallback(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-    velRef.current = { linear: 0, angular: 0 };
-    publishVel(0, 0);
-    onVelChange?.(0, 0);
-    if (thumbRef.current) {
-      thumbRef.current.setAttribute("cx", String(RADIUS + THUMB_R));
-      thumbRef.current.setAttribute("cy", String(RADIUS + THUMB_R));
-    }
-  }, [publishVel, onVelChange]);
 
   useEffect(() => {
     const svg = svgRef.current;
     if (!svg) return;
 
+    const publish = (linear: number, angular: number) => {
+      try {
+        clientRef.current.publish(TOPICS.CMD_VEL, "geometry_msgs/msg/Twist", {
+          linear: { x: linear, y: 0.0, z: 0.0 },
+          angular: { x: 0.0, y: 0.0, z: angular },
+        });
+      } catch (e) {
+        console.error("failed to publish cmd_vel", e);
+      }
+      onVelChangeRef.current?.(linear, angular);
+    };
+
+    const stopLoop = () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+
+    const startLoop = () => {
+      if (intervalRef.current) return;
+      intervalRef.current = setInterval(() => {
+        // 非表示のタブでもタイマーは動き続けるため、ここでも確認する
+        if (document.hidden || clientRef.current.status !== "connected") {
+          endDrag();
+          return;
+        }
+        publish(velRef.current.linear, velRef.current.angular);
+      }, PUBLISH_INTERVAL_MS);
+    };
+
+    // 操作を終了して、速度 0 を送る。アンマウントや非表示でも呼ばれる。
+    const endDrag = () => {
+      const wasActive = dragging.current || intervalRef.current !== null;
+      dragging.current = false;
+      stopLoop();
+      velRef.current = { linear: 0, angular: 0 };
+      if (thumbRef.current) {
+        thumbRef.current.setAttribute("cx", String(RADIUS + THUMB_R));
+        thumbRef.current.setAttribute("cy", String(RADIUS + THUMB_R));
+      }
+      if (!wasActive) return;
+      publish(0, 0);
+      for (let i = 1; i < STOP_REPEAT_COUNT; i++) {
+        setTimeout(() => publish(0, 0), i * STOP_REPEAT_INTERVAL_MS);
+      }
+    };
+
     const getRelPos = (e: PointerEvent) => {
       const rect = svg.getBoundingClientRect();
-      const cx = rect.left + rect.width / 2;
-      const cy = rect.top + rect.height / 2;
-      return { dx: e.clientX - cx, dy: e.clientY - cy };
+      return {
+        dx: e.clientX - (rect.left + rect.width / 2),
+        dy: e.clientY - (rect.top + rect.height / 2),
+      };
     };
 
     const onPointerDown = (e: PointerEvent) => {
       dragging.current = true;
       svg.setPointerCapture(e.pointerId);
-      startPublish();
+      startLoop();
     };
 
     const onPointerMove = (e: PointerEvent) => {
@@ -79,46 +112,54 @@ export default function JoystickPad({ client, onVelChange }: JoystickPadProps) {
       const clampedY = Math.sin(angle) * dist;
 
       velRef.current = {
-        linear: (-clampedY / RADIUS) * maxLinear,
-        angular: (-clampedX / RADIUS) * maxAngular,
+        linear: (-clampedY / RADIUS) * limitsRef.current.maxLinear,
+        angular: (-clampedX / RADIUS) * limitsRef.current.maxAngular,
       };
 
       if (thumbRef.current) {
-        thumbRef.current.setAttribute(
-          "cx",
-          String(RADIUS + THUMB_R + clampedX),
-        );
-        thumbRef.current.setAttribute(
-          "cy",
-          String(RADIUS + THUMB_R + clampedY),
-        );
+        thumbRef.current.setAttribute("cx", String(RADIUS + THUMB_R + clampedX));
+        thumbRef.current.setAttribute("cy", String(RADIUS + THUMB_R + clampedY));
       }
     };
 
-    const onPointerUp = () => {
-      if (!dragging.current) return;
-      dragging.current = false;
-      stopPublish();
+    const onVisibilityChange = () => {
+      if (document.hidden) endDrag();
     };
 
     svg.addEventListener("pointerdown", onPointerDown);
     svg.addEventListener("pointermove", onPointerMove);
-    svg.addEventListener("pointerup", onPointerUp);
-    svg.addEventListener("pointercancel", onPointerUp);
+    svg.addEventListener("pointerup", endDrag);
+    svg.addEventListener("pointercancel", endDrag);
+    svg.addEventListener("lostpointercapture", endDrag);
+    window.addEventListener("blur", endDrag);
+    document.addEventListener("visibilitychange", onVisibilityChange);
 
     return () => {
       svg.removeEventListener("pointerdown", onPointerDown);
       svg.removeEventListener("pointermove", onPointerMove);
-      svg.removeEventListener("pointerup", onPointerUp);
-      svg.removeEventListener("pointercancel", onPointerUp);
-    };
-  }, [maxLinear, maxAngular, startPublish, stopPublish]);
-
-  useEffect(() => {
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
+      svg.removeEventListener("pointerup", endDrag);
+      svg.removeEventListener("pointercancel", endDrag);
+      svg.removeEventListener("lostpointercapture", endDrag);
+      window.removeEventListener("blur", endDrag);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      endDrag();
     };
   }, []);
+
+  // 接続が切れたら操作を止める(再接続後に古い速度で走り出さないようにする)
+  useEffect(() => {
+    if (client.status === "connected") return;
+    dragging.current = false;
+    velRef.current = { linear: 0, angular: 0 };
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    if (thumbRef.current) {
+      thumbRef.current.setAttribute("cx", String(RADIUS + THUMB_R));
+      thumbRef.current.setAttribute("cy", String(RADIUS + THUMB_R));
+    }
+  }, [client.status]);
 
   const size = (RADIUS + THUMB_R) * 2;
 

@@ -3,6 +3,7 @@ import { useDiagnosticsMap } from "../hooks/useDiagnosticsMap";
 import { FoxgloveClientHandle } from "../hooks/useFoxgloveClient";
 import { SystemManagerHandle } from "../hooks/useSystemManagerClient";
 import { useDockerLogStream } from "../hooks/useDockerLogStream";
+import { ServiceItem, useServiceRegistry } from "../hooks/useServiceRegistry";
 import DiagnosticsTable from "../components/panels/DiagnosticsTable";
 import ApiLogPanel from "../components/panels/ApiLogPanel";
 import ServiceLogPanel from "../components/panels/ServiceLogPanel";
@@ -11,51 +12,6 @@ import StatusBadge from "../components/ui/StatusBadge";
 
 const LOG_RECEIVE_KEY = "mg_ui_log_receive";
 const LOG_DISPLAY_KEY = "mg_ui_log_display";
-
-interface ServiceItem {
-  key: string;
-  label: string;
-}
-
-interface ServiceLayer {
-  id: string;
-  label: string;
-  services: readonly ServiceItem[];
-}
-
-const SERVICE_LAYERS: ServiceLayer[] = [
-  {
-    id: "core",
-    label: "Core",
-    services: [
-      { key: "foxglove-bridge", label: "Foxglove Bridge" },
-      { key: "diagnostics", label: "Diagnostics" },
-    ],
-  },
-  {
-    id: "function",
-    label: "Function",
-    services: [
-      { key: "navigation", label: "Navigation" },
-      { key: "slam", label: "SLAM" },
-    ],
-  },
-  {
-    id: "tool",
-    label: "Tool",
-    services: [
-      { key: "waypoint-editor", label: "Waypoint Editor" },
-      { key: "gazebo-simulation", label: "Gazebo Simulation" },
-      { key: "rviz2", label: "RViz2" },
-      { key: "rviz2-navigation", label: "RViz2 Navigation" },
-      { key: "rviz2-slam", label: "RViz2 SLAM" },
-    ],
-  },
-];
-
-const ALL_SERVICES: readonly ServiceItem[] = SERVICE_LAYERS.flatMap(
-  (l) => l.services,
-);
 
 function loadServiceSet(storageKey: string): Set<string> {
   try {
@@ -91,6 +47,7 @@ export default function SystemPage({
     loadServiceSet(LOG_DISPLAY_KEY),
   );
   const { callApi, containers } = sysManager;
+  const { layers: serviceLayers, services: allServices } = useServiceRegistry();
   const diagStatuses = useDiagnosticsMap(client);
 
   const subscribedServices = useMemo(
@@ -232,12 +189,12 @@ export default function SystemPage({
     </button>
   );
 
-  const [openLayers, setOpenLayers] = useState<Set<string>>(
-    () => new Set(SERVICE_LAYERS.map((l) => l.id)),
-  );
+  // レイヤーは既定で開いておく。閉じたものだけを覚える。
+  const [closedLayers, setClosedLayers] = useState<Set<string>>(new Set());
+  const isLayerOpen = (id: string) => !closedLayers.has(id);
 
   const toggleLayer = (id: string) => {
-    setOpenLayers((prev) => {
+    setClosedLayers((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -255,23 +212,23 @@ export default function SystemPage({
             <div className="flex flex-wrap gap-2">
               <ActionButton
                 label="Stop All"
-                onClick={() => callBulkStop(ALL_SERVICES)}
+                onClick={() => callBulkStop(allServices)}
                 variant="red"
                 size="sm"
                 disabled={loading}
               />
               <ActionButton
                 label="Restart Running"
-                onClick={() => callBulkRestartRunning(ALL_SERVICES)}
+                onClick={() => callBulkRestartRunning(allServices)}
                 variant="blue"
                 size="sm"
-                disabled={loading || !hasRunning(ALL_SERVICES)}
+                disabled={loading || !hasRunning(allServices)}
               />
               <ActionButton
                 label="全受信 ON"
                 onClick={() =>
                   bulkSetLogSet(
-                    ALL_SERVICES,
+                    allServices,
                     setLogReceiveSet,
                     LOG_RECEIVE_KEY,
                     true,
@@ -285,7 +242,7 @@ export default function SystemPage({
                 label="全受信 OFF"
                 onClick={() =>
                   bulkSetLogSet(
-                    ALL_SERVICES,
+                    allServices,
                     setLogReceiveSet,
                     LOG_RECEIVE_KEY,
                     false,
@@ -299,7 +256,7 @@ export default function SystemPage({
                 label="全表示 ON"
                 onClick={() =>
                   bulkSetLogSet(
-                    ALL_SERVICES,
+                    allServices,
                     setLogDisplaySet,
                     LOG_DISPLAY_KEY,
                     true,
@@ -313,7 +270,7 @@ export default function SystemPage({
                 label="全表示 OFF"
                 onClick={() =>
                   bulkSetLogSet(
-                    ALL_SERVICES,
+                    allServices,
                     setLogDisplaySet,
                     LOG_DISPLAY_KEY,
                     false,
@@ -327,7 +284,7 @@ export default function SystemPage({
 
             {/* レイヤーごとのサービス表示 */}
             <div className="space-y-2">
-              {SERVICE_LAYERS.map((layer) => (
+              {serviceLayers.map((layer) => (
                 <div
                   key={layer.id}
                   className="border border-gray-700 rounded-lg overflow-hidden"
@@ -340,7 +297,7 @@ export default function SystemPage({
                     >
                       <svg
                         className={`w-3 h-3 flex-shrink-0 transform transition-transform ${
-                          openLayers.has(layer.id) ? "rotate-90" : ""
+                          isLayerOpen(layer.id) ? "rotate-90" : ""
                         }`}
                         fill="none"
                         viewBox="0 0 24 24"
@@ -430,7 +387,7 @@ export default function SystemPage({
                   </div>
 
                   {/* レイヤー内サービス一覧 */}
-                  {openLayers.has(layer.id) && (
+                  {isLayerOpen(layer.id) && (
                     <div className="px-3 py-2 space-y-2">
                       {layer.services.map(({ key, label }) => (
                         <div

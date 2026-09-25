@@ -4,6 +4,7 @@ import proj4 from "proj4";
 import { FoxgloveClientHandle } from "../../hooks/useFoxgloveClient";
 import { OccupancyGrid, NavSatFix } from "../../types/ros";
 import { TOPICS } from "../../ros/topics";
+import { fillGridRgba } from "./gridColors";
 
 // -------------------------------------------------------------------
 // タイルプロバイダー定義
@@ -51,39 +52,9 @@ function latLngToPixel(
 
 function buildSlamImageData(grid: OccupancyGrid): ImageData {
   const { width, height } = grid.info;
-  const data = grid.data;
   const imageData = new ImageData(width, height);
-  const buf = imageData.data;
-
-  for (let i = 0; i < width * height; i++) {
-    const val = typeof data[i] === "number" ? (data[i] as number) : 0;
-    const x = i % width;
-    const y = Math.floor(i / width);
-    // ROS は下左原点 → 上下反転
-    const idx = ((height - 1 - y) * width + x) * 4;
-
-    if (val < 0 || val === 255) {
-      // 未知領域: 完全に透明 (枠を見せないため)
-      buf[idx] = 128;
-      buf[idx + 1] = 128;
-      buf[idx + 2] = 128;
-      buf[idx + 3] = 0;
-    } else if (val === 0) {
-      // 自由空間: 白 (完全不透明)
-      buf[idx] = 255;
-      buf[idx + 1] = 255;
-      buf[idx + 2] = 255;
-      buf[idx + 3] = 255;
-    } else {
-      // 障害物: 占有率に応じた暗色 (完全不透明)
-      const v = Math.floor((255 * (100 - val)) / 100);
-      buf[idx] = v;
-      buf[idx + 1] = v;
-      buf[idx + 2] = v;
-      buf[idx + 3] = 255;
-    }
-  }
-
+  // canvas は上の行から並ぶため、ROS の下左原点を上下反転して書き込む
+  fillGridRgba(grid.data, width, height, "overlay", imageData.data, true);
   return imageData;
 }
 

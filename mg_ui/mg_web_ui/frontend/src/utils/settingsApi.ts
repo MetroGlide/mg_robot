@@ -1,22 +1,19 @@
 import { getSysManagerUrl } from "./systemManagerConfig";
 
-let _cache: Record<string, unknown> = {};
-
 export async function loadSettings(): Promise<Record<string, unknown>> {
   try {
     const data = await fetch(`${getSysManagerUrl()}/settings`).then((r) => r.json());
-    _cache = typeof data === "object" && data !== null ? (data as Record<string, unknown>) : {};
-    return _cache;
+    return typeof data === "object" && data !== null ? (data as Record<string, unknown>) : {};
   } catch {
     return {};
   }
 }
 
+/** 指定したキーだけを保存する。value が null の場合はそのキーを削除する。 */
 export function saveSettings(key: string, value: unknown): void {
-  _cache = { ..._cache, [key]: value };
   fetch(`${getSysManagerUrl()}/settings`, {
-    method: "POST",
+    method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(_cache),
+    body: JSON.stringify({ [key]: value }),
   }).catch(() => {});
 }

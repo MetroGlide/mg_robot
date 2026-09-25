@@ -78,7 +78,7 @@ export default function VelocityGauge({
 
   return (
     <div
-      className={`bg-gray-900/85 border border-gray-600/50 rounded-lg backdrop-blur-sm ${compact ? "p-2 space-y-1.5" : "p-3 space-y-2"}`}
+      className={`bg-gray-900/85 border border-gray-600/50 rounded-lg ${compact ? "p-2 space-y-1.5" : "p-3 space-y-2"}`}
     >
       {!compact && (
         <div className="flex items-center gap-2 mb-1">

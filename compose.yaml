@@ -319,7 +319,8 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     command: >
       bash -c "
-        python3 /app/mg_ui/mg_system_manager/scripts/system_manager_app.py
+        cd /app/mg_ui/mg_system_manager &&
+        python3 -m mg_system_manager
       "
 
   foxglove-bridge:
@@ -336,7 +337,14 @@ services:
           -p address:=0.0.0.0
           -p send_buffer_limit:=10000000
           -p use_sim_time:=false
+          -p 'capabilities:=[clientPublish,services]'
+          -p sysinfo:=false
       "
+    # 負荷を下げるため、Web UI が使わない機能を止めている。
+    #   capabilities: 既定は connectionGraph / parameters / parametersSubscribe / assets も有効。
+    #     UI は publish(clientPublish)とサービス呼び出し(services)しか使わない。
+    #   sysinfo: 既定は true。UI は使わない。
+    # 元に戻すには、この 2 行(capabilities / sysinfo)を削除する(既定の動作になる)。
 
   web-ui:
     build:

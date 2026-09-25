@@ -99,13 +99,19 @@ export default function SlamGnss2DPage({
   // Saved SLAM Map / Preview モード
   const [slamMaps, setSlamMaps] = useState<string[]>([]);
   const [selectedMap, setSelectedMap] = useState<string>("");
-  const [isPreviewing, setIsPreviewing] = useState(false);
   const [targetDirectory, setTargetDirectory] = useState<string>("/root/ros2_data/slam_maps");
   const [isSaving, setIsSaving] = useState(false);
 
   // Re-optimization State
   const [reoptBagPath, setReoptBagPath] = useState<string>("");
-  const [isReoptimizing, setIsReoptimizing] = useState(false);
+
+  // プレビュー・再最適化の実行状態は、コンテナの実際の状態から求める。
+  // 起動要求を送ってからコンテナが running になるまでの間は「起動中」として扱う。
+  const containers = _sysManager?.containers;
+  const [previewStarting, setPreviewStarting] = useState(false);
+  const [reoptStarting, setReoptStarting] = useState(false);
+  const isPreviewing = previewStarting || containers?.["map-preview"] === "running";
+  const isReoptimizing = reoptStarting || containers?.["reoptimize-slam"] === "running";
 
   // PoseGraph State
   const { state: poseGraphState } = usePoseGraph(client);
@@ -180,24 +186,39 @@ export default function SlamGnss2DPage({
 
   const startPreview = async () => {
     if (!_sysManager || !selectedMap) return;
-    setIsPreviewing(true);
-    const fullPath = targetDirectory.endsWith('/') 
-      ? `${targetDirectory}${selectedMap}` 
+    setPreviewStarting(true);
+    const fullPath = targetDirectory.endsWith('/')
+      ? `${targetDirectory}${selectedMap}`
       : `${targetDirectory}/${selectedMap}`;
-    await _sysManager.callApi(`/slam_gnss_2d/preview/start`, { slam_map_path: fullPath });
+    try {
+      const res = await _sysManager.callApi(`/slam_gnss_2d/preview/start`, { slam_map_path: fullPath });
+      if (!res.success) {
+        alert("Failed to start preview: " + res.message);
+      }
+    } catch (e) {
+      alert("Error starting preview: " + String(e));
+    } finally {
+      setPreviewStarting(false);
+    }
   };
 
   const stopPreview = async () => {
     if (!_sysManager) return;
-    await _sysManager.callApi(`/slam_gnss_2d/preview/stop`, {});
-    setIsPreviewing(false);
+    try {
+      const res = await _sysManager.callApi(`/slam_gnss_2d/preview/stop`, {});
+      if (!res.success) {
+        alert("Failed to stop preview: " + res.message);
+      }
+    } catch (e) {
+      alert("Error stopping preview: " + String(e));
+    }
   };
 
   const startReoptimize = async () => {
     if (!_sysManager || !selectedMap) return;
-    setIsReoptimizing(true);
-    const fullPath = targetDirectory.endsWith('/') 
-      ? `${targetDirectory}${selectedMap}` 
+    setReoptStarting(true);
+    const fullPath = targetDirectory.endsWith('/')
+      ? `${targetDirectory}${selectedMap}`
       : `${targetDirectory}/${selectedMap}`;
     try {
       const res = await _sysManager.callApi('/slam_gnss_2d/reoptimize/start', {
@@ -207,11 +228,11 @@ export default function SlamGnss2DPage({
       });
       if (!res.success) {
         console.error("Failed to start re-optimization:", res.message);
-        setIsReoptimizing(false);
       }
     } catch (e) {
       console.error("Error starting re-optimization:", e);
-      setIsReoptimizing(false);
+    } finally {
+      setReoptStarting(false);
     }
   };
 
@@ -219,9 +240,7 @@ export default function SlamGnss2DPage({
     if (!_sysManager) return;
     try {
       const res = await _sysManager.callApi('/slam_gnss_2d/reoptimize/stop', {});
-      if (res.success) {
-        setIsReoptimizing(false);
-      } else {
+      if (!res.success) {
         console.error("Failed to stop:", res.message);
       }
     } catch (e) {

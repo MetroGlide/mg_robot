@@ -267,13 +267,11 @@ export function usePoseGraph(client: FoxgloveClientHandle) {
       })
     }
 
-    const unsub1 = client.subscribe(TOPICS.SLAM_GNSS2D_POSE_GRAPH_DIFF, 'slam_gnss_2d_msgs/msg/PoseGraphDiff', handleDiff)
-    const unsub2 = client.subscribe(TOPICS.SLAM_GNSS2D_POSE_GRAPH_DIFF, 'mg_msgs/msg/PoseGraphDiff', handleDiff)
-
-    return () => {
-      unsub1()
-      unsub2()
-    }
+    return client.subscribe(
+      TOPICS.SLAM_GNSS2D_POSE_GRAPH_DIFF,
+      'slam_gnss_2d_msgs/msg/PoseGraphDiff',
+      handleDiff,
+    )
   }, [client, fetchFullGraph])
 
   // 初回接続時に1度だけフルフェッチを実行する

@@ -2,7 +2,7 @@ import { useNavigate } from "react-router-dom";
 import { FoxgloveClientHandle } from "../hooks/useFoxgloveClient";
 import { useDiagnosticsMap } from "../hooks/useDiagnosticsMap";
 import { useVisualization } from "../contexts/VisualizationContext";
-import SystemMetrics from "../components/SystemMetrics";
+import SystemMetrics from "../components/panels/SystemMetrics";
 import DiagnosticsTable from "../components/panels/DiagnosticsTable";
 
 const navCards = [

@@ -14,15 +14,15 @@ import {
   GOAL_STATUS_COLOR,
 } from "../types";
 import { TOPICS, SERVICES } from "../ros/interfaces";
-import SectionCard from "../components/SectionCard";
-import RobotPageLayout from "../components/RobotPageLayout";
-import VelocityGauge from "../components/VelocityGauge";
-import ApiLogSection from "../components/sections/ApiLogSection";
-import ContainerStatusCard from "../components/sections/ContainerStatusCard";
-import ServiceControlCard from "../components/sections/ServiceControlCard";
+import SectionCard from "../components/layout/SectionCard";
+import RobotPageLayout from "../components/layout/RobotPageLayout";
+import VelocityGauge from "../components/panels/VelocityGauge";
+import ApiLogPanel from "../components/panels/ApiLogPanel";
+import ContainerStatusCard from "../components/status/ContainerStatusCard";
+import ServiceControlCard from "../components/status/ServiceControlCard";
 import SimulationPoseSection, {
   PoseInput,
-} from "../components/sections/SimulationPoseSection";
+} from "../components/status/SimulationPoseSection";
 import RosbagReplaySection from "../components/sections/RosbagReplaySection";
 
 const STATE_COLOR: Record<string, string> = {
@@ -528,7 +528,7 @@ export default function WaypointNavPage({
     {
       id: "log",
       label: "Log",
-      children: <ApiLogSection logs={sysManager.logs} />,
+      children: <ApiLogPanel logs={sysManager.logs} />,
     },
   ];
 

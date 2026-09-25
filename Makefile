@@ -23,7 +23,7 @@ _compose_opts = $(if $(OPTS),OPTS="$(OPTS)" )
         _collect-deps \
         rviz2 rviz2-slam rviz2-navigation down xhost config \
         test bag-summary bag-plot-gnss bag-plot-scans bag-eval-slam \
-        diagnostics system-manager foxglove-bridge web-ui web-ui-dev tui ui-all ui-dev-all
+        diagnostics system-manager foxglove-bridge web-ui web-ui-dev ui-all ui-dev-all ui-lint ui-test
 
 # --- サービス起動 ---
 
@@ -296,11 +296,16 @@ ui-dev-all:
 web-ui-dev:
 	$(COMPOSE) up web-ui-dev
 
-tui:
-	$(COMPOSE) run --rm -it develop bash -c \
-	  "source /opt/ros/humble/setup.bash && \
-	   source /root/ros2_ws/install/setup.bash && \
-	   ros2 run mg_tui tui_node.py"
+# mg_ui の検査: フロントエンドの型チェックと lint (node コンテナ内で実行)
+ui-lint:
+	$(COMPOSE) run --rm --no-deps web-ui-dev sh -c \
+	  "npm install --no-audit --no-fund && npx tsc -b && npm run lint"
+
+# mg_ui のテスト: フロントエンド(vitest)と system_manager(pytest)
+ui-test:
+	$(COMPOSE) run --rm --no-deps web-ui-dev sh -c \
+	  "npm install --no-audit --no-fund && npm test"
+	$(MAKE) test pkg=mg_ui/mg_system_manager
 
 xhost:
 	xhost +local:docker
