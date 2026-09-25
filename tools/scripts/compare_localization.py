@@ -64,8 +64,23 @@ def aggregate(values: List[float]) -> Optional[Tuple[float, float, float]]:
     return sum(values) / len(values), min(values), max(values)
 
 
+FAILURE_LABEL = "破綻した試行の割合"
+# 位置誤差の p95 がこれを超えた試行を、破綻 (AMCL や EKF が大きくずれた) とみなす [m]
+FAILURE_P95_M = 3.0
+
+
+def failure_rate(runs: List[Dict[str, Any]], threshold: float = FAILURE_P95_M) -> Optional[float]:
+    """位置誤差の p95 が threshold を超えた試行の割合。真値が無く判定できなければ None。"""
+    p95 = [v for v in (get_path(run, ("accuracy", "position_m", "p95")) for run in runs) if v is not None]
+    if not p95:
+        return None
+    return sum(1 for v in p95 if v > threshold) / len(p95)
+
+
 def summarize_variant(runs: List[Dict[str, Any]]) -> Dict[str, Optional[Tuple[float, float, float]]]:
     result: Dict[str, Optional[Tuple[float, float, float]]] = {}
+    rate = failure_rate(runs)
+    result[FAILURE_LABEL] = None if rate is None else (rate, rate, rate)
     for label, path, _ in METRICS + CONSISTENCY_METRICS:
         values = [v for v in (get_path(run, path) for run in runs) if v is not None]
         result[label] = aggregate(values)
@@ -85,12 +100,13 @@ def render(variants: List[Tuple[str, int, Dict[str, Optional[Tuple[float, float,
     """変種ごとの集計を Markdown の表にする。"""
     columns = METRICS + CONSISTENCY_METRICS
     lines = ["# 自己位置推定 変種の比較", "",
-             "各セルは 試行の平均 (最小–最大)。位置・yaw・飛びは小さいほど良い。", "",
-             "| 変種 | 試行数 | " + " | ".join(label for label, _, _ in columns) + " |",
-             "|---|---|" + "---|" * len(columns)]
+             "各セルは 試行の平均 (最小–最大)。位置・yaw・飛びは小さいほど良い。",
+             f"破綻した試行 = 位置誤差の p95 が {FAILURE_P95_M:g} m を超えた試行。", "",
+             f"| 変種 | 試行数 | {FAILURE_LABEL} | " + " | ".join(label for label, _, _ in columns) + " |",
+             "|---|---|---|" + "---|" * len(columns)]
     for name, n_runs, summary in variants:
         cells = [format_cell(summary[label], digits) for label, _, digits in columns]
-        lines.append(f"| {name} | {n_runs} | " + " | ".join(cells) + " |")
+        lines.append(f"| {name} | {n_runs} | {format_cell(summary[FAILURE_LABEL], 2)} | " + " | ".join(cells) + " |")
     lines += ["", f"基準 (先頭): `{variants[0][0]}`" if variants else ""]
     return "\n".join(lines) + "\n"
 

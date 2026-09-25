@@ -113,7 +113,20 @@ patch "${SUPERVISOR_FILE:-mg_navigation/params/localization_supervisor.yaml}" lo
 OUT_DIR="${BAG}/eval_loc/${DATASET_NAME}/${NAME}"
 IMAGE="${IMAGE:-mg_develop:latest}"
 
-DOCKER_ARGS=(run --rm --network host
+# 並列に実行する他の変種と ROS_DOMAIN_ID が重ならないよう、ロックを取って割り当てる
+# (重なると、互いのノードが見えて結果が汚染される)
+DOMAIN_ID=""
+for offset in $(seq 0 99); do
+  candidate=$((100 + (RANDOM + offset) % 100))
+  if mkdir "/tmp/mg_loc_replay_domain_$candidate" 2>/dev/null; then
+    DOMAIN_ID="$candidate"
+    break
+  fi
+done
+[ -z "$DOMAIN_ID" ] && { echo "エラー: 使える ROS_DOMAIN_ID がありません (並列実行が多すぎます)。" >&2; exit 1; }
+trap 'rmdir "/tmp/mg_loc_replay_domain_$DOMAIN_ID" 2>/dev/null || true' EXIT
+
+DOCKER_ARGS=(run --rm --network host -e ROS_DOMAIN_ID="$DOMAIN_ID"
   -v "$ROOT":/app -v "$HOME/ros2_data":/root/ros2_data
   -e BAG="$BAG" -e MAP_YAML="$MAP_YAML" -e GNSS_TRANSFORM="$GNSS_TRANSFORM"
   -e GT_DIR="$GT_DIR" -e MAP_GT_DIR="$MAP_GT_DIR"

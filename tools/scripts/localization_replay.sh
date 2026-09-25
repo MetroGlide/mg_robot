@@ -67,7 +67,8 @@ source /root/ros2_ws/install/setup.bash
 
 # 実機や他のコンテナの ROS 通信と混ざらないようにする
 export ROS_LOCALHOST_ONLY=1
-export ROS_DOMAIN_ID=$((100 + RANDOM % 100))
+# 並列に実行する他のコンテナと重ならないよう、ホスト側 (run_localization_variant.sh) が割り当てた ID を使う
+export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-$((100 + RANDOM % 100))}"
 export SIMULATION=true
 export USE_RVIZ=false
 export WAYPOINT_PATH=/dev/null
@@ -100,8 +101,9 @@ trap cleanup EXIT
 wait_ready() {
   local waited=0
   while [ "$waited" -lt "$READY_TIMEOUT_SEC" ]; do
-    if ros2 lifecycle get /amcl 2>/dev/null | grep -q "active" \
-       && ros2 node list 2>/dev/null | grep -q "ekf_global_node"; then
+    # ros2 のコマンドは discovery で固まることがあるので、必ずタイムアウトをつける
+    if timeout 20 ros2 lifecycle get /amcl 2>/dev/null | grep -q "active" \
+       && timeout 20 ros2 node list 2>/dev/null | grep -q "ekf_global_node"; then
       return 0
     fi
     sleep 2
@@ -133,8 +135,9 @@ run_once() {
   LAUNCH_PID=$!
 
   if ! wait_ready; then
-    echo "エラー: ${READY_TIMEOUT_SEC}秒以内にスタックが起動しませんでした。$run_dir/launch.log を確認してください。" >&2
-    exit 1
+    echo "[replay] run $run/$RUNS: ${READY_TIMEOUT_SEC}秒以内にスタックが起動しませんでした (この試行は無効。$run_dir/launch.log)" >&2
+    stop_group "$LAUNCH_PID"; LAUNCH_PID=""
+    return 1
   fi
 
   setsid python3 /app/tools/scripts/loc_recorder.py -o "$run_dir/output" $RECORD_TOPICS \

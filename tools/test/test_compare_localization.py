@@ -55,6 +55,16 @@ def test_load_runs_and_render(tmp_path):
     assert "0.500 (0.400–0.600)" in text
 
 
+def test_failure_rate_counts_runs_with_large_p95():
+    runs = [_report(0.4), _report(9.0), _report(0.5), _report(4.0)]
+    assert cl.failure_rate(runs) == pytest.approx(0.5)
+    assert cl.failure_rate([]) is None
+    assert cl.failure_rate([{"smoothness": {}}]) is None
+    summary = cl.summarize_variant(runs)
+    assert summary[cl.FAILURE_LABEL][0] == pytest.approx(0.5)
+    assert "| 0.50 |" in cl.render([("v", 4, summary)])
+
+
 def test_dataset_definitions_are_valid():
     for name in ("same_run_043837", "map043837_eval051635", "map043837_eval051635_short",
                  "map043837_eval051635_twist_glitch"):
