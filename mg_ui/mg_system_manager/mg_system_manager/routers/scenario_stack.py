@@ -11,7 +11,7 @@ from mg_system_manager.config import (
     Settings,
 )
 from mg_system_manager.dependencies import get_runner, get_settings
-from mg_system_manager.docker_ops import ComposeRunner
+from mg_system_manager.docker_ops import BusyError, ComposeRunner
 from mg_system_manager.responses import result
 
 logger = logging.getLogger(__name__)
@@ -32,31 +32,43 @@ class ScenarioStackStartRequest(BaseModel):
 def _start(
     runner: ComposeRunner, package: str, file: str, args: dict[str, str]
 ) -> tuple[bool, str]:
-    status = runner.get_status()
-    running = [s for s in HARDWARE_SERVICE_KEYS if status.get(s) == "running"]
-    if running:
-        return False, f"hardware services are running: {running}"
-    logger.info("start_scenario_stack package=%s file=%s args=%s",
-                package, file, args)
-    return runner.up(
-        SCENARIO_STACK_SERVICE,
-        {
-            "STACK_PACKAGE": package,
-            "STACK_FILE": file,
-            "STACK_ARGS": " ".join(f"{k}:={v}" for k, v in args.items()),
-        },
-        timeout=_START_TIMEOUT_S,
-        extra_args=("--force-recreate",),
-    )
+    try:
+        # ハードウェア系サービスの確認から起動までの間に、それらの起動が割り込まないようにする
+        with runner.operation(SCENARIO_STACK_SERVICE, exclusive=True):
+            status = runner.get_status()
+            running = [
+                s for s in HARDWARE_SERVICE_KEYS if status.get(s) == "running"]
+            if running:
+                return False, f"hardware services are running: {running}"
+            logger.info("start_scenario_stack package=%s file=%s args=%s",
+                        package, file, args)
+            return runner.up(
+                SCENARIO_STACK_SERVICE,
+                {
+                    "STACK_PACKAGE": package,
+                    "STACK_FILE": file,
+                    "STACK_ARGS": " ".join(
+                        f"{k}:={v}" for k, v in args.items()),
+                },
+                timeout=_START_TIMEOUT_S,
+                extra_args=("--force-recreate",),
+            )
+    except BusyError as e:
+        return False, str(e)
 
 
 def _stop(runner: ComposeRunner) -> tuple[bool, str]:
-    if runner.get_container(SCENARIO_STACK_SERVICE) is None:
-        return True, "not running"
-    ok, msg = runner.stop(SCENARIO_STACK_SERVICE, timeout=_STOP_TIMEOUT_S)
-    if not ok:
-        return False, msg
-    return runner.remove(SCENARIO_STACK_SERVICE)
+    try:
+        with runner.operation(SCENARIO_STACK_SERVICE):
+            if runner.get_container(SCENARIO_STACK_SERVICE) is None:
+                return True, "not running"
+            ok, msg = runner.stop(
+                SCENARIO_STACK_SERVICE, timeout=_STOP_TIMEOUT_S)
+            if not ok:
+                return False, msg
+            return runner.remove(SCENARIO_STACK_SERVICE)
+    except BusyError as e:
+        return False, str(e)
 
 
 @router.post("/scenario-stack/start")

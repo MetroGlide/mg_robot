@@ -1,16 +1,30 @@
 import logging
 import os
 import subprocess
-from typing import Any
+import threading
+from contextlib import contextmanager
+from typing import Any, Iterator
 
 import docker
 
-from mg_system_manager.config import Settings
+from mg_system_manager.config import (
+    HARDWARE_SERVICE_KEYS,
+    SCENARIO_STACK_SERVICE,
+    Settings,
+)
 
 logger = logging.getLogger(__name__)
 
 _COMPOSE_SERVICE_LABEL = "com.docker.compose.service"
 _COMPOSE_PROJECT_LABEL = "com.docker.compose.project"
+
+# 実機のハードウェアを使うサービスとシナリオテスト用スタックは、同時に起動処理を走らせない
+_EXCLUSIVE_SERVICES = frozenset((*HARDWARE_SERVICE_KEYS, SCENARIO_STACK_SERVICE))
+_EXCLUSIVE_GROUP = "<hardware-exclusive>"
+
+
+class BusyError(Exception):
+    """同じサービスに対する別の操作が実行中であることを表す。"""
 
 
 class ComposeRunner:
@@ -19,6 +33,8 @@ class ComposeRunner:
     def __init__(self, settings: Settings, client: Any = None) -> None:
         self._settings = settings
         self._client = client if client is not None else docker.from_env()
+        self._locks: dict[str, threading.RLock] = {}
+        self._locks_guard = threading.Lock()
         logger.info(
             "ComposeRunner initialized: host_project_dir=%s host_home=%s "
             "simulation_world=%s robot=%s",
@@ -27,6 +43,35 @@ class ComposeRunner:
             settings.simulation_world,
             settings.simulation_robot_name,
         )
+
+    def _lock_for(self, key: str) -> threading.RLock:
+        with self._locks_guard:
+            return self._locks.setdefault(key, threading.RLock())
+
+    @contextmanager
+    def operation(self, service: str, exclusive: bool = False) -> Iterator[None]:
+        """サービスに対する操作の排他区間。
+
+        同じサービスの操作が実行中なら待たずに BusyError にする(二重クリックや複数端末からの
+        同時操作で compose が並行実行されるのを防ぐ)。exclusive を指定すると、
+        ハードウェアを使うサービスとシナリオ用スタックの起動処理も互いに排他する。
+        同じスレッドからの入れ子は許可する。
+        """
+        keys = [service]
+        if exclusive and service in _EXCLUSIVE_SERVICES:
+            keys.append(_EXCLUSIVE_GROUP)
+        acquired: list[threading.RLock] = []
+        try:
+            for key in keys:
+                lock = self._lock_for(key)
+                if not lock.acquire(blocking=False):
+                    raise BusyError(
+                        f"another operation is in progress: {service}")
+                acquired.append(lock)
+            yield
+        finally:
+            for lock in reversed(acquired):
+                lock.release()
 
     def compose(
         self,
@@ -72,11 +117,19 @@ class ComposeRunner:
         timeout: int = 60,
         extra_args: tuple[str, ...] = (),
     ) -> tuple[bool, str]:
-        return self.compose(
-            ["up", "-d", *extra_args, service], env_extra, timeout)
+        try:
+            with self.operation(service, exclusive=True):
+                return self.compose(
+                    ["up", "-d", *extra_args, service], env_extra, timeout)
+        except BusyError as e:
+            return False, str(e)
 
     def restart(self, service: str) -> tuple[bool, str]:
-        return self.compose(["restart", service])
+        try:
+            with self.operation(service, exclusive=True):
+                return self.compose(["restart", service])
+        except BusyError as e:
+            return False, str(e)
 
     def _list(self, service: str | None = None) -> list:
         """このプロジェクトのコンテナを、動作中のものが先頭になる順で返す。
@@ -108,6 +161,13 @@ class ComposeRunner:
         return status
 
     def stop(self, service: str, timeout: int | None = None) -> tuple[bool, str]:
+        try:
+            with self.operation(service):
+                return self._stop(service, timeout)
+        except BusyError as e:
+            return False, str(e)
+
+    def _stop(self, service: str, timeout: int | None) -> tuple[bool, str]:
         logger.info("stop service=%s", service)
         containers = self._list(service)
         if not containers:
