@@ -1,3 +1,5 @@
 fastapi
 uvicorn[standard]
 docker
+# テスト（fastapi.testclient）用
+httpx
