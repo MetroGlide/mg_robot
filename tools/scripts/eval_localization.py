@@ -37,10 +37,18 @@ from tools.common.bag import MessageDeserializer, open_reader  # noqa: E402
 from tools.common.cli import add_output_args, resolve_output_path  # noqa: E402
 from tools.common.faults import Fault, load_faults  # noqa: E402
 from tools.common.geo import quaternion_to_yaw  # noqa: E402
-from tools.common.pose_graph import interpolate_nodes, load_slam_output, shift_nodes_to_anchor  # noqa: E402
+from tools.common.pose_graph import (  # noqa: E402
+    apply_rigid,
+    fit_rigid,
+    interpolate_nodes,
+    load_slam_output,
+    shift_nodes_to_anchor,
+)
 
 # 3 自由度の x^2 分布の上側 5% 点 (NEES が一貫した推定なら 95% がこの値以下)
 CHI2_95_DOF3 = 7.815
+# SLAM のキーフレームは 0.5 m 動くごとに作られるので、これ未満なら止まっているとみなして補間する [m]
+STATIONARY_DIST_M = 0.6
 # bag の記録時刻と header.stamp の差がこれを超えるときは、別の時計 (シミュレーション時刻など) とみなす [s]
 MAX_PLAUSIBLE_LATENCY_SEC = 5.0
 
@@ -163,7 +171,7 @@ def window_stats(times: np.ndarray, pos_err: np.ndarray, t0: float, window: floa
 def evaluate_accuracy(
     times: np.ndarray, poses: np.ndarray, gt_nodes: np.ndarray, t0: float, window: float,
 ) -> Tuple[Dict[str, Any], np.ndarray, np.ndarray]:
-    gt_poses, valid = interpolate_nodes(gt_nodes, times)
+    gt_poses, valid = interpolate_nodes(gt_nodes, times, stationary_dist=STATIONARY_DIST_M)
     if not np.any(valid):
         return {"n": 0}, times[:0], np.zeros(0)
     t = times[valid]
@@ -175,12 +183,32 @@ def evaluate_accuracy(
         "yaw_rad": lm.summarize(np.abs(yaw_err)),
         "by_window": window_stats(t, pos_err, t0, window),
     }
+    # 走行全体で SE(2) 整合した後の残差。別走行の評価では、真値と地図の座標系が GNSS の精度の分だけ
+    # ずれるため、そのずれ (並進・回転) を除いた、地図に対する自己位置の整合性を見る
+    est_xy = poses[valid][:, :2]
+    gt_xy = gt_poses[valid][:, :2]
+    fit = fit_rigid(est_xy, gt_xy)
+    if fit is not None:
+        translation, theta = fit
+        aligned_err = np.hypot(*(apply_rigid(est_xy, translation, theta) - gt_xy).T)
+        # 並進は座標原点まわりの回転の分を含んで大きく見えるため、軌跡の重心でのずれで表す
+        centroid_offset = gt_xy.mean(axis=0) - est_xy.mean(axis=0)
+        report["aligned"] = {
+            "centroid_offset_m": [float(centroid_offset[0]), float(centroid_offset[1])],
+            "rotation_deg": float(np.degrees(theta)),
+            "position_m": lm.summarize(aligned_err),
+        }
     return report, t, pos_err
 
 
-def evaluate_smoothness(data: BagData) -> Dict[str, Any]:
-    map_odom = as_array(data.map_odom, 4)
-    odom_base = as_array(data.odom_base, 4)
+def clip_time(arr: np.ndarray, t_from: float, t_to: float) -> np.ndarray:
+    """先頭の列 (時刻) が [t_from, t_to) の行だけを残す。"""
+    if arr.size == 0:
+        return arr
+    return arr[(arr[:, 0] >= t_from) & (arr[:, 0] < t_to)]
+
+
+def evaluate_smoothness(map_odom: np.ndarray, odom_base: np.ndarray) -> Dict[str, Any]:
     # 各 map->odom 更新の時刻の odom->base (直前の値)
     idx = lm.hold_index(odom_base[:, 0], map_odom[1:, 0])
     valid = idx >= 0
@@ -194,7 +222,7 @@ def evaluate_smoothness(data: BagData) -> Dict[str, Any]:
 
 
 def evaluate_nees(ekf: np.ndarray, gt_nodes: np.ndarray) -> Dict[str, Any]:
-    gt_poses, valid = interpolate_nodes(gt_nodes, ekf[:, 0])
+    gt_poses, valid = interpolate_nodes(gt_nodes, ekf[:, 0], stationary_dist=STATIONARY_DIST_M)
     if not np.any(valid):
         return {"n": 0}
     est = ekf[valid, 1:4]
@@ -310,8 +338,15 @@ def format_summary(report: Dict[str, Any]) -> str:
     if acc and acc.get("n", 0) > 0:
         lines += [f"## 精度 (真値との差、比較できた割合 {acc['coverage'] * 100:.0f}%)", "", header,
                   stat_row("位置誤差", acc["position_m"], "m"),
-                  stat_row("yaw 誤差", acc["yaw_rad"], "rad"), "",
-                  "| 区間[s] | N | RMS[m] | 最大[m] |", "|---|---|---|---|"]
+                  stat_row("yaw 誤差", acc["yaw_rad"], "rad"), ""]
+        if "aligned" in acc:
+            al = acc["aligned"]
+            offset = al["centroid_offset_m"]
+            lines += [f"走行全体で SE(2) 整合すると (軌跡の重心でのずれ [{offset[0]:.2f}, {offset[1]:.2f}] m、"
+                      f"回転 {al['rotation_deg']:.2f} deg): 位置誤差 中央値 {al['position_m']['median']:.3f} m / "
+                      f"p95 {al['position_m']['p95']:.3f} m / 最大 {al['position_m']['max']:.3f} m。",
+                      "整合量が大きいときは、推定ではなく真値と地図の座標系のずれ (GNSS の精度) が誤差の主因。", ""]
+        lines += ["| 区間[s] | N | RMS[m] | 最大[m] |", "|---|---|---|---|"]
         for w in acc["by_window"]:
             lines.append(f"| {w['t_start_rel_s']:.0f}- | {w['n']} | {w['rms_m']:.3f} | {w['max_m']:.3f} |")
         lines.append("")
@@ -414,10 +449,12 @@ def main() -> None:
     keep = (est_times >= t_from) & (est_times < t_to)
     est_times, est_poses = est_times[keep], est_poses[keep]
 
-    ekf = as_array(data.ekf, 42)
-    odom = as_array(data.odom, 3)
-    amcl = as_array(data.amcl, 41)
-    status = as_array(data.status, 2)
+    # --start / --end で指定した区間だけを評価する (初期姿勢による最初の飛びなどの過渡を除く)
+    ekf = clip_time(as_array(data.ekf, 42), t_from, t_to)
+    odom = clip_time(as_array(data.odom, 3), t_from, t_to)
+    amcl = clip_time(as_array(data.amcl, 41), t_from, t_to)
+    status = clip_time(as_array(data.status, 2), t_from, t_to)
+    map_odom = clip_time(as_array(data.map_odom, 4), t_from, t_to)
 
     report: Dict[str, Any] = {
         "meta": {
@@ -425,7 +462,7 @@ def main() -> None:
             "n_estimates": int(est_times.size), "t0": t0,
             "duration_s": float(t_to - t_from) if args.end > 0.0 else float(t_last - t_from),
         },
-        "smoothness": evaluate_smoothness(data),
+        "smoothness": evaluate_smoothness(map_odom, as_array(data.odom_base, 4)),
         "ekf_vs_odom": evaluate_ekf_vs_odom(ekf, odom),
         "amcl": evaluate_amcl(amcl, est_times, est_poses),
         "gps": {"count": data.gps_count},

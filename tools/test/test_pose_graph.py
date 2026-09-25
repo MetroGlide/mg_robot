@@ -41,6 +41,21 @@ def test_interpolate_nodes_linear_and_gap_invalid():
     assert valid.tolist() == [True, False, False, False]
 
 
+def test_interpolate_nodes_allows_long_gap_when_stationary():
+    nodes = np.array([
+        [0.0, 0.0, 0.0, 0.0],
+        [30.0, 0.1, 0.0, 0.1],    # 30 秒空いたがほぼ動いていない
+        [31.0, 5.0, 0.0, 0.1],
+        [70.0, 9.0, 0.0, 0.1],    # 長い間隔で 4 m 動いた (補間してはいけない)
+    ])
+    times = np.array([15.0, 50.0])
+    _, valid = pg.interpolate_nodes(nodes, times)
+    assert valid.tolist() == [False, False]
+    poses, valid = pg.interpolate_nodes(nodes, times, stationary_dist=0.6)
+    assert valid.tolist() == [True, False]
+    assert poses[0, 0] == pytest.approx(0.05)
+
+
 def test_interpolate_nodes_yaw_across_pi():
     nodes = np.array([[0.0, 0.0, 0.0, math.pi - 0.1], [1.0, 0.0, 0.0, -math.pi + 0.1]])
     poses, valid = pg.interpolate_nodes(nodes, np.array([0.5]))

@@ -88,19 +88,35 @@ def shift_nodes_to_anchor(
     return moved
 
 
-def interpolate_nodes(nodes: np.ndarray, times: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+def interpolate_nodes(
+    nodes: np.ndarray,
+    times: np.ndarray,
+    stationary_dist: Optional[float] = None,
+    stationary_yaw: float = 0.6,
+) -> Tuple[np.ndarray, np.ndarray]:
     """SLAM ノード列を times で線形補間する (yaw は単位ベクトル補間)。
+
+    Args:
+      stationary_dist: 指定すると、隣接ノード間の移動が この距離 [m] と stationary_yaw [rad] 未満
+        (ほぼ止まっている) なら、時間の間隔が NODE_MAX_GAP_SEC を超えても補間を許す。
+        ノードは一定量動くごとに作られるため、停止中は長時間ノードが空く。
 
     Returns:
       poses: shape (M, 3) -> [x, y, yaw]
-      valid: shape (M,) 補間可能 (範囲内かつ隣接ノード間隔が NODE_MAX_GAP_SEC 以下) か
+      valid: shape (M,) 補間可能 (範囲内かつ隣接ノード間隔が NODE_MAX_GAP_SEC 以下、
+        または stationary_dist の条件を満たす) か
     """
     t = nodes[:, 0]
     idx = np.searchsorted(t, times, side="right")
     valid = (idx > 0) & (idx < len(t))
     idx = np.clip(idx, 1, len(t) - 1)
     t0, t1 = t[idx - 1], t[idx]
-    valid &= (t1 - t0) <= NODE_MAX_GAP_SEC
+    short_gap = (t1 - t0) <= NODE_MAX_GAP_SEC
+    if stationary_dist is not None:
+        moved = np.hypot(nodes[idx, 1] - nodes[idx - 1, 1], nodes[idx, 2] - nodes[idx - 1, 2])
+        turned = np.abs((nodes[idx, 3] - nodes[idx - 1, 3] + np.pi) % (2.0 * np.pi) - np.pi)
+        short_gap |= (moved < stationary_dist) & (turned < stationary_yaw)
+    valid &= short_gap
     denom = np.where(t1 - t0 > 0.0, t1 - t0, 1.0)
     w = np.clip((times - t0) / denom, 0.0, 1.0)
 
