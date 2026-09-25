@@ -10,6 +10,7 @@ from mg_system_manager.config import Settings
 logger = logging.getLogger(__name__)
 
 _COMPOSE_SERVICE_LABEL = "com.docker.compose.service"
+_COMPOSE_PROJECT_LABEL = "com.docker.compose.project"
 
 
 class ComposeRunner:
@@ -77,35 +78,47 @@ class ComposeRunner:
     def restart(self, service: str) -> tuple[bool, str]:
         return self.compose(["restart", service])
 
-    def get_container(self, service: str):
+    def _list(self, service: str | None = None) -> list:
+        """このプロジェクトのコンテナを、動作中のものが先頭になる順で返す。
+
+        docker compose run で作られる one-off コンテナも含める。
+        別プロジェクトのコンテナは対象外にする。
+        """
+        labels = [f"{_COMPOSE_PROJECT_LABEL}={self._settings.compose_project}"]
+        labels.append(
+            f"{_COMPOSE_SERVICE_LABEL}={service}" if service
+            else _COMPOSE_SERVICE_LABEL)
         containers = self._client.containers.list(
-            all=True,
-            filters={"label": [f"{_COMPOSE_SERVICE_LABEL}={service}"]},
-        )
-        container = containers[0] if containers else None
-        if container is None:
+            all=True, filters={"label": labels})
+        return sorted(containers, key=lambda c: c.status != "running")
+
+    def get_container(self, service: str):
+        containers = self._list(service)
+        if not containers:
             logger.warning("container not found for service=%s", service)
-        return container
+            return None
+        return containers[0]
 
     def get_status(self) -> dict[str, str]:
-        containers = self._client.containers.list(
-            all=True,
-            filters={"label": [_COMPOSE_SERVICE_LABEL]},
-        )
-        return {
-            c.labels[_COMPOSE_SERVICE_LABEL]: c.status for c in containers
-        }
+        status: dict[str, str] = {}
+        for container in self._list():
+            service = container.labels[_COMPOSE_SERVICE_LABEL]
+            if status.get(service) != "running":
+                status[service] = container.status
+        return status
 
     def stop(self, service: str, timeout: int | None = None) -> tuple[bool, str]:
         logger.info("stop service=%s", service)
-        container = self.get_container(service)
-        if container is None:
+        containers = self._list(service)
+        if not containers:
             return False, f"container not found: {service}"
+        targets = [c for c in containers if c.status == "running"]
         try:
-            if timeout is None:
-                container.stop()
-            else:
-                container.stop(timeout=timeout)
+            for container in targets or containers[:1]:
+                if timeout is None:
+                    container.stop()
+                else:
+                    container.stop(timeout=timeout)
         except Exception as e:
             logger.error("stop failed service=%s: %s", service, e)
             return False, str(e)

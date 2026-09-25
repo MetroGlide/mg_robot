@@ -64,11 +64,17 @@ def _split_csv(value: str | None) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
+def _default_compose_project(host_project_dir: str) -> str:
+    """COMPOSE_PROJECT_NAME 未設定時に docker compose が使う名前を再現する。"""
+    return re.sub(r"[^a-z0-9_-]", "", Path(host_project_dir).name.lower())
+
+
 @dataclass(frozen=True)
 class Settings:
     project_dir: str
     host_project_dir: str
     host_home: str
+    compose_project: str
     simulation_world: str
     simulation_robot_name: str
     settings_dir: Path
@@ -78,10 +84,14 @@ class Settings:
     @classmethod
     def from_env(cls) -> "Settings":
         project_dir = os.environ.get("PROJECT_DIR", "/app")
+        host_project_dir = os.environ.get("HOST_PROJECT_DIR", project_dir)
         return cls(
             project_dir=project_dir,
-            host_project_dir=os.environ.get("HOST_PROJECT_DIR", project_dir),
+            host_project_dir=host_project_dir,
             host_home=os.environ.get("HOST_HOME", os.environ.get("HOME", "/root")),
+            compose_project=(
+                os.environ.get("COMPOSE_PROJECT_NAME")
+                or _default_compose_project(host_project_dir)),
             simulation_world=os.environ.get("SIMULATION_WORLD", "warehouse"),
             simulation_robot_name=os.environ.get("SIMULATION_ROBOT_NAME", "mg"),
             settings_dir=Path(

@@ -26,6 +26,7 @@ def settings(tmp_path) -> Settings:
         project_dir=str(tmp_path / "project"),
         host_project_dir="/host/project",
         host_home="/host/home",
+        compose_project="mg",
         simulation_world="warehouse",
         simulation_robot_name="mg",
         settings_dir=tmp_path / "ui",
