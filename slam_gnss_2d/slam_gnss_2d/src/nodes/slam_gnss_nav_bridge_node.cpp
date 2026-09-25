@@ -10,6 +10,7 @@
 #include <nav_msgs/msg/odometry.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/nav_sat_fix.hpp>
+#include <std_srvs/srv/set_bool.hpp>
 #include <tf2/exceptions.h>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
@@ -105,6 +106,17 @@ class SlamGnssNavBridgeNode : public rclcpp::Node {
 
     odom_pub_ = create_publisher<nav_msgs::msg::Odometry>("/odom/gps", 10);
 
+    // /odom/gps の配信の有効・無効 (ウェイポイントの gps_on / gps_off から使う)
+    publish_service_ = create_service<std_srvs::srv::SetBool>(
+        "~/change_publish_state",
+        [this](const std::shared_ptr<std_srvs::srv::SetBool::Request> request,
+               std::shared_ptr<std_srvs::srv::SetBool::Response> response) {
+          publish_enabled_ = request->data;
+          response->success = true;
+          response->message = publish_enabled_ ? "publishing /odom/gps" : "stopped /odom/gps";
+          RCLCPP_INFO(get_logger(), "%s", response->message.c_str());
+        });
+
     rclcpp::QoS map_qos(rclcpp::KeepLast(1));
     map_qos.reliable();
     map_qos.transient_local();
@@ -163,8 +175,11 @@ class SlamGnssNavBridgeNode : public rclcpp::Node {
   std::optional<double> last_pub_x_;
   std::optional<double> last_pub_y_;
 
+  bool publish_enabled_{true};
+
   std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
+  rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr publish_service_;
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_pub_;
   rclcpp::Publisher<sensor_msgs::msg::NavSatFix>::SharedPtr anchor_pub_;
   rclcpp::Subscription<ublox_msgs::msg::NavPVT>::SharedPtr navpvt_sub_;
@@ -352,6 +367,9 @@ class SlamGnssNavBridgeNode : public rclcpp::Node {
   void publish_odom(
       const std_msgs::msg::Header& header,
       double antenna_x, double antenna_y, double yaw, double pos_var) {
+    if (!publish_enabled_) {
+      return;
+    }
     gnss::Point2 position{antenna_x, antenna_y};
     std::string child_frame = gps_frame_id_;
     if (lever_arm_compensation_) {
