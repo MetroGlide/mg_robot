@@ -16,7 +16,7 @@ _up_flags = $(if $(DETACH),-d,)
 _compose_opts = $(if $(OPTS),OPTS="$(OPTS)" )
 
 .PHONY: slam navigation rosbag-replay obstacle-detection-replay gazebo-simulation develop \
-        scenario-test scenario-test-all scenario-test-attach scenario-validate \
+        scenario-test scenario-test-all scenario-test-attach scenario-validate scenario-env scenario-env-stop \
         slam-gnss-2d offline-slam-gnss-2d \
         shell shell-develop logs ps restart \
         build build-all build-no-cache build-robot build-real build-robot-no-cache build-real-no-cache build-sim \
@@ -76,9 +76,17 @@ scenario-test:
 scenario-test-all:
 	$(_scenario_run)="run-all $(_scenario_dir)/regression $(if $(EXAMPLES),$(_scenario_dir)/examples) $(_scenario_results) $(_remote_arg) $(if $(KNOWN),,--exclude-tags known_issue) $(if $(filter smoke,$(TIER)),--tags smoke) $(if $(TAGS),--tags $(TAGS)) $(if $(REPEAT),--repeat $(REPEAT)) $(if $(GUI),--gui) $(if $(PROFILE),--profile $(PROFILE))" scenario-test
 
-# make scenario-test-attach SCENARIO=... (make gazebo-simulation と make navigation の起動が前提。開発時の反復用)
+# make scenario-test-attach SCENARIO=... (make scenario-env の起動が前提。シミュレータを起動し直さずに繰り返し実行する)
 scenario-test-attach:
 	$(_scenario_run)="run $(SCENARIO) $(_scenario_dirs) $(_scenario_results) --attach $(if $(PROFILE),--profile $(PROFILE))" scenario-test
+
+# make scenario-env [GUI=1] [PROFILE=mg01] [WORLD=warehouse]
+# attach モード用に、プロファイルのシミュレータとナビゲーションスタックをバックグラウンドで起動したままにする
+scenario-env:
+	SCENARIO_ENV_ARGS="profile:=$(or $(PROFILE),mg01) world:=$(or $(WORLD),warehouse) headless:=$(if $(GUI),false,true)" $(COMPOSE) up -d --force-recreate scenario-env
+
+scenario-env-stop:
+	$(COMPOSE) stop scenario-env
 
 # make scenario-validate  (シミュレータ不要。同梱シナリオの YAML を検証する)
 scenario-validate:

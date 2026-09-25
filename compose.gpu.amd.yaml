@@ -7,3 +7,7 @@ services:
     devices:
       - /dev/kfd
       - /dev/dri
+  scenario-env:
+    devices:
+      - /dev/kfd
+      - /dev/dri
