@@ -3,3 +3,21 @@ slam_gnss_nav_bridge:
     gnss_input: navpvt
     gnss_topic: /navpvt
     heading_source: computed
+    # この距離 [m] 以上動くまで、次の測位を出さない
+    min_publish_distance: 1.0
+    # アンテナ位置を車体中心 (base_footprint) の位置に直して出す。
+    # lever_arm_x / y は URDF の base_footprint -> gps_link のずれと合わせる
+    lever_arm_compensation: true
+    lever_arm_x: 0.26
+    lever_arm_y: -0.13
+    # /odom/gps のスタンプを now() からこの秒数だけ過去にする (測位が届くまでの遅れの補正)
+    time_offset_sec: 0.0
+    # 解の種類ごとに、分散 = max(hAcc, 下限)^2 * 係数 とする
+    fix_floor_m: 0.02
+    fix_scale: 1.0
+    float_floor_m: 0.02
+    float_scale: 1.0
+    single_floor_m: 0.02
+    single_scale: 1.0
+    # false にすると、搬送波位相の解が無い (単独測位) 測位を使わない
+    accept_single: true
