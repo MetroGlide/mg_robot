@@ -322,33 +322,46 @@ $$\begin{pmatrix} x_{map} \\ y_{map} \end{pmatrix} = R(\theta_{applied}) \begin{
   1. GeographicLib による UTM 投影 (WGS84 -> UTM)
   2. アンカー相対マップ座標変換 (x_map, y_map)
   3. 変位ベクトルによるヘディング角推定 (Circular EMA フィルタ)
-  4. 水平位置精度 (hAcc) から共分散行列を動的算出
+  4. 搬送波位相の解 (Fix / Float / 単独) と水平位置精度 (hAcc) から位置の分散を算出
+  5. アンテナ位置を車体中心 (base_footprint) の位置に補正 (車体の向きは EKF の map->base の TF)
         │
         ▼
 [/odom/gps] (nav_msgs/Odometry)
         │
         ▼
-[robot_localization (EKF)]
-  - ホイールオドメトリ (/odom)
-  - IMU (/imu/data)
-  - GNSS マップオドメトリ (/odom/gps)
+[robot_localization (EKF: ekf_global_node)]
+  - ホイールオドメトリ (/odom: 補正済みの速度)
+  - AMCL (/amcl_pose: 位置・yaw)
+  - GNSS (/odom/gps: 位置)
         │ (センサフュージョン)
         ▼
-[/odometry/filtered] ──► Navigation2 (BT Navigator, Controller)
+[map→odom TF, /ekf_global_odom] ──► Navigation2 (BT Navigator, Controller)
 ```
+
+自己位置推定全体の構成 (AMCL・初期化・監視) は [mg_navigation](../mg_navigation/README.md) を参照してください。
 
 ### /odom/gps トピックの仕様と共分散行列設計
 
 パブリッシュされる `nav_msgs/msg/Odometry` は、カルマンフィルタ（`robot_localization`）がそのままフュージョンできるように設計されています。
 
 - `header.frame_id`: `map` (グローバル座標フレーム)
-- `child_frame_id`: `gps_link` (アンテナ物理フレーム)
-- `pose.pose.position`: 変換されたマップ位置 $(x_{map}, y_{map}, 0.0)$
-- `pose.pose.orientation`: 推定ヘディング角から生成されたクォータニオン
+- `header.stamp`: 受信時刻 (`now()`) から `time_offset_sec` を引いた時刻
+- `child_frame_id`: アンテナ位置の補正ができたときは `base_footprint`、できなかったときは `gps_link`
+- `pose.pose.position`: 変換されたマップ位置 $(x_{map}, y_{map}, 0.0)$。**アンテナ位置の補正が有効なとき (`lever_arm_compensation`) は、車体中心の位置**
+- `pose.pose.orientation`: 推定ヘディング角から生成されたクォータニオン (EKF は使わない。AMCL の初期化用)
 - **共分散行列 (`pose.covariance` [36])**:
-  - `cov[0]` ($x$), `cov[7]` ($y$): 受信した水平測位精度から算出 ($\sigma_{xy}^2$)
+  - `cov[0]` ($x$), `cov[7]` ($y$): 解の種類ごとに $\max(h_{acc}, \text{floor})^2 \times \text{scale}$ ($\sigma_{xy}^2$)。アンテナ位置を補正できなかったときは、レバーアームの長さの二乗 (約 $0.085\ \mathrm{m}^2$) を足す
   - `cov[35]` ($yaw$): 推定ヘディング角の分散 (デフォルト `0.1` $\mathrm{rad}^2$)
   - `cov[14]` ($z$), `cov[21]` ($roll$), `cov[28]` ($pitch$): 未観測成分として極大値 `99999.0` を設定（EKF 側で無視させる設定）
+
+**アンテナ位置の補正**: `robot_localization` は Odometry の姿勢について `child_frame_id` を使わないため、アンテナ位置のまま渡すと、
+アンテナのずれ $(0.26, -0.13)\ \mathrm{m}$ が車体の位置として扱われ、車体の向きによって最大約 $0.29\ \mathrm{m}$ の誤差になります。
+そのため、EKF が出す `map→base_footprint` の TF から車体の向き $\psi$ を取り、車体中心 = アンテナ位置 − $R(\psi)\,(l_x, l_y)^\top$ にして出します。
+TF が無い・`yaw_max_age_sec` より古いときは、アンテナ位置のまま、レバーアームの分だけ分散を増やして出します。
+
+**負荷とロールバック**: 1 Hz の測位ごとの座標変換だけで、負荷はごくわずかです。`lever_arm_compensation: false` で従来どおりアンテナ位置を出します。
+
+**配信の切り替え**: `~/change_publish_state` (`std_srvs/srv/SetBool`、ノード名 `slam_gnss_nav_bridge` なら `/slam_gnss_nav_bridge/change_publish_state`) で `/odom/gps` の配信を止める・再開できます (ウェイポイントの `gps_on` / `gps_off` が使う)。
 
 ### /slam_gnss_2d/anchor の配信
 
@@ -404,9 +417,22 @@ $$\begin{pmatrix} x_{map} \\ y_{map} \end{pmatrix} = R(\theta_{applied}) \begin{
 | `gnss_input` | `navpvt` | 入力メッセージ種別 (`navpvt` / `navsatfix`) |
 | `gnss_topic` | `/navpvt` | 受信する GNSS トピック名 |
 | `map_frame_id` | `map` | マップ座標系のフレーム ID |
+| `base_frame_id` | `base_footprint` | 車体座標系のフレーム ID (アンテナ位置の補正で、向きを取る TF の子フレーム) |
 | `gps_frame_id` | `gps_link` | アンテナ座標系のフレーム ID |
 | `heading_source` | `computed` | ヘディング算出元 (`computed`: 変位ベクトル / `navpvt`: 内蔵方位) |
 | `heading_min_distance` | `0.6` | 変位ヘディング算出を行う最小移動量 [m] |
 | `heading_smoothing_alpha` | `0.6` | Circular EMA フィルタの平滑化係数 |
 | `min_publish_distance` | `1.0` | 前地点からこの距離以上移動した場合にパブリッシュ [m] |
 | `max_covariance_threshold` | `49.0` | 配信を許可する最大共分散閾値 ($2 \sigma^2$) [$\mathrm{m}^2$] |
+| `lever_arm_compensation` | `true` | アンテナ位置を車体中心の位置に直して配信する |
+| `lever_arm_x` / `lever_arm_y` | `0.26` / `-0.13` | アンテナの車体座標系での位置 [m] (URDF の `base_footprint`→`gps_link` と合わせる) |
+| `yaw_max_age_sec` | `1.0` | 車体の向きに使う TF がこれより古いときは、向きが分からないものとして扱う [s] |
+| `time_offset_sec` | `0.0` | `/odom/gps` のスタンプを `now()` からこの秒数だけ過去にする (測位が届くまでの遅れの補正) [s] |
+| `fix_floor_m` / `float_floor_m` / `single_floor_m` | `0.02` | 解の種類ごとの hAcc の下限 [m] |
+| `fix_scale` / `float_scale` / `single_scale` | `1.0` | 解の種類ごとに分散にかける係数 |
+| `accept_single` | `true` | `false` にすると、搬送波位相の解が無い (単独測位) 測位を使わない |
+| `use_file_rotation` | `false` | `gnss_transform.yaml` の `rotation_rad` で map 座標を回転する。SLAM で作った地図は UTM に整合済みなので `false`、東・北に揃った地図 (シミュレータ) では `true` |
+
+分散は `max(hAcc, 下限)² × 係数`。既定では従来と同じ `hAcc²` です。NavSatFix 入力 (`gnss_input: navsatfix`) では、搬送波位相の解が無いため、
+RTK (`STATUS_GBAS_FIX` 以上) だけを Fix、それ以外を単独測位として扱い、`position_covariance[0]` の平方根を hAcc とします。
+パラメータは `params/nav_bridge.yaml` にあります。

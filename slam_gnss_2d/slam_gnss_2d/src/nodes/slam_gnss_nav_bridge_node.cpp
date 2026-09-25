@@ -69,6 +69,9 @@ class SlamGnssNavBridgeNode : public rclcpp::Node {
     declare_parameter("single_floor_m", 0.02);
     declare_parameter("single_scale", 1.0);
     declare_parameter("accept_single", true);
+    // gnss_transform.yaml の rotation_rad を使うか。SLAM で作った地図は UTM に整合して生成されるため
+    // 使わない (実機の既定)。地図が東・北に揃っている (UTM のグリッドとずれている) シミュレータでは使う
+    declare_parameter("use_file_rotation", false);
 
     transform_file_ = get_parameter("gnss_transform_file").as_string();
     gnss_input_ = get_parameter("gnss_input").as_string();
@@ -93,6 +96,7 @@ class SlamGnssNavBridgeNode : public rclcpp::Node {
     quality_.single_floor_m = get_parameter("single_floor_m").as_double();
     quality_.single_scale = get_parameter("single_scale").as_double();
     quality_.accept_single = get_parameter("accept_single").as_bool();
+    use_file_rotation_ = get_parameter("use_file_rotation").as_bool();
 
     if (!load_transform()) {
       RCLCPP_ERROR(get_logger(), "Failed to load GNSS transform. Node will not publish.");
@@ -167,6 +171,7 @@ class SlamGnssNavBridgeNode : public rclcpp::Node {
   int utm_zone_{0};
   std::string utm_hemisphere_;
   double rotation_rad_{0.0};
+  bool use_file_rotation_{false};
   gnss::UtmTransformer transformer_;
 
   std::optional<double> last_map_x_;
@@ -202,8 +207,9 @@ class SlamGnssNavBridgeNode : public rclcpp::Node {
         file_rot = data["rotation_rad"].as<double>();
       }
       // SLAMマップはすでにUTM座標系にアライメントされて生成されているため、
-      // ナビゲーション時の座標変換における追加の回転は不要（0.0）とする
-      rotation_rad_ = 0.0;
+      // ナビゲーション時の座標変換における追加の回転は不要（0.0）とする。
+      // 東・北に揃った地図 (シミュレータ) では、UTM のグリッドとのずれ (子午線収束角) をファイルの値で補正する
+      rotation_rad_ = use_file_rotation_ ? file_rot : 0.0;
       RCLCPP_INFO(
           get_logger(),
           "Loaded transform: anchor=(%.7f, %.7f), file_rot=%.3frad, applied_rot=%.3frad",

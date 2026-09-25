@@ -21,3 +21,6 @@ slam_gnss_nav_bridge:
     single_scale: 1.0
     # false にすると、搬送波位相の解が無い (単独測位) 測位を使わない
     accept_single: true
+    # gnss_transform.yaml の rotation_rad で map 座標を回転する。SLAM で作った地図 (UTM に整合済み) では
+    # false。東・北に揃った地図 (シミュレータ) では true
+    use_file_rotation: false
