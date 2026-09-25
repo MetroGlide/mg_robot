@@ -1,0 +1,5 @@
+# AMCL の誤収束 (kidnap): その時刻の推定姿勢をずらした姿勢を /initialpose に送り、AMCL だけをずらす。
+# 時刻は再生開始からの経過秒。offset は地図座標系での位置 [m]・yaw [rad] のずれ。
+faults:
+  - {type: kidnap, at: 60.0, offset: {x: 3.0, y: 0.0, yaw: 0.0}}
+  - {type: kidnap, at: 120.0, offset: {x: 0.0, y: -4.0, yaw: 0.5}}

@@ -1,6 +1,19 @@
+import glob
+import os
+
 import pytest
 
-from tools.common.faults import parse_faults
+from tools.common.faults import load_faults, parse_faults
+
+FAULT_DEFINITION_DIR = os.path.join(
+    os.path.dirname(__file__), "..", "datasets", "localization", "faults")
+
+
+def test_bundled_fault_definitions_are_valid():
+    paths = sorted(glob.glob(os.path.join(FAULT_DEFINITION_DIR, "*.yaml")))
+    assert paths
+    for path in paths:
+        assert load_faults(path), path
 
 
 def test_parse_sorts_and_normalizes():
