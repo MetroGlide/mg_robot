@@ -15,7 +15,11 @@ tools/
 │   ├── bag.py             # rosbag 操作・デシリアライズ・メタデータ
 │   ├── geo.py             # WGS84/UTM 座標変換・クォータニオン/Yaw変換・大圏距離
 │   ├── map.py             # 地図 YAML/画像読込・Procrustes 剛体変換推定・座標変換
-│   └── cli.py             # CLI 出力パス解決 (--output, --output-to-bag-dir, --output-dir)
+│   ├── cli.py             # CLI 出力パス解決 (--output, --output-to-bag-dir, --output-dir)
+│   ├── pose_graph.py      # slam_gnss_2d 出力 (pose_graph.json / gnss_transform.yaml) の読込・補間・アンカー間の座標移動
+│   ├── loc_metrics.py     # 自己位置推定の評価指標 (誤差・飛び・NEES・遅れ・復旧) ※numpy のみ
+│   └── faults.py          # 故障注入定義 (YAML) の読込
+├── test/                  # tools のテスト (make test pkg=tools)
 ├── data/                  # 一時解析データ・可視化画像出力先 (Git追跡除外)
 └── scripts/               # 実行可能 CLI スクリプト群
     ├── rosbag_summary.py            # rosbag 健全性・統計サマリー出力 (make bag-summary)
@@ -26,6 +30,7 @@ tools/
     ├── bag_to_json.py               # rosbag メッセージの JSON ダンプ
     ├── diff_bag_list.py             # 記録対象トピックと現在アクティブなトピックの比較
     ├── eval_slam.py                 # SLAM 出力の RTK(GNSS) 比較評価 (make bag-eval-slam)
+    ├── eval_localization.py         # 自己位置推定 (EKF 融合) の評価 (make bag-eval-localization)
     ├── run_slam_variant.sh          # パラメータ変種のオフラインSLAM実行〜評価までを一括実行
     ├── patch_params.py              # コメント付きパラメータ YAML の値を書き換え
     ├── record.sh                    # rosbag 記録 (MCAP)
@@ -76,6 +81,19 @@ tools/
   - `-o/--output`, `--output-to-bag-dir`, `--output-dir` を argparse パーサーに一括追加。
 - **`resolve_output_path(bag_path, default_filename, output=None, output_to_bag_dir=False, output_dir=None)`**:
   - 優先度順に出力ファイルの絶対パスを決定し、親ディレクトリを自動作成。
+
+### 5. `tools.common.pose_graph` (slam_gnss_2d 出力の読込)
+rclpy に依存しないため、テストや rosbag を読まない解析からも使えます。
+- **`load_slam_output(slam_dir)`**: `pose_graph.json` / `gnss_transform.yaml` を読み込み、ノード列 `[t, x, y, yaw]` を返却。
+- **`interpolate_nodes(nodes, times)`**: ノード列を時刻で補間 (隣接ノードの間隔が大きい所は無効)。
+- **`shift_nodes_to_anchor(nodes, from_transform, to_transform)`**: 2 つの SLAM 結果のアンカー (UTM) の差だけ座標を移す。別走行を、地図を作った走行の座標系で評価するときに使う。
+- **`antenna_positions` / `fit_rigid` / `apply_rigid`**: GNSS アンテナ位置の算出と SE(2) 剛体整合。
+
+### 6. `tools.common.loc_metrics` (自己位置推定の評価指標)
+numpy のみに依存する指標の計算 (`compose`, `pose_errors`, `correction_jumps`, `nees`, `best_lag`, `recovery_metrics`, `count_episodes` ほか)。
+
+### 7. `tools.common.faults` (故障注入の定義)
+評価ツールと故障注入ノードが共有する故障定義 (`kidnap` / `gnss_bias` / `gnss_drop` / `odom_scale` / `scan_drop`) の読込。時刻は再生開始からの経過秒。
 
 ---
 
@@ -283,3 +301,40 @@ EXTRA_OPTS="start_time:=750.0 end_time:=1000.0" tools/scripts/run_slam_variant.s
 - 書き換えた YAML は `tools/data/variants/<名前>.yaml` (Git 追跡除外) に保存されます。
 - 元の値が小数のパラメータに整数を指定した場合は `.0` を補います (ROS2 のパラメータ型は厳密なため)。
 - ノードが異常終了した場合や 20 分以内に完了しない場合はエラー終了します。
+
+### 11. `eval_localization.py` (自己位置推定の評価)
+
+オドメトリ + AMCL + GNSS を EKF で融合した自己位置推定の出力を rosbag から評価します。
+実機のナビ走行の bag と、再生評価の出力 bag のどちらにも使えます。
+
+```bash
+# 真値なし (滑らかさ・EKF と AMCL の挙動)
+make bag-eval-localization BAG=/root/ros2_data/rosbag/<bag> TO_TOOLS=1
+# 真値あり (評価 bag の SLAM 出力)
+make bag-eval-localization BAG=<bag> GT_DIR=<評価 bag の SLAM 出力>
+# 別走行の評価: 地図を作った走行の SLAM 出力も渡し、真値をその座標系へ移す
+make bag-eval-localization BAG=<bag> GT_DIR=<評価 bag の SLAM 出力> MAP_GT_DIR=<地図の SLAM 出力>
+```
+
+推定姿勢は `/tf` の `map→odom` と `odom→base_footprint` を合成して求めます (Nav2 が使う姿勢と同じ)。
+
+| 指標 | 内容 |
+| :--- | :--- |
+| 滑らかさ | `map→odom` の更新でロボットの姿勢が飛ぶ大きさ (AMCL / GNSS の補正が Nav2 に与える影響) |
+| 精度 | 真値 (`pose_graph.json`) との位置・yaw の誤差。全体と時間窓ごと |
+| NEES | EKF の共分散が誤差に見合うか (自由度 3 の一貫した推定なら平均 3、95% が 7.8 以下) |
+| EKF と odom | EKF の速度とホイールオドメトリ速度の差・遅れ、EKF の σ |
+| AMCL | σ、遅延 (bag の記録時刻と header が同じ時計のときのみ)、届いた時点の推定姿勢との差 |
+| 故障注入 (`FAULTS=`) | 故障ごとの最大誤差・復旧までの時間・検知までの時間、故障のない区間での誤検知の回数 |
+
+- `--start` / `--end`: 評価する区間 (先頭からの経過秒)
+- `--ok-threshold` / `--hold-sec`: 復旧とみなす位置誤差と、その誤差以下でいる時間
+- `--map-frame` / `--odom-frame` / `--base-frame` / `--*-topic`: フレーム名とトピック名の変更
+
+### テスト
+
+`tools/test/` に共通モジュールと指標の単体テストがあります。
+
+```bash
+make test pkg=tools
+```
