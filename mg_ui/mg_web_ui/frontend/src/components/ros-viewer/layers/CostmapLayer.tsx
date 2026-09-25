@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from "react";
 import * as THREE from "three";
 import { FoxgloveClientHandle } from "../../../hooks/useFoxgloveClient";
 import { OccupancyGrid } from "../../../types/ros-types";
-import { useCostmapGrid } from "../hooks/useCostmapGrid";
+import { useOccupancyGrid } from "../hooks/useOccupancyGrid";
 import { TfBuffer } from "../hooks/useTfBuffer";
 
 function buildCostmapTexture(grid: OccupancyGrid): THREE.CanvasTexture {
@@ -57,7 +57,7 @@ export default function CostmapLayer({
   opacity = 0.5,
   tfBuffer,
 }: CostmapLayerProps) {
-  const grid = useCostmapGrid(client, topic);
+  const grid = useOccupancyGrid(client, topic);
   const [texture, setTexture] = useState<THREE.CanvasTexture | null>(null);
 
   useEffect(() => {
