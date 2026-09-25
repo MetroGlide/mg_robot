@@ -17,7 +17,8 @@ import os
 from ament_index_python.packages import get_package_share_directory
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, GroupAction, SetEnvironmentVariable, TimerAction
+from launch.actions import (
+    DeclareLaunchArgument, GroupAction, OpaqueFunction, SetEnvironmentVariable, TimerAction)
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import LoadComposableNodes
@@ -207,64 +208,68 @@ def generate_launch_description():
                     ("output_topic", "amcl_pose")]
     )
 
-    gnss_amcl_initializer_node = Node(
-        package='mg_navigation',
-        executable='gnss_amcl_initializer_node.py',
-        name='gnss_amcl_initializer_node',
-        output='screen',
-        parameters=[
-            {'use_sim_time': use_sim_time,
-             'use_fixed_heading': False,
-             'required_consecutive_good': 2,
-             'override_pose_covariance': True,
-             'pose_covariance': [
-                0.25, 0.0, 0.0, 0.0, 0.0, 0.0,
-                0.0, 0.25, 0.0, 0.0, 0.0, 0.0,
-                0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                0.0, 0.0, 0.0, 0.0, 0.0, 0.06853891909122467
-             ]}
+    def create_delayed_nodes(context):
+        """起動を遅らせるノード (GNSS による初期化と監視ノード) を作る。
+
+        TimerAction の中の LaunchConfiguration は、タイマーが発火するとき (include のスコープを抜けた後) に
+        評価されるため、use_sim_time が既定値 (false) になってしまう。その結果、シミュレーション・rosbag 再生で
+        これらのノードだけが実時間で動いていた。値をここ (スコープ内) で確定してから渡す。
+        """
+        sim_time = context.perform_substitution(use_sim_time).lower() == 'true'
+        supervisor_params = context.perform_substitution(supervisor_params_file)
+
+        gnss_amcl_initializer_node = Node(
+            package='mg_navigation',
+            executable='gnss_amcl_initializer_node.py',
+            name='gnss_amcl_initializer_node',
+            output='screen',
+            parameters=[
+                {'use_sim_time': sim_time,
+                 'use_fixed_heading': False,
+                 'required_consecutive_good': 2,
+                 'override_pose_covariance': True,
+                 'pose_covariance': [
+                    0.25, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.25, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.06853891909122467
+                 ]}
+            ]
+        )
+
+        # AMCL watchdog node: monitor amcl covariance and trigger reinitialization when needed
+        amcl_watchdog_node = Node(
+            package='mg_navigation',
+            executable='amcl_watchdog_node.py',
+            name='amcl_watchdog_node',
+            output='screen',
+            parameters=[{'use_sim_time': sim_time}],
+            remappings=remappings + [('amcl_pose', 'amcl_pose_origin'),
+                                     ('request_reinit', '/gnss_amcl_initializer_node/request_reinit')]
+        )
+
+        # Localization supervisor: AMCL のずれを検知して EKF から切り離し、EKF の姿勢で復旧する
+        localization_supervisor_node = Node(
+            package='mg_navigation',
+            executable='localization_supervisor_node.py',
+            name='localization_supervisor_node',
+            output='screen',
+            parameters=[supervisor_params, {'use_sim_time': sim_time}],
+        )
+
+        return [
+            TimerAction(
+                period=10.0, actions=[gnss_amcl_initializer_node],
+                condition=IfCondition(use_gnss_amcl_initializer)),
+            TimerAction(
+                period=12.0, actions=[amcl_watchdog_node],
+                condition=IfCondition(PythonExpression(["'", localization_monitor, "' == 'watchdog'"]))),
+            TimerAction(
+                period=12.0, actions=[localization_supervisor_node],
+                condition=IfCondition(PythonExpression(["'", localization_monitor, "' == 'supervisor'"]))),
         ]
-    )
-
-    gnss_amcl_initializer_node_timer = TimerAction(
-        period=10.0,
-        actions=[gnss_amcl_initializer_node],
-        condition=IfCondition(use_gnss_amcl_initializer),
-    )
-
-    # AMCL watchdog node: monitor amcl covariance and trigger reinitialization when needed
-    amcl_watchdog_node = Node(
-        package='mg_navigation',
-        executable='amcl_watchdog_node.py',
-        name='amcl_watchdog_node',
-        output='screen',
-        parameters=[{'use_sim_time': use_sim_time}],
-        remappings=remappings + [('amcl_pose', 'amcl_pose_origin'),
-                                 ('request_reinit', '/gnss_amcl_initializer_node/request_reinit')]
-    )
-
-    amcl_watchdog_node_timer = TimerAction(
-        period=12.0,
-        actions=[amcl_watchdog_node],
-        condition=IfCondition(PythonExpression(["'", localization_monitor, "' == 'watchdog'"])),
-    )
-
-    # Localization supervisor: AMCL のずれを検知して EKF から切り離し、EKF の姿勢で復旧する
-    localization_supervisor_node = Node(
-        package='mg_navigation',
-        executable='localization_supervisor_node.py',
-        name='localization_supervisor_node',
-        output='screen',
-        parameters=[supervisor_params_file, {'use_sim_time': use_sim_time}],
-    )
-
-    localization_supervisor_node_timer = TimerAction(
-        period=12.0,
-        actions=[localization_supervisor_node],
-        condition=IfCondition(PythonExpression(["'", localization_monitor, "' == 'supervisor'"])),
-    )
 
     # Create the launch description and populate
     ld = LaunchDescription()
@@ -291,8 +296,6 @@ def generate_launch_description():
     ld.add_action(load_composable_nodes)
 
     ld.add_action(change_amcl_publish_state_node)
-    ld.add_action(gnss_amcl_initializer_node_timer)
-    ld.add_action(amcl_watchdog_node_timer)
-    ld.add_action(localization_supervisor_node_timer)
+    ld.add_action(OpaqueFunction(function=create_delayed_nodes))
 
     return ld

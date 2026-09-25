@@ -72,7 +72,8 @@ class BagData:
         self.odom: List[List[float]] = []        # [t, vx, wz]
         self.amcl: List[List[float]] = []        # [t, record_t, x, y, yaw] + cov36
         self.gps_count = 0
-        self.status: List[List[float]] = []      # [t, state]
+        # [t, state, gnss_d2, jump_m, ekf_diff_m, scan_ratio, scan_gain]。使えなかった判定の値は -1
+        self.status: List[List[float]] = []
 
 
 def read_bag(bag_path: str, args: argparse.Namespace) -> BagData:
@@ -113,7 +114,10 @@ def read_bag(bag_path: str, args: argparse.Namespace) -> BagData:
         elif topic == args.gps_topic:
             data.gps_count += 1
         elif topic == args.status_topic:
-            data.status.append([stamp_sec(msg.header.stamp), float(msg.state)])
+            data.status.append([
+                stamp_sec(msg.header.stamp), float(msg.state), float(msg.amcl_gnss_d2),
+                float(msg.amcl_jump_m), float(msg.amcl_ekf_diff_m), float(msg.scan_match_ratio),
+                float(getattr(msg, "scan_match_gain", -1.0))])
     return data
 
 
@@ -311,6 +315,8 @@ def evaluate_faults(
     return report
 
 
+
+
 def format_summary(report: Dict[str, Any]) -> str:
     def stat_row(name: str, s: Dict[str, Any], unit: str) -> str:
         if s.get("n", 0) == 0:
@@ -407,6 +413,21 @@ def format_summary(report: Dict[str, Any]) -> str:
         st = report["status"]
         lines += ["## 監督ノードの状態", "",
                   f"- NORMAL 以外へ入った回数 (誤検知): {st['false_detections']} 回", ""]
+
+    sv = report.get("status_values")
+    if sv:
+        names = {"NORMAL": 0, "SUSPECT": 1, "ISOLATED": 2, "RECOVERING": 3, "DEGRADED": 4}
+        fractions = ", ".join(
+            f"{name} {sv['state_fractions'].get(code, 0.0) * 100:.0f}%" for name, code in names.items())
+        lines += ["## 監督ノードの判定の値 (使えなかったものを除く)", "", f"- 状態の割合: {fractions}", "",
+                  "| 判定 | N | 最小 | 中央値 | p95 | 最大 |", "|---|---|---|---|---|---|"]
+        for name, s in sv["values"].items():
+            if s.get("n", 0) == 0:
+                lines.append(f"| {name} | 0 | - | - | - | - |")
+            else:
+                lines.append(f"| {name} | {s['n']} | {s['min']:.2f} | {s['median']:.2f} | "
+                             f"{s['p95']:.2f} | {s['max']:.2f} |")
+        lines.append("")
     return "\n".join(lines)
 
 
@@ -453,7 +474,7 @@ def main() -> None:
     ekf = clip_time(as_array(data.ekf, 42), t_from, t_to)
     odom = clip_time(as_array(data.odom, 3), t_from, t_to)
     amcl = clip_time(as_array(data.amcl, 41), t_from, t_to)
-    status = clip_time(as_array(data.status, 2), t_from, t_to)
+    status = clip_time(as_array(data.status, 7), t_from, t_to)
     map_odom = clip_time(as_array(data.map_odom, 4), t_from, t_to)
 
     report: Dict[str, Any] = {
@@ -482,6 +503,8 @@ def main() -> None:
             load_faults(args.faults), t0, t_last, gt_times, gt_pos_err, status, args)
     elif status.shape[0]:
         report["status"] = lm.count_episodes(status[:, 0], status[:, 1], [])
+    if status.shape[0]:
+        report["status_values"] = lm.summarize_status_values(status)
 
     text = format_summary(report)
     print(text)

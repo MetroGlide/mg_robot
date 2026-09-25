@@ -23,6 +23,7 @@ def summarize(values: np.ndarray) -> Dict[str, Any]:
         return {"n": 0}
     return {
         "n": int(values.size),
+        "min": float(np.min(values)),
         "mean": float(np.mean(values)),
         "median": float(np.median(values)),
         "rms": float(np.sqrt(np.mean(values ** 2))),
@@ -176,6 +177,20 @@ def recovery_metrics(
         else:
             ok_start = None
     return result
+
+
+# 監督ノードの状態の記録 (行: [t, state, gnss_d2, jump_m, ekf_diff_m, scan_ratio, scan_gain]) の値の列
+STATUS_VALUE_COLUMNS = {"gnss_d2": 2, "jump_m": 3, "ekf_diff_m": 4, "scan_ratio": 5, "scan_gain": 6}
+
+
+def summarize_status_values(status: np.ndarray) -> Dict[str, Any]:
+    """監督ノードの判定の値の分布 (使えなかった -1 は除く) と、状態ごとの時間の割合。"""
+    values = {}
+    for name, column in STATUS_VALUE_COLUMNS.items():
+        values[name] = summarize(status[status[:, column] >= 0.0, column])
+    states = status[:, 1].astype(int)
+    fractions = {int(s): float(np.mean(states == s)) for s in np.unique(states)}
+    return {"values": values, "state_fractions": fractions}
 
 
 def count_episodes(

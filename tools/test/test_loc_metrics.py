@@ -121,6 +121,22 @@ def test_count_episodes_separates_false_detections():
     assert result == {"episodes_in_fault_windows": 1, "false_detections": 1}
 
 
+def test_summarize_status_values_skips_unavailable_and_counts_states():
+    #             t   state d2    jump  diff  ratio  gain
+    status = np.array([
+        [0.0, 0, -1.0, -1.0, -1.0, 0.30, 0.00],
+        [1.0, 0, 0.5, -1.0, 0.1, 0.34, 0.05],
+        [2.0, 1, 30.0, 4.0, 3.0, 0.10, 0.40],
+        [3.0, 0, 0.7, 0.1, 0.2, 0.32, 0.00],
+    ])
+    result = lm.summarize_status_values(status)
+    assert result["values"]["gnss_d2"]["n"] == 3
+    assert result["values"]["gnss_d2"]["min"] == pytest.approx(0.5)
+    assert result["values"]["scan_ratio"]["n"] == 4
+    assert result["values"]["jump_m"]["max"] == pytest.approx(4.0)
+    assert result["state_fractions"] == {0: 0.75, 1: 0.25}
+
+
 def test_first_detection_delay():
     t = np.arange(0.0, 50.0, 1.0)
     s = np.zeros_like(t, dtype=int)
