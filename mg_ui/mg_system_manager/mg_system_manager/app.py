@@ -12,6 +12,7 @@ from mg_system_manager.routers import (
     maps,
     rosbag,
     scenario_stack,
+    scenario_test,
     services,
     settings as settings_router,
     simulation,
@@ -54,6 +55,6 @@ def create_app(
     )
 
     for module in (services, settings_router, maps, simulation,
-                   scenario_stack, rosbag, logs):
+                   scenario_stack, scenario_test, rosbag, logs):
         app.include_router(module.router)
     return app

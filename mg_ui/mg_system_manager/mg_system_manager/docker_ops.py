@@ -92,7 +92,9 @@ class ComposeRunner:
         env["HOME"] = self._settings.host_home
         if env_extra:
             env.update(env_extra)
-        command = ["docker", "compose", *args]
+        files = [
+            option for f in self._settings.compose_files for option in ("-f", f)]
+        command = ["docker", "compose", *files, *args]
         logger.info("%s (cwd=%s)", " ".join(command),
                     self._settings.host_project_dir)
         try:
@@ -229,6 +231,16 @@ class ComposeRunner:
             logger.error("remove failed service=%s: %s", service, e)
             return False, str(e)
         return True, ""
+
+    def remove_stopped(self, service: str) -> None:
+        """停止済みのコンテナ(docker compose run で残ったものを含む)をすべて削除する。"""
+        for container in self._list(service):
+            if container.status == "running":
+                continue
+            try:
+                container.remove()
+            except Exception as e:
+                logger.warning("remove failed service=%s: %s", service, e)
 
     def exec_in_container(
         self, service: str, cmd: list[str]
