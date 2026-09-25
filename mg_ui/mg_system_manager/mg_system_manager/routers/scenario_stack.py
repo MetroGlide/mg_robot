@@ -35,7 +35,7 @@ def _start(
     try:
         # ハードウェア系サービスの確認から起動までの間に、それらの起動が割り込まないようにする
         with runner.operation(SCENARIO_STACK_SERVICE, exclusive=True):
-            status = runner.get_status()
+            status = runner.get_status(fresh=True)
             running = [
                 s for s in HARDWARE_SERVICE_KEYS if status.get(s) == "running"]
             if running:

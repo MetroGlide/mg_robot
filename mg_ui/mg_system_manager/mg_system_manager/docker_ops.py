@@ -2,6 +2,7 @@ import logging
 import os
 import subprocess
 import threading
+import time
 from contextlib import contextmanager
 from typing import Any, Iterator
 
@@ -22,6 +23,8 @@ _COMPOSE_PROJECT_LABEL = "com.docker.compose.project"
 _EXCLUSIVE_SERVICES = frozenset((*HARDWARE_SERVICE_KEYS, SCENARIO_STACK_SERVICE))
 _EXCLUSIVE_GROUP = "<hardware-exclusive>"
 
+_STATUS_CACHE_TTL_S = 1.0
+
 
 class BusyError(Exception):
     """同じサービスに対する別の操作が実行中であることを表す。"""
@@ -35,6 +38,9 @@ class ComposeRunner:
         self._client = client if client is not None else docker.from_env()
         self._locks: dict[str, threading.RLock] = {}
         self._locks_guard = threading.Lock()
+        self._status: dict[str, str] = {}
+        self._status_at = -_STATUS_CACHE_TTL_S
+        self._status_lock = threading.Lock()
         logger.info(
             "ComposeRunner initialized: host_project_dir=%s host_home=%s "
             "simulation_world=%s robot=%s",
@@ -72,6 +78,9 @@ class ComposeRunner:
         finally:
             for lock in reversed(acquired):
                 lock.release()
+            if acquired:
+                # 操作でコンテナの状態が変わるため、次の状態確認では取得し直す
+                self._invalidate_status()
 
     def compose(
         self,
@@ -152,13 +161,38 @@ class ComposeRunner:
             return None
         return containers[0]
 
-    def get_status(self) -> dict[str, str]:
+    def get_status(self, fresh: bool = False) -> dict[str, str]:
+        """サービスごとのコンテナの状態。
+
+        複数の端末が短い間隔で問い合わせても Docker への問い合わせを増やさないよう、
+        結果を短時間だけ使い回す。操作の直後や fresh=True のときは必ず取得し直す。
+        """
+        with self._status_lock:
+            now = time.monotonic()
+            if fresh or now - self._status_at >= _STATUS_CACHE_TTL_S:
+                self._status = self._fetch_status()
+                self._status_at = now
+            return dict(self._status)
+
+    def _fetch_status(self) -> dict[str, str]:
+        # containers.list() は 1 件ずつ inspect するため、一覧 API の結果(Labels・State)だけを使う
+        raw = self._client.api.containers(
+            all=True,
+            filters={"label": [
+                f"{_COMPOSE_PROJECT_LABEL}={self._settings.compose_project}",
+                _COMPOSE_SERVICE_LABEL,
+            ]},
+        )
         status: dict[str, str] = {}
-        for container in self._list():
-            service = container.labels[_COMPOSE_SERVICE_LABEL]
+        for item in raw:
+            service = item["Labels"][_COMPOSE_SERVICE_LABEL]
             if status.get(service) != "running":
-                status[service] = container.status
+                status[service] = item["State"]
         return status
+
+    def _invalidate_status(self) -> None:
+        with self._status_lock:
+            self._status_at = -_STATUS_CACHE_TTL_S
 
     def stop(self, service: str, timeout: int | None = None) -> tuple[bool, str]:
         try:

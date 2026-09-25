@@ -60,9 +60,27 @@ class FakeContainers:
         ]
 
 
+class FakeLowLevelApi:
+    """docker-py の低レベル API(client.api)。一覧の各要素は Labels と State を持つ辞書。"""
+
+    def __init__(self, containers: list[FakeContainer]) -> None:
+        self._containers = containers
+        self.calls = 0
+
+    def containers(self, all: bool = False, filters: dict | None = None):
+        self.calls += 1
+        labels = (filters or {}).get("label", [])
+        return [
+            {"Labels": c.labels, "State": c.status, "Names": [f"/{c.name}"]}
+            for c in self._containers
+            if (all or c.status == "running") and _labels_match(c.labels, labels)
+        ]
+
+
 class FakeDockerClient:
     def __init__(self, containers: list[FakeContainer]) -> None:
         self.containers = FakeContainers(containers)
+        self.api = FakeLowLevelApi(containers)
 
 
 class ComposeCalls:
