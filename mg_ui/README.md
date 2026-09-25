@@ -125,7 +125,30 @@ mg_system_manager/
   他のオリジンは環境変数 `SYSTEM_MANAGER_ALLOW_ORIGINS`（カンマ区切り）で追加する。
 - 認証はない。信頼できるネットワークでのみ使うこと。
 
+### 負荷を下げる設定と戻し方
+
+実機 PC・タブレットの負荷を下げるために入れている設定。負荷が増える方向の変更は行っていない。
+
+| 設定                                   | 効果                                                                 | 調整・元に戻す方法                                                       |
+| -------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| タブ非表示中の購読停止                 | 見ていないタブがトピックを受信しない(bridge の送信量とデコードが減る) | 自動。`FoxgloveConnection.setPaused`                                      |
+| ビューワーの描画を要求ベースにする     | 常時 60fps だった描画を 20fps 程度にする                              | `RosViewer.tsx` の `RENDER_INTERVAL_MS`(大きいほど軽い)                    |
+| 描画解像度の上限                       | 高 DPI 端末での描画負荷を抑える                                       | `RosViewer.tsx` の `MAX_DEVICE_PIXEL_RATIO`                                |
+| 可視化プリセット(軽量・標準・すべて)   | 表示するレイヤーを減らして購読と描画を減らす                          | Settings の Visualization                                                 |
+| 画像を canvas に直接描画               | dataURL への再エンコードをやめる                                      | —                                                                        |
+| 地図・コストマップのテクスチャの使い回し | 更新のたびの GPU メモリの確保・解放をなくす                            | —                                                                        |
+| foxglove_bridge の capabilities・sysinfo | UI が使わない機能(connectionGraph・parameters・assets・sysinfo)を止める | `compose.yaml` の foxglove-bridge の `capabilities` と `sysinfo` の 2 行を削除 |
+| コンテナ状態の取得を軽くする           | Docker への問い合わせを減らす(1 秒キャッシュ、inspect を省略)          | `docker_ops.py` の `_STATUS_CACHE_TTL_S`                                   |
+| ログ配信                               | `docker logs` を共有し、バッファに上限を付けてまとめて送る             | `routers/logs.py` の `MAX_BUFFERED_ENTRIES`・`FLUSH_INTERVAL_S`            |
+| ページ単位の遅延読み込み               | 初期に読み込む JS を 1.5MB から 0.27MB にする                          | `App.tsx` の `lazy`                                                       |
+
+計測するときは、ブラウザの Performance(メインスレッドの占有率・FPS)と、実機 PC で `top`(foxglove_bridge と system_manager の CPU)、
+`nethogs` / `iftop`(bridge の送信量)を、変更前後で比べる。
+
 ### 既知の制約
+
+- system_manager のテストには `httpx` が必要で、`requirements.txt` に追加してある。
+  既存の develop イメージには入っていないため、`make build svc=develop` で再ビルドするまで `make ui-test` の pytest は失敗する。
 
 - ジョイスティックは、操作中にタブの切替・ページ遷移・切断が起きたときは速度 0 を送る。
   ただしドラッグ中に通信が切れたりブラウザが落ちたりした場合は UI から停止を送れず、
