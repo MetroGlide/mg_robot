@@ -10,6 +10,11 @@ wheel_odom_corrector_node:
     yaw_bias_per_meter: 0.0
     # 生のオドメトリの遅れ [s]。スタンプをこの分だけ過去へずらす
     time_offset: 0.0
+    # 速度の出どころ。raw: ドライバの速度をスケール補正して使う / pose_diff: 補正した姿勢の差分から求める
+    # (ドライバの速度が 0 のまま姿勢だけ更新される期間があるため、速度を信頼するなら pose_diff)
+    twist_source: raw
+    # pose_diff のとき、何メッセージ前の姿勢との差から求めるか (20 Hz なら 2 で 0.1 秒)
+    twist_window: 2
     # 姿勢が飛んだとみなす 1 メッセージあたりの移動量 [m]。飛んだら生の姿勢に合わせ直す
     reset_jump_m: 2.0
     # 姿勢の共分散 (EKF は姿勢を使わない)

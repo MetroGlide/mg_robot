@@ -6,7 +6,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 
-from wheel_odom_correction import OdomCorrector, shift_stamp  # noqa: E402
+from wheel_odom_correction import OdomCorrector, TwistEstimator, shift_stamp  # noqa: E402
 
 
 def _drive_straight(corrector, distance=10.0, step=0.05):
@@ -87,3 +87,51 @@ def test_correct_twist():
 def test_shift_stamp_moves_to_past_with_borrow():
     assert shift_stamp(10, 100_000_000, 0.25) == (9, 850_000_000)
     assert shift_stamp(10, 100_000_000, 0.0) == (10, 100_000_000)
+
+
+def test_twist_estimator_straight_and_rotation():
+    estimator = TwistEstimator(window=2)
+    result = None
+    x = y = yaw = 0.0
+    for i in range(20):
+        # 1.0 m/s で前進しながら 0.5 rad/s で旋回する (20 Hz)
+        result = estimator.update(i * 0.05, x, y, yaw)
+        mid = yaw + 0.5 * 0.5 * 0.05
+        x += 1.0 * 0.05 * math.cos(mid)
+        y += 1.0 * 0.05 * math.sin(mid)
+        yaw += 0.5 * 0.05
+    vx, wz = result
+    assert wz == pytest.approx(0.5, abs=1e-9)
+    # 窓の間の弦の長さは弧の長さよりわずかに短い (中心角 0.05 rad で約 0.01%)
+    assert vx == pytest.approx(1.0, abs=1e-3)
+
+
+def test_twist_estimator_needs_window_and_handles_wrap_and_reset():
+    estimator = TwistEstimator(window=2)
+    assert estimator.update(0.0, 0.0, 0.0, math.pi - 0.05) is None
+    assert estimator.update(0.05, 0.0, 0.0, -math.pi + 0.0) is None
+    vx, wz = estimator.update(0.10, 0.0, 0.0, -math.pi + 0.05)
+    assert wz == pytest.approx(0.1 / 0.1, abs=1e-9)
+    assert vx == pytest.approx(0.0, abs=1e-9)
+    estimator.reset()
+    assert estimator.update(1.0, 5.0, 5.0, 0.0) is None
+
+
+def test_twist_estimator_recovers_speed_when_driver_reports_zero():
+    # ドライバの速度が 0 のまま姿勢だけ更新される期間があっても、姿勢の差分からは動いていると分かる
+    estimator = TwistEstimator(window=2)
+    result = None
+    for i in range(20):
+        result = estimator.update(i * 0.05, 0.8 * i * 0.05, 0.0, 0.0)
+    assert result[0] == pytest.approx(0.8, abs=1e-9)
+    assert result[1] == pytest.approx(0.0, abs=1e-12)
+
+
+def test_corrector_reports_reset_on_first_message_and_jump():
+    corrector = OdomCorrector(1.0, 1.0, 0.0, 2.0)
+    corrector.update(0.0, 0.0, 0.0)
+    assert corrector.was_reset
+    corrector.update(0.1, 0.0, 0.0)
+    assert not corrector.was_reset
+    corrector.update(100.0, 0.0, 0.0)
+    assert corrector.was_reset

@@ -21,7 +21,12 @@ wheel_odometry_node ─ /odom/raw ─► wheel_odom_corrector_node ─ /odom ─
 | `k_w` | 旋回のスケール (実効トレッド幅) | `dyaw' = k_w · dyaw + c · dx'` |
 | `yaw_bias_per_meter` (`c`) | 走行距離あたりに曲がる量 [rad/m] (左右の車輪半径差) | 同上 |
 | `time_offset` | 生のオドメトリの遅れ [s] | スタンプを過去へずらす |
+| `twist_source` | 速度の出どころ (`raw` / `pose_diff`) | `raw`: ドライバの速度にスケール補正をかける。`pose_diff`: 補正した姿勢の差分から求める (`twist_window` メッセージ前との差) |
 | `covariance_vx` / `covariance_vyaw` | EKF が使う速度の共分散 | — |
+
+**速度が 0 になる不具合**: 走行ログ (`record_slam_20260913_051635` の 370〜730 s) に、ドライバの速度が 0 のまま姿勢だけ更新される期間がありました。
+EKF は速度を観測として使うため、速度を信頼する設定 (共分散を小さくする) では、この期間に破綻します。
+`twist_source: pose_diff` は姿勢の差分から速度を求めるので影響を受けません (速度が正常な走行では、前進速度の相関 0.997、旋回は 0.91)。
 
 - パラメータは `params/wheel_odom_corrector.yaml`。値は `tools/scripts/calib_wheel_odom.py` で走行ログから推定する ([tools/README.md](../tools/README.md))。
 - `enabled: false` にすると補正せずに生の値を通す (共分散は設定する)。

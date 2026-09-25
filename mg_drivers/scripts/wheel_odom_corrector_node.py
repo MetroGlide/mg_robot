@@ -14,7 +14,7 @@ import rclpy
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
 
-from wheel_odom_correction import OdomCorrector, shift_stamp, yaw_from_quaternion
+from wheel_odom_correction import OdomCorrector, TwistEstimator, shift_stamp, yaw_from_quaternion
 
 
 class WheelOdomCorrectorNode(Node):
@@ -26,6 +26,11 @@ class WheelOdomCorrectorNode(Node):
         yaw_bias = self.declare_parameter('yaw_bias_per_meter', 0.0).value
         reset_jump = self.declare_parameter('reset_jump_m', 2.0).value
         self._time_offset = self.declare_parameter('time_offset', 0.0).value
+        # 速度の出どころ。raw: ドライバの速度をスケール補正して使う / pose_diff: 補正した姿勢の差分から求める
+        self._twist_source = self.declare_parameter('twist_source', 'raw').value
+        if self._twist_source not in ('raw', 'pose_diff'):
+            raise ValueError(f"twist_source must be 'raw' or 'pose_diff': {self._twist_source}")
+        self._twist_estimator = TwistEstimator(self.declare_parameter('twist_window', 2).value)
         self._pose_cov = [
             self.declare_parameter('covariance_x', 10.0).value,
             self.declare_parameter('covariance_y', 10.0).value,
@@ -46,13 +51,22 @@ class WheelOdomCorrectorNode(Node):
         self._sub = self.create_subscription(Odometry, 'odom/raw', self._on_odom, 10)
         self.get_logger().info(
             f'wheel_odom_corrector_node started: enabled={self._enabled} k_v={k_v} k_w={k_w} '
-            f'yaw_bias_per_meter={yaw_bias} time_offset={self._time_offset}')
+            f'yaw_bias_per_meter={yaw_bias} time_offset={self._time_offset} '
+            f'twist_source={self._twist_source}')
 
     def _on_odom(self, msg: Odometry) -> None:
         q = msg.pose.pose.orientation
         x, y, yaw = self._corrector.update(
             msg.pose.pose.position.x, msg.pose.pose.position.y, yaw_from_quaternion(q.z, q.w))
         vx, wz = self._corrector.correct_twist(msg.twist.twist.linear.x, msg.twist.twist.angular.z)
+        if self._twist_source == 'pose_diff':
+            if self._corrector.was_reset:
+                self._twist_estimator.reset()
+            stamp = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
+            estimated = self._twist_estimator.update(stamp, x, y, yaw)
+            # 窓がそろうまでの最初の数メッセージは、ドライバの速度を補正したものを使う
+            if estimated is not None:
+                vx, wz = estimated
 
         out = Odometry()
         out.header = msg.header
