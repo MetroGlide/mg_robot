@@ -75,7 +75,7 @@ def _filter_log_services(raw_services: Any) -> set[str]:
 async def logs_stream(websocket: WebSocket):
     state = websocket.app.state
     origin = websocket.headers.get("origin")
-    if origin and origin not in state.settings.allowed_origins:
+    if origin and not state.settings.is_origin_allowed(origin):
         await websocket.close(code=1008)
         return
 

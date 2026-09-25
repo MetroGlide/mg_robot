@@ -9,6 +9,19 @@ DEFAULT_ALLOWED_ORIGINS = [
     "http://127.0.0.1:3000",
 ]
 
+# タブレットなど別端末から IP で Web UI を開く場合を許可する。
+# Web UI の配信ポート(8080)と開発サーバ(5173)に限り、
+# localhost・プライベート IP・Tailscale(100.64.0.0/10)・mDNS(.local) を対象にする。
+_PRIVATE_HOST = (
+    r"(localhost|127\.0\.0\.1"
+    r"|10\.\d{1,3}\.\d{1,3}\.\d{1,3}"
+    r"|192\.168\.\d{1,3}\.\d{1,3}"
+    r"|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}"
+    r"|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d{1,3}\.\d{1,3}"
+    r"|[a-zA-Z0-9-]+\.local)"
+)
+DEFAULT_ORIGIN_REGEX = rf"^http://{_PRIVATE_HOST}:(8080|5173)$"
+
 
 @dataclass(frozen=True)
 class ServiceSpec:
@@ -80,6 +93,10 @@ class Settings:
     settings_dir: Path
     allowed_origins: list[str]
     scenario_stack_allowed_packages: list[str]
+
+    def is_origin_allowed(self, origin: str) -> bool:
+        return (origin in self.allowed_origins
+                or re.match(DEFAULT_ORIGIN_REGEX, origin) is not None)
 
     @classmethod
     def from_env(cls) -> "Settings":

@@ -3,7 +3,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from mg_system_manager.config import Settings
+from mg_system_manager.config import DEFAULT_ORIGIN_REGEX, Settings
 from mg_system_manager.docker_ops import ComposeRunner
 from mg_system_manager.routers import (
     logs,
@@ -37,6 +37,7 @@ def create_app(
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.allowed_origins,
+        allow_origin_regex=DEFAULT_ORIGIN_REGEX,
         allow_methods=["*"],
         allow_headers=["*"],
     )
