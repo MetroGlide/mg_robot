@@ -9,6 +9,8 @@ import pytest
 
 from sim_scenario_test.engine.result import ResultStatus
 from sim_scenario_test.execution import (
+    PlannedRun,
+    ProgressWriter,
     RunRecord,
     collect_scenarios,
     exit_code,
@@ -103,6 +105,34 @@ def test_junit(tmp_path):
     suite = ET.parse(path).getroot()
     assert (suite.get("tests"), suite.get("failures"), suite.get("errors")) == ("3", "1", "1")
     assert suite[1].find("failure") is not None and suite[2].find("error") is not None
+
+
+def test_progress_file_tracks_each_run(tmp_path):
+    results = tmp_path / "results"
+    planned = [PlannedRun("a", "/s/a.yaml", str(results / "a")),
+               PlannedRun("b", "/s/b.yaml", str(results / "b"))]
+    progress = ProgressWriter(str(results), planned, {"attach": True})
+
+    def read():
+        return json.loads((results / "progress.json").read_text())
+    data = read()
+    assert data["options"] == {"attach": True}
+    assert [e["status"] for e in data["entries"]] == ["PENDING", "PENDING"]
+    assert data["entries"][0]["result_dir"] == "a"
+    assert data["finished"] is False
+
+    progress.start(0, str(results / "a_retry1"), 1)
+    entry = read()["entries"][0]
+    assert (entry["status"], entry["result_dir"], entry["attempt"]) == ("RUNNING", "a_retry1", 1)
+
+    progress.finish(0, RunRecord("a", ResultStatus.FAILED, "boom", 12.34, "", []))
+    entry = read()["entries"][0]
+    assert (entry["status"], entry["message"], entry["elapsed_sec"]) == ("FAILED", "boom", 12.3)
+
+    progress.close(1)
+    data = read()
+    assert (data["finished"], data["exit_code"]) == (True, 1)
+    assert not (results / "progress.json.tmp").exists()
 
 
 def test_collect_scenarios_by_tags(tmp_path):
