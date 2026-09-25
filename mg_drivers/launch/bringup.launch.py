@@ -30,6 +30,8 @@ def generate_launch_description():
         "use_gps", default="true")
     use_rs_imu_arg = launch_argument_creator.create(
         "use_rs_imu", default="true")
+    use_realsense_arg = launch_argument_creator.create(
+        "use_realsense", default="true")
 
 
     pkg_name = "mg_drivers"
@@ -61,6 +63,7 @@ def generate_launch_description():
             "use_odom_tf": use_odom_tf_arg.launch_config,
             "use_lidar": use_lidar_arg.launch_config,
             "use_gps": use_gps_arg.launch_config,
+            "use_realsense": use_realsense_arg.launch_config,
         }.items(),
     )
 

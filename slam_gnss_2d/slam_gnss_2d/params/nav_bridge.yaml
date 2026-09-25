@@ -1,0 +1,5 @@
+slam_gnss_nav_bridge:
+  ros__parameters:
+    gnss_input: navpvt
+    gnss_topic: /navpvt
+    heading_source: computed

@@ -58,6 +58,7 @@ def generate_launch_description():
     use_ekf_arg = launch_argument_creator.create(
         "use_ekf", default="True")
     # "use_ekf", default="False")
+    # ファイル名 (mg_drivers/params 配下) または絶対パス
     ekf_params_file_arg = launch_argument_creator.create(
         "ekf_params_file", default="ekf_global.yaml")
     ekf_odom_topic_arg = launch_argument_creator.create(
@@ -69,6 +70,19 @@ def generate_launch_description():
         "use_lidar", default="true")
     use_gps_arg = launch_argument_creator.create(
         "use_gps", default="true")
+    use_realsense_arg = launch_argument_creator.create(
+        "use_realsense", default="true")
+
+    # false にすると自己位置推定 (map_server / AMCL / EKF など) だけを起動する。
+    # rosbag を再生して自己位置推定を評価するときに使う。
+    use_navigation_arg = launch_argument_creator.create(
+        "use_navigation", default="true")
+    nav2_params_file_arg = launch_argument_creator.create(
+        "nav2_params_file", default=os.path.join(
+            navigation_pkg_share, "params", "nav2_params.yaml"))
+    bridge_params_file_arg = launch_argument_creator.create(
+        "bridge_params_file", default=os.path.join(
+            get_package_share_directory("slam_gnss_2d"), "params", "nav_bridge.yaml"))
 
     use_slam_gnss_bridge_arg = launch_argument_creator.create(
         "use_slam_gnss_bridge", default="true")
@@ -91,6 +105,7 @@ def generate_launch_description():
             "use_odom_tf": "true",
             "use_lidar": use_lidar_arg.launch_config,
             "use_gps": use_gps_arg.launch_config,
+            "use_realsense": use_realsense_arg.launch_config,
         }.items(),
     )
 
@@ -123,12 +138,10 @@ def generate_launch_description():
         executable='slam_gnss_nav_bridge_node',
         name='slam_gnss_nav_bridge',
         output='screen',
-        parameters=[{
-            'gnss_transform_file': gnss_transform_file_arg.launch_config,
-            'gnss_input': 'navpvt',
-            'gnss_topic': '/navpvt',
-            'heading_source': 'computed',
-        }],
+        parameters=[
+            bridge_params_file_arg.launch_config,
+            {'gnss_transform_file': gnss_transform_file_arg.launch_config},
+        ],
         condition=launch.conditions.IfCondition(
             use_slam_gnss_bridge_arg.launch_config),
     )
@@ -148,6 +161,8 @@ def generate_launch_description():
             "rviz": rviz_arg.launch_config,
             "record_bag": record_bag_arg.launch_config,
             "global_planner": global_planner_arg.launch_config,
+            "use_navigation": use_navigation_arg.launch_config,
+            "params_file": nav2_params_file_arg.launch_config,
         }.items(),
     )
 

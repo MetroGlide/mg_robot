@@ -8,7 +8,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, EmitEvent, GroupAction
 from launch.actions import IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration, EnvironmentVariable
+from launch.substitutions import AndSubstitution, LaunchConfiguration, EnvironmentVariable
 from launch.conditions import IfCondition
 from launch_ros.actions import Node, LifecycleNode, PushRosNamespace
 from launch_ros.descriptions import ParameterFile
@@ -32,6 +32,10 @@ def generate_launch_description():
     # Launch arguments
     launch_argument_creator = LaunchArgumentCreator()
 
+    # false にすると自己位置推定 (map_server / AMCL など) だけを起動し、
+    # ナビゲーション (planner / controller など) とウェイポイントシーケンサを起動しない
+    use_navigation_arg = launch_argument_creator.create(
+        'use_navigation', default="true")
     use_waypoints_follower_arg = launch_argument_creator.create(
         'use_waypoints_follower', default="true")
     waypoints_load_path_arg = launch_argument_creator.create(
@@ -151,7 +155,8 @@ def generate_launch_description():
                               'use_respawn': use_respawn_arg.launch_config,
                               'planning_map': planning_map_yaml_file_arg.launch_config,
                               'global_planner': global_planner_arg.launch_config,
-                              'container_name': 'nav2_container'}.items()
+                              'container_name': 'nav2_container'}.items(),
+            condition=IfCondition(use_navigation_arg.launch_config),
         ),
 
         # Waypoint Sequencer
@@ -167,7 +172,9 @@ def generate_launch_description():
                 'simulation': simulation_arg.launch_config,
                 'load_path': waypoints_load_path_arg.launch_config,
             }.items(),
-            condition=IfCondition(use_waypoints_follower_arg.launch_config),
+            condition=IfCondition(AndSubstitution(
+                use_waypoints_follower_arg.launch_config,
+                use_navigation_arg.launch_config)),
         ),
 
     ])

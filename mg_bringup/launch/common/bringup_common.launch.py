@@ -37,6 +37,8 @@ def generate_launch_description():
         "use_lidar", default="true")
     use_gps_arg = launch_argument_creator.create(
         "use_gps", default="true")
+    use_realsense_arg = launch_argument_creator.create(
+        "use_realsense", default="true")
 
 
     # Launch drivers
@@ -51,6 +53,7 @@ def generate_launch_description():
             "use_odom_tf": use_odom_tf_arg.launch_config,
             "use_lidar": use_lidar_arg.launch_config,
             "use_gps": use_gps_arg.launch_config,
+            "use_realsense": use_realsense_arg.launch_config,
         }.items(),
     )
 
