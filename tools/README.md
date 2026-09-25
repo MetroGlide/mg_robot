@@ -18,6 +18,7 @@ tools/
 │   ├── cli.py             # CLI 出力パス解決 (--output, --output-to-bag-dir, --output-dir)
 │   ├── pose_graph.py      # slam_gnss_2d 出力 (pose_graph.json / gnss_transform.yaml) の読込・補間・アンカー間の座標移動
 │   ├── loc_metrics.py     # 自己位置推定の評価指標 (誤差・飛び・NEES・遅れ・復旧) ※numpy のみ
+│   ├── odom_calib.py      # ホイールオドメトリ校正の計算 (窓ごとの相対移動の当てはめ) ※numpy のみ
 │   └── faults.py          # 故障注入定義 (YAML) の読込
 ├── datasets/localization/ # 自己位置推定の再生評価のデータセット定義 (地図・評価走行・真値の組)
 ├── test/                  # tools のテスト (make test pkg=tools)
@@ -38,6 +39,7 @@ tools/
     ├── loc_recorder.py              # 再生評価の出力をシミュレーション時刻で rosbag2 に記録する
     ├── loc_dataset.py               # データセット定義 (datasets/localization/) の読込
     ├── compare_localization.py      # 変種ごとの評価結果の比較表
+    ├── calib_wheel_odom.py          # ホイールオドメトリのスケール・バイアス・遅れを走行ログから推定
     ├── run_slam_variant.sh          # パラメータ変種のオフラインSLAM実行〜評価までを一括実行
     ├── patch_params.py              # コメント付きパラメータ YAML の値を書き換え
     ├── record.sh                    # rosbag 記録 (MCAP)
@@ -385,6 +387,29 @@ docker run --rm -v $PWD:/app -v ~/ros2_data:/root/ros2_data mg_develop:latest \
 - 真値と地図の位置合わせの精度は、2 つの SLAM を作ったときの GNSS の精度で決まります。RTK Fix が少ない bag (051635 は Fixed 0%) では約 1 m ずれるため、絶対値ではなく**変種同士の相対比較**に使ってください。評価レポートには、走行全体を SE(2) 整合した後の誤差 (地図に対する整合性) を併記します。
 - 評価する走行が、地図の範囲外を通る区間では AMCL が使えず破綻します。区間は地図がカバーする範囲に絞ってください (051635 は地図 043837 に対して 0〜138 s / 462〜1586 s / 1636〜1856 s が範囲内)。
 - `--init gt` では、初期姿勢を与えた直後の 10 秒 (`EVAL_SKIP`) を評価から除きます。
+
+### 13. `calib_wheel_odom.py` (ホイールオドメトリの校正)
+
+走行ログの `/odom` (**補正前の生の姿勢**) と、slam_gnss_2d の SLAM 出力 (`pose_graph.json`) を比べて、
+ホイールオドメトリの誤差を推定します。全体を一度に積算すると誤差が累積して崩れるため、真値の経路で
+5 m ごとに区切った窓について、窓の始点から終点への相対移動を比べ、Huber 損失で外れ値の窓の影響を抑えます。
+
+```bash
+docker run --rm -v $PWD:/app -v ~/ros2_data:/root/ros2_data mg_develop:latest bash -c \
+  "source /opt/ros/humble/setup.bash; python3 /app/tools/scripts/calib_wheel_odom.py <bag> --slam-dir <SLAM 出力> -o wheel_odom_corrector.yaml"
+```
+
+| 推定するもの | 意味 |
+| :--- | :--- |
+| `k_v` | 並進のスケール (車輪半径) |
+| `k_w` | 旋回のスケール (実効トレッド幅) |
+| `yaw_bias_per_meter` | 走行距離あたりに曲がる量 [rad/m] (左右の車輪半径差) |
+| `time_offset` | オドメトリの遅れ [s]。損失が最小になる遅れを探索する |
+| `covariance_vx` / `covariance_vyaw` | EKF に入れる速度の共分散の目安。補正後の窓の平均速度の誤差 σ を `--inflate` 倍 (既定 3) して二乗 |
+
+- 出力の YAML は `mg_drivers/params/wheel_odom_corrector.yaml` の形式で、そのまま補正ノードのパラメータになります。
+- 推定値は前半・後半でも別々に出るので、安定しているか確認してください。路面や荷重が違う走行では、走行ごとに推定して差を見ます。
+- 補正ノードを通した bag (補正済みの `/odom`) には使えません。
 
 ### テスト
 
