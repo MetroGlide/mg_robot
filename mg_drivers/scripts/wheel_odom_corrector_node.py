@@ -12,6 +12,7 @@ import math
 
 import rclpy
 from nav_msgs.msg import Odometry
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 
 from wheel_odom_correction import OdomCorrector, TwistEstimator, shift_stamp, yaw_from_quaternion
@@ -94,7 +95,7 @@ def main(args=None):
     node = WheelOdomCorrectorNode()
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):
         pass
     finally:
         node.destroy_node()
