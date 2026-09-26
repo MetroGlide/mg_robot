@@ -229,6 +229,8 @@ class GNSSAMCLInitializer(Node):
         self.declare_parameter('ignore_odom_age', False)
         self.declare_parameter('max_consecutive_bad', 20)
         self.declare_parameter('ignore_z_std', True)
+        # EKF (robot_localization) の /set_pose にも初期姿勢を送るか
+        self.declare_parameter('publish_set_pose', True)
 
         # Read other tunable parameters
         self.map_frame = self.get_parameter(
@@ -261,6 +263,8 @@ class GNSSAMCLInitializer(Node):
             'max_consecutive_bad').get_parameter_value().integer_value
         self.ignore_z_std = self.get_parameter(
             'ignore_z_std').get_parameter_value().bool_value
+        self.publish_set_pose = self.get_parameter(
+            'publish_set_pose').get_parameter_value().bool_value
 
         self.get_logger().info(
             f"Parameters: map_frame={self.map_frame}, required_consecutive_good={self.required_consecutive_good}")
@@ -290,6 +294,7 @@ class GNSSAMCLInitializer(Node):
 
         self.odom_gps_topic = '/odom/gps'
         self.initialpose_topic = '/initialpose'
+        self.set_pose_topic = '/set_pose'
         # node-private service name for reinit requests; remap/namespace can
         # be applied from the outside launch file. Use a descriptive name.
         self.reinit_service_name = '~/request_reinit'
@@ -301,6 +306,8 @@ class GNSSAMCLInitializer(Node):
         # Publisher and subscribers
         self.initialpose_pub = self.create_publisher(
             PoseWithCovarianceStamped, self.initialpose_topic, 10)
+        self.set_pose_pub = self.create_publisher(
+            PoseWithCovarianceStamped, self.set_pose_topic, 10)
         self.odom_sub = self.create_subscription(
             Odometry, self.odom_gps_topic, self.odom_callback, 20)
 
@@ -346,6 +353,15 @@ class GNSSAMCLInitializer(Node):
         new.pose.covariance = list(odom.pose.covariance)
         return new
 
+    def _publish_initial_pose(self, msg: PoseWithCovarianceStamped) -> None:
+        """AMCL (/initialpose) と EKF (/set_pose) に同じ初期姿勢を送る。
+
+        EKF の初期共分散は大きいため、EKF にも送らないと AMCL の初期値 (原点) に引かれる。
+        """
+        self.initialpose_pub.publish(msg)
+        if self.publish_set_pose:
+            self.set_pose_pub.publish(msg)
+
     def publish_initialpose_from_odom(self, odom: Optional[Odometry]) -> None:
         if odom is None:
             self.get_logger().warn('No valid odometry available for initialpose')
@@ -388,7 +404,7 @@ class GNSSAMCLInitializer(Node):
                 if self.pose_covariance and len(self.pose_covariance) == 36:
                     msg.pose.covariance = [float(v)
                                            for v in self.pose_covariance]
-                    self.initialpose_pub.publish(msg)
+                    self._publish_initial_pose(msg)
                     self.get_logger().info(
                         'Published initialpose using parameter override for pose_covariance')
                     self.get_logger().info(
@@ -433,7 +449,7 @@ class GNSSAMCLInitializer(Node):
 
         msg.pose.covariance = final_cov
 
-        self.initialpose_pub.publish(msg)
+        self._publish_initial_pose(msg)
         self.get_logger().info(
             f'Published initialpose at ({msg.pose.pose.position.x:.3f}, {msg.pose.pose.position.y:.3f}), yaw={yaw:.3f}')
         self.get_logger().info(
