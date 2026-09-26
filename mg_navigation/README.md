@@ -65,7 +65,18 @@ gnss_amcl_initializer_node ◄─ /odom/gps ◄─ slam_gnss_nav_bridge ◄─ /
 - どの判定も、使えないとき (GNSS の精度が悪すぎる、スキャンが無いなど) は判定しない (異常とも正常とも数えない)。
 - 判定の値は `LocalizationStatus` に出る (`amcl_gnss_d2` `amcl_jump_m` `amcl_ekf_diff_m` `scan_match_ratio` `scan_match_gain`)。
 
-### 状態遷移 (`state_machine.py`)
+### 動作モード (`recovery_enabled`)
+
+| 値 | 動作 |
+| :--- | :--- |
+| `false` (既定) | **検知と通知だけ**。異常を確認したら `DEGRADED` になり (`/localization/status`、`/diagnostics` が ERROR)、異常が消えたら `NORMAL` に戻る。AMCL は切り離さない |
+| `true` | 下の状態遷移どおり、AMCL を切り離して姿勢を選び、再初期化して戻す (実験的) |
+
+既定を `false` にした理由: 再生評価 (kidnap) で、復旧を有効にすると、選んだ姿勢が誤っていた試行で誤差が数十 m まで広がった
+(監視なし p95 10.7 m に対し、最悪 143 m)。AMCL は kidnap の後に自力で戻ることも多く、検知に数秒かかる間の誤差は復旧では防げない。
+復旧を成立させる課題は「今後の課題」に記載する。
+
+### 状態遷移 (`state_machine.py`。`recovery_enabled: true` のとき)
 
 ```
 NORMAL ─ 異常の疑い ─► SUSPECT ─ 確認 ─► ISOLATED (AMCL を EKF から切り離す)

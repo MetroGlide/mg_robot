@@ -2,6 +2,8 @@
 
 判定 (Checks) を 1 秒程度ごとに受け取り、状態と、ノードが行う行動 (Action) を返す。
 
+  (recovery_enabled=False のときは、確認した異常で DEGRADED になり、異常が消えたら NORMAL に戻る。AMCL は切り離さない)
+
   NORMAL ─ 異常の疑い ─► SUSPECT ─ 確認 ─► ISOLATED (AMCL を EKF から切り離す)
      ▲                     │ 異常が消える            │ 一定時間待つ
      └─────────────────────┘                          ▼
@@ -52,6 +54,9 @@ class MachineConfig:
     max_reinit_attempts: int = 3
     # DEGRADED から再試行する間隔 [s]
     degraded_retry_sec: float = 60.0
+    # False のときは検知と通知だけを行う (AMCL の切り離しと再初期化はしない)。
+    # 異常を検知したら DEGRADED になり、異常が clear_ticks 回続けてなければ NORMAL に戻る
+    recovery_enabled: bool = False
 
 
 @dataclass
@@ -123,6 +128,10 @@ class SupervisorMachine:
 
         if self.state == State.SUSPECT:
             reason = self._isolate_reason()
+            if reason and not cfg.recovery_enabled:
+                self.state = State.DEGRADED
+                self._clear_run = 0
+                return Decision(self.state, [Action.NOTIFY_DEGRADED], f'alert: {reason}')
             if reason:
                 self.state = State.ISOLATED
                 self.attached = False
@@ -169,6 +178,16 @@ class SupervisorMachine:
             return Decision(self.state, [])
 
         # DEGRADED
+        if not cfg.recovery_enabled:
+            if known and not anomaly:
+                self._clear_run += 1
+                if self._clear_run >= cfg.clear_ticks:
+                    self.state = State.NORMAL
+                    self._reset_counters()
+                    return Decision(self.state, [Action.ATTACH], 'cleared')
+            elif anomaly:
+                self._clear_run = 0
+            return Decision(self.state, [])
         if now - self._degraded_at >= cfg.degraded_retry_sec:
             return self._start_recovery(now, 'retry from degraded')
         return Decision(self.state, [])

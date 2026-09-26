@@ -65,7 +65,7 @@ class LocalizationSupervisorNode(Node):
             corroborate_ticks=p['corroborate_ticks'], clear_ticks=p['clear_ticks'],
             isolate_hold_sec=p['isolate_hold_sec'], recover_ok_ticks=p['recover_ok_ticks'],
             recover_timeout_sec=p['recover_timeout_sec'], max_reinit_attempts=p['max_reinit_attempts'],
-            degraded_retry_sec=p['degraded_retry_sec']))
+            degraded_retry_sec=p['degraded_retry_sec'], recovery_enabled=p['recovery_enabled']))
 
         self._tf_buffer = tf2_ros.Buffer()
         self._tf_listener = tf2_ros.TransformListener(self._tf_buffer, self)
@@ -127,10 +127,10 @@ class LocalizationSupervisorNode(Node):
             # 判定のしきい値
             'gnss_max_sigma_m': 2.0,             # これ以下の精度の GNSS だけを AMCL との比較に使う
             'gnss_max_age_sec': 3.0,
-            'gnss_d2_threshold': 16.0,           # 2 自由度のマハラノビス距離の二乗
+            'gnss_d2_threshold': 6.0,           # 2 自由度のマハラノビス距離の二乗
             'gnss_extra_std_m': 0.3,             # 時刻のずれなどによる位置の不確かさ
             'amcl_max_age_sec': 3.0,
-            'jump_threshold_m': 1.0,
+            'jump_threshold_m': 0.6,
             'jump_threshold_rad': 0.35,
             'ignore_jump_after_init_sec': 5.0,
             'scan_max_age_sec': 2.0,             # これより古いスキャンは使わない
@@ -146,19 +146,20 @@ class LocalizationSupervisorNode(Node):
             'scan_search_range_m': 1.0,
             'scan_search_step_m': 0.25,
             'scan_max_points': 180,
-            'diff_threshold_m': 2.0,
+            'diff_threshold_m': 1.0,
             # 復旧の確認: AMCL と EKF の位置の差がこれ以下 [m]
             'recover_diff_m': 1.0,
             # 起動直後・復旧直後は判定しない時間 [s]
             'startup_grace_sec': 30.0,
             'grace_after_recovery_sec': 10.0,
             # 状態遷移
-            'gnss_suspect_ticks': 3, 'gnss_isolate_ticks': 6,
+            'gnss_suspect_ticks': 2, 'gnss_isolate_ticks': 3,
             'scan_suspect_ticks': 5, 'scan_isolate_ticks': 10,
-            'diff_suspect_ticks': 5, 'diff_isolate_ticks': 10,
+            'diff_suspect_ticks': 3, 'diff_isolate_ticks': 5,
             'corroborate_ticks': 2, 'clear_ticks': 5,
             'isolate_hold_sec': 3.0, 'recover_ok_ticks': 5, 'recover_timeout_sec': 30.0,
             'max_reinit_attempts': 3, 'degraded_retry_sec': 60.0,
+            'recovery_enabled': False,
             # 復旧
             'history_sec': 60.0,                 # 巻き戻し用に map->odom を残す時間
             'rollback_margin_sec': 3.0,          # 異常が始まる何秒前の状態まで戻すか

@@ -9,12 +9,12 @@ localization_supervisor_node:
     gnss_max_sigma_m: 2.0
     gnss_max_age_sec: 3.0
     # AMCL と GNSS の位置の差のマハラノビス距離の二乗 (2 自由度) がこれを超えたら異常
-    gnss_d2_threshold: 16.0
+    gnss_d2_threshold: 6.0
     # 測位が届く時刻のずれなどによる位置の不確かさ [m]
     gnss_extra_std_m: 0.3
     amcl_max_age_sec: 3.0
     # 連続する AMCL の推定が示す map->odom の位置・向きの飛び
-    jump_threshold_m: 1.0
+    jump_threshold_m: 0.6
     jump_threshold_rad: 0.35
     # AMCL が初期化し直された直後は、飛びを異常としない [s]
     ignore_jump_after_init_sec: 5.0
@@ -37,7 +37,7 @@ localization_supervisor_node:
     scan_search_step_m: 0.25
     scan_max_points: 180
     # AMCL と EKF の位置の差 [m]
-    diff_threshold_m: 2.0
+    diff_threshold_m: 1.0
     # 復旧の確認: AMCL と EKF の位置の差がこれ以下 [m] (これが続けば AMCL を EKF に戻す)
     recover_diff_m: 1.0
     # 起動直後と復旧直後は、EKF・AMCL が落ち着くまで判定しない [s]
@@ -45,12 +45,12 @@ localization_supervisor_node:
     grace_after_recovery_sec: 10.0
 
     # --- 状態遷移 (周期ごとの回数) ---
-    gnss_suspect_ticks: 3
-    gnss_isolate_ticks: 6
+    gnss_suspect_ticks: 2
+    gnss_isolate_ticks: 3
     scan_suspect_ticks: 5
     scan_isolate_ticks: 10
-    diff_suspect_ticks: 5
-    diff_isolate_ticks: 10
+    diff_suspect_ticks: 3
+    diff_isolate_ticks: 5
     corroborate_ticks: 2
     clear_ticks: 5
     # AMCL を切り離してから、初期化し直すまで待つ時間 [s]
@@ -59,6 +59,10 @@ localization_supervisor_node:
     recover_timeout_sec: 30.0
     max_reinit_attempts: 3
     degraded_retry_sec: 60.0
+    # false: 検知と通知だけを行う (異常を確認したら DEGRADED、消えたら NORMAL。AMCL は切り離さない)。
+    # true: AMCL を切り離し、姿勢を選んで再初期化する。
+    # 再生評価 (kidnap) では、再初期化の姿勢が誤ると誤差が数十 m に広がる試行があり、安全のため既定は false
+    recovery_enabled: false
 
     # --- 復旧 ---
     # 復旧の姿勢の候補は、EKF の姿勢、異常が始まる前の map->odom に今のオドメトリの動きを足した姿勢 (巻き戻し)、

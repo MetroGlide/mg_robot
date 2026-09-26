@@ -167,7 +167,7 @@ def test_single_jump_only_suspects_then_clears():
 
 
 def test_jump_with_corroboration_isolates():
-    machine = SupervisorMachine()
+    machine = SupervisorMachine(MachineConfig(recovery_enabled=True))
     seq = _normal(2) + [Checks(jump=True, scan=True)] + [Checks(scan=True), Checks(scan=True)]
     decisions = _run(machine, seq)
     isolated = [d for d in decisions if d.state == State.ISOLATED]
@@ -176,14 +176,14 @@ def test_jump_with_corroboration_isolates():
 
 
 def test_persistent_gnss_disagreement_isolates():
-    machine = SupervisorMachine()
+    machine = SupervisorMachine(MachineConfig(recovery_enabled=True))
     decisions = _run(machine, [Checks(gnss=True) for _ in range(8)])
     assert decisions[2].state == State.SUSPECT
     assert decisions[5].state == State.ISOLATED and decisions[5].actions == [Action.ISOLATE]
 
 
 def test_recovery_path_and_attach():
-    cfg = MachineConfig(isolate_hold_sec=3.0, recover_ok_ticks=3)
+    cfg = MachineConfig(recovery_enabled=True, isolate_hold_sec=3.0, recover_ok_ticks=3)
     machine = SupervisorMachine(cfg)
     decisions = _run(machine, [Checks(gnss=True) for _ in range(6)])
     assert decisions[-1].state == State.ISOLATED
@@ -203,7 +203,7 @@ def test_recovery_path_and_attach():
 
 
 def test_recovery_needs_amcl_to_converge_near_ekf():
-    cfg = MachineConfig(isolate_hold_sec=1.0, recover_ok_ticks=3, recover_timeout_sec=100.0)
+    cfg = MachineConfig(recovery_enabled=True, isolate_hold_sec=1.0, recover_ok_ticks=3, recover_timeout_sec=100.0)
     machine = SupervisorMachine(cfg)
     _run(machine, [Checks(gnss=True) for _ in range(6)])
     t = 6.0
@@ -222,7 +222,7 @@ def test_recovery_needs_amcl_to_converge_near_ekf():
 
 
 def test_recovery_timeout_retries_then_degrades_then_retries():
-    cfg = MachineConfig(isolate_hold_sec=1.0, recover_timeout_sec=10.0, max_reinit_attempts=2,
+    cfg = MachineConfig(recovery_enabled=True, isolate_hold_sec=1.0, recover_timeout_sec=10.0, max_reinit_attempts=2,
                         degraded_retry_sec=20.0)
     machine = SupervisorMachine(cfg)
     _run(machine, [Checks(gnss=True) for _ in range(6)])
@@ -250,3 +250,18 @@ def test_pose_jump_is_not_amplified_by_distance_from_odom_origin():
     dpos, dyaw = ck.pose_jump(a, b, base_after)
     assert dpos < 0.2
     assert dyaw == pytest.approx(0.01)
+
+
+def test_notify_only_mode_alerts_without_isolating_and_clears():
+    machine = SupervisorMachine(MachineConfig(clear_ticks=3))
+    decisions = _run(machine, [Checks(gnss=True) for _ in range(6)])
+    alert = [d for d in decisions if d.actions]
+    assert len(alert) == 1 and alert[0].actions == [Action.NOTIFY_DEGRADED]
+    assert machine.state == State.DEGRADED
+    assert machine.attached  # AMCL は切り離さない
+    # 異常が続く間は DEGRADED のまま、消えて clear_ticks 回続けば NORMAL に戻る
+    assert machine.step(10.0, Checks(gnss=True)).state == State.DEGRADED
+    for i in range(2):
+        assert machine.step(11.0 + i, Checks(gnss=False)).state == State.DEGRADED
+    d = machine.step(13.0, Checks(gnss=False))
+    assert d.state == State.NORMAL and d.actions == [Action.ATTACH]
