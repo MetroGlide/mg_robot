@@ -22,8 +22,10 @@ stack:
     map_path: "{world.localization_map}"
     planning_map_path: "{world.planning_map}"
     waypoints_load_path: "{world.waypoints}"
-    # sim には GNSS 変換ファイルがなく、GNSS 連携も不要
-    use_slam_gnss_bridge: "false"
+    # sim の GNSS (Gazebo の navsat) を、ワールドごとの gnss_transform.yaml で地図座標に直して EKF に入れる
+    use_slam_gnss_bridge: "true"
+    gnss_transform_file: "{world.gnss_transform}"
+    bridge_params_file: pkg://mg_simulation/config/nav_bridge_sim.yaml
     rviz: "false"
 
 frames:
@@ -49,3 +51,4 @@ worlds:
     localization_map: pkg://mg_simulation/maps/warehouse/localization.yaml
     planning_map: pkg://mg_simulation/maps/warehouse/planning.yaml
     waypoints: pkg://mg_simulation/maps/warehouse/waypoints.yaml
+    gnss_transform: pkg://mg_simulation/maps/warehouse/gnss_transform.yaml   # tools/scripts/make_sim_gnss_transform.py で生成

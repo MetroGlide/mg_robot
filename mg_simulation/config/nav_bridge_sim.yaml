@@ -1,0 +1,18 @@
+# シミュレータ用の GNSS ブリッジ (slam_gnss_nav_bridge) のパラメータ。
+# Gazebo の navsat センサは NavSatFix (/gps/fix) を出す。搬送波位相の解の種類が無いため単独測位として扱い、
+# 分散は position_covariance が 0 でも極端に小さくならないよう、hAcc の下限を決める。
+slam_gnss_nav_bridge:
+  ros__parameters:
+    gnss_input: navsatfix
+    gnss_topic: /gps/fix
+    heading_source: computed
+    min_publish_distance: 1.0
+    lever_arm_compensation: true
+    lever_arm_x: 0.26
+    lever_arm_y: -0.13
+    # シミュレータの地図は東・北に揃っているので、UTM のグリッドとの子午線収束角のずれを補正する
+    # (gnss_transform.yaml は tools/scripts/make_sim_gnss_transform.py で生成)
+    use_file_rotation: true
+    single_floor_m: 0.05
+    single_scale: 1.0
+    accept_single: true

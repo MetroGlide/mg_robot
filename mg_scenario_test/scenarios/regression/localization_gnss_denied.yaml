@@ -1,0 +1,29 @@
+version: "2.0"
+name: localization_gnss_denied
+description: >
+  走行中に GNSS の配信を止めても (橋の下・建物の陰などで測位できなくなった状況)、AMCL とオドメトリだけで
+  自己位置を保ち、ゴールへ到達できることを確認する。GNSS ブリッジの /odom/gps を止めるサービスは、
+  ウェイポイントの gps_off が使うものと同じ。
+profile: mg01
+world: warehouse
+tags: [localization, gnss, nav2_goals]
+
+setup:
+  - respawn: { pose: { x: 0.0, y: 0.0, yaw: 0.0 }, settle_sec: 3.0 }
+
+run:
+  nav2_goals:
+    goal_timeout_sec: 90.0
+    goals:
+      - pose: { x: 8.0, y: 2.0, yaw: 0.0 }
+
+timeline:
+  - name: gnss_lost
+    when: { robot_travelled: { distance: 1.5 } }
+    do:
+      - call_set_bool: { service: /slam_gnss_nav_bridge/change_publish_state, value: false }
+
+expect:
+  - reached_all
+  - time_limit: { sec: 90 }
+  - final_pose_error: { x: 8.0, y: 2.0, tolerance: 0.5 }
