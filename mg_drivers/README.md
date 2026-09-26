@@ -40,6 +40,16 @@ EKF は速度を観測として使うため、速度を信頼する設定 (共�
 | `use_odom_corrector` | ナビゲーション: 実機 `true` / シミュレータ `false`。それ以外の launch (SLAM など): `false` | `true` でドライバの出力先を `/odom/raw` に変え、補正ノードを起動する |
 | `odom_corrector_params_file` | `wheel_odom_corrector.yaml` | `params/` 配下のファイル名、または絶対パス |
 
+**`/odom` の利用者と影響**: 補正を有効にすると、`/odom` は EKF、`odometry_tf_broadcaster` (odom→base_footprint)、
+Nav2 (`bt_navigator` の `odom_topic`、controller)、Web UI の ODOM 表示、rosbag の記録が受け取る。
+`pose_diff` の速度はドライバの速度より約 0.05 s 遅れる。velocity_smoother は OPEN_LOOP なので影響しないが、
+controller の追従は実機で確認する。問題があれば `odom.twist_source: raw` (ドライバの速度にスケール補正だけをかける) に戻せる。
+
+**単一障害点**: 補正ノードが落ちると `/odom` と odom→base の TF が止まる。launch で `respawn` (1 s 後) を付けてあり、
+姿勢が飛んだときは `reset_jump_m` の処理で生の姿勢に合わせ直す。
+
+**補正値は路面と荷重で変わる**: 既定値は 1 日分・同じ路面の推定。環境が変わったら `calib_wheel_odom.py` で再推定する。
+
 **元に戻す方法**: `use_odom_corrector:=false` で、ドライバが `/odom` を直接出す従来の構成になる。
 SLAM (slam_gnss_2d / slam_toolbox) は補正を使わず、従来どおり生の `/odom` を使う。
 

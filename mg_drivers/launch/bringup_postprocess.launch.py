@@ -49,6 +49,9 @@ def generate_launch_description():
                 executable="wheel_odom_corrector_node.py",
                 name="wheel_odom_corrector_node",
                 output="screen",
+                # /odom と odom->base TF の唯一の供給元のため、落ちたら自動で再起動する
+                respawn=True,
+                respawn_delay=1.0,
                 parameters=[
                     PathJoinSubstitution([
                         pkg_share, "params", odom_corrector_params_file_arg.launch_config]),
