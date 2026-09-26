@@ -43,7 +43,7 @@ gnss_amcl_initializer_node ◄─ /odom/gps ◄─ slam_gnss_nav_bridge ◄─ /
 | `/amcl_gate_arbiter/supervisor/change_publish_state` | 監督ノードの切り離し・復帰 |
 
 - ウェイポイントが切った区間では、監督ノードが復旧しても AMCL は戻らない。監督ノードが切っている間は、`amcl_on` でも戻らない。
-- 反映に失敗したり、ゲートが後から起動したりしても、1 Hz で合わせ直す。
+- 反映に失敗したり、ゲートが後から起動したりしても、1 Hz で合わせ直す。ゲートのノードが落ちて戻ったときも (再起動で開いた状態に戻るため) 送り直す。ただし 1 秒より短い間の再起動は検出できない。
 - `amcl_off` の後に `amcl_on` を送るのはウェイポイントの作り手の責任 (送り忘れると AMCL は戻らない。自動解除はしない)。
 - 監視ノードの種類 (`none` / `watchdog` / `supervisor`) によらず常に起動する。負荷はごく小さい。
 
@@ -59,7 +59,7 @@ gnss_amcl_initializer_node ◄─ /odom/gps ◄─ slam_gnss_nav_bridge ◄─ /
 | :--- | :--- |
 | `gnss` | 標準偏差 `gnss_max_sigma_m` (既定 2 m) 以下の GNSS と AMCL の位置の食い違い (マハラノビス距離の二乗。分散は AMCL と GNSS の両方を使うので、単独測位では数 m 以上のずれを検知する) |
 | `jump` | 連続する AMCL の推定が示す `map→odom` が、オドメトリの示す動きから飛んだ (`jump_threshold_m` / `_rad`) |
-| `scan` | EKF の姿勢でスキャンを地図に重ね、占有セルから `scan_tolerance_m` 以内の点の割合 (一致率) を見る。**一致率の絶対値は地図や LiDAR で決まる (正しい姿勢でも 0.3 前後のことがある)** ので、(1) 正常なときの一致率の中央値の `scan_ratio_factor` 倍 (下限 `scan_ratio_min`) を下回る、または (2) 姿勢の周り (±`scan_search_range_m`) でずらしたほうが一致率が `scan_gain_threshold` 以上増える、のどちらか |
+| `scan` | EKF の姿勢でスキャンを地図に重ね、占有セルから `scan_tolerance_m` 以内の点の割合 (一致率) を見る。**一致率の絶対値は地図や LiDAR で決まる (正しい姿勢でも 0.3 前後のことがある)** ので、正常なときの一致率の中央値の `scan_ratio_factor` 倍 (下限 `scan_ratio_min`) を下回ったら異常とする。姿勢の周り (±`scan_search_range_m`) でずらしたときの一致率の増え方 (利得) も記録するが、別走行の地図との位置合わせのずれで正しい姿勢でも 0.4 前後になるため、`scan_gain_threshold` は既定で 1.0 (判定に使わない) |
 | `diff` | AMCL と EKF の位置が `diff_threshold_m` 以上離れている |
 
 - どの判定も、使えないとき (GNSS の精度が悪すぎる、スキャンが無いなど) は判定しない (異常とも正常とも数えない)。
@@ -105,7 +105,9 @@ NORMAL ─ 異常の疑い ─► SUSPECT ─ 確認 ─► ISOLATED (AMCL を E
 
 ### 制約
 
-- 起動直後は EKF がまだ収束していないため、判定が安定するまでは誤検知しうる。
+- `LocalizationStatus.amcl_attached` は、監督ノード自身が要求した状態を表す。ウェイポイントが `amcl_off` で AMCL を止めていても `true` のままになる (実際にゲートが開いているかは調停ノードのログで確認する)。
+
+- 起動直後 (`startup_grace_sec`、既定 30 s) と復旧直後 (`grace_after_recovery_sec`) は、EKF・AMCL が落ち着くまで判定しない (値の記録だけ行う)。
 
 ## 起動引数
 
