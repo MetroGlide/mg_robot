@@ -29,6 +29,7 @@ class AmclGateArbiterNode(Node):
         self._gate_client = self.create_client(
             SetBool, self.get_parameter('gate_service').value)
         self._pending = False
+        self._gate_was_ready = False
         for name in REQUESTERS:
             self.create_service(
                 SetBool, f'~/{name}/change_publish_state',
@@ -53,9 +54,12 @@ class AmclGateArbiterNode(Node):
         return response
 
     def _reconcile(self):
-        if self._pending or not self._arbiter.needs_apply():
-            return
-        if not self._gate_client.service_is_ready():
+        ready = self._gate_client.service_is_ready()
+        if self._gate_was_ready and not ready:
+            # ゲートのノードが落ちた (再起動されると開いた状態に戻る) ので、次に現れたら送り直す
+            self._arbiter.mark_unknown()
+        self._gate_was_ready = ready
+        if self._pending or not ready or not self._arbiter.needs_apply():
             return
         request = SetBool.Request()
         request.data = self._arbiter.desired
