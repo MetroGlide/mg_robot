@@ -211,8 +211,8 @@ ros2 run mg_waypoint_navigation migrate_waypoints.py input.yaml output_v2.yaml
 | ----------------------------- | ------------- | ---------------------------------------------------------------------- |
 | `front_lidar_off`             | `service`     | `/front_lidar_publish_controller_node/change_publish_state` data=false |
 | `front_lidar_on`              | `service`     | 同 data=true                                                           |
-| `amcl_on`                     | `service`     | `/amcl_publish_controller_node/change_publish_state` data=true (AMCL の出力を EKF に入れる) |
-| `amcl_off`                    | `service`     | `/amcl_publish_controller_node/change_publish_state` data=false        |
+| `amcl_on`                     | `service`     | `/amcl_gate_arbiter/waypoint/change_publish_state` data=true (AMCL の出力を EKF に入れる) |
+| `amcl_off`                    | `service`     | `/amcl_gate_arbiter/waypoint/change_publish_state` data=false        |
 | `gps_on`                      | `service`     | `/slam_gnss_nav_bridge/change_publish_state` data=true (`/odom/gps` の配信) |
 | `gps_off`                     | `service`     | `/slam_gnss_nav_bridge/change_publish_state` data=false                |
 | `reload_map`                  | `load_map`    | `localization_map_yaml` / `planning_map_yaml` を引き継ぎ               |

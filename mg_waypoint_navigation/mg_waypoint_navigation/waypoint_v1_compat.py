@@ -22,14 +22,14 @@ _V1_ACTION_MAP = {
     ),
     "amcl_on": lambda: ActionConfig(
         type="service",
-        service="/amcl_publish_controller_node/change_publish_state",
+        service="/amcl_gate_arbiter/waypoint/change_publish_state",
         srv_module="std_srvs.srv",
         srv_class="SetBool",
         request={"data": True},
     ),
     "amcl_off": lambda: ActionConfig(
         type="service",
-        service="/amcl_publish_controller_node/change_publish_state",
+        service="/amcl_gate_arbiter/waypoint/change_publish_state",
         srv_module="std_srvs.srv",
         srv_class="SetBool",
         request={"data": False},
