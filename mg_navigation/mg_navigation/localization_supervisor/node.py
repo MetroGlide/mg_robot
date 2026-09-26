@@ -10,7 +10,7 @@ AMCL・GNSS・EKF・スキャン (と地図) を見比べて AMCL のずれを�
     scan : EKF の姿勢でスキャンを地図に重ねても合わない
     diff : AMCL と EKF の位置が離れている
   行動
-    切り離し: /amcl_publish_controller_node/change_publish_state (SetBool) で AMCL の出力を止める
+    切り離し: /amcl_gate_arbiter/supervisor/change_publish_state (SetBool) で AMCL の出力を止める (調停ノード経由)
     復旧    : 候補 (EKF の姿勢、精度の良い GNSS の位置 + EKF の向き) のうちスキャンが地図に最もよく合う姿勢で
               /initialpose (AMCL) と /set_pose (EKF) を初期化し直し、収束を確認したら AMCL を戻す
 """
@@ -120,7 +120,7 @@ class LocalizationSupervisorNode(Node):
             'period_sec': 1.0,
             'map_frame': 'map', 'odom_frame': 'odom', 'base_frame': 'base_footprint',
             'scan_topic': '/scan_top_lidar',
-            'amcl_gate_service': '/amcl_publish_controller_node/change_publish_state',
+            'amcl_gate_service': '/amcl_gate_arbiter/supervisor/change_publish_state',
             'speed_limit_topic': '/speed_limit',
             # 判定のしきい値
             'gnss_max_sigma_m': 2.0,             # これ以下の精度の GNSS だけを AMCL との比較に使う

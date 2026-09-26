@@ -208,6 +208,15 @@ def generate_launch_description():
                     ("output_topic", "amcl_pose")]
     )
 
+    # AMCL ゲートの調停: ウェイポイントの amcl_on/off と監督ノードが互いの意図を上書きしないようにする
+    amcl_gate_arbiter_node = Node(
+        package='mg_navigation',
+        executable='amcl_gate_arbiter_node.py',
+        name='amcl_gate_arbiter',
+        output='screen',
+        parameters=[{'use_sim_time': use_sim_time}],
+    )
+
     def create_delayed_nodes(context):
         """起動を遅らせるノード (GNSS による初期化と監視ノード) を作る。
 
@@ -296,6 +305,7 @@ def generate_launch_description():
     ld.add_action(load_composable_nodes)
 
     ld.add_action(change_amcl_publish_state_node)
+    ld.add_action(amcl_gate_arbiter_node)
     ld.add_action(OpaqueFunction(function=create_delayed_nodes))
 
     return ld

@@ -24,12 +24,28 @@ gnss_amcl_initializer_node ◄─ /odom/gps ◄─ slam_gnss_nav_bridge ◄─ /
 | ノード | 役割 |
 | :--- | :--- |
 | `amcl` | LiDAR と地図による自己位置推定。出力は `/amcl_pose_origin` (TF は出さない) |
+| `amcl_gate_arbiter` | AMCL の入/切を要求元ごとに調停する (下記)。ゲートを操作するのはこのノードだけ |
 | `amcl_publish_controller_node` | `/amcl_pose_origin` を `/amcl_pose` へ中継する。SetBool で止めると AMCL が EKF に入らない |
 | `slam_gnss_nav_bridge` | `/navpvt` を、`gnss_transform.yaml` で map 座標に直して `/odom/gps` に出す。アンテナ位置を車体中心に補正し、測位の質に応じた分散を付ける ([slam_gnss_2d](../slam_gnss_2d/README.md)) |
 | `gnss_amcl_initializer_node` | 起動時 (と再初期化の要求時) に、精度の良い `/odom/gps` から `/initialpose` (AMCL) と `/set_pose` (EKF) を出して初期化する。EKF の初期共分散が大きく、AMCL の初期値 (原点) に引かれるため、EKF にも送る (`publish_set_pose`) |
 | `amcl_watchdog_node` | AMCL の共分散が大きい状態が続いたら、`gnss_amcl_initializer_node` に再初期化を要求する (従来の監視) |
 | `localization_supervisor_node` | AMCL のずれを検知して EKF から切り離し、EKF の姿勢で復旧する (下記) |
 | `ekf_global_node` | ホイールオドメトリの速度、AMCL の位置・yaw、GNSS の位置を融合する (`mg_drivers/params/ekf_global.yaml`) |
+
+## amcl_gate_arbiter (AMCL の入/切の調停)
+
+ウェイポイントの `amcl_on` / `amcl_off` と監督ノードが、同じゲートを直接切り替えると互いの意図を上書きする。
+そこで要求元ごとのサービスを設け、**すべての要求元が「入れる」のときだけ**ゲート (`amcl_publish_controller_node`) を開く。
+
+| サービス (SetBool。data=true で入れる) | 要求元 |
+| :--- | :--- |
+| `/amcl_gate_arbiter/waypoint/change_publish_state` | ウェイポイントの `amcl_on` / `amcl_off` |
+| `/amcl_gate_arbiter/supervisor/change_publish_state` | 監督ノードの切り離し・復帰 |
+
+- ウェイポイントが切った区間では、監督ノードが復旧しても AMCL は戻らない。監督ノードが切っている間は、`amcl_on` でも戻らない。
+- 反映に失敗したり、ゲートが後から起動したりしても、1 Hz で合わせ直す。
+- `amcl_off` の後に `amcl_on` を送るのはウェイポイントの作り手の責任 (送り忘れると AMCL は戻らない。自動解除はしない)。
+- 監視ノードの種類 (`none` / `watchdog` / `supervisor`) によらず常に起動する。負荷はごく小さい。
 
 ## localization_supervisor_node
 
@@ -61,7 +77,7 @@ NORMAL ─ 異常の疑い ─► SUSPECT ─ 確認 ─► ISOLATED (AMCL を E
                                                   DEGRADED (通知。degraded_retry_sec ごとに再試行)
 ```
 
-- **切り離し**: `/amcl_publish_controller_node/change_publish_state` (SetBool) で `/amcl_pose` を止める。EKF はオドメトリと GNSS だけで動く。
+- **切り離し**: 調停ノードの `/amcl_gate_arbiter/supervisor/change_publish_state` (SetBool) で `/amcl_pose` を止める。EKF はオドメトリと GNSS だけで動く。
 - **復旧の姿勢**: 次の候補のうち、スキャンが地図に最もよく合うものを選ぶ (比べられなければ GNSS を優先)。
   1. EKF の姿勢
   2. **巻き戻し**: 異常が始まる `rollback_margin_sec` 前の `map→odom` に、今のオドメトリの動きを足した姿勢 (AMCL が飛んで EKF が引きずられた場合)
@@ -78,8 +94,6 @@ NORMAL ─ 異常の疑い ─► SUSPECT ─ 確認 ─► ISOLATED (AMCL を E
 
 ### 制約
 
-- **AMCL の入/切が他と競合する**: ウェイポイントの `amcl_off` / `amcl_on` も、監督ノードと同じ `/amcl_publish_controller_node/change_publish_state` を使う。
-  ウェイポイントで AMCL を切った区間でも、監督ノードが復旧すると AMCL を戻してしまう。そのため監督ノードは既定にせず、`localization_monitor:=supervisor` で明示的に選ぶ。
 - 起動直後は EKF がまだ収束していないため、判定が安定するまでは誤検知しうる。
 
 ## 起動引数
