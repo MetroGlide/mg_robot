@@ -61,6 +61,7 @@ class Checks:
     jump: Optional[bool] = None   # AMCL の推定が、オドメトリの示す動きから飛んだ
     scan: Optional[bool] = None   # EKF の姿勢でスキャンが地図に合わない
     diff: Optional[bool] = None   # AMCL と EKF の位置が離れている
+    converged: Optional[bool] = None  # AMCL が EKF の近くに収束している (復旧の確認に使う。diff より厳しい)
 
 
 @dataclass
@@ -143,12 +144,13 @@ class SupervisorMachine:
             return Decision(self.state, [])
 
         if self.state == State.RECOVERING:
-            # 初期化直後は AMCL が飛ぶので、飛びの判定は使わない
-            bad = any(v is True for v in (checks.gnss, checks.scan, checks.diff))
-            seen = any(v is not None for v in (checks.gnss, checks.scan, checks.diff))
+            # 初期化直後は AMCL が飛ぶので、飛びの判定は使わない。
+            # 復旧の確認は「AMCL が EKF の近くに収束し、GNSS とも合う」ことだけを見る
+            # (スキャンの判定は EKF の姿勢を見るもので、AMCL の収束とは関係がない)
+            bad = checks.gnss is True or checks.converged is False
             if bad:
                 self._ok_run = 0
-            elif seen:
+            elif checks.converged is True:
                 self._ok_run += 1
             if self._ok_run >= cfg.recover_ok_ticks:
                 self.state = State.NORMAL

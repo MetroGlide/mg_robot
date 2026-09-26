@@ -109,6 +109,8 @@ class LocalizationSupervisorNode(Node):
         self._gate_client = self.create_client(SetBool, p['amcl_gate_service'])
         self._applied_attach = True
         self._gate_pending = False
+        self._converged: Optional[bool] = None
+        self._grace_until: Optional[float] = None  # 最初の周期で起動直後の猶予を設定する
 
         self._values = dict(UNAVAILABLE_VALUES)
         self._last_event = ''
@@ -140,11 +142,16 @@ class LocalizationSupervisorNode(Node):
             'scan_baseline_min_samples': 20,     # 基準の中央値を使い始める、正常なときの一致率の数
             'scan_baseline_window': 120,         # 基準に使う、直近の正常なときの一致率の数
             # 姿勢の周り (±scan_search_range_m) でずらしたほうが、一致した割合がこれ以上増えるなら異常
-            'scan_gain_threshold': 0.25,
+            'scan_gain_threshold': 1.0,
             'scan_search_range_m': 1.0,
             'scan_search_step_m': 0.25,
             'scan_max_points': 180,
             'diff_threshold_m': 2.0,
+            # 復旧の確認: AMCL と EKF の位置の差がこれ以下 [m]
+            'recover_diff_m': 1.0,
+            # 起動直後・復旧直後は判定しない時間 [s]
+            'startup_grace_sec': 30.0,
+            'grace_after_recovery_sec': 10.0,
             # 状態遷移
             'gnss_suspect_ticks': 3, 'gnss_isolate_ticks': 6,
             'scan_suspect_ticks': 5, 'scan_isolate_ticks': 10,
@@ -222,7 +229,7 @@ class LocalizationSupervisorNode(Node):
         previous, self._prev_map_odom = self._prev_map_odom, map_odom
         if previous is None:
             return None
-        dpos, dyaw = pose_jump(previous, map_odom)
+        dpos, dyaw = pose_jump(previous, map_odom, odom_base)
         self._values['jump'] = dpos
         if now < self._ignore_jump_until:
             return False
@@ -247,6 +254,7 @@ class LocalizationSupervisorNode(Node):
 
     def _check_diff(self, now: float) -> Optional[bool]:
         p = self._p
+        self._converged = None
         if not self._fresh_amcl(now):
             return None
         ekf = self._lookup_pose(p['map_frame'], p['base_frame'], self._amcl_stamp)
@@ -254,6 +262,7 @@ class LocalizationSupervisorNode(Node):
             return None
         diff = math.hypot(self._amcl[1][0] - ekf[0], self._amcl[1][1] - ekf[1])
         self._values['diff'] = diff
+        self._converged = diff <= p['recover_diff_m']
         return diff > p['diff_threshold_m']
 
     def _scan_stats_at(self, pose: Pose2, with_gain: bool = False) -> Optional[Tuple[float, float]]:
@@ -430,10 +439,16 @@ class LocalizationSupervisorNode(Node):
         now = self._now()
         if now == 0.0:
             return
+        if self._grace_until is None:
+            self._grace_until = now + self._p['startup_grace_sec']
         self._values = dict(UNAVAILABLE_VALUES)
         checks = Checks(
             gnss=self._check_gnss(now), jump=self._check_jump(now),
             scan=self._check_scan(), diff=self._check_diff(now))
+        checks.converged = self._converged
+        if now < self._grace_until:
+            # 起動直後と復旧直後は、EKF・AMCL が落ち着くまで判定しない (値の記録だけ)
+            checks = Checks()
         state_before = self._machine.state
         decision = self._machine.step(now, checks)
         if state_before == State.NORMAL and decision.state == State.SUSPECT:
@@ -449,6 +464,7 @@ class LocalizationSupervisorNode(Node):
                 self._apply_degraded(True)
             elif action == Action.ATTACH:
                 self._apply_degraded(False)
+                self._grace_until = now + self._p['grace_after_recovery_sec']
         if events:
             self._last_event = '; '.join(events)
             self.get_logger().info(f'state={State(decision.state).name} {self._last_event}')

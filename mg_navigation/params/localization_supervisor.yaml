@@ -23,6 +23,7 @@ localization_supervisor_node:
     # 次の 2 つを使う。どちらかに当てはまれば異常
     #  - 一致率が、正常なときの中央値の scan_ratio_factor 倍 (下限 scan_ratio_min) 未満
     #  - 姿勢の周り (±scan_search_range_m) でずらしたほうが、一致率が scan_gain_threshold 以上増える
+    #    (別走行の地図との位置合わせのずれで、正しい姿勢でも利得が 0.4 前後になるため、既定では使わない (1.0 = 無効))
     scan_max_age_sec: 2.0
     scan_radius_m: 25.0
     scan_tolerance_m: 0.3
@@ -31,12 +32,17 @@ localization_supervisor_node:
     # 基準の中央値に使う、正常なときの一致率の数 (最初の scan_baseline_min_samples 個までは下限だけを使う)
     scan_baseline_min_samples: 20
     scan_baseline_window: 120
-    scan_gain_threshold: 0.25
+    scan_gain_threshold: 1.0
     scan_search_range_m: 1.0
     scan_search_step_m: 0.25
     scan_max_points: 180
     # AMCL と EKF の位置の差 [m]
     diff_threshold_m: 2.0
+    # 復旧の確認: AMCL と EKF の位置の差がこれ以下 [m] (これが続けば AMCL を EKF に戻す)
+    recover_diff_m: 1.0
+    # 起動直後と復旧直後は、EKF・AMCL が落ち着くまで判定しない [s]
+    startup_grace_sec: 30.0
+    grace_after_recovery_sec: 10.0
 
     # --- 状態遷移 (周期ごとの回数) ---
     gnss_suspect_ticks: 3

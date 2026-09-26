@@ -32,10 +32,16 @@ def implied_map_odom(map_base: Pose2, odom_base: Pose2) -> Pose2:
     return compose(map_base, inverse(odom_base))
 
 
-def pose_jump(previous: Pose2, current: Pose2) -> Tuple[float, float]:
-    """2 つの map->odom の違い (位置 [m]、|yaw| [rad]) を返す。"""
-    return (math.hypot(current[0] - previous[0], current[1] - previous[1]),
-            abs(wrap_angle(current[2] - previous[2])))
+def pose_jump(previous: Pose2, current: Pose2, odom_base: Pose2) -> Tuple[float, float]:
+    """2 つの map->odom の違いが、ロボット (odom_base の位置) の map 上の姿勢に与える飛び (位置 [m]、|yaw| [rad])。
+
+    map->odom の並進どうしを比べると、odom の原点から離れるほど yaw の小さな違いが大きな位置の差になる
+    (500 m 走った後では 0.01 rad で 5 m)。同じ odom_base に前後の map->odom を適用して比べる。
+    """
+    before = compose(previous, odom_base)
+    after = compose(current, odom_base)
+    return (math.hypot(after[0] - before[0], after[1] - before[1]),
+            abs(wrap_angle(after[2] - before[2])))
 
 
 def mahalanobis_sq_xy(dx: float, dy: float, var_x: float, var_y: float) -> float:

@@ -25,13 +25,13 @@ def test_implied_map_odom_is_constant_when_odom_is_consistent():
         poses.append(ck.implied_map_odom(map_base, base))
     for p in poses:
         assert p == pytest.approx(map_odom, abs=1e-12)
-    assert ck.pose_jump(poses[0], poses[2]) == pytest.approx((0.0, 0.0), abs=1e-12)
+    assert ck.pose_jump(poses[0], poses[2], (6.0, 2.0, -0.2)) == pytest.approx((0.0, 0.0), abs=1e-12)
 
 
 def test_pose_jump_detects_amcl_step():
     before = (10.0, -5.0, 0.4)
     after = (12.0, -5.0, 0.4 + 0.5)
-    dpos, dyaw = ck.pose_jump(before, after)
+    dpos, dyaw = ck.pose_jump(before, after, (0.0, 0.0, 0.0))
     assert dpos == pytest.approx(2.0)
     assert dyaw == pytest.approx(0.5)
 
@@ -195,11 +195,30 @@ def test_recovery_path_and_attach():
     assert d.state == State.RECOVERING and d.actions == [Action.REINIT]
     # 初期化後の飛びは無視し、正常が続けば戻す
     for i in range(2):
-        d = machine.step(t + 4.0 + i, Checks(jump=True, gnss=False, scan=False))
+        d = machine.step(t + 4.0 + i, Checks(jump=True, gnss=False, scan=True, converged=True))
         assert d.state == State.RECOVERING
-    d = machine.step(t + 6.0, Checks(gnss=False, scan=False))
+    d = machine.step(t + 6.0, Checks(gnss=False, scan=True, converged=True))
     assert d.state == State.NORMAL and d.actions == [Action.ATTACH]
     assert machine.attached
+
+
+def test_recovery_needs_amcl_to_converge_near_ekf():
+    cfg = MachineConfig(isolate_hold_sec=1.0, recover_ok_ticks=3, recover_timeout_sec=100.0)
+    machine = SupervisorMachine(cfg)
+    _run(machine, [Checks(gnss=True) for _ in range(6)])
+    t = 6.0
+    assert machine.step(t + 1.0, Checks()).state == State.RECOVERING
+    # AMCL がまだ離れている、または収束を判定できない間は戻さない
+    for i in range(5):
+        assert machine.step(t + 2.0 + i, Checks(gnss=False, converged=False)).state == State.RECOVERING
+        assert machine.step(t + 2.5 + i, Checks(gnss=False, converged=None)).state == State.RECOVERING
+    # 途中で離れたら数え直す
+    machine.step(t + 10.0, Checks(converged=True))
+    machine.step(t + 11.0, Checks(converged=True))
+    machine.step(t + 12.0, Checks(converged=False))
+    assert machine.step(t + 13.0, Checks(converged=True)).state == State.RECOVERING
+    machine.step(t + 14.0, Checks(converged=True))
+    assert machine.step(t + 15.0, Checks(converged=True)).state == State.NORMAL
 
 
 def test_recovery_timeout_retries_then_degrades_then_retries():
@@ -218,3 +237,16 @@ def test_recovery_timeout_retries_then_degrades_then_retries():
     assert machine.step(t + 30.0, Checks()).state == State.DEGRADED
     d = machine.step(t + 41.0, Checks())
     assert d.state == State.RECOVERING and d.actions == [Action.REINIT]
+
+
+def test_pose_jump_is_not_amplified_by_distance_from_odom_origin():
+    # odom の原点から 500 m 離れていると、AMCL の yaw が 0.01 rad ぶれるだけで、implied な map->odom の
+    # 並進は 5 m 変わる。ロボットの姿勢としては同じなので、飛びは 0 (並進どうしを比べると誤検知になる)
+    base_before = (500.0, 0.0, 0.0)
+    base_after = (500.5, 0.0, 0.0)
+    a = ck.implied_map_odom((10.0, 20.0, 0.30), base_before)
+    b = ck.implied_map_odom((10.5, 20.0, 0.31), base_after)
+    assert math.hypot(b[0] - a[0], b[1] - a[1]) > 4.0
+    dpos, dyaw = ck.pose_jump(a, b, base_after)
+    assert dpos < 0.2
+    assert dyaw == pytest.approx(0.01)
