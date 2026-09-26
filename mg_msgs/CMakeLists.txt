@@ -13,6 +13,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/SequencerStatus.msg"
   "msg/WaypointList.msg"
   "msg/PoseGraphDiff.msg"
+  "msg/LocalizationStatus.msg"
   "srv/ResetSimRobotPose.srv"
   "srv/StartSequence.srv"
   "srv/GetPoseGraph.srv"

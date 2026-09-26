@@ -80,6 +80,7 @@ add_library(slam_gnss_2d_core
   src/core/slam_node_base.cpp
   src/gnss/utm.cpp
   src/gnss/anchor_manager.cpp
+  src/gnss/nav_bridge_core.cpp
   src/input/time_series.cpp
   src/input/ros2/ros_adapter.cpp
   src/input/ros2/bag_reader.cpp
@@ -207,6 +208,9 @@ if(BUILD_TESTING)
 
   ament_add_gtest(test_anchor_manager test/test_anchor_manager.cpp)
   target_link_libraries(test_anchor_manager slam_gnss_2d_core)
+
+  ament_add_gtest(test_nav_bridge_core test/test_nav_bridge_core.cpp)
+  target_link_libraries(test_nav_bridge_core slam_gnss_2d_core)
 
   ament_add_gtest(test_icp_matcher test/test_icp_matcher.cpp)
   target_link_libraries(test_icp_matcher slam_gnss_2d_core)

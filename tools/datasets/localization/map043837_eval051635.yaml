@@ -1,0 +1,24 @@
+# 別走行での評価 (本番用): 地図を作った走行と、評価する走行が異なる。
+# 地図 = record_slam_20260913_043837 の SLAM 出力、評価 = record_slam_20260913_051635 の走行。
+# 真値は評価する走行の SLAM 出力 (pose_graph.json) を、UTM 経由で地図の座標系へ移して使う。
+#
+# 評価する走行 (051635) の区間を選ぶときの注意:
+# - 地図 (043837) の範囲内にあるのは 0-138 s / 462-1586 s / 1636-1856 s。地図の外 (138-462 s) では
+#   AMCL が使えず破綻する。地図の端に入った直後 (462-540 s) も特徴が乏しく誤差が大きい
+# - ホイールオドメトリの速度 (twist) が 0 のまま姿勢だけ更新される期間が 370-730 s にある
+#   (この区間は map043837_eval051635_twist_glitch で扱う)
+# - 動いている最中から再生を始めると、初期化直後の収束前に走り出して AMCL が破綻しやすい (実運用では
+#   止まった状態で初期化する)。722-810 s は停止している
+# よって、地図の内側で速度が正常で、停止中から始まる 760 s からの 640 s を評価する。
+# パスはコンテナ内 (/root/ros2_data = ホストの ~/ros2_data)。
+name: map043837_eval051635
+description: 別走行での評価 (地図 043837 の SLAM 出力、評価 051635 の 760-1400 s)
+map:
+  localization_yaml: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_043837/20260921_2248/map.yaml
+  gnss_transform: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_043837/20260921_2248/gnss_transform.yaml
+  slam_dir: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_043837/20260921_2248
+eval:
+  bag: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_051635
+  slam_dir: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_051635/20260921_2243
+  start_offset: 760.0
+  duration: 640.0

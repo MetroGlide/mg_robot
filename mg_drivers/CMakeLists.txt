@@ -179,11 +179,12 @@ install(PROGRAMS
   DESTINATION lib/${PROJECT_NAME}
 )
 install(PROGRAMS
-  scripts/initialpose_to_setpose.py
+  scripts/odom_covariance_override_node.py
   DESTINATION lib/${PROJECT_NAME}
 )
 install(PROGRAMS
-  scripts/odom_covariance_override_node.py
+  scripts/wheel_odom_corrector_node.py
+  scripts/wheel_odom_correction.py
   DESTINATION lib/${PROJECT_NAME}
 )
 install(PROGRAMS
@@ -195,10 +196,6 @@ install(PROGRAMS
   DESTINATION lib/${PROJECT_NAME}
 )
 
-install(PROGRAMS
-  scripts/gnss_odometry_node.py
-  DESTINATION lib/${PROJECT_NAME}
-)
 install(PROGRAMS
   scripts/generic_publish_controller_node.py
   DESTINATION lib/${PROJECT_NAME}

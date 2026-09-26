@@ -1,0 +1,14 @@
+# tools/scripts/make_sim_gnss_transform.py で mg_simulation/worlds/warehouse.sdf から生成
+# (ワールドの原点 = 地図の原点。東・北に揃った座標で、rotation_rad は UTM のグリッドとの子午線収束角のずれ)。
+# GNSS ブリッジの use_file_rotation: true で map 座標の回転に使う。
+anchor:
+  latitude: -22.986687
+  longitude: -43.202501
+anchor_utm:
+  easting: 684249.6534255177
+  northing: 7456825.068300184
+  zone: 23
+  hemisphere: south
+rotation_rad: 0.01225465280484255
+metadata:
+  source: make_sim_gnss_transform.py (シミュレータのワールドの原点。東・北に揃った座標)

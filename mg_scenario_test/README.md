@@ -122,6 +122,7 @@ make scenario-test-all TIER=smoke ROBOT=<実機PCのIP>
 |---|---|
 | `mg_simulation/worlds/warehouse.sdf` | ワールド |
 | `mg_simulation/maps/warehouse/{localization,planning}.yaml`, `map.pgm` | 測位・計画用の地図 |
+| `mg_simulation/maps/warehouse/gnss_transform.yaml` | Gazebo の navsat を地図座標に直す変換 (`tools/scripts/make_sim_gnss_transform.py` で生成)。GNSS ブリッジ (`config/nav_bridge_sim.yaml`) が使い、`/odom/gps` を EKF に入れる |
 | `mg_simulation/maps/warehouse/waypoints.yaml` | sequencer 用の waypoint (通過点、許容距離 1.5 m) |
 
 ## トラブルシュート

@@ -37,6 +37,7 @@ scenarios/
 | `sequencer_stop_restart` | 走行中に停止して次の index を設定すると、止まったあと (auto_start が) 再開して最後まで到達する | 約 1.5 分 |
 | `dynamic_persistent_recovery` | 迂回できない壁が居座ると、待機時間を超えて BackUp のリカバリーが動き、除去後に到達する | 約 1.5 分 |
 | `full_lap_sequencer` | シミュレーション用 waypoint 9 個 (通過点と wait_trigger の停止点) を 1 周する | 約 3.5 分 |
+| `localization_gnss_denied` | 走行中に GNSS の配信を止めても (ブリッジの `change_publish_state`)、AMCL とホイールオドメトリだけでゴールへ到達し、停止位置の誤差が 0.5m 以内 | 約 40 秒 |
 | `narrow_corridor_blocked` | 通れない幅 (0.5m) の狭い回廊へ経路を引かず、壁の外側を迂回して到達する。壁に接触しない (`obstacle_clearance`) | 約 1 分 |
 | `dynamic_avoid` | 横切る歩行者 (0.6m/s) に、ロボット自身の動きで接触せず (`obstacle_clearance`) 到達する | 約 1 分 |
 

@@ -47,6 +47,8 @@ make test pkg=<pkg>   # 特定パッケージのテスト
 make bag-summary      # .env指定のrosbagを解析し同ディレクトリにsummary.mdを出力
 make bag-plot-gnss    # GNSS軌跡・Fix状態・精度を可視化（CIRCLES=1で精度円、SCALE=10で倍率指定、TO_TOOLS=1でtools/data/保存）
 make bag-plot-scans   # LiDARスキャン点群を2D画像化（NODES=1:20等でノード指定）
+make bag-eval-localization BAG=<bag> [GT_DIR=<SLAM出力>]  # 自己位置推定(EKF融合)の評価。滑らかさ・真値との誤差・NEES・AMCL遅延
+tools/scripts/run_localization_variant.sh <名前> [ekf.KEY=V amcl.KEY=V ...]  # 自己位置推定のパラメータ変種をrosbag再生で評価（実機不要。tools/README.md）
 make scenario-validate  # シナリオYAMLの静的検証（シミュレータ不要）
 make scenario-test SCENARIO=<名前|パス>  # Gazebo+Nav2を起動して1本実行（ヘッドレス、GUI=1で表示）。詳細は mg_scenario_test/README.md
 make scenario-test-all TIER=smoke  # 回帰テストをスタック起動し直しで一括実行（TIER省略で全件。実装変更後はsmokeを実行）
@@ -74,9 +76,9 @@ source /opt/ros/humble/setup.bash && source /root/ros2_ws/install/setup.bash
 | `mg_bringup`             | slam/navigationを束ねるトップレベルlaunch群                    |
 | `mg_description`         | URDF・RViz設定                                                 |
 | `mg_diagnostics`         | `/diagnostics`トピックへの正常性診断配信                       |
-| `mg_drivers`             | LiDAR/DepthCam/GPS/IMU/モータドライバ群                        |
+| `mg_drivers`             | LiDAR/DepthCam/GPS/IMU/モータドライバ群、ホイールオドメトリの補正(`wheel_odom_corrector_node`) |
 | `mg_msgs`                | カスタムメッセージ・サービス定義                               |
-| `mg_navigation`          | Nav2ラッパー(collision_monitor/behavior_server設定, AMCL watchdog, GNSS初期化) |
+| `mg_navigation`          | Nav2ラッパー(collision_monitor/behavior_server設定, AMCL watchdog, GNSS初期化, AMCL入切の調停`amcl_gate_arbiter`, 自己位置の監督ノード`localization_supervisor`)。自己位置推定の構成は [README](./mg_navigation/README.md) |
 | `mg_scenario_test`       | MG-01用のシナリオテスト（プロファイル・プラグイン・シナリオ。[README](./mg_scenario_test/README.md)） |
 | `sim_scenario_test`      | ロボット非依存のGazebo+Nav2シナリオテスト基盤（mg_*に依存しない。[README](./sim_scenario_test/README.md)） |
 | `mg_simulation`          | Gazebo Fortress ワールド・launch設定                           |
@@ -178,6 +180,9 @@ make test pkg=mg_waypoint_navigation
 | `tools/scripts/generate_static_transforms.py` | 地図とGNSSの対応点から剛体変換 (x,y,yaw) を算出 |
 | `tools/scripts/rosbag_modify_base.py` | rosbag内の特定トピック修正・書き換え |
 | `tools/scripts/bag_to_json.py` | rosbagの指定トピック/全メッセージのJSONダンプ |
+| `tools/scripts/eval_localization.py`<br>(`make bag-eval-localization`) | 自己位置推定の評価（滑らかさ・真値との誤差・NEES・AMCL遅延・故障からの復旧） |
+| `tools/scripts/run_localization_variant.sh` | 自己位置推定のパラメータ変種をrosbag再生で評価（センサ故障の注入にも対応）。データセットは`tools/datasets/localization/` |
+| `tools/scripts/calib_wheel_odom.py` | 走行ログとSLAM出力からホイールオドメトリのスケール・バイアス・遅れを推定 |
 
 ### 解析結果・可視化画像の保存先切り替え
 

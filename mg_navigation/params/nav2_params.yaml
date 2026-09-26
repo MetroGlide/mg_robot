@@ -8,9 +8,11 @@ amcl:
     scan_topic: /scan_top_lidar
     laser_max_range: -1.0
     laser_min_range: -1.0
-    max_beams: 1500
-    max_particles: 5000
-    min_particles: 1000
+    # ビームとパーティクルを減らして負荷と遅れを減らす (再生評価で、精度は同等以上で AMCL の遅延が約 26% 減った)。
+    # 元の値は max_beams 1500 / max_particles 5000 / min_particles 1000
+    max_beams: 240
+    max_particles: 2000
+    min_particles: 500
 
     # For filter update rates
     update_min_a: 0.2

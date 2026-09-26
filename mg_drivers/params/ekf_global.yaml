@@ -41,6 +41,12 @@ ekf_global_node:
 # Whether we'll allow old measurements to cause a re-publication of the updated state
         permit_corrected_publication: false
 
+# 遅れて届く測定値 (AMCL は約 0.14〜0.25 秒遅れ) を、その時刻の状態まで戻して取り込み直す。
+# true にするときは history_length (秒) を、測定値の遅れより長く設定する。
+# 負荷は EKF が測定値を取り込み直す分だけわずかに増える。false / 0.0 で従来の挙動に戻る。
+        smooth_lagged_data: true
+        history_length: 1.0
+
 # Whether to publish the acceleration state. Defaults to false if unspecified.
         publish_acceleration: false
 
@@ -85,9 +91,10 @@ ekf_global_node:
 # do not provide some of the state variables estimated by the filter. For example, a TwistWithCovarianceStamped message
 # has no pose information, so the first six values would be meaningless in that case. Each vector defaults to all false
 # if unspecified, effectively making this parameter required for each sensor.
+        # GNSS は位置だけを使う。yaw は使わない: 進行方向から作った向きは、後退で逆向きになり、旋回中は遅れ、
+        # AMCL の yaw との食い違いで map→odom の yaw が大きく飛ぶ (再生評価で yaw の飛びの最大が半分になった)
         odom0_config: [true,  true,  false, # x, y, z
-                #        false, false, false, # roll, pitch, yaw
-                       false, false, true, # roll, pitch, yaw
+                       false, false, false, # roll, pitch, yaw
                        false, false, false, # vx, vy, vz
                        false, false, false, # vroll, vpitch, vyaw
                        false, false, false] # ax, ay, az
@@ -140,22 +147,6 @@ ekf_global_node:
         # odom1_rejection_threshold: 2.0  # Note the difference in parameter name
         # odom1_nodelay: false
 
-        odom2: /kissicp/odom/none
-        odom2_config: [true,  true,  false,
-                       false, false, true,
-                       true, true, false,
-                #        false, false, false,
-                       false, false, false,
-                       false, false, false]
-
-        # odom2_differential: true
-        odom2_differential: false
-        odom2_relative: true
-
-        odom2_queue_size: 2
-        # odom2_rejection_threshold: 2.0  # Note the difference in parameter name
-        # odom2_nodelay: false
-
         # pose0: /amcl_pose/none
         pose0: /amcl_pose
         pose0_config: [true,  true,  false,
@@ -166,7 +157,8 @@ ekf_global_node:
         pose0_differential: false
         pose0_relative: false
         pose0_queue_size: 5
-        # pose0_rejection_threshold: 2.0  # Note the difference in parameter name
+        # AMCL の外れ値を弾くマハラノビス距離のしきい値。大きい値は棄却しない
+        pose0_rejection_threshold: 1.0e9
         # pose0_nodelay: false
 
 
@@ -229,12 +221,14 @@ ekf_global_node:
 # question. Users should take care not to use large values for variables that will not be measured directly. The values
 # are ordered as x, y, z, roll, pitch, yaw, vx, vy, vz, vroll, vpitch, vyaw, ax, ay, az. Defaults to the matrix below
 #if unspecified.
-        initial_estimate_covariance: [1e-9, 0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     0.0,     0.0,    0.0,    0.0,
-                                      0.0,    1e-9, 0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     0.0,     0.0,    0.0,    0.0,
+# x, y, yaw は、最初の AMCL / GNSS の測定値にすばやく合わせるため大きくする (1e-9 だと、初期姿勢が違うとき
+# 何十秒も測定値に追従せず、GNSS の測定値は棄却され続ける)。set_pose / initialpose で初期化すれば、その共分散に置き換わる。
+        initial_estimate_covariance: [10.0, 0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     0.0,     0.0,    0.0,    0.0,
+                                      0.0,    10.0, 0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     0.0,     0.0,    0.0,    0.0,
                                       0.0,    0.0,    1e-9, 0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     0.0,     0.0,    0.0,    0.0,
                                       0.0,    0.0,    0.0,    1e-9, 0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     0.0,     0.0,    0.0,    0.0,
                                       0.0,    0.0,    0.0,    0.0,    1e-9, 0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     0.0,     0.0,    0.0,    0.0,
-                                      0.0,    0.0,    0.0,    0.0,    0.0,    1e-9, 0.0,    0.0,    0.0,    0.0,     0.0,     0.0,     0.0,    0.0,    0.0,
+                                      0.0,    0.0,    0.0,    0.0,    0.0,    1.0,  0.0,    0.0,    0.0,    0.0,     0.0,     0.0,     0.0,    0.0,    0.0,
                                       0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    1e-9, 0.0,    0.0,    0.0,     0.0,     0.0,     0.0,    0.0,    0.0,
                                       0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    1e-9, 0.0,    0.0,     0.0,     0.0,     0.0,    0.0,    0.0,
                                       0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    1e-9, 0.0,     0.0,     0.0,     0.0,    0.0,    0.0,

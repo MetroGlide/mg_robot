@@ -1,0 +1,16 @@
+# 別走行での評価の短縮版 (動作確認・パラメータの粗い比較用)。
+# map043837_eval051635 と同じ地図・走行で、760 s からの 200 s だけを評価する。
+# 評価する走行はこの区間の前半 (722-810 s) で停止していて、ロボットが止まった状態で自己位置推定を初期化して
+# から走り出す。動いている最中から再生を始めると、初期化直後の収束前に走り出すことになり、実運用より
+# 厳しい条件で AMCL が破綻しやすい。
+name: map043837_eval051635_short
+description: 別走行での評価の短縮版 (地図 043837、評価 051635 の 760-960 s)
+map:
+  localization_yaml: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_043837/20260921_2248/map.yaml
+  gnss_transform: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_043837/20260921_2248/gnss_transform.yaml
+  slam_dir: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_043837/20260921_2248
+eval:
+  bag: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_051635
+  slam_dir: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_051635/20260921_2243
+  start_offset: 760.0
+  duration: 200.0

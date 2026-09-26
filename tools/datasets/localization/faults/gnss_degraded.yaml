@@ -1,0 +1,4 @@
+# GNSS の劣化: 位置のバイアス (マルチパスなど) と、欠測。時刻は再生開始からの経過秒。
+faults:
+  - {type: gnss_bias, start: 40.0, end: 70.0, bias: {x: 3.0, y: 0.0}}
+  - {type: gnss_drop, start: 100.0, end: 140.0}

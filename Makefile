@@ -22,7 +22,7 @@ _compose_opts = $(if $(OPTS),OPTS="$(OPTS)" )
         build build-all build-no-cache build-robot build-real build-robot-no-cache build-real-no-cache build-sim \
         _collect-deps \
         rviz2 rviz2-slam rviz2-navigation down xhost config \
-        test bag-summary bag-plot-gnss bag-plot-scans bag-eval-slam \
+        test bag-summary bag-plot-gnss bag-plot-scans bag-eval-slam bag-eval-localization \
         diagnostics system-manager foxglove-bridge web-ui web-ui-dev ui-all ui-dev-all ui-lint ui-test
 
 # --- サービス起動 ---
@@ -261,6 +261,24 @@ bag-eval-slam:
 	     exit 1; \
 	   fi && \
 	   python3 /app/tools/scripts/eval_slam.py \"\$$TARGET_BAG\" --slam-dir \"$(SLAM_DIR)\" $(_resolve_bag_output_opts) $(OPTS)"
+
+# --- 自己位置推定 (EKF 融合) の評価 ---
+# 実機のナビ走行 bag、または run_localization_variant.sh の再生出力 bag を評価する。
+# 真値 GT_DIR (pose_graph.json と gnss_transform.yaml を含む SLAM 出力) は省略可。
+# 別走行を評価するときは、地図を作った走行の SLAM 出力を MAP_GT_DIR に渡す。
+# 実行例:
+#   make bag-eval-localization BAG=<bag> TO_TOOLS=1
+#   make bag-eval-localization BAG=<bag> GT_DIR=<slam_dir> MAP_GT_DIR=<map_slam_dir> FAULTS=<faults.yaml>
+bag-eval-localization:
+	$(COMPOSE) run --rm --no-deps $(if $(BAG),-e BAG="$(BAG)" )$(if $(BAG_PATH),-e BAG_PATH="$(BAG_PATH)" )develop bash -c \
+	  "source /opt/ros/humble/setup.bash && \
+	   source /root/ros2_ws/install/setup.bash && \
+	   TARGET_BAG=\"\$${BAG:-\$${BAG_PATH:-\$$ROSBAG_FILE}}\" && \
+	   if [ -z \"\$$TARGET_BAG\" ]; then \
+	     echo 'エラー: 解析対象の rosbag が指定されていません。.env に ROSBAG_FILE を設定するか、BAG=/path/to/bag を指定してください。' >&2; \
+	     exit 1; \
+	   fi && \
+	   python3 /app/tools/scripts/eval_localization.py \"\$$TARGET_BAG\" $(if $(GT_DIR),--gt-dir \"$(GT_DIR)\" )$(if $(MAP_GT_DIR),--map-gt-dir \"$(MAP_GT_DIR)\" )$(if $(FAULTS),--faults \"$(FAULTS)\" )$(_resolve_bag_output_opts) $(OPTS)"
 
 # --- テスト ---
 # 全テスト: make test
