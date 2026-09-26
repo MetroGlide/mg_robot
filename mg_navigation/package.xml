@@ -16,6 +16,14 @@
   <exec_depend>mg_utils</exec_depend>
   <exec_depend>mg_waypoint_navigation</exec_depend>
 
+  <exec_depend>diagnostic_msgs</exec_depend>
+  <exec_depend>nav2_msgs</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>std_srvs</exec_depend>
+  <exec_depend>tf2_ros_py</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>python3-scipy</exec_depend>
+
   <exec_depend>navigation2</exec_depend>
   <exec_depend>nav2_bringup</exec_depend>
 

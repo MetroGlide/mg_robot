@@ -26,7 +26,7 @@ gnss_amcl_initializer_node ◄─ /odom/gps ◄─ slam_gnss_nav_bridge ◄─ /
 | `amcl` | LiDAR と地図による自己位置推定。出力は `/amcl_pose_origin` (TF は出さない) |
 | `amcl_publish_controller_node` | `/amcl_pose_origin` を `/amcl_pose` へ中継する。SetBool で止めると AMCL が EKF に入らない |
 | `slam_gnss_nav_bridge` | `/navpvt` を、`gnss_transform.yaml` で map 座標に直して `/odom/gps` に出す。アンテナ位置を車体中心に補正し、測位の質に応じた分散を付ける ([slam_gnss_2d](../slam_gnss_2d/README.md)) |
-| `gnss_amcl_initializer_node` | 起動時 (と再初期化の要求時) に、精度の良い `/odom/gps` から `/initialpose` を出して AMCL を初期化する |
+| `gnss_amcl_initializer_node` | 起動時 (と再初期化の要求時) に、精度の良い `/odom/gps` から `/initialpose` (AMCL) と `/set_pose` (EKF) を出して初期化する。EKF の初期共分散が大きく、AMCL の初期値 (原点) に引かれるため、EKF にも送る (`publish_set_pose`) |
 | `amcl_watchdog_node` | AMCL の共分散が大きい状態が続いたら、`gnss_amcl_initializer_node` に再初期化を要求する (従来の監視) |
 | `localization_supervisor_node` | AMCL のずれを検知して EKF から切り離し、EKF の姿勢で復旧する (下記) |
 | `ekf_global_node` | ホイールオドメトリの速度、AMCL の位置・yaw、GNSS の位置を融合する (`mg_drivers/params/ekf_global.yaml`) |
@@ -75,6 +75,12 @@ NORMAL ─ 異常の疑い ─► SUSPECT ─ 確認 ─► ISOLATED (AMCL を E
 - `/diagnostics`: `localization_supervisor` (NORMAL=OK、DEGRADED=ERROR、その他=WARN)
 
 パラメータは `params/localization_supervisor.yaml`。
+
+### 制約
+
+- **AMCL の入/切が他と競合する**: ウェイポイントの `amcl_off` / `amcl_on` も、監督ノードと同じ `/amcl_publish_controller_node/change_publish_state` を使う。
+  ウェイポイントで AMCL を切った区間でも、監督ノードが復旧すると AMCL を戻してしまう。そのため監督ノードは既定にせず、`localization_monitor:=supervisor` で明示的に選ぶ。
+- 起動直後は EKF がまだ収束していないため、判定が安定するまでは誤検知しうる。
 
 ## 起動引数
 
