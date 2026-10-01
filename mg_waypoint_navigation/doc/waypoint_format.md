@@ -209,6 +209,22 @@ waypoints:
 | Qx / Qy / Qz / Qw | `pose.orientation.x` / `pose.orientation.y` / `pose.orientation.z` / `pose.orientation.w` |
 | Options Path | (空のまま。ウェイポイントのルートを直接見せる) |
 
+### GNSS 変換 (gnss_transform.yaml) の出力
+
+背景地図で位置合わせしたプロジェクトからは、GNSS ブリッジ (`slam_gnss_2d` の `slam_gnss_nav_bridge_node`) が読む
+`gnss_transform.yaml` も出力できる。[`mg_gnss_transform.wpt_template`](../waypoint_tool/mg_gnss_transform.wpt_template)
+を `Settings > Export Templates` の **Import** から読み込み、エクスポートプロファイルの項目に追加する
+（ウェイポイント用のテンプレートと並べて出力できる）。
+
+- マップ原点の緯度経度・UTM を `anchor` / `anchor_utm` に、位置合わせの回転を `map_rotation_rad` に書く。
+  `map_rotation_rad` は、ブリッジが GNSS を地図座標へ変換するときの回転（`map = R(map_rotation_rad) · (UTM − anchor_utm)`）。
+  SLAM が出力する `rotation_rad`（初期方位の記録値）とは別のキーで、このテンプレートは `rotation_rad` を出力しない。
+- テンプレートが使う `geo` 変数は、waypoint-tool の背景地図の位置合わせ設定から作られる。
+  背景地図の表示を OFF にしていても出力されるため、位置合わせを済ませてから出力する。
+  `geo` に対応した版の waypoint-tool が必要（未対応の版では描画エラーになる）。
+- 出力先は、ナビゲーションが読む `${MAP_PATH}/gnss_transform.yaml`（`bringup_navigation.launch.py` の `gnss_transform_file` の既定）。
+  SLAM の出力ディレクトリにある `gnss_transform.yaml` は再最適化 (reoptimize) が読むため、上書きしない。
+
 ## v1 フォーマットとの差分
 
 | 項目                  | v1                                 | v2.0                                     |
