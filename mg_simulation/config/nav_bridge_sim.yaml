@@ -10,9 +10,9 @@ slam_gnss_nav_bridge:
     lever_arm_compensation: true
     lever_arm_x: 0.26
     lever_arm_y: -0.13
-    # シミュレータの地図は東・北に揃っているので、UTM のグリッドとの子午線収束角のずれを補正する
+    # シミュレータの地図は東・北に揃っているので、gnss_transform.yaml の map_rotation_rad で
+    # UTM のグリッドとの子午線収束角のずれが補正される
     # (gnss_transform.yaml は tools/scripts/make_sim_gnss_transform.py で生成)
-    use_file_rotation: true
     single_floor_m: 0.05
     single_scale: 1.0
     accept_single: true

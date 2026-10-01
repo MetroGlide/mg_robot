@@ -118,13 +118,14 @@ class SlamGnssNavBridgeNode(Node):
             self._anchor_northing = data['anchor_utm']['northing']
             self._utm_zone = data['anchor_utm']['zone']
             self._utm_hemisphere = data['anchor_utm']['hemisphere']
-            file_rotation = data['rotation_rad']
-            # SLAMマップはすでにUTM座標系にアライメントされて生成されているため、
-            # ナビゲーション時の座標変換における追加の回転は不要（0.0）とします。
-            self._rotation_rad = 0.0
+            # SLAMマップはすでにUTM座標系にアライメントされて生成されているため、回転は不要（0.0）とします。
+            # 東・北に揃った地図 (シミュレータ) や位置合わせで回した地図 (waypoint-tool) では、
+            # UTM のグリッドとのずれを map_rotation_rad で補正します。
+            # rotation_rad は SLAM の初期方位の記録値なので使いません。
+            self._rotation_rad = data.get('map_rotation_rad', 0.0)
 
             self.get_logger().info(
-                f"Loaded transform: anchor=({self._anchor_lat}, {self._anchor_lon}), file_rot={file_rotation:.3f}rad, applied_rot={self._rotation_rad:.3f}rad")
+                f"Loaded transform: anchor=({self._anchor_lat}, {self._anchor_lon}), applied_rot={self._rotation_rad:.3f}rad")
             return True
         except Exception as e:
             self.get_logger().error(

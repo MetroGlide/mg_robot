@@ -184,6 +184,47 @@ waypoints:
 
 ---
 
+## waypoint-tool での作成
+
+[waypoint-tool](https://github.com/Chu-son/waypoint-tool) を使うと、上記の v2.0 形式を GUI で作成・編集できる。
+定義ファイルは [`waypoint_tool/`](../waypoint_tool/) に置いている。
+
+1. waypoint-tool の `Settings > Option Schema` の **Import** から
+   [`mg_waypoint.schema.json`](../waypoint_tool/mg_waypoint.schema.json) を読み込む。
+   `navigation`（`is_through_point` / `through_tolerance`）と `on_reached_actions`
+   （本ドキュメントの7種類のアクション）が Inspector に入力フォームとして現れる。
+2. `Settings > Export Templates` の **Import** から
+   [`mg_waypoint_v2.wpt_template`](../waypoint_tool/mg_waypoint_v2.wpt_template) を読み込む。
+   エクスポート時にこのテンプレートを選ぶと、本ドキュメントの v2.0 形式で YAML が出力される。
+3. `index` は 0 からの連番である必要があるため、エクスポート設定の Index Start は `0` にする。
+4. `Settings > General` の **Export Integers as Float** はオン（既定）のままにする。`z` などの float 型に整数 (`0`) を書くと mg 側が読み込めないため。
+
+既存の `waypoint.yaml` を waypoint-tool に読み込み直す（インポートする）場合は、`File > Import Waypoints...`
+で次のように対応付ける。
+
+| フィールド | パス |
+| --- | --- |
+| Items Path | `waypoints` |
+| X / Y / Z | `pose.position.x` / `pose.position.y` / `pose.position.z` |
+| Qx / Qy / Qz / Qw | `pose.orientation.x` / `pose.orientation.y` / `pose.orientation.z` / `pose.orientation.w` |
+| Options Path | (空のまま。ウェイポイントのルートを直接見せる) |
+
+### GNSS 変換 (gnss_transform.yaml) の出力
+
+背景地図で位置合わせしたプロジェクトからは、GNSS ブリッジ (`slam_gnss_2d` の `slam_gnss_nav_bridge_node`) が読む
+`gnss_transform.yaml` も出力できる。[`mg_gnss_transform.wpt_template`](../waypoint_tool/mg_gnss_transform.wpt_template)
+を `Settings > Export Templates` の **Import** から読み込み、エクスポートプロファイルの項目に追加する
+（ウェイポイント用のテンプレートと並べて出力できる）。
+
+- マップ原点の緯度経度・UTM を `anchor` / `anchor_utm` に、位置合わせの回転を `map_rotation_rad` に書く。
+  `map_rotation_rad` は、ブリッジが GNSS を地図座標へ変換するときの回転（`map = R(map_rotation_rad) · (UTM − anchor_utm)`）。
+  SLAM が出力する `rotation_rad`（初期方位の記録値）とは別のキーで、このテンプレートは `rotation_rad` を出力しない。
+- テンプレートが使う `geo` 変数は、waypoint-tool の背景地図の位置合わせ設定から作られる。
+  背景地図の表示を OFF にしていても出力されるため、位置合わせを済ませてから出力する。
+  `geo` に対応した版の waypoint-tool が必要（未対応の版では描画エラーになる）。
+- 出力先は、ナビゲーションが読む `${MAP_PATH}/gnss_transform.yaml`（`bringup_navigation.launch.py` の `gnss_transform_file` の既定）。
+  SLAM の出力ディレクトリにある `gnss_transform.yaml` は再最適化 (reoptimize) が読むため、上書きしない。
+
 ## v1 フォーマットとの差分
 
 | 項目                  | v1                                 | v2.0                                     |

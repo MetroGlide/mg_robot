@@ -1,0 +1,7 @@
+{
+  "name": "mg_waypoint_navigation v2.0",
+  "extension": "yaml",
+  "suffix": "",
+  "engine": "jinja",
+  "content": "version: \"2.0\"\n{% if globals is defined %}\ndefaults:\n  through_tolerance: {{ globals.default_through_tolerance }}\n  is_through_point: {{ globals.default_is_through_point | tojson }}\n{% endif %}\n\nwaypoints:\n{% for wp in waypoints %}\n  - index: {{ wp.index }}\n    pose:\n      position: {x: {{ wp.x }}, y: {{ wp.y }}, z: {{ wp.z }}}\n      orientation: {x: {{ wp.qx }}, y: {{ wp.qy }}, z: {{ wp.qz }}, w: {{ wp.qw }}}\n{% if wp.raw_options.navigation is defined %}\n    navigation:\n{{ wp.raw_options.navigation | toyaml(6) }}\n{% endif %}\n{% if wp.raw_options.on_reached_actions is defined %}\n    on_reached_actions:\n{{ wp.raw_options.on_reached_actions | toyaml(6) }}\n{% endif %}\n{% endfor %}\n"
+}

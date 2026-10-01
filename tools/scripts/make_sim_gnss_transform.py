@@ -6,8 +6,8 @@ make_sim_gnss_transform.py
 (slam_gnss_nav_bridge_node) が使う gnss_transform.yaml を作る。
 
 シミュレータの地図はワールドの東・北に揃っていて、UTM のグリッドとは子午線収束角の分だけずれる。
-そのずれを rotation_rad に入れる (ブリッジの use_file_rotation: true で map 座標を回転して補正する)。
-実機の gnss_transform.yaml の rotation_rad (SLAM の初期方位の回転で、ブリッジは使わない) とは意味が違う。
+そのずれを map_rotation_rad に入れる (ブリッジが map 座標を回転して補正する)。
+実機の gnss_transform.yaml の rotation_rad (SLAM の初期方位の回転で、ブリッジは使わない) は出力しない。
 
 使い方:
   make_sim_gnss_transform.py mg_simulation/worlds/warehouse.sdf -o mg_simulation/maps/warehouse/gnss_transform.yaml
@@ -55,7 +55,7 @@ def build_transform(latitude: float, longitude: float) -> Dict[str, Any]:
             "easting": float(easting), "northing": float(northing),
             "zone": zone, "hemisphere": "south" if south else "north",
         },
-        "rotation_rad": float(rotation),
+        "map_rotation_rad": float(rotation),
         "metadata": {"source": "make_sim_gnss_transform.py (シミュレータのワールドの原点。東・北に揃った座標)"},
     }
 
@@ -71,7 +71,7 @@ def main() -> None:
     with open(args.output, "w", encoding="utf-8") as f:
         yaml.safe_dump(transform, f, sort_keys=False, allow_unicode=True)
     print(f"保存: {args.output} (zone {transform['anchor_utm']['zone']} {transform['anchor_utm']['hemisphere']}, "
-          f"rotation {math.degrees(transform['rotation_rad']):.3f} deg)")
+          f"rotation {math.degrees(transform['map_rotation_rad']):.3f} deg)")
 
 
 if __name__ == "__main__":
