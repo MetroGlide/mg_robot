@@ -184,6 +184,31 @@ waypoints:
 
 ---
 
+## waypoint-tool での作成
+
+[waypoint-tool](https://github.com/Chu-son/waypoint-tool) を使うと、上記の v2.0 形式を GUI で作成・編集できる。
+定義ファイルは [`waypoint_tool/`](../waypoint_tool/) に置いている。
+
+1. waypoint-tool の `Settings > Option Schema` の **Import** から
+   [`mg_waypoint.schema.json`](../waypoint_tool/mg_waypoint.schema.json) を読み込む。
+   `navigation`（`is_through_point` / `through_tolerance`）と `on_reached_actions`
+   （本ドキュメントの7種類のアクション）が Inspector に入力フォームとして現れる。
+2. `Settings > Export Templates` の **Import** から
+   [`mg_waypoint_v2.wpt_template`](../waypoint_tool/mg_waypoint_v2.wpt_template) を読み込む。
+   エクスポート時にこのテンプレートを選ぶと、本ドキュメントの v2.0 形式で YAML が出力される。
+3. `index` は 0 からの連番である必要があるため、エクスポート設定の Index Start は `0` にする。
+4. `Settings > General` の **Export Integers as Float** はオン（既定）のままにする。`z` などの float 型に整数 (`0`) を書くと mg 側が読み込めないため。
+
+既存の `waypoint.yaml` を waypoint-tool に読み込み直す（インポートする）場合は、`File > Import Waypoints...`
+で次のように対応付ける。
+
+| フィールド | パス |
+| --- | --- |
+| Items Path | `waypoints` |
+| X / Y / Z | `pose.position.x` / `pose.position.y` / `pose.position.z` |
+| Qx / Qy / Qz / Qw | `pose.orientation.x` / `pose.orientation.y` / `pose.orientation.z` / `pose.orientation.w` |
+| Options Path | (空のまま。ウェイポイントのルートを直接見せる) |
+
 ## v1 フォーマットとの差分
 
 | 項目                  | v1                                 | v2.0                                     |
