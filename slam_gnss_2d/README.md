@@ -286,7 +286,19 @@ metadata:
   起動直後、ロボットのローカルな進行方向と UTM 座標系（真北基準）の間の回転オフセットは未知です。ロボットが `init_distance_m` (約 2.0m) 移動した時点で、SLAM の移動変位ベクトル $(\Delta x, \Delta y)$ と GNSS の UTM 移動変位ベクトル $(\Delta E, \Delta N)$ を比較し、初期方位角 $\theta_0$ を算出します。
 - **ファクターグラフの回転整定**:
   算出した $\theta_0$ を用いて最初のノード姿勢を UTM 向きに回転させて確定させます。この結果、**SLAM マップ全体の X 軸は UTM Easting（東向き）、Y 軸は UTM Northing（北向き）に完全に一致するように構築されます**。
-- YAML 内に記録される `rotation_rad` は、SLAM 構築時に推定されたこの初期回転角 $\theta_0$ を表す記録情報です。
+- YAML 内に記録される `rotation_rad` は、SLAM 構築時に推定されたこの初期回転角 $\theta_0$ を表す記録情報です。GNSS ブリッジはこの値を使いません。
+
+### 地図座標への回転 (map_rotation_rad, 任意)
+
+SLAM の出力には含まれません。地図が UTM のグリッドからずれている場合に、`gnss_transform.yaml` へ追加で書くキーです。
+GNSS ブリッジは `map = R(map_rotation_rad) · (UTM − anchor_utm)` で GNSS を地図座標に変換します。キーが無ければ回転 0 として扱います。
+
+- シミュレータの地図 (東・北に揃っている): UTM のグリッドとの子午線収束角のずれ。`tools/scripts/make_sim_gnss_transform.py` が書きます。
+- [waypoint-tool](https://github.com/Chu-son/waypoint-tool) で背景地図に位置合わせして回した地図: 位置合わせの回転の逆向き。`mg_waypoint_navigation/waypoint_tool/mg_gnss_transform.wpt_template` で出力します ([waypoint_format.md](../mg_waypoint_navigation/doc/waypoint_format.md#waypoint-tool-での作成))。
+
+```yaml
+map_rotation_rad: 0.012255
+```
 
 ### ナビゲーション時における座標変換ロジック
 
@@ -431,7 +443,6 @@ TF が無い・`yaw_max_age_sec` より古いときは、アンテナ位置の�
 | `fix_floor_m` / `float_floor_m` / `single_floor_m` | `0.02` | 解の種類ごとの hAcc の下限 [m] |
 | `fix_scale` / `float_scale` / `single_scale` | `1.0` | 解の種類ごとに分散にかける係数 |
 | `accept_single` | `true` | `false` にすると、搬送波位相の解が無い (単独測位) 測位を使わない |
-| `use_file_rotation` | `false` | `gnss_transform.yaml` の `rotation_rad` で map 座標を回転する。SLAM で作った地図は UTM に整合済みなので `false`、東・北に揃った地図 (シミュレータ) では `true` |
 
 分散は `max(hAcc, 下限)² × 係数`。既定では従来と同じ `hAcc²` です。NavSatFix 入力 (`gnss_input: navsatfix`) では、搬送波位相の解が無いため、
 RTK (`STATUS_GBAS_FIX` 以上) だけを Fix、それ以外を単独測位として扱い、`position_covariance[0]` の平方根を hAcc とします。

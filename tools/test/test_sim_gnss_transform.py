@@ -21,8 +21,9 @@ def test_southern_hemisphere_zone_and_convergence():
     assert transform["anchor_utm"]["zone"] == 23
     assert transform["anchor_utm"]["hemisphere"] == "south"
     # 中央子午線 (-45 度) の東 1.8 度、南緯 23 度: 収束角は約 -0.70 度 (経度差 x sin 緯度)。
-    # rotation_rad は、UTM の座標を東・北に揃える回転なので、その逆の +0.70 度
-    assert math.degrees(transform["rotation_rad"]) == pytest.approx(
+    # map_rotation_rad は、UTM の座標を東・北に揃える回転なので、その逆の +0.70 度
+    assert "rotation_rad" not in transform
+    assert math.degrees(transform["map_rotation_rad"]) == pytest.approx(
         -1.798 * math.sin(math.radians(-22.99)), abs=0.02)
 
 
@@ -34,7 +35,7 @@ def test_rotation_maps_utm_offsets_to_east_north():
     # 原点から真東へ 200 m の点
     east_lon, east_lat, _ = pyproj.Geod(ellps="WGS84").fwd(lon, lat, 90.0, 200.0)
     e, n = proj(east_lon, east_lat)
-    theta = transform["rotation_rad"]
+    theta = transform["map_rotation_rad"]
     x = math.cos(theta) * (e - e0) - math.sin(theta) * (n - n0)
     y = math.sin(theta) * (e - e0) + math.cos(theta) * (n - n0)
     # 長さは UTM の縮尺係数 (約 0.9996) の分だけ変わるので、向きで確かめる
