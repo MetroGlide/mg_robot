@@ -12,12 +12,15 @@ slam_gnss_nav_bridge:
     lever_arm_y: -0.13
     # /odom/gps のスタンプを now() からこの秒数だけ過去にする (測位が届くまでの遅れの補正)
     time_offset_sec: 0.0
-    # 解の種類ごとに、分散 = max(hAcc, 下限)^2 * 係数 とする
+    # 解の種類ごとに、分散 = max(hAcc, 下限)^2 * 係数 とする。
+    # 係数 1.44 = 1.2^2 は SLAM の gnss.navpvt_hacc_scale (標準偏差を hAcc の 1.2 倍) に合わせた値
     fix_floor_m: 0.02
-    fix_scale: 1.0
+    fix_scale: 1.44
     float_floor_m: 0.02
-    float_scale: 1.0
+    float_scale: 1.44
     single_floor_m: 0.02
-    single_scale: 1.0
+    single_scale: 1.44
     # false にすると、搬送波位相の解が無い (単独測位) 測位を使わない
     accept_single: true
+    # 位置の分散の 2 倍がこの値 [m^2] を超える測位は使わない (49.0 は標準偏差 約 4.95 m)
+    max_covariance_threshold: 49.0
