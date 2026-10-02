@@ -1,93 +1,52 @@
-# SLAM-GNSS-2D ビジュアライゼーション解説
+# SLAM-GNSS-2D ページの表示
 
-SLAM-GNSS-2D ページで表示される各要素の意味と色の対応をまとめる。
+SLAM-GNSS-2D ページ (`/slam-gnss-2d`、`pages/SlamGnss2DPage.tsx`) で表示する各要素の意味と、色の対応。
+表示するのは、現役の SLAM ([slam_gnss_2d](../../../slam_gnss_2d/README.md)、C++) の出力。
 
----
+ポーズグラフ (ノードとエッジ) は、`slam_gnss_2d` が配信する `MarkerArray` ではなく、フロントエンドが `PoseGraphDiff` から**自分で描く** (`components/ros-viewer/layers/PoseGraphLayer.tsx`)。軌跡と地図は、トピックをそのまま描く。
 
-## 描画要素の詳細
+## 描画する要素
 
-### 白い点（Pose Graph ノード）
+| 要素 | 色 | 意味 | データ |
+| :--- | :--- | :--- | :--- |
+| 地図 | (グレースケール) | 占有格子の地図 | `/map` (`MapLayer`) |
+| 軌跡 (最終) | シアン `#00ffff` | 全ノードの推定位置を、時系列に結んだ線。ループの成立と GNSS による最適化のあとは、グラフ全体を作り直した**最終の軌跡** | `slam_gnss_2d/path` (`PathLine`) |
+| 軌跡 (最適化前) | グレー `#666666` | 最適化の直前の軌跡のスナップショット。最適化の前後の変化を比べる (`layers.pathBefore`) | `slam_gnss_2d/path_before_optimize` |
+| ノード | シアン。最新のノードだけ赤 | スキャンを採用したキーフレームの推定位置。移動が `keyframe.min_translation`、または回転が `keyframe.min_rotation` を超えたときに追加される。クリックで詳細 (`PoseGraphDetailPanel`) | `PoseGraphDiff`、`get_pose_graph` |
+| 逐次エッジ | 緑 (半透明) | 時系列で隣り合うノードの、スキャンマッチングの拘束 | 同上 |
+| ループエッジ | マゼンタ (太線) | ループクロージャで足した、離れたノード間の拘束。既定ではループクロージャが無効なので、出ない | 同上 |
+| GNSS prior | オレンジ (ワイヤーフレームの四角) | GNSS の拘束が付いたノード | 同上 (`prior_node_indices`) |
 
-- **色**: 白 `rgb(1.0, 1.0, 1.0)`。最新ノードのみ水色 `rgb(0.0, 1.0, 1.0)`
-- **意味**: スキャンを採択したキーフレームの推定位置。スキャン間距離・回転量が閾値 (`min_translation`, `min_rotation`) を超えた時点で追加される
-- **実装**: `slam_node_base.py` → `_publish_pose_graph_markers()` の `ns='nodes'` マーカー
+レイヤーごとの表示は、ページの「layers」で切り替える (`poseGraphNodes`、`poseGraphSeqEdges`、`poseGraphLoopEdges`、`poseGraphGnssPrior`、`pathBefore`)。
 
-### 水色の線（シーケンシャルエッジ）
+## データの取得 (`hooks/usePoseGraph.ts`)
 
-- **色**: 青みがかった水色 `rgb(0.2, 0.5, 1.0)`
-- **意味**: 時系列順に隣接するノード間のスキャンマッチング拘束。白い点（ノード）同士を結ぶ線がこれにあたる。連続フレーム間の相対変換をスキャンマッチングで推定した結果を表す
-- **実装**: `slam_node_base.py` → `_publish_pose_graph_markers()` の `ns='seq_edges'` マーカー
+1. 起動時に、サービス `/slam_gnss_2d/get_pose_graph` (`GetPoseGraph`) で、ポーズグラフ全体を取る。
+2. 以降は、`slam_gnss_2d/pose_graph_diff` (`PoseGraphDiff`) の差分で、ノード・エッジ・prior・統計を更新する。
+3. 差分の `full_refresh_needed` が `true` のときは、保持しているデータを捨てて、1 をやり直す。
 
-### 緑の線（ループエッジ）
+`PoseGraphDiff` と `GetPoseGraph` は、`slam_gnss_2d_msgs` の型。差分には、ノード (位置と向き)、逐次エッジ (スコアと種別: ICP かオドメトリへのフォールバックか)、GNSS prior (標準偏差と測位の種類)、ループエッジ、`loop_closed` が入る。
 
-- **色**: 緑 `rgb(0.0, 1.0, 0.4)`。シーケンシャルエッジより太い
-- **意味**: ループクロージャ検出で追加された非連続ノード間の拘束。離れた場所でスキャンが一致した場合に追加され、グラフ最適化のトリガーとなる
-- **実装**: `loop_closure_builder.py` の `_loop_edges` → `ns='loop_edges'` マーカー
+## 使うトピックとサービス
 
-### 水色の軌跡線（Path）
+| 名前 | 型 | 配信元 |
+| :--- | :--- | :--- |
+| `/map` | `nav_msgs/OccupancyGrid` | `slam_node` |
+| `slam_gnss_2d/path` | `nav_msgs/Path` | `slam_node` |
+| `slam_gnss_2d/path_before_optimize` | `nav_msgs/Path` | `slam_node` |
+| `slam_gnss_2d/pose_graph_diff` | `slam_gnss_2d_msgs/PoseGraphDiff` | `slam_node` |
+| `/slam_gnss_2d/get_pose_graph` (サービス) | `slam_gnss_2d_msgs/GetPoseGraph` | `slam_node`、`pose_graph_preview_node` |
+| `/gps/fix` | `sensor_msgs/NavSatFix` | GNSS (衛星の写真への重ね描きと、状態の表示に使う) |
 
-- **色**: シアン `#00ffff`
-- **意味**: 全ノードの推定位置を時系列に繋いだロボット軌跡。ループ閉合・GNSS最適化後はグラフ全体を再構築した後の**最終軌跡**を表す
-- **トピック**: `slam_gnss_2d/path`
-- **実装**: `slam_node_base.py` → `_publish_path()` / `_rebuild_path()` → `PathLine.tsx`
+`ros/topics.ts` には、`slam_gnss_2d/gnss_raw_markers` と `slam_gnss_2d/gnss_prior_markers` の定義もある。現役の SLAM は、この 2 つを配信しない (旧 Python 版の `slam_offline_node` が配信していたもの)。
 
-### グレーの軌跡線（Pre-optimize Path）
+## 地図の操作 (system_manager の API)
 
-- **色**: 暗いグレー `#666666`
-- **意味**: GNSS最適化が走る直前の軌跡スナップショット。最適化前後の軌跡変化を比較するために表示する。ループ閉合時と GNSS 最適化直前の2タイミングで更新される
-- **トピック**: `slam_gnss_2d/path_before_optimize`
-- **実装**: `slam_node_base.py` → `_path_before_pub.publish(self._path_msg)`
+ページの「saved-map」から、次を呼ぶ ([system_manager.md](../../mg_system_manager/doc/system_manager.md))。
 
-### マゼンタの点（GNSS Points）
-
-- **色**: マゼンタ `rgb(1.0, 0.0, 1.0)`
-- **意味**: bag ファイルから読み込んだ NavSatFix を UTM 平面直角座標に変換し、さらに KinematicHeadingAligner の推定変換で SLAM 座標系に投影した GNSS 測位点群。SLAM 軌跡との整合性を目視確認するために表示する
-- **トピック**: `slam_gnss_2d/gnss_raw_markers`
-- **実装**: `slam_offline_node.py` → `_publish_gnss_raw_markers()`
-
-### 紫ピンクの短い線分（GNSS Constraints）
-
-- **色**: 紫ピンク `rgb(0.8, 0.0, 0.8)`
-- **意味**: GNSS 拘束の残差ベクトル。**線分の一方の端が GTSAM 最適化後のノード位置（最終 Pose）**、もう一方の端が GNSS 測位に基づく拘束目標位置。線分が短いほど GNSS 拘束が満足されている
-- **トピック**: `slam_gnss_2d/gnss_prior_markers`
-- **実装**: `slam_offline_node.py` → `_publish_gnss_prior_markers()`
-
-> **補足**: ポーズグラフのノード側が最終 Pose であり、GNSS 測位点側は拘束のターゲット座標であって最終位置ではない。
-
----
-
-## データフロー（オフライン実行時）
-
-```
-bag
- ├─ BagScanSource  ──→ add_scan() ──→ PoseGraph ──→ _publish_pose_graph_markers()
- │                                                      白点  : ノード位置
- │                                                      水色線: seq_edges（連続フレーム拘束）
- │                                                      緑線  : loop_edges（ループクロージャ拘束）
- │
- └─ BagGnssSource.start()
-         │ UTM 変換
-         │ KinematicHeadingAligner.estimate_transform()  → SLAM 座標系へ投影
-         ↓
-    _publish_gnss_raw_markers()                          → マゼンタ点
-         ↓
-    GnssConstraintInserter.build_priors()
-    GTSAMOptimizer.optimize()
-         ↓  updated_nodes（最終 Pose）
-    _publish_gnss_prior_markers()                        → 紫ピンク線
-    _rebuild_path(updated_nodes)                         → 水色軌跡線（最終）
-```
-
----
-
-## トピック一覧
-
-| トピック                            | 型                               | 配信元                          |
-| ----------------------------------- | -------------------------------- | ------------------------------- |
-| `slam_gnss_2d/map`                  | `nav_msgs/OccupancyGrid`         | `SlamNodeBase`                  |
-| `slam_gnss_2d/path`                 | `nav_msgs/Path`                  | `SlamNodeBase`                  |
-| `slam_gnss_2d/path_before_optimize` | `nav_msgs/Path`                  | `SlamNodeBase`                  |
-| `slam_gnss_2d/pose_graph`           | `visualization_msgs/MarkerArray` | `SlamNodeBase`                  |
-| `slam_gnss_2d/gnss_raw_markers`     | `visualization_msgs/MarkerArray` | `SlamOfflineNode`               |
-| `slam_gnss_2d/gnss_prior_markers`   | `visualization_msgs/MarkerArray` | `SlamOfflineNode`               |
-| `/gps/fix`                          | `sensor_msgs/NavSatFix`          | `SlamOfflineNode`（bag 再配信） |
+| 操作 | API |
+| :--- | :--- |
+| 地図の保存 | `POST /slam_gnss_2d/map/save` |
+| 保存済みの一覧 | `GET /slam_gnss_2d/maps` |
+| プレビューの開始・停止 | `POST /slam_gnss_2d/preview/start`・`stop` (compose の `map-preview`) |
+| 再最適化の開始・停止 | `POST /slam_gnss_2d/reoptimize/start`・`stop` (compose の `reoptimize-slam`) |
