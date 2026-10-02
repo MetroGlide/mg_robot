@@ -22,7 +22,7 @@ _compose_opts = $(if $(OPTS),OPTS="$(OPTS)" )
         build build-all build-no-cache build-robot build-real build-robot-no-cache build-real-no-cache build-sim \
         _collect-deps \
         rviz2 rviz2-slam rviz2-navigation down xhost config \
-        test bag-summary bag-plot-gnss bag-plot-scans bag-eval-slam bag-eval-localization \
+        test bag-summary bag-plot-gnss bag-plot-gnss-map bag-plot-scans bag-eval-slam bag-eval-localization \
         diagnostics system-manager foxglove-bridge web-ui web-ui-dev ui-all ui-dev-all ui-lint ui-test
 
 # --- サービス起動 ---
@@ -225,6 +225,25 @@ bag-plot-gnss:
 	     exit 1; \
 	   fi && \
 	   python3 /app/tools/scripts/plot_gnss_trajectory.py \"\$$TARGET_BAG\" $(_resolve_bag_output_opts) $(if $(filter 1 true,$(CIRCLES)$(ACC_CIRCLES)),--accuracy-circles )$(if $(SCALE),--circle-scale $(SCALE) )$(if $(CIRCLE_SCALE),--circle-scale $(CIRCLE_SCALE) )$(OPTS)"
+
+# --- 地図群 + GNSS(gnss_transform.yaml で変換)の重ね描き ---
+# MAP_PATH/map_list.txt の地図と、ROSBAG_FILE の GNSS 位置・精度を、MAP_PATH/gnss_transform.yaml で map 座標に直して描く。
+# 実行例:
+#   make bag-plot-gnss-map TO_TOOLS=1
+#   make bag-plot-gnss-map CIRCLES=1 SCALE=10
+#   make bag-plot-gnss-map MAP_LIST=/path/map_list.txt GNSS_TRANSFORM=/path/gnss_transform.yaml
+bag-plot-gnss-map:
+	$(COMPOSE) run --rm --no-deps $(if $(BAG),-e BAG="$(BAG)" )$(if $(BAG_PATH),-e BAG_PATH="$(BAG_PATH)" )develop bash -c \
+	  "source /opt/ros/humble/setup.bash && \
+	   source /root/ros2_ws/install/setup.bash && \
+	   TARGET_BAG=\"\$${BAG:-\$${BAG_PATH:-\$$ROSBAG_FILE}}\" && \
+	   if [ -z \"\$$TARGET_BAG\" ]; then \
+	     echo 'エラー: 解析対象の rosbag が指定されていません。.env に ROSBAG_FILE を設定するか、BAG=/path/to/bag を指定してください。' >&2; \
+	     exit 1; \
+	   fi && \
+	   MAP_LIST_FILE=\"$(if $(MAP_LIST),$(MAP_LIST),\$$MAP_PATH/map_list.txt)\" && \
+	   GNSS_TRANSFORM_FILE=\"$(if $(GNSS_TRANSFORM),$(GNSS_TRANSFORM),\$$MAP_PATH/gnss_transform.yaml)\" && \
+	   python3 /app/tools/scripts/plot_gnss_trajectory.py \"\$$TARGET_BAG\" --mode map --map-list \"\$$MAP_LIST_FILE\" --gnss-transform \"\$$GNSS_TRANSFORM_FILE\" -o gnss_on_map.png $(_resolve_bag_output_opts) $(if $(filter 1 true,$(CIRCLES)$(ACC_CIRCLES)),--accuracy-circles )$(if $(SCALE),--circle-scale $(SCALE) )$(if $(CIRCLE_SCALE),--circle-scale $(CIRCLE_SCALE) )$(OPTS)"
 
 # --- LiDARスキャン点群の可視化 ---
 # 実行例:

@@ -33,7 +33,12 @@ if REPO_ROOT not in sys.path:
 from tools.common.bag import open_reader  # noqa: E402
 from tools.common.cli import add_output_args, resolve_output_path  # noqa: E402
 from tools.common.geo import lat_lon_to_utm, quaternion_to_yaw  # noqa: E402
-from tools.common.map import load_map_info, load_transform_from_yaml  # noqa: E402
+from tools.common.map import (  # noqa: E402
+    load_gnss_transform,
+    load_map_info,
+    load_transform_from_yaml,
+    read_map_list,
+)
 
 
 def extract_bag_data(
@@ -511,7 +516,7 @@ def plot_gnss_and_odom(
 def plot_on_map(
     gnss: np.ndarray,
     odom: np.ndarray,
-    map_yaml_path: str,
+    map_yaml_paths: List[str],
     output_path: str,
     transform: Optional[Tuple[float, float, float]] = None,
     initial_yaw_deg: Optional[float] = None,
@@ -525,19 +530,31 @@ def plot_on_map(
     title: str = "Trajectory Overlaid on Map",
 ):
     """
-    OccupancyGrid 地図画像の上に GNSS 軌跡（およびオドメトリ）を重ね合わせてプロットする。
+    OccupancyGrid 地図画像（複数可）の上に GNSS 軌跡（およびオドメトリ）を重ね合わせてプロットする。
     アライメント:
       - transform: (tx, ty, yaw) [UTM -> map]
       - 未設定の場合は GNSS 開始点アンカー + initial_yaw_deg、または自動バウンディングボックス合わせ
+    複数の地図は、それぞれの origin / resolution の位置にそのまま重ねる。
     """
-    map_img, origin, resolution, _ = load_map_info(map_yaml_path)
-    h_px, w_px = map_img.shape[:2]
+    maps = []
+    for map_yaml_path in map_yaml_paths:
+        map_img, origin, resolution, _ = load_map_info(map_yaml_path)
+        if origin[2] != 0.0:
+            print(f"警告: origin の yaw が 0 ではない地図は回転せずに描画します: {map_yaml_path}")
+        h_px, w_px = map_img.shape[:2]
+        extent = [
+            origin[0],
+            origin[0] + w_px * resolution,
+            origin[1],
+            origin[1] + h_px * resolution,
+        ]
+        maps.append((map_img, extent))
 
-    # map座標系の範囲 [m]
-    map_x0 = origin[0]
-    map_y0 = origin[1]
-    map_x1 = map_x0 + w_px * resolution
-    map_y1 = map_y0 + h_px * resolution
+    # map座標系の範囲 [m] (全地図を含む)
+    map_x0 = min(extent[0] for _, extent in maps)
+    map_x1 = max(extent[1] for _, extent in maps)
+    map_y0 = min(extent[2] for _, extent in maps)
+    map_y1 = max(extent[3] for _, extent in maps)
 
     # UTM -> map 座標変換の決定
     if transform is not None:
@@ -572,13 +589,16 @@ def plot_on_map(
     fig, ax = plt.subplots(figsize=(12, 12))
 
     # 地図画像の描画 (extent: [left, right, bottom, top])
-    ax.imshow(
-        map_img,
-        origin="lower",
-        extent=[map_x0, map_x1, map_y0, map_y1],
-        alpha=map_alpha,
-        cmap="gray",
-    )
+    # 複数枚のときは、未知領域 (205) を透明にして、重なった地図が互いを隠さないようにする
+    for map_img, extent in maps:
+        shown = np.ma.masked_equal(map_img, 205) if len(maps) > 1 else map_img
+        ax.imshow(
+            shown,
+            origin="upper",
+            extent=extent,
+            alpha=map_alpha,
+            cmap="gray",
+        )
 
     # GNSS軌跡のプロット
     fix_mask = gnss[:, 3] == 2
@@ -685,7 +705,20 @@ def parse_args():
         help="オドメトリ重ね合わせや地図投影時の初期方位角 [deg]",
     )
     parser.add_argument(
-        "--map", type=str, default=None, help="オーバーレイ対象の地図YAMLパス (mode=map 用)"
+        "--map", type=str, nargs="+", default=[],
+        help="オーバーレイ対象の地図YAMLパス。複数指定可 (mode=map 用)",
+    )
+    parser.add_argument(
+        "--map-list", type=str, default=None,
+        help="オーバーレイ対象の地図を列挙した map_list.txt のパス (--map と併用可)",
+    )
+    parser.add_argument(
+        "--gnss-transform", type=str, default=None,
+        help="gnss_transform.yaml のパス。slam_gnss_nav_bridge と同じ変換で GNSS を map 座標に直す "
+             "(--static-transforms より優先。UTM ゾーンもこのファイルの値を使う)",
+    )
+    parser.add_argument(
+        "--no-odom", action="store_true", help="地図オーバーレイでオドメトリを描画しない"
     )
     parser.add_argument(
         "--static-transforms",
@@ -766,10 +799,18 @@ def main():
         print(f"エラー: 指定された rosbag パスが存在しません: {bag_path}", file=sys.stderr)
         sys.exit(1)
 
+    utm_zone = args.utm_zone
+    gnss_transform = None
+    if args.gnss_transform:
+        gnss_transform, utm_zone = load_gnss_transform(args.gnss_transform)
+        if utm_zone != args.utm_zone:
+            print(f"警告: gnss_transform.yaml のゾーン {utm_zone} を使います (--utm-zone={args.utm_zone})")
+        print(f"Loaded gnss_transform: {gnss_transform} (zone={utm_zone})")
+
     print(f"Loading bag: {bag_path}")
     gnss, odom = extract_bag_data(
         bag_path,
-        utm_zone=args.utm_zone,
+        utm_zone=utm_zone,
         start_sec=args.start_time,
         end_sec=args.end_time,
     )
@@ -788,7 +829,7 @@ def main():
     mode = args.mode
     if args.compare_odom or args.overlay:
         mode = "odom"
-    elif args.map:
+    elif args.map or args.map_list:
         mode = "map"
 
     output_path = resolve_output_path(
@@ -806,21 +847,29 @@ def main():
         show_circles = True
 
     if mode == "map":
-        if not args.map:
-            print("エラー: mode=map には --map <map.yaml> の指定が必要です。", file=sys.stderr)
+        map_paths = list(args.map)
+        if args.map_list:
+            map_paths += read_map_list(args.map_list)
+        if not map_paths:
+            print("エラー: mode=map には --map <map.yaml> か --map-list <map_list.txt> の指定が必要です。",
+                  file=sys.stderr)
             sys.exit(1)
 
-        transform = None
-        if args.static_transforms:
+        transform = gnss_transform
+        if transform is None and args.static_transforms:
             transform = load_transform_from_yaml(
                 args.static_transforms, args.label)
             if transform:
                 print(f"Loaded transform (label={args.label}): {transform}")
 
+        # /odom は map 座標ではないため、gnss_transform 指定時は描画しない
+        if args.no_odom or gnss_transform is not None:
+            odom = np.empty((0, 4), dtype=np.float64)
+
         plot_on_map(
             gnss,
             odom,
-            args.map,
+            map_paths,
             output_path,
             transform=transform,
             initial_yaw_deg=args.initial_yaw,

@@ -90,6 +90,49 @@ def load_transform_from_yaml(
     return float(tf[0]), float(tf[1]), float(tf[2])
 
 
+def read_map_list(map_list_path: str) -> List[str]:
+    """map_list.txt に書かれた地図 YAML の絶対パスを返す。
+
+    1 行 1 ファイルで map_list.txt のあるディレクトリからの相対パス。
+    空行と # で始まる行は無視する (waypoint_editor.launch.py と同じ規則)。
+    存在しないファイルは警告して飛ばす。
+    """
+    map_dir = os.path.dirname(os.path.abspath(map_list_path))
+    with open(map_list_path, "r", encoding="utf-8") as f:
+        names = [line.strip() for line in f]
+
+    paths = []
+    for name in names:
+        if not name or name.startswith("#"):
+            continue
+        path = os.path.join(map_dir, name)
+        if not os.path.isfile(path):
+            print(f"警告: map_list.txt の地図が存在しないため飛ばします: {path}")
+            continue
+        paths.append(path)
+    return paths
+
+
+def load_gnss_transform(yaml_path: str) -> Tuple[Tuple[float, float, float], int]:
+    """gnss_transform.yaml から UTM -> map の剛体変換 (tx, ty, yaw) と UTM ゾーンを返す。
+
+    slam_gnss_nav_bridge と同じ変換: map = R(map_rotation_rad) * (utm - anchor_utm)。
+    rotation_rad は SLAM の初期方位の記録値なので使わない。
+    """
+    with open(yaml_path, "r", encoding="utf-8") as f:
+        data = yaml.safe_load(f)
+
+    anchor = data["anchor_utm"]
+    yaw = float(data.get("map_rotation_rad", 0.0))
+    c = math.cos(yaw)
+    s = math.sin(yaw)
+    easting = float(anchor["easting"])
+    northing = float(anchor["northing"])
+    tx = -(c * easting - s * northing)
+    ty = -(s * easting + c * northing)
+    return (tx, ty, yaw), int(anchor["zone"])
+
+
 def pixel_to_map_coordinates(
     u: float,
     v: float,
