@@ -1,0 +1,7 @@
+# 測位用地図と計画用地図を map_server に読み込ませる。空文字の側は変更しない
+
+string localization
+string planning
+---
+bool success
+string message
