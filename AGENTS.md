@@ -48,6 +48,7 @@ make bag-summary      # .env指定のrosbagを解析し同ディレクトリにs
 make bag-plot-gnss    # GNSS軌跡・Fix状態・精度を可視化（CIRCLES=1で精度円、SCALE=10で倍率指定、TO_TOOLS=1でtools/data/保存）
 make bag-plot-gnss-map  # MAP_PATH/map_list.txtの地図群に、gnss_transform.yamlで変換したGNSSの位置・精度を重ねて描画（CIRCLES=1, SCALE=10, TO_TOOLS=1対応）
 make bag-plot-scans   # LiDARスキャン点群を2D画像化（NODES=1:20等でノード指定）
+make bag-eval-slam SLAM_DIR=<SLAM出力>  # SLAM出力をRTK(GNSS)と比較して評価
 make bag-eval-localization BAG=<bag> [GT_DIR=<SLAM出力>]  # 自己位置推定(EKF融合)の評価。滑らかさ・真値との誤差・NEES・AMCL遅延
 tools/scripts/run_localization_variant.sh <名前> [ekf.KEY=V amcl.KEY=V ...]  # 自己位置推定のパラメータ変種をrosbag再生で評価（実機不要。tools/README.md）
 make scenario-validate  # シナリオYAMLの静的検証（シミュレータ不要）
@@ -56,6 +57,8 @@ make scenario-test-all TIER=smoke  # 回帰テストをスタック起動し直�
 make scenario-test SCENARIO=<名前> ROBOT=<実機PCのIP>  # シミュレータは開発PC、ナビゲーションスタックは実機PCで実行（scenario-test-allにも指定可。mg_scenario_test/README.md）
 make scenario-env GUI=1  # attach用にシミュレータ+ナビゲーションを起動したままにする（make scenario-test-attach で起動し直さずに実行。Web UI の Scenario Test ページからも操作可）
 ```
+
+make ターゲットと compose サービスの全一覧は [doc/commands.md](./doc/commands.md)、`.env` の変数は [doc/environment.md](./doc/environment.md)、システム構成は [doc/system_architecture.md](./doc/system_architecture.md)。
 
 コンテナ内でROS2コマンドを使う場合:
 
@@ -74,27 +77,28 @@ source /opt/ros/humble/setup.bash && source /root/ros2_ws/install/setup.bash
 
 | パッケージ               | 役割                                                           |
 | ------------------------ | -------------------------------------------------------------- |
-| `mg_bringup`             | slam/navigationを束ねるトップレベルlaunch群                    |
-| `mg_description`         | URDF・RViz設定                                                 |
-| `mg_diagnostics`         | `/diagnostics`トピックへの正常性診断配信                       |
-| `mg_drivers`             | LiDAR/DepthCam/GPS/IMU/モータドライバ群、ホイールオドメトリの補正(`wheel_odom_corrector_node`) |
-| `mg_msgs`                | カスタムメッセージ・サービス定義                               |
-| `mg_navigation`          | Nav2ラッパー(collision_monitor/behavior_server設定, AMCL watchdog, GNSS初期化, AMCL入切の調停`amcl_gate_arbiter`, 自己位置の監督ノード`localization_supervisor`)。自己位置推定の構成は [README](./mg_navigation/README.md) |
-| `mg_scenario_test`       | MG-01用のシナリオテスト（プロファイル・プラグイン・シナリオ。[README](./mg_scenario_test/README.md)） |
-| `sim_scenario_test`      | ロボット非依存のGazebo+Nav2シナリオテスト基盤（mg_*に依存しない。[README](./sim_scenario_test/README.md)） |
-| `mg_simulation`          | Gazebo Fortress ワールド・launch設定                           |
-| `mg_simulator_client`    | シミュレータ操作クライアント                                   |
-| `mg_slam`                | slam_toolbox + KISS-ICP launch・パラメータ                     |
-| `mg_ui`                  | Web UI / TUI / system_manager の3サブパッケージ                |
-| `mg_utils`               | `LaunchArgumentCreator` ヘルパー                               |
-| `mg_waypoint_navigation` | FSMベースのウェイポイントシーケンサ(Nav2 ActionClientラッパー) |
-| `nav2_pkg`               | **カスタム修正済み**のNav2（アップストリームと差分あり）       |
+| [`mg_bringup`](./mg_bringup/README.md)             | slam/navigationを束ねるトップレベルlaunch群                    |
+| [`mg_description`](./mg_description/README.md)         | URDF・RViz設定                                                 |
+| [`mg_diagnostics`](./mg_diagnostics/README.md)         | `/diagnostics`トピックへの正常性診断配信                       |
+| [`mg_drivers`](./mg_drivers/README.md)             | LiDAR/DepthCam/GPS/モータドライバ群、ホイールオドメトリの補正(`wheel_odom_corrector_node`)、3D障害物検出 |
+| [`mg_msgs`](./mg_msgs/README.md)                | カスタムメッセージ・サービス定義                               |
+| [`mg_navigation`](./mg_navigation/README.md)          | Nav2の起動・設定, 自己位置推定の補助ノード(GNSS初期化, AMCL watchdog, AMCL入切の調停`amcl_gate_arbiter`, 監督ノード`localization_supervisor`)。構成は [doc/localization.md](./mg_navigation/doc/localization.md) |
+| [`mg_scenario_test`](./mg_scenario_test/README.md)       | MG-01用のシナリオテスト（プロファイル・プラグイン・シナリオ） |
+| [`sim_scenario_test`](./sim_scenario_test/README.md)      | ロボット非依存のGazebo+Nav2シナリオテスト基盤（mg_*に依存しない） |
+| [`mg_simulation`](./mg_simulation/README.md)          | Gazebo Fortress ワールド・launch設定                           |
+| [`mg_simulator_client`](./mg_simulator_client/README.md)    | Unityシミュレータ用のROS-TCP-Endpoint起動（現在は未使用）      |
+| [`slam_gnss_2d`](./slam_gnss_2d/README.md)            | **現役のSLAM**。GNSS拘束付き2D SLAM (C++)、GNSSブリッジ`slam_gnss_nav_bridge_node`。`slam_gnss_2d_msgs`を含む |
+| [`mg_slam`](./mg_slam/README.md)                | slam_toolbox launch・パラメータ、地図プレビュー、rosbag収録。`scripts/slam_gnss_2d/`は旧Python版 |
+| [`mg_ui`](./mg_ui/README.md)                  | Web UI (`mg_web_ui`) と system_manager (`mg_system_manager`) の2サブパッケージ |
+| [`mg_utils`](./mg_utils/README.md)               | `LaunchArgumentCreator`、点群変換、rosbag収録launch            |
+| [`mg_waypoint_navigation`](./mg_waypoint_navigation/README.md) | FSMベースのウェイポイントシーケンサ(Nav2 ActionClientラッパー) |
+| [`nav2_pkg`](./nav2_pkg/README.md)               | **カスタム修正済み**のNav2（アップストリームと差分あり）       |
 
 ## 重要なコード規約
 
 ### launch ファイル
 
-launch引数は必ず `LaunchArgumentCreator` 経由で定義する（[mg_utils/launch_argument.py](./mg_utils/mg_utils/launch_argument.py)）:
+launch引数は `LaunchArgumentCreator` 経由で定義する（[mg_utils/launch_argument.py](./mg_utils/mg_utils/launch_argument.py)）。使っていない既存のlaunchもあるが、新規・変更するlaunchでは使う（ロボット非依存の `sim_scenario_test` は意図的に使わない）:
 
 ```python
 from mg_utils.launch_argument import LaunchArgumentCreator
@@ -124,20 +128,21 @@ node_name:
 
 ## mg_ui
 
-構成・開発ガイド（層構成、依存の向き、ROS 通信と機能追加のルール）は [mg_ui/README.md](./mg_ui/README.md) を参照。
+構成・使い方は [mg_ui/README.md](./mg_ui/README.md)、フロントエンドの開発ガイド（層構成、依存の向き、ROS 通信と機能追加のルール）は [mg_ui/mg_web_ui/doc/frontend_development.md](./mg_ui/mg_web_ui/doc/frontend_development.md)、system_manager は [mg_ui/mg_system_manager/doc/system_manager.md](./mg_ui/mg_system_manager/doc/system_manager.md) を参照。
 
 | サブパッケージ      | 技術                                            |
 | ------------------- | ----------------------------------------------- |
 | `mg_web_ui`         | React 18 + TypeScript + Vite + Tailwind CSS     |
 | `mg_system_manager` | FastAPI + Docker SDK（`python3 -m mg_system_manager`） |
 
-**mg_web_ui フロントエンド:**
+変更後は `make ui-lint` と `make ui-test` を実行する。
 
-- ROS通信: foxglove_bridge `ws://localhost:8765`（[ros/foxgloveConnection.ts](./mg_ui/mg_web_ui/frontend/src/ros/foxgloveConnection.ts)）
-- 主要フック: `useFoxgloveClient`, `useTopicSubscriber`, `useServiceCaller`, `useNav2Status`, `useSystemManagerClient`
-- トピック・サービス定義: [ros/topics.ts](./mg_ui/mg_web_ui/frontend/src/ros/topics.ts), [ros/services.ts](./mg_ui/mg_web_ui/frontend/src/ros/services.ts)
-- foxglove経由でROS型を扱う場合はschema名が必要 → [ros/schemas.ts](./mg_ui/mg_web_ui/frontend/src/ros/schemas.ts) を参照
-- 変更後は `make ui-lint` と `make ui-test` を実行する
+## ドキュメントの構成
+
+- プロジェクト全体: [README.md](./README.md)（入口）と [doc/](./doc/)（システム構成・Docker・コマンド・環境変数・運用手順）
+- パッケージごと: パッケージルートの `README.md`（役割・ノード・launch・使い方の入口）と、詳細を書く `doc/`（ディレクトリ名は `doc/` に統一）
+- パッケージ固有の開発ルールは、そのパッケージの `README.md` または `doc/` に書き、パッケージ内に `AGENTS.md` を新設しない。本ファイルには要点とリンクだけを載せる
+- コードを変更したときは、対応する README・doc（launch引数、パラメータの既定値、トピック名など）も実装に合わせて更新する
 
 ## テスト
 
@@ -181,6 +186,9 @@ make test pkg=mg_waypoint_navigation
 | `tools/scripts/generate_static_transforms.py` | 地図とGNSSの対応点から剛体変換 (x,y,yaw) を算出 |
 | `tools/scripts/rosbag_modify_base.py` | rosbag内の特定トピック修正・書き換え |
 | `tools/scripts/bag_to_json.py` | rosbagの指定トピック/全メッセージのJSONダンプ |
+| `tools/scripts/eval_slam.py`<br>(`make bag-eval-slam`) | SLAM出力をRTK(GNSS)と比較して評価 |
+| `tools/scripts/run_slam_variant.sh` | SLAMのパラメータ変種をオフライン実行して評価まで一括実行 |
+| `tools/scripts/make_sim_gnss_transform.py` | シミュレータのワールドSDFからGNSSブリッジ用の`gnss_transform.yaml`を生成 |
 | `tools/scripts/eval_localization.py`<br>(`make bag-eval-localization`) | 自己位置推定の評価（滑らかさ・真値との誤差・NEES・AMCL遅延・故障からの復旧） |
 | `tools/scripts/run_localization_variant.sh` | 自己位置推定のパラメータ変種をrosbag再生で評価（センサ故障の注入にも対応）。データセットは`tools/datasets/localization/` |
 | `tools/scripts/calib_wheel_odom.py` | 走行ログとSLAM出力からホイールオドメトリのスケール・バイアス・遅れを推定 |
