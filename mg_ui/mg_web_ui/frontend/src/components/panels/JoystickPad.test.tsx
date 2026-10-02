@@ -14,6 +14,11 @@ function createClient(status: FoxgloveClientHandle["status"] = "connected") {
     publish,
     advertise,
     getLastMessageAt: () => null,
+    listServices: () => [],
+    listTopics: () => [],
+    getServiceRequestSchema: () => undefined,
+    getMessageSchema: () => undefined,
+    publishOnce: vi.fn(),
   };
   return { client, publish, advertise, release };
 }

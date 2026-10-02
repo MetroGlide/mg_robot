@@ -52,6 +52,14 @@ const OPCODE_SERVICE_CALL_RESPONSE = 0x03;
 
 const MESSAGE_DATA_HEADER_BYTES = 1 + 4 + 8;
 
+/** publishOnce で、送信が終わってから publisher を片付けるまでの余裕(ms) */
+const PUBLISH_ONCE_GRACE_MS = 100;
+
+export interface GraphTopic {
+  topic: string;
+  schemaName: string;
+}
+
 /** トピック名・サービス名の先頭の "/" の有無を揃える */
 export function normalizeName(name: string): string {
   return name.startsWith("/") ? name.slice(1) : name;
@@ -183,6 +191,26 @@ export class FoxgloveConnection {
     return this.lastMessageAt.get(normalizeName(topic)) ?? null;
   }
 
+  /** サーバが公開しているサービス名(先頭に "/" を付けたもの)を名前順で返す。 */
+  listServices(): string[] {
+    return [...this.services.keys()].sort().map((key) => `/${key}`);
+  }
+
+  /** サーバが公開しているトピックと型を、トピック名順で返す。 */
+  listTopics(): GraphTopic[] {
+    return [...this.channels.values()]
+      .map(({ topic, schemaName }) => ({
+        topic: `/${normalizeName(topic)}`,
+        schemaName,
+      }))
+      .sort((a, b) => a.topic.localeCompare(b.topic));
+  }
+
+  /** サービスのリクエストのスキーマ。サービスが公開されていなければ undefined。 */
+  getServiceRequestSchema(service: string): AdvertisedSchema | undefined {
+    return this.services.get(normalizeName(service))?.request;
+  }
+
   callService(service: string, payload: unknown): Promise<unknown> {
     return new Promise((resolve, reject) => {
       if (!this.isOpen()) {
@@ -281,6 +309,51 @@ export class FoxgloveConnection {
       return;
     }
     this.sendClientMessage(channel, bytes);
+  }
+
+  /**
+   * 任意のトピックに 1 回だけ publish し、送信が終わったら publisher を片付ける。
+   * 型のスキーマは clientSchemas、無ければサーバが公開している同じ型のトピックから得る。
+   * どちらにも無い型は JSON で送る。
+   */
+  async publishOnce(
+    topic: string,
+    schemaName: string,
+    data: unknown,
+  ): Promise<void> {
+    if (!this.isOpen()) {
+      throw new Error(`not connected (status: ${this.statusValue})`);
+    }
+    const release = this.advertise(topic, schemaName);
+    try {
+      this.publish(topic, schemaName, data);
+    } catch (e) {
+      release();
+      throw e;
+    }
+    await new Promise<void>((resolve) =>
+      setTimeout(
+        resolve,
+        this.options.publisherWarmupMs + PUBLISH_ONCE_GRACE_MS,
+      ),
+    );
+    release();
+  }
+
+  /** 型のスキーマ。clientSchemas に無い型は、サーバが公開している同じ型のトピックから借りる。 */
+  getMessageSchema(schemaName: string): AdvertisedSchema | undefined {
+    const known = this.options.clientSchemas[schemaName];
+    if (known) return known;
+    for (const ch of this.channels.values()) {
+      if (ch.schemaName === schemaName && ch.encoding === "cdr" && ch.schema) {
+        return {
+          encoding: ch.encoding,
+          schemaName: ch.schemaName,
+          schema: ch.schema,
+        };
+      }
+    }
+    return undefined;
   }
 
   private isOpen(): boolean {
@@ -493,7 +566,7 @@ export class FoxgloveConnection {
   }
 
   private openClientChannel(topic: string, schemaName: string): ClientChannel {
-    const schema = this.options.clientSchemas[schemaName];
+    const schema = this.getMessageSchema(schemaName);
     const channel: ClientChannel = {
       id: ++this.clientChannelCounter,
       schema,

@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { AdvertisedSchema } from "../ros/codec";
 import {
   ConnectionStatus,
   FoxgloveConnection,
+  GraphTopic,
 } from "../ros/foxgloveConnection";
 
-export type { ConnectionStatus };
+export type { ConnectionStatus, GraphTopic };
 
 export interface FoxgloveClientHandle {
   status: ConnectionStatus;
@@ -20,6 +22,20 @@ export interface FoxgloveClientHandle {
   advertise: (topic: string, schemaName: string) => () => void;
   /** トピックの最後のメッセージを受信した時刻(ms)。未受信なら null */
   getLastMessageAt: (topic: string) => number | null;
+  /** ブリッジが公開しているサービス名の一覧。呼んだ時点のスナップショット */
+  listServices: () => string[];
+  /** ブリッジが公開しているトピックと型の一覧。呼んだ時点のスナップショット */
+  listTopics: () => GraphTopic[];
+  /** サービスのリクエストのスキーマ。公開されていなければ undefined */
+  getServiceRequestSchema: (service: string) => AdvertisedSchema | undefined;
+  /** 型のスキーマ。既知の型か、ブリッジが公開しているトピックの型なら返す */
+  getMessageSchema: (schemaName: string) => AdvertisedSchema | undefined;
+  /** 任意のトピックに 1 回だけ publish する。送信が終わるまで待つ */
+  publishOnce: (
+    topic: string,
+    schemaName: string,
+    data: unknown,
+  ) => Promise<void>;
 }
 
 function getWsUrl(): string {
@@ -61,6 +77,13 @@ export function useFoxgloveClient(): FoxgloveClientHandle {
         connection.publish(topic, schemaName, data),
       advertise: (topic, schemaName) => connection.advertise(topic, schemaName),
       getLastMessageAt: (topic) => connection.getLastMessageAt(topic),
+      listServices: () => connection.listServices(),
+      listTopics: () => connection.listTopics(),
+      getServiceRequestSchema: (service) =>
+        connection.getServiceRequestSchema(service),
+      getMessageSchema: (schemaName) => connection.getMessageSchema(schemaName),
+      publishOnce: (topic, schemaName, data) =>
+        connection.publishOnce(topic, schemaName, data),
     }),
     [connection],
   );
