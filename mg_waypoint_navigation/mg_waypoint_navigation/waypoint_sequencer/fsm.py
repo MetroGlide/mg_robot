@@ -11,9 +11,15 @@ import rclpy.node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, ReliabilityPolicy
 from std_msgs.msg import String
 
-from mg_waypoint_navigation.waypoint import WaypointList
+from mg_waypoint_navigation.waypoint import (
+    NAVIGATION_MODES,
+    NavigationConfig,
+    Waypoint,
+    WaypointList,
+)
 from mg_waypoint_navigation.waypoint_sequencer.action_executor import ActionExecutor
 from mg_waypoint_navigation.waypoint_sequencer.navigator import (
+    DEFAULT_BT_MODE,
     NavigationResult,
     WaypointNavigator,
 )
@@ -22,6 +28,17 @@ from mg_waypoint_navigation.waypoint_sequencer.states import (
     CommandResult,
     SequencerState,
 )
+
+
+# 手動ゴールの BT。ウェイポイントの navigation_mode に、Nav2 既定の BT を加えたもの
+MANUAL_GOAL_MODES = NAVIGATION_MODES + (DEFAULT_BT_MODE,)
+
+# 手動ゴールを受け付けるシーケンスの状態 (走行中・停止待ちなどは拒否する)
+MANUAL_GOAL_STATES = frozenset({
+    SequencerState.IDLE,
+    SequencerState.GOAL_REACHED,
+    SequencerState.ERROR,
+})
 
 
 class CountdownTimer:
@@ -124,6 +141,8 @@ class WaypointSequencerFSM:
             QoSProfile(depth=1, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
                        reliability=ReliabilityPolicy.RELIABLE))
         self._publish_navigation_mode()
+        # UI などから送った手動ゴールが実行中か (ウェイポイントの走行とは独立に扱う)
+        self._manual_goal_active: bool = False
 
         self._countdown_timer = CountdownTimer(self._on_starting_done)
         self._pause_manager = PauseSlotManager()
@@ -210,8 +229,49 @@ class WaypointSequencerFSM:
     # 外部コマンド
     # ------------------------------------------------------------------
 
+    def navigate_to_pose(self, pose, navigation_mode: str) -> CommandResult:
+        """BT を指定して、シーケンスとは独立に 1 つのゴールを Nav2 に送る (手動ゴール)。
+
+        シーケンスが走行中でないとき (IDLE / GOAL_REACHED / ERROR) で、pause 中でないときだけ受け付ける。
+        手動ゴールの実行中は start() を拒否し、stop() でキャンセルする。
+        """
+        with self._lock:
+            if navigation_mode not in MANUAL_GOAL_MODES:
+                return CommandResult(
+                    False,
+                    f"Unknown navigation_mode {navigation_mode!r}; "
+                    f"expected one of {MANUAL_GOAL_MODES}",
+                )
+            if self._state not in MANUAL_GOAL_STATES:
+                return CommandResult(
+                    False,
+                    f"Cannot send a manual goal in state {self._state.value}; "
+                    "stop the sequence first",
+                )
+            if self._pause_manager.is_active:
+                return CommandResult(
+                    False,
+                    f"Paused by {', '.join(self._pause_manager.requesters)}",
+                )
+            waypoint = Waypoint(
+                index=-1,
+                pose=pose,
+                navigation=NavigationConfig(is_through_point=False),
+            )
+            self._manual_goal_active = True
+            self._navigator.send_goal(
+                waypoint,
+                self._on_manual_goal_result,
+                navigation_mode=navigation_mode,
+            )
+            return CommandResult(True, "OK")
+
     def start(self, countdown_ms: int) -> CommandResult:
         with self._lock:
+            if self._manual_goal_active:
+                return CommandResult(
+                    False, "A manual goal is running; stop it first")
+
             if self._pause_manager.is_active and self._state in (
                 SequencerState.IDLE, SequencerState.GOAL_REACHED
             ):
@@ -235,6 +295,12 @@ class WaypointSequencerFSM:
 
     def stop(self) -> CommandResult:
         with self._lock:
+            if self._manual_goal_active:
+                self._navigator.cancel()
+                self._manual_goal_active = False
+                if self._state == SequencerState.IDLE:
+                    return CommandResult(True, "Manual goal canceled")
+
             if self._state == SequencerState.IDLE:
                 return CommandResult(True, "Already idle")
 
@@ -310,6 +376,11 @@ class WaypointSequencerFSM:
                     or generation != self._countdown_timer.generation):
                 return
             self._enter_navigating()
+
+    def _on_manual_goal_result(self, result: NavigationResult) -> None:
+        with self._lock:
+            self._manual_goal_active = False
+        self._node.get_logger().info(f"Manual goal finished: {result.value}")
 
     def _on_navigation_result(self, result: NavigationResult) -> None:
         with self._lock:

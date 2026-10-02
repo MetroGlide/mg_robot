@@ -14,7 +14,7 @@ from visualization_msgs.msg import Marker, MarkerArray
 from mg_msgs.msg import PauseRequest, SequencerStatus
 from mg_msgs.msg import WaypointInfo
 from mg_msgs.msg import WaypointList as WaypointListMsg
-from mg_msgs.srv import LoadMaps, StartSequence
+from mg_msgs.srv import LoadMaps, SendGoal, StartSequence
 
 from mg_waypoint_navigation.waypoint import WaypointList, WaypointsLoader
 from mg_waypoint_navigation.waypoint_sequencer.fsm import WaypointSequencerFSM
@@ -73,6 +73,9 @@ class WaypointSequencerNode(Node):
             Trigger, "~/stop", self._on_stop_srv)
         self._reload_srv = self.create_service(
             Trigger, "~/reload_waypoints", self._on_reload_waypoints_srv
+        )
+        self._navigate_to_pose_srv = self.create_service(
+            SendGoal, "~/navigate_to_pose", self._on_navigate_to_pose_srv
         )
         # 地図の読み込みは最長 20 秒ほど待つので、他のサービスを止めないよう別のグループで受ける
         self._load_map_srv = self.create_service(
@@ -177,6 +180,12 @@ class WaypointSequencerNode(Node):
     # ------------------------------------------------------------------
     # トピックコールバック
     # ------------------------------------------------------------------
+
+    def _on_navigate_to_pose_srv(self, request: SendGoal.Request, response: SendGoal.Response):
+        result = self._fsm.navigate_to_pose(request.pose, request.navigation_mode)
+        response.success = result.success
+        response.message = result.message
+        return response
 
     def _on_load_map_srv(self, request: LoadMaps.Request, response: LoadMaps.Response):
         response.success, response.message = self._fsm.map_loader.load(

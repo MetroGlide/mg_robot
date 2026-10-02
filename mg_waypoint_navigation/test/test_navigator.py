@@ -140,6 +140,18 @@ def _finish(result_future, status):
 # ゴールの基本動作
 # ---------------------------------------------------------------------------
 
+def test_behavior_tree_for_each_mode(env):
+    assert env.nav.behavior_tree_for("normal") == BT_NORMAL
+    assert env.nav.behavior_tree_for("queue_wait") == BT_QUEUE_WAIT
+    # default は BT を指定せず、Nav2 の既定の BT に任せる
+    assert env.nav.behavior_tree_for("default") == ""
+
+
+def test_default_mode_sends_a_goal_without_a_behavior_tree(env):
+    env.nav.send_goal(_waypoint(), env.on_result, navigation_mode="default")
+    assert env.sent[-1].goal.behavior_tree == ""
+
+
 def test_success(env):
     env.nav.send_goal(_waypoint(), env.on_result)
     _, result_future = env.accept()

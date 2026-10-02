@@ -527,6 +527,107 @@ class TestSetNextIndex:
 # 禁止遷移（ALLOWED_TRANSITIONS の外側）
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# 手動ゴール (BT を指定して 1 つだけ送る)
+# ---------------------------------------------------------------------------
+
+class TestManualGoal:
+    @pytest.mark.parametrize("mode", ["normal", "queue_wait", "default"])
+    def test_goal_is_sent_as_a_stop_point_with_the_mode(self, env, mode):
+        pose = MagicMock()
+        result = env.fsm.navigate_to_pose(pose, mode)
+        assert result.success
+        waypoint = env.nav.send_goal.call_args.args[0]
+        assert waypoint.pose is pose
+        assert waypoint.navigation.is_through_point is False
+        assert env.nav.send_goal.call_args.kwargs["navigation_mode"] == mode
+        assert env.fsm.state == SequencerState.IDLE
+
+    def test_unknown_mode_is_rejected(self, env):
+        result = env.fsm.navigate_to_pose(MagicMock(), "fast")
+        assert not result.success
+        env.nav.send_goal.assert_not_called()
+
+    @pytest.mark.parametrize("prepare", ["on_starting", "navigating", "on_arriving"])
+    def test_rejected_while_the_sequence_is_running(self, env, prepare):
+        env.fsm.load_waypoints(_make_wl([ActionConfig(type="wait")]))
+        # 実タイマーが先に発火して状態が進まないよう、カウントダウンは長くして手動で進める
+        env.fsm.start(600_000)
+        if prepare != "on_starting":
+            env.fire_countdown()
+        if prepare == "on_arriving":
+            env.fire_nav_success()
+        sent = env.nav.send_goal.call_count
+
+        result = env.fsm.navigate_to_pose(MagicMock(), "normal")
+
+        assert not result.success
+        assert "stop the sequence first" in result.message
+        assert env.nav.send_goal.call_count == sent
+
+    def test_rejected_while_suspended(self, env):
+        env.fsm.load_waypoints(_make_wl([]))
+        env.fsm.start(0)
+        env.fire_countdown()
+        env.fsm.pause_request("p1", True)
+        assert env.fsm.state == SequencerState.SUSPENDED
+        assert not env.fsm.navigate_to_pose(MagicMock(), "normal").success
+
+    def test_accepted_after_the_sequence_finished_or_failed(self, env):
+        env.fsm.load_waypoints(_make_wl([]))
+        env.fsm.start(0)
+        env.fire_countdown()
+        env.fire_nav_success()
+        assert env.fsm.state == SequencerState.GOAL_REACHED
+        assert env.fsm.navigate_to_pose(MagicMock(), "normal").success
+        env.fire_nav_success()
+
+        env.fsm.start(0)
+        env.fire_countdown()
+        env.fire_nav_failed()
+        assert env.fsm.state == SequencerState.ERROR
+        assert env.fsm.navigate_to_pose(MagicMock(), "normal").success
+
+    def test_rejected_while_paused(self, env):
+        env.fsm.pause_request("p1", True)
+        result = env.fsm.navigate_to_pose(MagicMock(), "normal")
+        assert not result.success
+        assert "p1" in result.message
+        env.nav.send_goal.assert_not_called()
+
+    def test_start_is_rejected_while_a_manual_goal_runs(self, env):
+        env.fsm.load_waypoints(_make_wl([]))
+        env.fsm.navigate_to_pose(MagicMock(), "normal")
+        result = env.fsm.start(0)
+        assert not result.success
+        assert env.fsm.state == SequencerState.IDLE
+
+    def test_start_is_allowed_again_after_the_manual_goal_finishes(self, env):
+        env.fsm.load_waypoints(_make_wl([]))
+        env.fsm.navigate_to_pose(MagicMock(), "normal")
+        env.fire_nav_failed()
+        assert env.fsm.state == SequencerState.IDLE
+        assert env.fsm.start(0).success
+
+    def test_stop_cancels_a_manual_goal_in_idle(self, env):
+        env.fsm.load_waypoints(_make_wl([]))
+        env.fsm.navigate_to_pose(MagicMock(), "normal")
+        result = env.fsm.stop()
+        assert result.success
+        env.nav.cancel.assert_called_once()
+        assert env.fsm.state == SequencerState.IDLE
+        assert env.fsm.start(0).success
+
+    def test_stop_without_a_manual_goal_does_not_cancel(self, env):
+        env.fsm.stop()
+        env.nav.cancel.assert_not_called()
+
+    def test_a_new_manual_goal_replaces_the_running_one(self, env):
+        env.fsm.navigate_to_pose(MagicMock(), "normal")
+        assert env.fsm.navigate_to_pose(MagicMock(), "queue_wait").success
+        assert env.nav.send_goal.call_count == 2
+
+
 def _forbidden_transition_cases():
     all_states = list(SequencerState)
     cases = []

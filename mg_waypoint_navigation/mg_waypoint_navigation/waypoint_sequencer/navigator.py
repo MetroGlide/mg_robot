@@ -20,6 +20,9 @@ from mg_waypoint_navigation.waypoint import Waypoint
 # 経路上の最近傍点を探す範囲 [m]。前回の最近傍点から経路に沿ってこの長さだけ先まで探す。
 _PLAN_SEARCH_WINDOW_M = 2.0
 
+# 手動ゴールで BT を指定しない (Nav2 の既定の BT を使う) ときのモード名
+DEFAULT_BT_MODE = "default"
+
 
 class NavigationResult(enum.Enum):
     SUCCEEDED = "SUCCEEDED"
@@ -135,7 +138,9 @@ class WaypointNavigator:
         self._dispatch(goal_id, goal)
 
     def behavior_tree_for(self, navigation_mode: str) -> str:
-        """ナビゲーションモードに対応する BT の XML パス。"""
+        """ナビゲーションモードに対応する BT の XML パス。default は空文字 (Nav2 の既定の BT)。"""
+        if navigation_mode == DEFAULT_BT_MODE:
+            return ""
         if navigation_mode == "queue_wait":
             return self._bt_xml_queue_wait
         return self._bt_xml_normal
