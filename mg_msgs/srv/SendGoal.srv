@@ -1,0 +1,9 @@
+# BT を指定して Nav2 にゴールを 1 つ送る (手動ゴール)。sequencer が走行中でないときだけ受け付ける
+
+geometry_msgs/PoseStamped pose
+
+# 使う BT。normal / queue_wait はウェイポイントの set_navigation_mode と同じ XML、default は Nav2 の既定
+string navigation_mode
+---
+bool success
+string message
