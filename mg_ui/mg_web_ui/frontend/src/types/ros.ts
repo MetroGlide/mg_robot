@@ -193,6 +193,19 @@ export interface SequencerStatus {
   distance_remaining: number
 }
 
+/** amcl_gate_arbiter の状態 (mg_msgs/GateArbiterState) */
+export interface GateArbiterState {
+  desired: boolean
+  applied: boolean
+  holders: string[]
+}
+
+/** waypoint_sequencer が map_server に読み込ませた地図 (mg_msgs/LoadedMaps) */
+export interface LoadedMaps {
+  localization: string
+  planning: string
+}
+
 export interface DiagnosticKeyValue {
   key: string
   value: string
@@ -263,6 +276,10 @@ export interface Float32Msg {
 
 export interface BoolMsg {
   data: boolean
+}
+
+export interface StringMsg {
+  data: string
 }
 
 export interface OdomMsg {

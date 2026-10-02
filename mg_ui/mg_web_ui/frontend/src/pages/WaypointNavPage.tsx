@@ -9,6 +9,7 @@ import { useRosbagReplay } from "../contexts/RosbagReplayContext";
 import {
   SequencerStatus,
   BoolMsg,
+  StringMsg,
   CollisionDetectorState,
   GOAL_STATUS,
   GOAL_STATUS_COLOR,
@@ -24,6 +25,8 @@ import SimulationPoseSection, {
   PoseInput,
 } from "../components/status/SimulationPoseSection";
 import RosbagReplaySection from "../components/sections/RosbagReplaySection";
+import WaypointActionsSection from "../components/waypoint-actions/WaypointActionsSection";
+import { parseNavigationMode } from "../utils/waypointActions";
 
 const STATE_COLOR: Record<string, string> = {
   IDLE: "text-gray-300",
@@ -93,6 +96,15 @@ export default function WaypointNavPage({
     TOPICS.WAYPOINT_STATUS,
     "mg_msgs/msg/SequencerStatus",
   );
+
+  const navigationModeMsg = useTopicSubscriber<StringMsg>(
+    client,
+    TOPICS.WAYPOINT_NAVIGATION_MODE,
+    "std_msgs/msg/String",
+  );
+  const navigationMode = navigationModeMsg
+    ? parseNavigationMode(navigationModeMsg.data)
+    : null;
 
   const nav2 = useNav2Status(client);
 
@@ -263,6 +275,12 @@ export default function WaypointNavPage({
                 )}
               </div>
             )}
+            <p className="mt-2 text-sm text-gray-300">
+              Behavior tree:{" "}
+              {navigationMode
+                ? `${navigationMode.mode} (${navigationMode.behavior_tree})`
+                : "—"}
+            </p>
           </SectionCard>
           <SectionCard title="Nav2">
             <div className="grid grid-cols-2 gap-3 text-sm">
@@ -475,6 +493,11 @@ export default function WaypointNavPage({
           </SectionCard>
         </div>
       ),
+    },
+    {
+      id: "waypoint_actions",
+      label: "Actions",
+      children: <WaypointActionsSection client={client} />,
     },
     ...(isSimulation
       ? [

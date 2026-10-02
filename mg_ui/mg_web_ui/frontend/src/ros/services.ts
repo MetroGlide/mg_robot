@@ -4,6 +4,12 @@ export const SERVICES = {
   WAYPOINT_START: nodeNs(NODE_NS.WAYPOINT_SEQUENCER, '/start'),
   WAYPOINT_STOP: nodeNs(NODE_NS.WAYPOINT_SEQUENCER, '/stop'),
   WAYPOINT_RELOAD: nodeNs(NODE_NS.WAYPOINT_SEQUENCER, '/reload_waypoints'),
+  WAYPOINT_LOAD_MAP: nodeNs(NODE_NS.WAYPOINT_SEQUENCER, '/load_map'),
+  // ウェイポイントの amcl_on / amcl_off と同じ要求元として、AMCL のゲートを切り替える
+  AMCL_GATE_WAYPOINT: '/amcl_gate_arbiter/waypoint/change_publish_state',
+  GNSS_CHANGE_PUBLISH_STATE: '/slam_gnss_nav_bridge/change_publish_state',
+  AMCL_REINITIALIZE_GLOBAL: '/reinitialize_global_localization',
+  GNSS_AMCL_REINIT: '/gnss_amcl_initializer_node/request_reinit',
   LIFECYCLE_NAV_IS_ACTIVE: '/lifecycle_manager_navigation/is_active',
   LIFECYCLE_LOC_IS_ACTIVE: '/lifecycle_manager_localization/is_active',
   ROSBAG_PAUSE: '/rosbag2_player/pause',
