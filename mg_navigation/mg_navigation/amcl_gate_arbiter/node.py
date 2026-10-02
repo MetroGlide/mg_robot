@@ -7,12 +7,17 @@
   ~/supervisor/change_publish_state  (std_srvs/SetBool) 自己位置の監督ノードによる切り離し / 復帰
 
 すべての要求元が data=true のときだけゲートを開く。
+状態 (要求元の意図、ゲートへの反映済みか、止めている要求元) は、変化したときに
+~/state (mg_msgs/GateArbiterState, transient_local) で配信する。
 """
 
 import rclpy
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
+from rclpy.qos import QoSDurabilityPolicy, QoSProfile, ReliabilityPolicy
 from std_srvs.srv import SetBool
+
+from mg_msgs.msg import GateArbiterState
 
 from .arbiter import GateArbiter
 
@@ -30,6 +35,12 @@ class AmclGateArbiterNode(Node):
             SetBool, self.get_parameter('gate_service').value)
         self._pending = False
         self._gate_was_ready = False
+        self._state_pub = self.create_publisher(
+            GateArbiterState, '~/state',
+            QoSProfile(depth=1, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
+                       reliability=ReliabilityPolicy.RELIABLE))
+        self._last_state = None
+        self._publish_state()
         for name in REQUESTERS:
             self.create_service(
                 SetBool, f'~/{name}/change_publish_state',
@@ -49,15 +60,27 @@ class AmclGateArbiterNode(Node):
             + (f' (held by: {", ".join(holders)})' if holders else ''))
         response.success = True
         response.message = 'attached' if after else f'detached (held by: {", ".join(holders)})'
+        self._publish_state()
         if before != after:
             self._reconcile()
         return response
+
+    def _publish_state(self):
+        state = (self._arbiter.desired, self._arbiter.applied, tuple(self._arbiter.holders))
+        if state == self._last_state:
+            return
+        self._last_state = state
+        msg = GateArbiterState()
+        msg.desired, msg.applied, holders = state
+        msg.holders = list(holders)
+        self._state_pub.publish(msg)
 
     def _reconcile(self):
         ready = self._gate_client.service_is_ready()
         if self._gate_was_ready and not ready:
             # ゲートのノードが落ちた (再起動されると開いた状態に戻る) ので、次に現れたら送り直す
             self._arbiter.mark_unknown()
+            self._publish_state()
         self._gate_was_ready = ready
         if self._pending or not ready or not self._arbiter.needs_apply():
             return
@@ -72,6 +95,7 @@ class AmclGateArbiterNode(Node):
         result = future.result()
         if result is not None and result.success:
             self._arbiter.mark_applied(attach)
+            self._publish_state()
         else:
             self.get_logger().warning('failed to change the AMCL gate; will retry')
 
