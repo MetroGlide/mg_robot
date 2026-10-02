@@ -1,175 +1,93 @@
 # mg_ui
 
-MG-01 の状態表示・操作 UI パッケージ群。
+MG-01 の状態の表示と操作のための UI。ブラウザ (タブレットを含む) から、ロボットの状態の確認、ウェイポイントの走行、SLAM、シナリオテスト、サービスの起動・停止ができる。
 
 ## パッケージ構成
 
-| パッケージ          | 説明                                                                        |
-| ------------------- | --------------------------------------------------------------------------- |
-| `mg_web_ui`         | React フロントエンド + foxglove_bridge + HTTP 静的配信ノード                |
-| `mg_system_manager` | docker compose のサービス操作・地図保存・UI 設定・ログ配信を行う FastAPI サーバ |
+| パッケージ | 内容 |
+| :--- | :--- |
+| `mg_web_ui` | React のフロントエンドと、静的配信の HTTP ノード (`http_server_node.py`、`web_ui.launch.py`) |
+| `mg_system_manager` | docker compose のサービスの操作、地図の保存、UI の設定、ログの配信を行う FastAPI のサーバ |
 
-正常性診断は `mg_diagnostics/`（プロジェクトルート）で管理しています。
+```
+ブラウザ ── WebSocket :8765 ──► foxglove_bridge ──► ROS 2 (トピック・サービス)
+   │
+   ├── HTTP :8080 ──► http_server_node (フロントエンドの配信)
+   └── HTTP/WebSocket :8001 ──► system_manager ──► docker compose (サービスの起動・停止、ログ)
+```
 
-## 前提条件
+正常性の診断は [mg_diagnostics](../mg_diagnostics/README.md) が配信する (UI のトップと System ページが表示する)。
 
-- `make slam` または `make navigation` が起動済みであること
-- `make diagnostics` と `make system-manager` が起動済みであること（操作系機能を使う場合）
+## 画面
 
-## 通常起動（本番）
+| ページ | パス | 内容 |
+| :--- | :--- | :--- |
+| TOP | `/` | ロボットの状態、診断 |
+| Waypoint Nav | `/waypoint` | ウェイポイントの走行、一時停止、手動のゴール (BT の選択)、地図の切り替え、AMCL・GNSS の入/切 (Actions) |
+| SLAM Toolbox | `/slam` | slam_toolbox の SLAM |
+| SLAM-GNSS-2D | `/slam-gnss-2d` | GNSS 拘束付き SLAM、ポーズグラフ、地図の保存・プレビュー・再最適化 ([表示の説明](./mg_web_ui/doc/slam_gnss_2d_visualization.md)) |
+| Scenario Test | `/scenario-test` | シナリオテストの実行と結果 ([mg_scenario_test](../mg_scenario_test/README.md#web-ui-から実行する)) |
+| System | `/system` | サービスの起動・停止、コンテナの状態、ログ |
+| Setting | `/setting` | UI の設定 (可視化のレイヤーなど) |
+
+## 使い方
+
+### 本番
+
+前提: `make slam` または `make navigation` が起動済みであること。操作系の機能を使うには、`make diagnostics` と `make system-manager` も必要。
 
 ```bash
-# 本番ビルド（初回または frontend 変更時）
-make build svc=web-ui
-
-# ブラウザ UI 起動（foxglove_bridge:8765 + HTTP:8080）
-make web-ui
-
-# タブレット / ブラウザからアクセス
-# http://<ロボットIP>:8080
+make build svc=web-ui    # 初回と、フロントエンドを変えたとき
+make ui-all              # system-manager・web-ui・foxglove-bridge・diagnostics を起動
 ```
 
-## 開発モード（フロントエンド変更を即時反映）
+タブレットやブラウザから `http://<ロボットの IP>:8080` を開く。個別に起動するときは、`make web-ui`、`make foxglove-bridge`、`make system-manager`、`make diagnostics`。
+
+`web_ui.launch.py` の引数: `port` (既定 8080)、`dist_dir` (空なら、インストールした `frontend/dist`)。
+
+### 開発 (変更をすぐ反映する)
 
 ```bash
-# Vite devサーバー起動（HMR 有効、ポート 5173）
-make web-ui-dev
-
-# ブラウザからアクセス
-# http://localhost:5173  or  http://<ロボットIP>:5173
+make ui-dev-all          # web-ui の代わりに Vite の開発サーバ (HMR、ポート 5173) を起動
+make web-ui-dev          # 開発サーバだけ
 ```
 
-> foxglove_bridge は `make web-ui` または `make slam` / `make navigation` 側で起動していること。
+`http://localhost:5173` (または `http://<ロボットの IP>:5173`) を開く。foxglove_bridge は、`make ui-dev-all`、`make ui-all`、`make foxglove-bridge` のどれかで起動しておく (`make web-ui` は foxglove_bridge を含まない)。
 
-## 診断・システム管理
+### 検査とテスト
 
 ```bash
-make diagnostics     # /diagnostics トピックへの正常性診断配信
-make system-manager  # docker compose のサービス操作などを行う API サーバ (ポート 8001)
+make ui-lint                              # フロントエンドの型チェック (tsc) と ESLint
+make ui-test                              # フロントエンド (vitest) と system_manager (pytest)
+make test pkg=mg_ui/mg_system_manager     # system_manager のテストだけ
 ```
 
-## 検査・テスト
+## ポート
 
-```bash
-make ui-lint   # フロントエンドの型チェック (tsc) と ESLint
-make ui-test   # フロントエンド (vitest) と system_manager (pytest)
-make test pkg=mg_ui/mg_system_manager   # system_manager のテストだけ
-```
+| ポート | 内容 |
+| :--- | :--- |
+| 8765 | foxglove_bridge (WebSocket) |
+| 8080 | フロントエンドの配信 |
+| 5173 | Vite の開発サーバ |
+| 8001 | system_manager |
 
-- フロントエンドの整形は Prettier（`frontend/.prettierrc.json`）を使う。**新規・変更したファイルにだけ適用**し、既存ファイルを一括整形しない。
-- ESLint の `react-hooks/exhaustive-deps` は警告にしている。新しく書くコードでは警告を出さない。
+## ROS との通信
 
-## 開発ガイド
+- トピックの購読と publish、サービスの呼び出しは、foxglove_bridge (`ws://localhost:8765`) を通す。定義は `frontend/src/ros/` ([topics.ts](./mg_web_ui/frontend/src/ros/topics.ts)、[services.ts](./mg_web_ui/frontend/src/ros/services.ts)、[schemas.ts](./mg_web_ui/frontend/src/ros/schemas.ts))。
+- 主なフック: `useFoxgloveClient`、`useTopicSubscriber`、`useServiceCaller`、`useNav2Status`、`useSystemManagerClient`。
+- foxglove_bridge は、UI が使わない機能 (`connectionGraph`、`parameters`、`assets`、`sysinfo`) を止めて起動する ([doc/tuning.md](./doc/tuning.md))。
 
-### mg_web_ui の構成と依存の向き
+## 開発
 
-```
-frontend/src/
-  ros/          通信層（React に依存しない）: foxgloveConnection, codec, topics, services, schemas
-  hooks/        通信層を React から使うフック（useFoxgloveClient, useTopicSubscriber など）
-  contexts/     設定・状態の Provider
-  components/
-    layout/     ページ骨格（NavBar, RobotPageLayout, SideAccordion, SectionCard）
-    panels/     計器・ログなどの表示パネル
-    status/     コンテナ状態・サービス操作のカード
-    sections/   複数の操作をまとめた節（rosbag 再生など）
-    waypoint-actions/ ウェイポイントナビ画面の「Actions」（AMCL・GNSS の入切、地図の切り替え、任意のサービス・トピック）
-    ros-viewer/ three.js による 2D/3D ビューワー（hooks/ と layers/）
-    ui/         ボタンなどの汎用部品
-  pages/        ルーティングされるページ
-  utils/, types/
-```
+- フロントエンド: [mg_web_ui/doc/frontend_development.md](./mg_web_ui/doc/frontend_development.md) (構成と依存の向き、ROS 通信のルール、機能・ページ・レイヤーの足し方)
+- system_manager: [mg_system_manager/doc/system_manager.md](./mg_system_manager/doc/system_manager.md) (構成、エンドポイント、環境変数、機能の足し方)
+- 負荷を下げる設定と、既知の制約: [doc/tuning.md](./doc/tuning.md)
 
-- import の向きは `pages → components / hooks / contexts → ros / utils / types`。**逆向きは禁止**。特に `ros/` から `hooks/` や `components/` を import しない。
-- import はファイル先頭に書く（遅延 import・`try/catch` での握りつぶしは禁止。ルートの AGENTS.md）。
-- 再エクスポートだけのファイルは作らない。実体のパスから import する。
+## ドキュメント
 
-### ROS 通信のルール
-
-- 購読は `useTopicSubscriber(client, topic, schemaName)` を使う。購読は `FoxgloveConnection` がリスナーの登録として保持し、
-  未接続・再接続・ノードの再起動（チャネル id の変更）があっても自動で張り直す。`client.status` で購読を出し分けなくてよい。
-- **高頻度のトピック（scan・点群・画像・costmap・tf・odom など）は、表示するときだけコンポーネントをマウントして購読する**。
-  非表示のレイヤーが購読し続けないようにする。タブが非表示の間は自動で購読が止まる。
-- 連続して publish するトピック（`/cmd_vel` など）は、使う前に `client.advertise(topic, schemaName)` を呼んでおく。
-  呼ばずに初めて publish すると、DDS のマッチングを待つため最初のメッセージが約 0.4 秒遅れる。
-- publish するメッセージは `ros/schemas.ts` にスキーマを追加する。cdr でエンコードできない場合は例外になる（壊れたデータは送らない）。
-- 新しいトピックは `ros/topics.ts`、サービスは `ros/services.ts` に定義する。
-- 任意のトピックに 1 回だけ publish するときは `client.publishOnce(topic, schemaName, data)` を使う（送信後に publisher を片付ける）。
-  型のスキーマは `ros/schemas.ts` に無くても、ブリッジが同じ型のトピックを公開していればそれを使う。どちらにも無ければ JSON で送る。
-  publisher は volatile なので、あとから起動した購読者には届かない。
-- サービスはブリッジが公開しているスキーマで encode / decode されるため、`ros/schemas.ts` への追加は要らない。
-  公開中のサービス・トピックの一覧は `client.listServices()` / `client.listTopics()`（呼んだ時点のスナップショット）で取る。
-- ゲートの状態など、ノード側の状態を表示したいときは、変化したときだけ配信する latched（transient_local）のトピックをノード側に足して購読する。
-  UI 側で別のトピックの流れ具合から推定しない（センサ停止とゲート OFF を区別できないため）。
-
-### 新しい機能を追加するとき
-
-| 追加するもの                 | 場所                                                                                     |
-| ---------------------------- | ---------------------------------------------------------------------------------------- |
-| ROS トピックの表示           | `ros/topics.ts` に定義 → `useTopicSubscriber` で購読 → レイヤーまたはパネルとして表示       |
-| ビューワーのレイヤー         | `components/ros-viewer/layers/` に追加し、`VisualizationContext` のレイヤー定義に登録      |
-| system_manager の操作 API    | `mg_system_manager/routers/` に追加。入力は `config.py` の正規表現で検証する。テストを書く  |
-| 操作対象の compose サービス  | `mg_system_manager/config.py` の `SERVICES` に追加（UI の System ページには自動で反映）    |
-| UI 設定の保存                | `saveSettings(key, value)`（キー単位で保存される）                                          |
-
-### mg_system_manager
-
-`python3 -m mg_system_manager`（ポート 8001）。compose の `system-manager` サービスが起動する。
-
-```
-mg_system_manager/
-  config.py         環境変数の設定、サービス定義（SERVICES）、入力検証の正規表現
-  docker_ops.py     ComposeRunner: docker compose の実行、コンテナ検索、サービスごとの排他
-  log_hub.py        コンテナログの配信（サービスごとに docker logs を 1 本、接続ごとに上限付きバッファ）
-  settings_store.py UI 設定の保存（キー単位のマージ）
-  scenario_results.py シナリオ一覧と、シナリオテストの結果（progress.json・result.json・ログ）の読み出し
-  routers/          エンドポイント
-```
-
-- `docker compose` は `.env` の `USE_GPU` に応じて GPU 用の compose ファイルを重ねて実行する（Makefile と同じ）。
-- シナリオテストの API は `routers/scenario_test.py`（`/scenario/...`）。`scenario-test` / `scenario-env` は `SERVICES` の汎用ルート
-  （`/<service>/start` など）と重ならないよう `/scenario/` の下に置いている。使い方は [mg_scenario_test/README.md](../mg_scenario_test/README.md#web-ui-から実行する)。
-
-- ウェイポイントナビ画面の「Nav2 Goal」は、BT を選べるよう `/goal_pose` ではなく sequencer の `~/navigate_to_pose`（`mg_msgs/SendGoal`）でゴールを送る。
-  「Nav2 default」は BT もコストマップも変えない（従来の `/goal_pose` と同じ）。「Normal」「Queue wait」はウェイポイントの `set_navigation_mode` と同じく、BT と global_costmap のセンサ障害物層を切り替える（Queue wait で無効、Normal で有効）。
-  ゴールの終了時に層は戻さないので、戻すときは Normal でゴールを送るか Nav2 を再起動する。シーケンスの走行中は拒否される。
-- `GET /navigation/maps`（`routers/maps.py`）は、環境変数 `MAP_PATH` の `map_list.txt`（1 行 1 ファイル、`MAP_PATH` からの相対パス。空行と `#` 始まりの行は無視）から地図の一覧を返す。
-  `MAP_PATH` はコンテナの起動時の値なので、`.env` を変えたら `system-manager` を起動し直す。`map_list.txt` が無ければ `success: false` を返し、UI にそのまま表示する。
-  地図の切り替えは、sequencer の `~/load_map` を呼ぶ（読み込み済みの地図の記録を更新するため）。
-
-- コンテナは compose のプロジェクト（`COMPOSE_PROJECT_NAME`、未設定ならディレクトリ名）で絞り込む。
-  `docker compose run` で作られた one-off コンテナも対象で、同じサービスに複数ある場合は動作中のものを優先する。
-- 同じサービスへの操作は同時に 1 つだけ。実行中に別の操作が来たら `another operation is in progress` を返す。
-  ハードウェアを使うサービス（`hardware=True`）とシナリオテスト用スタックの起動は互いに排他する。
-- CORS は、localhost・プライベート IP・Tailscale・`.local` のホストの `:8080` / `:5173` を許可する。
-  他のオリジンは環境変数 `SYSTEM_MANAGER_ALLOW_ORIGINS`（カンマ区切り）で追加する。
-- 認証はない。信頼できるネットワークでのみ使うこと。
-
-### 負荷を下げる設定と戻し方
-
-実機 PC・タブレットの負荷を下げるために入れている設定。負荷が増える方向の変更は行っていない。
-
-| 設定                                   | 効果                                                                 | 調整・元に戻す方法                                                       |
-| -------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| タブ非表示中の購読停止                 | 見ていないタブがトピックを受信しない(bridge の送信量とデコードが減る) | 自動。`FoxgloveConnection.setPaused`                                      |
-| ビューワーの描画を要求ベースにする     | 常時 60fps だった描画を 20fps 程度にする                              | `RosViewer.tsx` の `RENDER_INTERVAL_MS`(大きいほど軽い)                    |
-| 描画解像度の上限                       | 高 DPI 端末での描画負荷を抑える                                       | `RosViewer.tsx` の `MAX_DEVICE_PIXEL_RATIO`                                |
-| 可視化プリセット(軽量・標準・すべて)   | 表示するレイヤーを減らして購読と描画を減らす                          | Settings の Visualization                                                 |
-| 画像を canvas に直接描画               | dataURL への再エンコードをやめる                                      | —                                                                        |
-| 地図・コストマップのテクスチャの使い回し | 更新のたびの GPU メモリの確保・解放をなくす                            | —                                                                        |
-| foxglove_bridge の capabilities・sysinfo | UI が使わない機能(connectionGraph・parameters・assets・sysinfo)を止める | `compose.yaml` の foxglove-bridge の `capabilities` と `sysinfo` の 2 行を削除 |
-| コンテナ状態の取得を軽くする           | Docker への問い合わせを減らす(1 秒キャッシュ、inspect を省略)          | `docker_ops.py` の `_STATUS_CACHE_TTL_S`                                   |
-| ログ配信                               | `docker logs` を共有し、バッファに上限を付けてまとめて送る             | `routers/logs.py` の `MAX_BUFFERED_ENTRIES`・`FLUSH_INTERVAL_S`            |
-| ページ単位の遅延読み込み               | 初期に読み込む JS を 1.5MB から 0.27MB にする                          | `App.tsx` の `lazy`                                                       |
-
-計測するときは、ブラウザの Performance(メインスレッドの占有率・FPS)と、実機 PC で `top`(foxglove_bridge と system_manager の CPU)、
-`nethogs` / `iftop`(bridge の送信量)を、変更前後で比べる。
-
-### 既知の制約
-
-- system_manager のテストには `httpx` が必要で、`requirements.txt` に追加してある。
-  既存の develop イメージには入っていないため、`make build svc=develop` で再ビルドするまで `make ui-test` の pytest は失敗する。
-
-- ジョイスティックは、操作中にタブの切替・ページ遷移・切断が起きたときは速度 0 を送る。
-  ただしドラッグ中に通信が切れたりブラウザが落ちたりした場合は UI から停止を送れず、
-  `motor_driver_node` に `cmd_vel` のタイムアウトがないため、最後の速度が保持される。
+| ファイル | 内容 |
+| :--- | :--- |
+| [mg_web_ui/doc/frontend_development.md](./mg_web_ui/doc/frontend_development.md) | フロントエンドの開発ガイド |
+| [mg_web_ui/doc/slam_gnss_2d_visualization.md](./mg_web_ui/doc/slam_gnss_2d_visualization.md) | SLAM-GNSS-2D ページの表示の説明 |
+| [mg_system_manager/doc/system_manager.md](./mg_system_manager/doc/system_manager.md) | system_manager の仕様 |
+| [doc/tuning.md](./doc/tuning.md) | 負荷を下げる設定、既知の制約 |

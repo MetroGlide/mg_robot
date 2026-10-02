@@ -19,6 +19,8 @@ mg_waypoint_navigation/
       fsm.py                       # WaypointSequencerFSM
       navigator.py                 # WaypointNavigator (Nav2 ラッパー)
       action_executor.py           # ActionExecutor (別スレッド実行)
+      costmap_mode.py              # navigation_mode に応じた global_costmap のセンサ障害物層の切り替え
+      map_loader.py                # 測位用・計画用の地図の読み込みと、読み込み済みの地図の記録 (~/loaded_maps)
       actions/
         base.py                    # BaseAction
         generic.py                 # GenericServiceAction / GenericPublishAction
@@ -30,6 +32,11 @@ mg_waypoint_navigation/
   launch/
     waypoint_sequencer.launch.py
     waypoint_editor.launch.py
+  waypoint_tool/                   # waypoint-tool 用のスキーマ・エクスポートテンプレート
+    mg_waypoint.schema.json
+    mg_waypoint_v2.wpt_template
+    mg_gnss_transform.wpt_template
+  test/                            # pytest
   behavior_trees/
     mg_navigate_to_pose.xml             # 通常時。FollowPath/ComputePathToPose失敗時にWait/BackUp/ClearCostmap等のリカバリーを行う
     mg_navigate_to_pose_queue_wait.xml  # queue_waitモード。回避動作なしでWaitのみ（列に詰める動作用）
@@ -47,7 +54,7 @@ mg_waypoint_navigation/
 ```mermaid
 graph TD
     subgraph Requesters["ポーズリクエスタ (複数)"]
-        OR["TUI等の手動停止\n任意の requester_id"]
+        OR["Web UI 等の手動停止\n任意の requester_id"]
     end
 
     subgraph WSN["WaypointSequencerNode"]
@@ -70,7 +77,7 @@ graph TD
     NAV <--> Nav2
 ```
 
-`PauseRequest`はTUIの手動停止など明示的な一時停止要求のための汎用機構であり、衝突対応はこの経路を使わない（下記「衝突対応」参照）。
+`PauseRequest`は Web UI の手動停止など明示的な一時停止要求のための汎用機構であり、衝突対応はこの経路を使わない（下記「衝突対応」参照）。
 
 ---
 
@@ -170,10 +177,10 @@ stateDiagram-v2
 | `plan_topic`              | string | `/plan`    | 通過点判定に使う経路のトピック   |
 | `initial_localization_map` | string | `""`      | 起動時に map_server が読み込んでいる測位用地図 (`~/loaded_maps` の初期値。`mg_navigation` の bringup が渡す) |
 | `initial_planning_map`    | string | `""`       | 起動時に planning_map_server が読み込んでいる計画用地図 (同上) |
+| `plan_goal_match_tolerance` | double | `0.6`    | 経路の終点をゴールのものとみなす距離 [m]（NavFn の `tolerance` 以上にする） |
 
 > 読み込み済みの地図の記録は、`load_map` アクションと `~/load_map` を通した読み込みだけが更新する。
 > `/map_server/load_map` などを直接呼んだ場合は記録とずれる。
-| `plan_goal_match_tolerance` | double | `0.6`    | 経路の終点をゴールのものとみなす距離 [m]（NavFn の `tolerance` 以上にする） |
 
 ### 到達判定
 

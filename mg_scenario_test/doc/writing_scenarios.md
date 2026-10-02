@@ -1,6 +1,6 @@
 # MG-01 向けシナリオの書き方
 
-書式の全項目は [scenario_format.md](../../sim_scenario_test/docs/scenario_format.md)、MG 固有の型は [mg_plugins.md](mg_plugins.md) を参照。
+書式の全項目は [scenario_format.md](../../sim_scenario_test/doc/scenario_format.md)、MG 固有の型は [mg_plugins.md](mg_plugins.md) を参照。
 ここでは典型パターンと、つまずきやすい点をまとめます。まず同梱シナリオ ([一覧](../scenarios/README.md)) を真似るのが早道です。
 
 ## 基本の骨組み
@@ -39,7 +39,7 @@ timeline:
 
 `at_time` (時間) より `robot_travelled` / `robot_near` / `goal_started` の方が、ロボットの挙動や速度に左右されず再現しやすい。
 
-**移動する障害物 (歩行者)** — `spawn` の後に `move_obstacle` (`speed` と `to`)。実例は `pedestrian_crossing.yaml`。
+**移動する障害物 (歩行者)** — `spawn` の後に `move_obstacle` (`speed` と `to`)。実例は `regression/dynamic_avoid.yaml`。
 
 **異常系 (到達できないことを確認)** — `expect: [{ navigation_fails: { index: 0 } }]`。実例は `nav_unreachable_goal.yaml`。
 
@@ -85,6 +85,6 @@ AMCL の復帰処理の確認に使える。
 2. 実行後の `Summary` と `result.json` の `checks` で、どのチェックが落ちたか確認する。`events` にゴールの到達時刻などがある。
 3. `launch.log` にシミュレータ・Nav2・runner の全ログがある。`[action]` `[spawn]` `[timeline]` `[nav2_goals]` などで検索する。
 4. 目で見たいときは `make scenario-test SCENARIO=... GUI=1`。Nav2 の挙動は RViz (`make rviz2-navigation`) を併用する。
-5. 開発中の反復は `make gazebo-simulation` と `make navigation` を別端末で起動し、`make scenario-test-attach` で繰り返す
+5. 開発中の反復は、`make scenario-env` (GUI を見るときは `GUI=1`) でシミュレータとナビゲーションを起動したままにして、`make scenario-test-attach SCENARIO=...` で繰り返す。終わったら `make scenario-env-stop`
    (走行を繰り返すと Nav2 の状態が劣化することがある。結果がおかしいときは起動し直す)。
 6. ヘッドレスの結果を rosbag で調べたいときは、`launch.log` の内容と `tools/` の `make bag-*` を併用する。

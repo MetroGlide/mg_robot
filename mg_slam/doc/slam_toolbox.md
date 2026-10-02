@@ -1,3 +1,5 @@
+> このリポジトリの設定は [mg_slam の README](../README.md#slam_toolbox-の設定) を参照。文中の `src/slam_toolbox/...` は、上流 (slam_toolbox 本家) のソースのパスで、このリポジトリには含まれない。
+
 
 ## はじめに — 本書の読み方
 

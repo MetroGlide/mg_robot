@@ -56,7 +56,7 @@ sequencer が `ERROR` になったら FAILED です。
 
 | 型 | パラメータ | 判定 |
 |---|---|---|
-| `collision_monitor_action` | `action` (`STOP` / `SLOWDOWN` / `APPROACH`), `expect`=occurs (`occurs`/`never`), `topic`=/collision_monitor_state | `nav2_msgs/CollisionMonitorState` (このリポジトリの nav2_pkg 独自) で、collision_monitor がその action を発動した回数から判定 |
+| `collision_monitor_action` | `action` (`STOP` / `SLOWDOWN` / `APPROACH`), `expect`=occurs (`occurs`/`never`), `topic`=/collision_monitor_state | `nav2_msgs/CollisionMonitorState` (`nav2_pkg/nav2_msgs` の型。新しい collision monitor と一緒に取り込んだもの) で、collision_monitor がその action を発動した回数から判定 |
 
 ## waypoint 形式 `mg`
 

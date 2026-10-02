@@ -16,7 +16,7 @@ plugins:                          # 起動時に import するモジュール (�
 sim:
   backend: gazebo_fortress        # 登録済みのバックエンド名
   robot_entity: mg                # シミュレータ上のロボットのモデル名
-  robot_spawn_z: 0.05             # respawn / teleport 時にロボットへ加える高さ [m] (地面へのめり込み防止)
+  robot_spawn_z: 0.05             # respawn / teleport 時にロボットへ加える高さ [m] (地面へのめり込み防止。省略時は 0.0。0.05 は MG-01 の値)
   clock_stall_sec: 30.0           # sim 時計が壁時計でこの秒数進まなければ ERROR
   launch:                         # 起動するシミュレータの launch (run / run-all のみ)
     package: mg_simulation

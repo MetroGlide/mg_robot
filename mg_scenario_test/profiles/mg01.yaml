@@ -1,5 +1,5 @@
 # MG-01 用ロボットプロファイル (sim_scenario_test)
-# 項目の詳細は sim_scenario_test/docs/profile_reference.md を参照。
+# 項目の詳細は sim_scenario_test/doc/profile_reference.md を参照。
 name: mg01
 plugins:
   - mg_scenario_test.plugins
