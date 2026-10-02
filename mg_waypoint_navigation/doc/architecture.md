@@ -82,6 +82,7 @@ graph TD
 - **一定時間待つ**: `controller_server`の`progress_checker`（`movement_time_allowance`）が、ロボットが一定時間進まないことを検知すると`FollowPath`アクションを失敗させる。この値は`controller_server`単一インスタンスの共有設定のため、衝突対応専用ではなく下記`queue_wait`モードのFollowPathにも同じ値が効く点に注意。
 - **解消しなければ回避行動**: 上記の失敗をトリガーに、`mg_navigate_to_pose.xml`の`RecoveryNode`/`RoundRobin`リカバリー（`Wait→BackUp→ClearCostmap`等）が発火する。バックアップ動作自体は`behavior_server`が担当し、`collision_monitor`を経由せず`cmd_vel`に直接publishするため、後退中の安全性は`behavior_server`自身のローカルコストマップベースの衝突チェックに委ねられる。
 - **列に並ぶ区間（queue_wait）**: `set_navigation_mode`アクションで`navigation_mode`を`queue_wait`に切り替えると、`mg_navigate_to_pose_queue_wait.xml`が使われる。こちらはリトライ無制限・`Wait`のみで回避動作を行わず、列に詰める動作を再現する。
+  同時に、global_costmapのセンサ障害物層（`top_obstacle_layer`・`obstacle_stvl_layer`）を無効にするので、グローバル経路は動的障害物を避けずに引かれる（`static_layer`と`inflation_layer`は有効のまま。local_costmapは変えない）。障害物の手前での停止は`collision_monitor`とRPPの衝突チェックが担う。`normal`に切り替えると層を有効に戻す。自動では戻さないので、列の区間の終わりに`normal`を呼ぶ。
 
 パラメータの詳細は`mg_navigation/params/nav2_params.yaml`のコメントを参照。
 
@@ -146,7 +147,7 @@ stateDiagram-v2
 | Service | `~/start`                   | `mg_msgs/StartSequence`          | IDLE/GOAL_REACHED → ON_STARTING (pause 中は拒否) |
 | Service | `~/stop`                    | `std_srvs/Trigger`               | 任意状態 → IDLE (pause スロットも全解除)     |
 | Service | `~/reload_waypoints`        | `std_srvs/Trigger`               | IDLE/GOAL_REACHED/ERROR 時のみ有効           |
-| Service | `~/navigate_to_pose`        | `mg_msgs/SendGoal`               | BT を指定してゴールを 1 つ送る手動ゴール。`navigation_mode` は `normal` / `queue_wait` (ウェイポイントと同じ XML) か `default` (BT を指定せず Nav2 の既定)。IDLE/GOAL_REACHED/ERROR で pause 中でないときだけ受け付ける。実行中は `~/start` を拒否し、`~/stop` でキャンセルする。BT だけを切り替え、コストマップのレイヤーと `~/navigation_mode` は変えない |
+| Service | `~/navigate_to_pose`        | `mg_msgs/SendGoal`               | BT を指定してゴールを 1 つ送る手動ゴール。`navigation_mode` は `normal` / `queue_wait` (`set_navigation_mode` と同じ BT と、global_costmap のセンサ障害物層の切り替え) か `default` (BT も層も変えず、Nav2 の既定の BT)。IDLE/GOAL_REACHED/ERROR で pause 中でないときだけ受け付ける。実行中は `~/start` を拒否し、`~/stop` でキャンセルする。層の切り替えに失敗したときはゴールを送らない。ゴールの終了時に層は戻さない (戻すのは `normal` で送るか Nav2 の再起動)。`~/navigation_mode` (シーケンスのモード) は変えない |
 | Service | `~/load_map`                | `mg_msgs/LoadMaps`               | 測位用・計画用の地図を map_server に読み込ませる (空文字の側は変更しない)。状態によらず実行でき、`load_map` アクションと同じ経路 |
 | Sub     | `~/set_next_waypoint_index` | `std_msgs/Int16`                 | IDLE/SUSPENDED 時のみ有効                    |
 | Sub     | `~/pause_request`           | `mg_msgs/PauseRequest`           | Named Pause Slot 制御 (複数ノードから送信可) |

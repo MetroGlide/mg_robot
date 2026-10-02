@@ -131,7 +131,8 @@ mg_system_manager/
   （`/<service>/start` など）と重ならないよう `/scenario/` の下に置いている。使い方は [mg_scenario_test/README.md](../mg_scenario_test/README.md#web-ui-から実行する)。
 
 - ウェイポイントナビ画面の「Nav2 Goal」は、BT を選べるよう `/goal_pose` ではなく sequencer の `~/navigate_to_pose`（`mg_msgs/SendGoal`）でゴールを送る。
-  「Nav2 default」は BT を指定しない（従来の `/goal_pose` と同じ BT）。シーケンスの走行中は拒否される。
+  「Nav2 default」は BT もコストマップも変えない（従来の `/goal_pose` と同じ）。「Normal」「Queue wait」はウェイポイントの `set_navigation_mode` と同じく、BT と global_costmap のセンサ障害物層を切り替える（Queue wait で無効、Normal で有効）。
+  ゴールの終了時に層は戻さないので、戻すときは Normal でゴールを送るか Nav2 を再起動する。シーケンスの走行中は拒否される。
 - `GET /navigation/maps`（`routers/maps.py`）は、環境変数 `MAP_PATH` の `map_list.txt`（1 行 1 ファイル、`MAP_PATH` からの相対パス。空行と `#` 始まりの行は無視）から地図の一覧を返す。
   `MAP_PATH` はコンテナの起動時の値なので、`.env` を変えたら `system-manager` を起動し直す。`map_list.txt` が無ければ `success: false` を返し、UI にそのまま表示する。
   地図の切り替えは、sequencer の `~/load_map` を呼ぶ（読み込み済みの地図の記録を更新するため）。
