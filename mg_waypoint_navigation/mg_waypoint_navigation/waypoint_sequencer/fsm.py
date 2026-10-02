@@ -1,11 +1,15 @@
 """ウェイポイントシーケンサーの有限状態機械"""
 from __future__ import annotations
 
+import json
+import os
 import threading
 import time
 from typing import Callable, List, Optional, Set
 
 import rclpy.node
+from rclpy.qos import QoSDurabilityPolicy, QoSProfile, ReliabilityPolicy
+from std_msgs.msg import String
 
 from mg_waypoint_navigation.waypoint import WaypointList
 from mg_waypoint_navigation.waypoint_sequencer.action_executor import ActionExecutor
@@ -115,6 +119,11 @@ class WaypointSequencerFSM:
         self._pre_suspend_state: SequencerState = SequencerState.IDLE
         self._saved_countdown_ms: int = 0
         self._navigation_mode: str = "normal"
+        self._navigation_mode_pub = node.create_publisher(
+            String, "~/navigation_mode",
+            QoSProfile(depth=1, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
+                       reliability=ReliabilityPolicy.RELIABLE))
+        self._publish_navigation_mode()
 
         self._countdown_timer = CountdownTimer(self._on_starting_done)
         self._pause_manager = PauseSlotManager()
@@ -148,6 +157,20 @@ class WaypointSequencerFSM:
     @property
     def distance_remaining(self) -> float:
         return self._navigator.distance_remaining
+
+    @property
+    def map_loader(self):
+        return self._executor.map_loader
+
+    def _publish_navigation_mode(self) -> None:
+        """次のゴールで使うナビゲーションモードと BT のファイル名を JSON で配信する。"""
+        msg = String()
+        msg.data = json.dumps({
+            "mode": self._navigation_mode,
+            "behavior_tree": os.path.basename(
+                self._navigator.behavior_tree_for(self._navigation_mode)),
+        })
+        self._navigation_mode_pub.publish(msg)
 
     # ------------------------------------------------------------------
     # ウェイポイント設定
@@ -273,6 +296,7 @@ class WaypointSequencerFSM:
         for action in actions:
             if action.type == "set_navigation_mode":
                 self._navigation_mode = getattr(action, "mode", "normal")
+                self._publish_navigation_mode()
         self._transition(SequencerState.ON_ARRIVING)
         self._executor.execute(actions, self._on_arriving_done)
 

@@ -2,6 +2,7 @@
 import copy
 
 import rclpy
+from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, ReliabilityPolicy
@@ -13,7 +14,7 @@ from visualization_msgs.msg import Marker, MarkerArray
 from mg_msgs.msg import PauseRequest, SequencerStatus
 from mg_msgs.msg import WaypointInfo
 from mg_msgs.msg import WaypointList as WaypointListMsg
-from mg_msgs.srv import StartSequence
+from mg_msgs.srv import LoadMaps, StartSequence
 
 from mg_waypoint_navigation.waypoint import WaypointList, WaypointsLoader
 from mg_waypoint_navigation.waypoint_sequencer.fsm import WaypointSequencerFSM
@@ -72,6 +73,11 @@ class WaypointSequencerNode(Node):
             Trigger, "~/stop", self._on_stop_srv)
         self._reload_srv = self.create_service(
             Trigger, "~/reload_waypoints", self._on_reload_waypoints_srv
+        )
+        # 地図の読み込みは最長 20 秒ほど待つので、他のサービスを止めないよう別のグループで受ける
+        self._load_map_srv = self.create_service(
+            LoadMaps, "~/load_map", self._on_load_map_srv,
+            callback_group=ReentrantCallbackGroup()
         )
 
         self._set_index_sub = self.create_subscription(
@@ -171,6 +177,11 @@ class WaypointSequencerNode(Node):
     # ------------------------------------------------------------------
     # トピックコールバック
     # ------------------------------------------------------------------
+
+    def _on_load_map_srv(self, request: LoadMaps.Request, response: LoadMaps.Response):
+        response.success, response.message = self._fsm.map_loader.load(
+            request.localization, request.planning)
+        return response
 
     def _on_set_index(self, msg: Int16):
         ok = self._fsm.set_next_index(int(msg.data))

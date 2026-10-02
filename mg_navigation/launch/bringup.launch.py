@@ -182,6 +182,8 @@ def generate_launch_description():
             launch_arguments={
                 'simulation': simulation_arg.launch_config,
                 'load_path': waypoints_load_path_arg.launch_config,
+                'initial_localization_map': localization_map_yamL_file_arg.launch_config,
+                'initial_planning_map': planning_map_yaml_file_arg.launch_config,
             }.items(),
             condition=IfCondition(AndSubstitution(
                 use_waypoints_follower_arg.launch_config,

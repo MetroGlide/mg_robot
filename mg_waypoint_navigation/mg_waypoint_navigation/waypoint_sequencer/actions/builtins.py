@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import time
 
-from nav2_msgs.srv import LoadMap
 from rcl_interfaces.msg import Parameter, ParameterType
 from rcl_interfaces.srv import SetParametersAtomically
 from std_srvs.srv import Empty
@@ -15,17 +14,10 @@ class LoadMapAction(BaseAction):
     """測位マップ / 計画マップを map_server にロードする"""
 
     def execute(self) -> None:
-        if self._config.localization:
-            req = LoadMap.Request()
-            req.map_url = self._config.localization
-            self._call_service(
-                LoadMap, "/map_server/load_map", req, timeout_sec=10.0)
-
-        if self._config.planning:
-            req = LoadMap.Request()
-            req.map_url = self._config.planning
-            self._call_service(
-                LoadMap, "/planning_map_server/load_map", req, timeout_sec=10.0)
+        ok, message = self._map_loader.load(
+            self._config.localization, self._config.planning)
+        if not ok:
+            self._node.get_logger().error(f"LoadMapAction: {message}")
 
 
 class AmclResetAction(BaseAction):

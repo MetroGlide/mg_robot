@@ -130,13 +130,15 @@ class WaypointNavigator:
 
         goal = NavigateToPose.Goal()
         goal.pose = waypoint.pose
-        goal.behavior_tree = (
-            self._bt_xml_queue_wait
-            if navigation_mode == "queue_wait"
-            else self._bt_xml_normal
-        )
+        goal.behavior_tree = self.behavior_tree_for(navigation_mode)
 
         self._dispatch(goal_id, goal)
+
+    def behavior_tree_for(self, navigation_mode: str) -> str:
+        """ナビゲーションモードに対応する BT の XML パス。"""
+        if navigation_mode == "queue_wait":
+            return self._bt_xml_queue_wait
+        return self._bt_xml_normal
 
     def cancel(self) -> None:
         """論理ゴールを終了し、Nav2 上のゴールを止める。受理前なら受理直後にキャンセルする。"""
