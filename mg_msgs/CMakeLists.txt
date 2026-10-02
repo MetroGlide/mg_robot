@@ -14,8 +14,12 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/WaypointList.msg"
   "msg/PoseGraphDiff.msg"
   "msg/LocalizationStatus.msg"
+  "msg/GateArbiterState.msg"
+  "msg/LoadedMaps.msg"
   "srv/ResetSimRobotPose.srv"
   "srv/StartSequence.srv"
+  "srv/LoadMaps.srv"
+  "srv/SendGoal.srv"
   "srv/GetPoseGraph.srv"
   DEPENDENCIES builtin_interfaces geometry_msgs std_msgs
 )

@@ -10,6 +10,7 @@
 #include <nav_msgs/msg/odometry.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/nav_sat_fix.hpp>
+#include <std_msgs/msg/bool.hpp>
 #include <std_srvs/srv/set_bool.hpp>
 #include <tf2/exceptions.h>
 #include <tf2_ros/buffer.h>
@@ -106,12 +107,20 @@ class SlamGnssNavBridgeNode : public rclcpp::Node {
 
     odom_pub_ = create_publisher<nav_msgs::msg::Odometry>("/odom/gps", 10);
 
+    // /odom/gps の配信の有効・無効の現在値 (起動時と切り替えたときだけ配信する。UI などが状態を知るため)
+    rclcpp::QoS state_qos(rclcpp::KeepLast(1));
+    state_qos.reliable();
+    state_qos.transient_local();
+    publish_state_pub_ = create_publisher<std_msgs::msg::Bool>("~/publish_state", state_qos);
+    publish_publish_state();
+
     // /odom/gps の配信の有効・無効 (ウェイポイントの gps_on / gps_off から使う)
     publish_service_ = create_service<std_srvs::srv::SetBool>(
         "~/change_publish_state",
         [this](const std::shared_ptr<std_srvs::srv::SetBool::Request> request,
                std::shared_ptr<std_srvs::srv::SetBool::Response> response) {
           publish_enabled_ = request->data;
+          publish_publish_state();
           response->success = true;
           response->message = publish_enabled_ ? "publishing /odom/gps" : "stopped /odom/gps";
           RCLCPP_INFO(get_logger(), "%s", response->message.c_str());
@@ -182,6 +191,7 @@ class SlamGnssNavBridgeNode : public rclcpp::Node {
   rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr publish_service_;
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_pub_;
   rclcpp::Publisher<sensor_msgs::msg::NavSatFix>::SharedPtr anchor_pub_;
+  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr publish_state_pub_;
   rclcpp::Subscription<ublox_msgs::msg::NavPVT>::SharedPtr navpvt_sub_;
   rclcpp::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr navsatfix_sub_;
 
@@ -213,6 +223,12 @@ class SlamGnssNavBridgeNode : public rclcpp::Node {
       RCLCPP_ERROR(get_logger(), "Failed to read transform file: %s", e.what());
       return false;
     }
+  }
+
+  void publish_publish_state() {
+    std_msgs::msg::Bool msg;
+    msg.data = publish_enabled_;
+    publish_state_pub_->publish(msg);
   }
 
   void publish_anchor() {

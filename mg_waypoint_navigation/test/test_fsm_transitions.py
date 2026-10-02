@@ -54,6 +54,8 @@ def env():
         mock_exec = MagicMock()
         MockNav.return_value = mock_nav
         MockExec.return_value = mock_exec
+        mock_exec.costmap_switcher.set_global_obstacle_layers.return_value = (
+            True, "ok")
 
         mock_nav.send_goal.side_effect = lambda wp, cb, **kw: nav_cb.__setitem__(
             0, cb)
@@ -526,6 +528,157 @@ class TestSetNextIndex:
 # ---------------------------------------------------------------------------
 # 禁止遷移（ALLOWED_TRANSITIONS の外側）
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# 手動ゴール (BT を指定して 1 つだけ送る)
+# ---------------------------------------------------------------------------
+
+class TestManualGoal:
+    @pytest.mark.parametrize("mode", ["normal", "queue_wait", "default"])
+    def test_goal_is_sent_as_a_stop_point_with_the_mode(self, env, mode):
+        pose = MagicMock()
+        result = env.fsm.navigate_to_pose(pose, mode)
+        assert result.success
+        waypoint = env.nav.send_goal.call_args.args[0]
+        assert waypoint.pose is pose
+        assert waypoint.navigation.is_through_point is False
+        assert env.nav.send_goal.call_args.kwargs["navigation_mode"] == mode
+        assert env.fsm.state == SequencerState.IDLE
+
+    def test_unknown_mode_is_rejected(self, env):
+        result = env.fsm.navigate_to_pose(MagicMock(), "fast")
+        assert not result.success
+        env.nav.send_goal.assert_not_called()
+
+    @pytest.mark.parametrize("prepare", ["on_starting", "navigating", "on_arriving"])
+    def test_rejected_while_the_sequence_is_running(self, env, prepare):
+        env.fsm.load_waypoints(_make_wl([ActionConfig(type="wait")]))
+        # 実タイマーが先に発火して状態が進まないよう、カウントダウンは長くして手動で進める
+        env.fsm.start(600_000)
+        if prepare != "on_starting":
+            env.fire_countdown()
+        if prepare == "on_arriving":
+            env.fire_nav_success()
+        sent = env.nav.send_goal.call_count
+
+        result = env.fsm.navigate_to_pose(MagicMock(), "normal")
+
+        assert not result.success
+        assert "stop the sequence first" in result.message
+        assert env.nav.send_goal.call_count == sent
+
+    def test_rejected_while_suspended(self, env):
+        env.fsm.load_waypoints(_make_wl([]))
+        env.fsm.start(0)
+        env.fire_countdown()
+        env.fsm.pause_request("p1", True)
+        assert env.fsm.state == SequencerState.SUSPENDED
+        assert not env.fsm.navigate_to_pose(MagicMock(), "normal").success
+
+    def test_accepted_after_the_sequence_finished_or_failed(self, env):
+        env.fsm.load_waypoints(_make_wl([]))
+        env.fsm.start(0)
+        env.fire_countdown()
+        env.fire_nav_success()
+        assert env.fsm.state == SequencerState.GOAL_REACHED
+        assert env.fsm.navigate_to_pose(MagicMock(), "normal").success
+        env.fire_nav_success()
+
+        env.fsm.start(0)
+        env.fire_countdown()
+        env.fire_nav_failed()
+        assert env.fsm.state == SequencerState.ERROR
+        assert env.fsm.navigate_to_pose(MagicMock(), "normal").success
+
+    def test_rejected_while_paused(self, env):
+        env.fsm.pause_request("p1", True)
+        result = env.fsm.navigate_to_pose(MagicMock(), "normal")
+        assert not result.success
+        assert "p1" in result.message
+        env.nav.send_goal.assert_not_called()
+
+    def test_start_is_rejected_while_a_manual_goal_runs(self, env):
+        env.fsm.load_waypoints(_make_wl([]))
+        env.fsm.navigate_to_pose(MagicMock(), "normal")
+        result = env.fsm.start(0)
+        assert not result.success
+        assert env.fsm.state == SequencerState.IDLE
+
+    def test_start_is_allowed_again_after_the_manual_goal_finishes(self, env):
+        env.fsm.load_waypoints(_make_wl([]))
+        env.fsm.navigate_to_pose(MagicMock(), "normal")
+        env.fire_nav_failed()
+        assert env.fsm.state == SequencerState.IDLE
+        assert env.fsm.start(0).success
+
+    def test_stop_cancels_a_manual_goal_in_idle(self, env):
+        env.fsm.load_waypoints(_make_wl([]))
+        env.fsm.navigate_to_pose(MagicMock(), "normal")
+        result = env.fsm.stop()
+        assert result.success
+        env.nav.cancel.assert_called_once()
+        assert env.fsm.state == SequencerState.IDLE
+        assert env.fsm.start(0).success
+
+    def test_stop_without_a_manual_goal_does_not_cancel(self, env):
+        env.fsm.stop()
+        env.nav.cancel.assert_not_called()
+
+    @pytest.mark.parametrize("mode,layers_enabled", [
+        ("normal", True),
+        ("queue_wait", False),
+    ])
+    def test_costmap_layers_follow_the_mode_before_the_goal_is_sent(
+            self, env, mode, layers_enabled):
+        order = []
+        switcher = env.executor.costmap_switcher
+        switcher.set_global_obstacle_layers.side_effect = (
+            lambda enabled: order.append(("layers", enabled)) or (True, "ok"))
+        env.nav.send_goal.side_effect = lambda *a, **kw: order.append("goal")
+
+        assert env.fsm.navigate_to_pose(MagicMock(), mode).success
+
+        assert order == [("layers", layers_enabled), "goal"]
+
+    def test_default_mode_leaves_the_costmap_layers_alone(self, env):
+        assert env.fsm.navigate_to_pose(MagicMock(), "default").success
+        env.executor.costmap_switcher.set_global_obstacle_layers.assert_not_called()
+
+    def test_goal_is_not_sent_when_the_layers_cannot_be_switched(self, env):
+        env.executor.costmap_switcher.set_global_obstacle_layers.return_value = (
+            False, "global_costmap is not available")
+        result = env.fsm.navigate_to_pose(MagicMock(), "queue_wait")
+        assert not result.success
+        assert "global_costmap" in result.message
+        env.nav.send_goal.assert_not_called()
+        # 受け付けていないので、START は拒否されない
+        env.fsm.load_waypoints(_make_wl([]))
+        assert env.fsm.start(600_000).success
+
+    def test_rejected_without_touching_the_layers(self, env):
+        env.fsm.pause_request("p1", True)
+        assert not env.fsm.navigate_to_pose(MagicMock(), "queue_wait").success
+        assert not env.fsm.navigate_to_pose(MagicMock(), "fast").success
+        env.executor.costmap_switcher.set_global_obstacle_layers.assert_not_called()
+
+    def test_goal_is_not_sent_if_the_state_changed_while_switching_layers(self, env):
+        env.fsm.load_waypoints(_make_wl([]))
+
+        def switch(enabled):
+            env.fsm.start(600_000)  # 層の切り替えの待ちの間にシーケンスが始まった
+            return True, "ok"
+
+        env.executor.costmap_switcher.set_global_obstacle_layers.side_effect = switch
+        result = env.fsm.navigate_to_pose(MagicMock(), "queue_wait")
+        assert not result.success
+        assert "stop the sequence first" in result.message
+        env.nav.send_goal.assert_not_called()
+
+    def test_a_new_manual_goal_replaces_the_running_one(self, env):
+        env.fsm.navigate_to_pose(MagicMock(), "normal")
+        assert env.fsm.navigate_to_pose(MagicMock(), "queue_wait").success
+        assert env.nav.send_goal.call_count == 2
+
 
 def _forbidden_transition_cases():
     all_states = list(SequencerState)

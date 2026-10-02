@@ -468,6 +468,142 @@ describe("publish", () => {
   });
 });
 
+describe("graph listing", () => {
+  it("lists services and topics sorted, with a leading slash", () => {
+    const connection = createConnection();
+    const ws = sockets[0];
+    ws.open();
+    ws.receiveJson({
+      op: "advertiseServices",
+      services: [
+        { id: 1, name: "b/srv" },
+        { id: 2, name: "/a/srv" },
+      ],
+    });
+    ws.receiveJson({
+      op: "advertise",
+      channels: [channel(1, "/z_topic"), channel(2, "a_topic")],
+    });
+
+    expect(connection.listServices()).toEqual(["/a/srv", "/b/srv"]);
+    expect(connection.listTopics()).toEqual([
+      { topic: "/a_topic", schemaName: "geometry_msgs/msg/Twist" },
+      { topic: "/z_topic", schemaName: "geometry_msgs/msg/Twist" },
+    ]);
+  });
+
+  it("returns the request schema of a service", () => {
+    const connection = createConnection();
+    const ws = sockets[0];
+    ws.open();
+    ws.receiveJson({
+      op: "advertiseServices",
+      services: [{ id: 1, name: "/set", request: TWIST_SCHEMA }],
+    });
+
+    expect(connection.getServiceRequestSchema("/set")).toEqual(TWIST_SCHEMA);
+    expect(connection.getServiceRequestSchema("/none")).toBeUndefined();
+  });
+
+  it("is empty after the connection closes", () => {
+    const connection = createConnection();
+    const ws = sockets[0];
+    ws.open();
+    ws.receiveJson({ op: "advertiseServices", services: [{ id: 1, name: "/s" }] });
+    ws.receiveJson({ op: "advertise", channels: [channel(1, "/t")] });
+
+    ws.close();
+
+    expect(connection.listServices()).toEqual([]);
+    expect(connection.listTopics()).toEqual([]);
+  });
+});
+
+describe("publishOnce", () => {
+  const binaryFrames = (ws: FakeSocket) =>
+    ws.sent.filter((d): d is ArrayBuffer => typeof d !== "string");
+  const twist = { linear: { x: 1, y: 0, z: 0 }, angular: { x: 0, y: 0, z: 0 } };
+
+  it("sends one message after the warm-up and then unadvertises", async () => {
+    const connection = createConnection();
+    const ws = sockets[0];
+    ws.open();
+
+    const done = connection.publishOnce(
+      "/cmd_vel",
+      "geometry_msgs/msg/Twist",
+      twist,
+    );
+    expect(ws.sentJson("advertise")).toHaveLength(1);
+    expect(binaryFrames(ws)).toHaveLength(0);
+
+    await vi.advanceTimersByTimeAsync(300);
+    expect(binaryFrames(ws)).toHaveLength(1);
+    expect(ws.sentJson("unadvertise")).toHaveLength(0);
+
+    await vi.advanceTimersByTimeAsync(100);
+    await done;
+    expect(ws.sentJson("unadvertise")).toHaveLength(1);
+  });
+
+  it("borrows the schema of a server topic that has the same type", async () => {
+    const connection = createConnection({ clientSchemas: {} });
+    const ws = sockets[0];
+    ws.open();
+    ws.receiveJson({ op: "advertise", channels: [channel(1, "/other")] });
+
+    const done = connection.publishOnce(
+      "/cmd_vel",
+      "geometry_msgs/msg/Twist",
+      twist,
+    );
+    await vi.advanceTimersByTimeAsync(400);
+    await done;
+
+    expect(ws.sentJson("advertise")[0].channels[0].encoding).toBe("cdr");
+    expect(binaryFrames(ws)).toHaveLength(1);
+  });
+
+  it("falls back to JSON for a type nobody advertises", async () => {
+    const connection = createConnection({ clientSchemas: {} });
+    const ws = sockets[0];
+    ws.open();
+
+    const done = connection.publishOnce("/x", "my_pkg/msg/Unknown", { a: 1 });
+    await vi.advanceTimersByTimeAsync(400);
+    await done;
+
+    expect(ws.sentJson("advertise")[0].channels[0].encoding).toBe("json");
+  });
+
+  it("rejects while disconnected", async () => {
+    const connection = createConnection();
+
+    await expect(
+      connection.publishOnce("/cmd_vel", "geometry_msgs/msg/Twist", twist),
+    ).rejects.toThrow("not connected");
+  });
+
+  it("releases the publisher when encoding fails", async () => {
+    const connection = createConnection({
+      clientSchemas: {
+        "bad/msg/Broken": {
+          encoding: "cdr",
+          schemaName: "bad/msg/Broken",
+          schema: "not_a_type field extra )(",
+        },
+      },
+    });
+    const ws = sockets[0];
+    ws.open();
+
+    await expect(
+      connection.publishOnce("/broken", "bad/msg/Broken", { a: 1 }),
+    ).rejects.toThrow("cannot build a message writer");
+    expect(ws.sentJson("unadvertise")).toHaveLength(1);
+  });
+});
+
 describe("lifecycle", () => {
   it("stops reconnecting after stop()", () => {
     const connection = createConnection();

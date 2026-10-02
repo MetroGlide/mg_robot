@@ -26,6 +26,11 @@ class GateArbiter:
         """AMCL の出力を止めている要求元。"""
         return sorted(name for name, attach in self._wants.items() if not attach)
 
+    @property
+    def applied(self) -> bool:
+        """要求元の意図がゲートに反映済みか。反映前・失敗後・不明のときは False。"""
+        return self._applied is not None and self._applied == self.desired
+
     def needs_apply(self) -> bool:
         """ゲートにまだ反映していない (または反映に失敗した) 値があるか。"""
         return self._applied != self.desired

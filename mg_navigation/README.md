@@ -46,6 +46,8 @@ gnss_amcl_initializer_node ◄─ /odom/gps ◄─ slam_gnss_nav_bridge ◄─ /
 - 反映に失敗したり、ゲートが後から起動したりしても、1 Hz で合わせ直す。ゲートのノードが落ちて戻ったときも (再起動で開いた状態に戻るため) 送り直す。ただし 1 秒より短い間の再起動は検出できない。
 - `amcl_off` の後に `amcl_on` を送るのはウェイポイントの作り手の責任 (送り忘れると AMCL は戻らない。自動解除はしない)。
 - 監視ノードの種類 (`none` / `watchdog` / `supervisor`) によらず常に起動する。負荷はごく小さい。
+- 状態は `/amcl_gate_arbiter/state` (`mg_msgs/GateArbiterState`、transient_local) に、変化したときだけ配信する。`desired` は要求元の意図 (全員が入れてよいとき true)、`applied` はゲートへの反映済みか (ゲートのノードの再起動で不明になったときは false)、`holders` は止めている要求元。Web UI の「Actions」が表示に使う。
+- Web UI の「Actions」の AMCL の入/切は、`waypoint` の要求元として呼ぶ。次のウェイポイントのアクションで上書きされる。
 
 ## localization_supervisor_node
 

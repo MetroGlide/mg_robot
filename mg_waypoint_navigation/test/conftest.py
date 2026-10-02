@@ -9,6 +9,7 @@ _ROS2_MODULES = [
     "rclpy.action.client",
     "rclpy.callback_groups",
     "rclpy.executors",
+    "rclpy.qos",
     "rcl_interfaces",
     "rcl_interfaces.msg",
     "rcl_interfaces.srv",

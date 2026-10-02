@@ -10,8 +10,9 @@ from mg_system_manager.config import (
     MAP_PREVIEW_SERVICE,
     PATH_RE,
     REOPTIMIZE_SERVICE,
+    Settings,
 )
-from mg_system_manager.dependencies import get_runner
+from mg_system_manager.dependencies import get_runner, get_settings
 from mg_system_manager.docker_ops import ComposeRunner
 from mg_system_manager.responses import result
 from mg_system_manager.ros_cmd import run_local_ros2_cmd
@@ -68,6 +69,38 @@ def list_slam_gnss_2d_maps(base_dir: str) -> list[str]:
     if not path.is_dir():
         return []
     return [d.name for d in path.iterdir() if d.is_dir()]
+
+
+def list_navigation_maps(map_path: str) -> dict:
+    """MAP_PATH/map_list.txt に書かれた地図 (1 行 1 ファイル、MAP_PATH からの相対パス) を一覧にする。
+
+    空行と # で始まる行は無視する (waypoint_editor.launch.py と同じ規則)。
+    MAP_PATH の外を指す項目や不正な文字を含む項目は一覧に入れず、skipped に載せる。
+    """
+    if not map_path:
+        return {"success": False, "message": "MAP_PATH is not set"}
+    list_file = Path(map_path) / "map_list.txt"
+    if not list_file.is_file():
+        return {"success": False, "message": f"map_list.txt not found: {list_file}"}
+
+    maps = []
+    skipped = []
+    for line in list_file.read_text(encoding="utf-8").splitlines():
+        name = line.strip()
+        if not name or name.startswith("#"):
+            continue
+        if (not PATH_RE.match(name) or name.startswith("/")
+                or ".." in Path(name).parts):
+            skipped.append(name)
+            continue
+        path = Path(map_path) / name
+        maps.append({"name": name, "path": str(path), "missing": not path.is_file()})
+    return {"success": True, "map_path": map_path, "maps": maps, "skipped": skipped}
+
+
+@router.get("/navigation/maps")
+def get_navigation_maps(settings: Settings = Depends(get_settings)):
+    return list_navigation_maps(settings.map_path)
 
 
 class SaveCommonMapRequest(BaseModel):

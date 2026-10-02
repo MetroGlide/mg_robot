@@ -11,6 +11,10 @@ from mg_waypoint_navigation.waypoint_sequencer.actions import (
     EndpointCache,
     build_action,
 )
+from mg_waypoint_navigation.waypoint_sequencer.costmap_mode import (
+    CostmapModeSwitcher,
+)
+from mg_waypoint_navigation.waypoint_sequencer.map_loader import MapLoader
 
 
 class ActionExecutor:
@@ -23,7 +27,17 @@ class ActionExecutor:
     def __init__(self, node: rclpy.node.Node):
         self._node = node
         self._endpoints = EndpointCache(node)
+        self._map_loader = MapLoader(node, self._endpoints)
+        self._costmap_switcher = CostmapModeSwitcher(node, self._endpoints)
         self._thread: threading.Thread | None = None
+
+    @property
+    def map_loader(self) -> MapLoader:
+        return self._map_loader
+
+    @property
+    def costmap_switcher(self) -> CostmapModeSwitcher:
+        return self._costmap_switcher
 
     def execute(
         self,
@@ -33,7 +47,10 @@ class ActionExecutor:
         def _run():
             for config in actions:
                 try:
-                    build_action(config, self._node, self._endpoints).execute()
+                    build_action(
+                        config, self._node, self._endpoints,
+                        self._map_loader, self._costmap_switcher,
+                    ).execute()
                 except Exception as e:
                     self._node.get_logger().error(
                         f"Action {config.type} raised exception: {e}"

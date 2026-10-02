@@ -38,6 +38,9 @@
  "/map/common/save": [
   "POST"
  ],
+ "/navigation/maps": [
+  "GET"
+ ],
  "/navigation/restart": [
   "POST"
  ],

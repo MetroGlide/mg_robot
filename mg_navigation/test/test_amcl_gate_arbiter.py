@@ -38,6 +38,19 @@ def test_needs_apply_until_marked_and_after_change():
     assert arbiter.needs_apply()
 
 
+def test_applied_is_true_only_when_gate_matches_desired():
+    arbiter = GateArbiter(['waypoint'])
+    assert not arbiter.applied
+    arbiter.mark_applied(True)
+    assert arbiter.applied
+    arbiter.request('waypoint', False)
+    assert not arbiter.applied
+    arbiter.mark_applied(False)
+    assert arbiter.applied
+    arbiter.mark_unknown()
+    assert not arbiter.applied
+
+
 def test_unknown_requester_is_rejected():
     with pytest.raises(KeyError):
         GateArbiter(['waypoint']).request('other', False)

@@ -5,6 +5,19 @@ export type CallApi = (
   body?: unknown,
 ) => Promise<{ success: boolean; message: string }>
 
+/** system_manager の GET /navigation/maps の応答 */
+export interface NavigationMapEntry {
+  name: string
+  /** map_server に渡す YAML の絶対パス */
+  path: string
+  /** map_list.txt にあるが、ファイルが存在しない */
+  missing: boolean
+}
+
+export type NavigationMapsResponse =
+  | { success: true; map_path: string; maps: NavigationMapEntry[]; skipped: string[] }
+  | { success: false; message: string }
+
 export interface ApiLog {
   id: number
   timestamp: string

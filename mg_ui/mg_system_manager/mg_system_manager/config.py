@@ -110,6 +110,8 @@ class Settings:
     scenario_ros_domain_id: str
     # docker compose に -f で渡すファイル。空なら compose の既定(compose.yaml)
     compose_files: tuple[str, ...] = ()
+    # ナビゲーションが使う地図のディレクトリ (map_list.txt の置き場所)。空なら未設定
+    map_path: str = ""
 
     def is_origin_allowed(self, origin: str) -> bool:
         return (origin in self.allowed_origins
@@ -146,6 +148,7 @@ class Settings:
             scenario_ros_domain_id=(
                 os.environ.get("SCENARIO_ROS_DOMAIN_ID") or "42"),
             compose_files=_compose_files(os.environ.get("USE_GPU")),
+            map_path=os.environ.get("MAP_PATH", ""),
         )
 
 
