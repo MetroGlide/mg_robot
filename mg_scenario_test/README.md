@@ -42,6 +42,21 @@ make scenario-test-all REPEAT=3 TIER=smoke          # 繰り返して安定性�
 
 実行中は Gazebo・Nav2 を専有するため、同時に別のスタック (`make gazebo-simulation` 等) を起動しないでください。
 
+## プロファイル (`profiles/mg01.yaml`)
+
+ロボットごとの違いを、1 つのファイルにまとめたものです。項目の詳細は [sim_scenario_test/doc/profile_reference.md](../sim_scenario_test/doc/profile_reference.md)。
+
+| 項目 | MG-01 の値 |
+|---|---|
+| `sim` | `gazebo_fortress`。`mg_simulation` の `bringup.launch.py` を、`world` と `headless` を渡して起動する。ロボットは `mg`、生成する高さ `robot_spawn_z` は 0.05 |
+| `stack` | `mg_bringup` の `bringup_navigation.launch.py`。ワールドごとの地図・ウェイポイント・`gnss_transform.yaml` を渡し、GNSS ブリッジは `mg_simulation/config/nav_bridge_sim.yaml`、RViz2 は起動しない |
+| `frames` | `map`、`base_footprint`。Gazebo のワールドの原点と地図の原点は一致 |
+| `robot.footprint` | `[[0.4, 0.3], [0.4, -0.3], [-0.2, -0.3], [-0.2, 0.3]]` (`nav2_params.yaml` の footprint の実寸) |
+| `readiness` | 180 秒以内に `lifecycle_manager_localization` と `lifecycle_manager_navigation` が起動するのを待つ |
+| `worlds` | `warehouse` (`mg_simulation` の SDF・地図・ウェイポイント・`gnss_transform.yaml`) |
+
+`sim_tests/` の pytest 結合テストの書き方は [sim_scenario_test/doc/python_scenarios.md](../sim_scenario_test/doc/python_scenarios.md)。
+
 ## Web UI から実行する
 
 mg_web_ui の **Scenario Test** ページから、シナリオの選択・実行・停止、進み具合とログ、結果 (checks・events・ログ) と過去の実行を確認できます。
@@ -70,6 +85,7 @@ make web-ui-dev                  # または make web-ui
 開発PCでシミュレータを、実機PCでセンサ・モータドライバ以外 (EKF・Nav2・後処理など) を動かして、実機の構成でシナリオテストを行えます。
 実機PCのスタックはシナリオごとに mg_system_manager から起動・停止され、`stack_args` の上書きや `run-all` もそのまま使えます
 (仕組みは [sim_scenario_test/doc/remote_stack.md](../sim_scenario_test/doc/remote_stack.md))。
+実機PCのスタックは、compose のサービス `scenario-remote-stack` として起動します (make ターゲットはなく、system_manager の `/scenario-stack/start` が起動します)。
 
 準備 (両方のPCで同じコミットを使い、`make build-robot` / `make build-sim` 済みであること):
 
@@ -107,7 +123,10 @@ make scenario-test-all TIER=smoke ROBOT=<実機PCのIP>
   <シナリオ名>[_runN]/
     result.json                # チェックごとの結果、走行中のイベント (goal_reached など) と時刻
     launch.log                 # シミュレータ・Nav2・runner の全ログ
+    stack.log                  # (実機PCでスタックを動かしたとき) 実機PC側のログ
 ```
+
+- 基盤の起動に失敗して再実行したとき (`--infra-retries`) は、`_retryN` の付いた別のディレクトリになります。
 
 - 終了コード: 0=PASSED、1=FAILED、2=ERROR。**make 経由では失敗時に make の仕様で常に非 0 (2) になる**ので、
   区別が必要なら実行末尾の `Summary` か `result.json` / `junit.xml` を見てください。

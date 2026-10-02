@@ -27,6 +27,16 @@ Gazebo (Fortress) 上でロボットのナビゲーションを検証する、**
 
 詳細は [doc/architecture.md](doc/architecture.md) を参照してください。
 
+### 実行ファイルと launch
+
+| ファイル | 内容 |
+|---|---|
+| `scripts/scenario_cli.py` | 利用者が使う CLI (`run`、`run-all`、`validate`、`list-types` など。[CLI](#cli)) |
+| `scripts/scenario_runner.py` | シナリオ 1 本を実行する ROS ノード (`sim_scenario_test.node`)。CLI が launch 経由で起動する |
+| `launch/scenario_full.launch.py` | シミュレータ・ナビゲーションスタック・runner を起動する (引数: `scenario_file`、`profile`、`result_file`、`headless`、`launch_stack`、`seed`) |
+| `launch/scenario.launch.py` | runner だけを起動する (起動済みの環境への attach 用。引数: `scenario_file`、`profile`、`result_file`、`seed`) |
+| `launch/scenario_env.launch.py` | attach 用に、プロファイルのシミュレータとスタックだけを起動する (引数: `profile`、`world`、`headless`) |
+
 ## 依存
 
 ROS 2 (Humble) の `rclpy`, `nav2_msgs`, `nav2_simple_commander`, `tf2_ros`, `sensor_msgs`, `diagnostic_msgs`, `std_srvs`,
