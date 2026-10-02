@@ -1,174 +1,150 @@
 # mg_drivers
 
-LiDAR / DepthCam / GPS / IMU / モータドライバ群と、Realsense 点群から立体障害物を検出する
-`obstacle_detection_3d_node`、ホイールオドメトリを補正する `wheel_odom_corrector_node` を含むパッケージ。
+センサとモータのドライバ、ホイールオドメトリの補正、点群の後処理、3D 障害物検出。
+実機では、`mg_bringup` の `bringup_common` から `bringup.launch.py` が起動される ([mg_bringup](../mg_bringup/README.md))。
 
-## wheel_odom_corrector_node
+## ノード
 
-ホイールオドメトリ (`wheel_odometry_node` が出す `/odom`) の、スケールとバイアスを補正して、EKF が使う速度の共分散を設定する。
-ナビゲーションの自己位置推定 (`ekf_global_node`) の入力を、補正済みの `/odom` にするためのノード。
+### C++
 
-```
-wheel_odometry_node ─ /odom/raw ─► wheel_odom_corrector_node ─ /odom ─► odometry_tf_broadcaster (odom→base_footprint)
-                                                                    └─► ekf_global_node (速度), Nav2
-```
-
-補正のモデル (差動二輪、車体座標系):
-
-| パラメータ | 意味 | 補正 |
+| 実行ファイル | 内容 | 主な入出力 |
 | :--- | :--- | :--- |
-| `k_v` | 並進のスケール (車輪半径) | `dx' = k_v · dx` |
-| `k_w` | 旋回のスケール (実効トレッド幅) | `dyaw' = k_w · dyaw + c · dx'` |
-| `yaw_bias_per_meter` (`c`) | 走行距離あたりに曲がる量 [rad/m] (左右の車輪半径差) | 同上 |
-| `time_offset` | 生のオドメトリの遅れ [s] | スタンプを過去へずらす |
-| `twist_source` | 速度の出どころ (`raw` / `pose_diff`) | `raw`: ドライバの速度にスケール補正をかける。`pose_diff`: 補正した姿勢の差分から求める (`twist_window` メッセージ前との差) |
-| `covariance_vx` / `covariance_vyaw` | EKF が使う速度の共分散 | — |
+| `wheel_odometry_node` | 車輪のエンコーダ (シリアル) からオドメトリを出す | 出力: `odom` (`nav_msgs/Odometry`) |
+| `motor_driver_node` | 速度指令をモータドライバ (シリアル) に送る | 入力: `cmd_vel` (`Twist`)、`~/emergency_stop` (`Bool`) |
+| `depth_postprocess_node` | 点群をボクセルグリッドで間引き、統計的な外れ値を除く | 入力: `points`、出力: `points_filtered` (`PointCloud2`) |
+| `obstacle_detection_3d_node` | 点群から立体障害物を検出する ([doc](./doc/obstacle_detection_3d.md)) | 入力: `points`、出力: `~/points_obstacle`、`~/cluster_markers` |
+| `pcl_downsampling_node` | 点群の間引き。どの launch からも起動されない | 入力: `points/raw`、出力: `points/downsampled` |
 
-**速度が 0 になる不具合**: 走行ログ (`record_slam_20260913_051635` の 370〜730 s) に、ドライバの速度が 0 のまま姿勢だけ更新される期間がありました。
-EKF は速度を観測として使うため、速度を信頼する設定 (共分散を小さくする) では、この期間に破綻します。
-`twist_source: pose_diff` は姿勢の差分から速度を求めるので影響を受けません (速度が正常な走行では、前進速度の相関 0.997、旋回は 0.91)。
+### Python (`scripts/`)
 
-- パラメータは `params/wheel_odom_corrector.yaml`。値は `tools/scripts/calib_wheel_odom.py` で走行ログから推定する ([tools/README.md](../tools/README.md))。
-- `enabled: false` にすると補正せずに生の値を通す (共分散は設定する)。
-- 補正は姿勢の増分に対して行い、姿勢が `reset_jump_m` 以上飛んだ (ドライバの再起動など) ときは生の姿勢に合わせ直す。
-- 補正の計算は ROS に依存しない `scripts/wheel_odom_correction.py` にあり、`make test pkg=mg_drivers` で単体テストする。
-
-起動引数 (`mg_bringup` の `bringup_navigation.launch.py` から `mg_drivers` の launch まで同じ名前で伝わる):
-
-| 引数 | 既定 | 内容 |
+| 実行ファイル | 内容 | 主な入出力 |
 | :--- | :--- | :--- |
-| `use_odom_corrector` | ナビゲーション: 実機 `true` / シミュレータ `false`。それ以外の launch (SLAM など): `false` | `true` でドライバの出力先を `/odom/raw` に変え、補正ノードを起動する |
-| `odom_corrector_params_file` | `wheel_odom_corrector.yaml` | `params/` 配下のファイル名、または絶対パス |
+| `wheel_odom_corrector_node.py` | ホイールオドメトリのスケール・バイアスを補正し、速度の共分散を設定する ([doc](./doc/wheel_odom_corrector.md)) | 入力: `odom/raw`、出力: `odom` |
+| `odometry_tf_broadcaster_node.py` | `odom` から TF `odom→base_footprint` を配信する | 入力: `odom` |
+| `lidar_publish_controller_node.py` | LiDAR のスキャンの中継を、サービスで入/切する (前方 LiDAR 用) | 入力: `scan_origin`、出力: `scan`、サービス: `~/change_publish_state` (`SetBool`) |
+| `pose_with_cov_publish_controller_node.py` | `PoseWithCovarianceStamped` の中継を入/切する | 入力: `pose_with_cov_origin`、出力: `pose_with_cov`、サービス: `~/change_publish_state` |
+| `generic_publish_controller_node.py` | 任意の型のトピックの中継を入/切する (`msg_module`・`msg_class`・`publish`・`queue_size` で指定)。AMCL の出力のゲート (`amcl_publish_controller_node`) に使う ([mg_navigation](../mg_navigation/README.md)) | 入力: `input_topic`、出力: `output_topic`、サービス: `~/change_publish_state` |
+| `depth_to_pointcloud_node.py` | 深度画像 (とカラー画像) から点群を復元する。rosbag の再生確認用 | 出力: `points` |
+| `pc_resource_publisher_node.py` | PC の CPU 使用率とメモリ使用率を配信する | 出力: `cpu_usage`、`memory_usage` (`Float32`) |
+| `odom_covariance_override_node.py` | オドメトリの共分散を上書きする。どの launch からも起動されない | 入力: `odom`、出力: `odom/covariance` |
+| `odom_offset_republisher.py` | rosbag の再生で、オドメトリの原点をずらして配信し直す (下記) | |
 
-**`/odom` の利用者と影響**: 補正を有効にすると、`/odom` は EKF、`odometry_tf_broadcaster` (odom→base_footprint)、
-Nav2 (`bt_navigator` の `odom_topic`、controller)、Web UI の ODOM 表示、rosbag の記録が受け取る。
-`pose_diff` の速度はドライバの速度より約 0.05 s 遅れる。velocity_smoother は OPEN_LOOP なので影響しないが、
-controller の追従は実機で確認する。問題があれば `odom.twist_source: raw` (ドライバの速度にスケール補正だけをかける) に戻せる。
+### `odom_offset_republisher.py`
 
-**単一障害点**: 補正ノードが落ちると `/odom` と odom→base の TF が止まる。launch で `respawn` (1 s 後) を付けてあり、
-姿勢が飛んだときは `reset_jump_m` の処理で生の姿勢に合わせ直す。
-
-**補正値は路面と荷重で変わる**: 既定値は 1 日分・同じ路面の推定。環境が変わったら `calib_wheel_odom.py` で再推定する。
-
-**元に戻す方法**: `use_odom_corrector:=false` で、ドライバが `/odom` を直接出す従来の構成になる。
-SLAM (slam_gnss_2d / slam_toolbox) は補正を使わず、従来どおり生の `/odom` を使う。
-
-**負荷**: 20 Hz のメッセージを 1 つ変換する Python ノードで、ごくわずか。
-
-## obstacle_detection_3d_node
-
-Realsense D435i の点群（`points`、既定 remap 先 `/rs_d435i/depth/color/points`）を base_link に変換し、
-2.5D グリッド上の ΔZ（セル内の高さ差）で立体障害物を検出する。検出対象はコーンに限らず、壁・人・箱など一般の障害物。
-
-パイプライン:
-
-```
-点群 → base_link へ変換（TFは待たず最新値を使用） → ROI（cropbox）内の点をグリッドに集計
-  → セルの ΔZ が閾値を超えたセルを障害物候補に → 2D グリッド上の連結成分でクラスタリング
-  → 小さいクラスタを除去 → ~/points_obstacle（XYZ）, ~/cluster_markers を publish
-```
-
-出力は検出ゼロのフレームでも必ず publish する（Nav2 側のコストマップがクリアされるように）。
-クラスタの点数に上限はない（大きな障害物も欠落しない）。
-
-### パラメータ
-
-[`params/obstacle_detection.yaml`](./params/obstacle_detection.yaml) を編集し、**ノードを再起動**して調整する。
-ランタイムの `ros2 param set` には対応していない。起動時に採用値が `INFO` ログに出力され、
-不正な値（`grid_size<=0`、min>max など）は理由付きのエラーでノードが終了する。
-
-主なパラメータ（yaml 内のコメントに単位・効果を記載）:
-
-| パラメータ | 効果 |
-| --- | --- |
-| `stride` | 入力点の間引き。速度に効く |
-| `cropbox_*` | ROI [m]。狭めるほど速い |
-| `grid_size` | グリッド解像度 [m]。粗いほど速い |
-| `delta_z_threshold` | 障害物判定の高さ差閾値 [m] |
-| `min_points_per_cell` | セル判定に必要な最小点数 |
-| `z_outlier_trim` | セルごとに z の外れ値を 1 点だけ無視するか (0/1) |
-| `cluster_tolerance` | 障害物セルを連結する距離 [m] |
-| `min_cluster_cells` | クラスタとして残す最小セル数（孤立ノイズ除去） |
-| `publish_markers` / `publish_stats` / `stats_period` | Marker・統計ログの出力可否と間隔 |
-
-### 処理速度の確認（統計ログ）
-
-`publish_stats: true`（既定）のとき、`stats_period` 秒ごとに次のログが出る。
-
-```
-stats [5.9 fps, 6 frames] time avg/max [ms]: tf 0.02/0.02 accumulate 0.76/0.89 judge 0.00/0.00
-  cluster 0.00/0.00 extract 0.03/0.05 publish 0.04/0.05 total 0.90/1.02 latency 12.3/18.0
-  | points avg: input 250000 cropped 4000 output 500 | candidate_cells 15 clusters 2.0
-```
-
-- `tf`〜`extract` は検出処理内の各段の時間、`publish` は PointCloud2/Marker の構築・publish 時間、`total` はコールバック全体。
-- `latency` は `now - header.stamp` のため、**rosbag 再生時は無意味な値になる**（bag のタイムスタンプと壁時計がずれるため）。
-- 速度を比較したいときは `total` の平均/最大を見る。
-
-## rosbag でのリプレイ確認
-
-bag に点群 (`PointCloud2`) が含まれない場合、深度画像から点群を復元しながら確認する。
-既存の `rosbag-replay` サービス（bag の配信のみ）とは別に、
-点群復元・障害物検出・RViz をまとめて起動する `obstacle-detection-replay` サービスを用意している。
-
-### 準備（`.env`）
+マッピングの走行ログを収録したとき、オドメトリが 0 に戻っていなかった場合に、ずれを引いて配信し直す。
 
 ```bash
-ROSBAG_FILE=${ROSBAG_PATH}/TC2026/20260913/record_all_20260913_070735
-ROSBAG_TOPICS=/camera/camera/depth/image_rect_raw /camera/camera/depth/camera_info \
-  /camera/camera/color/image_raw /camera/camera/color/camera_info /tf /tf_static
+ros2 bag play --clock <bag> --remap /odom:=/odom_raw
+ros2 run mg_drivers odom_offset_republisher.py
 ```
 
-- `/tf_static` は再生開始直後に 1 回しか配信されないため、必ず含める。
-  `ros2 bag play --start-offset` で始めると `/tf_static` を取りこぼし、TF 解決に失敗するので使わない。
-- 等速再生ではメッセージが届かないことがある（未調査）。安定しない場合は `OPTS=-r 0.5` などで速度を落とす。
+このノードは `odom_raw` を購読する。補正ノードの入力 `odom/raw` とは別のトピック。
 
-### 起動（2 端末）
+## launch
 
-```bash
-# 端末1: bag 配信
-make rosbag-replay
+`bringup.launch.py` が、次の 4 つを束ねる。
 
-# 端末2: 点群復元 + 障害物検出 + RViz
-make obstacle-detection-replay
-```
+| ファイル | 内容 |
+| :--- | :--- |
+| `bringup_sensors.launch.py` | (実機のみ) `wheel_odometry_node`、RPLiDAR 2 台、GNSS、RealSense |
+| `bringup_postprocess.launch.py` | 補正ノード、TF の配信、前方 LiDAR の中継、GNSS の NMEA 変換、点群の後処理、障害物検出 |
+| `bringup_common.launch.py` | PC のリソースの配信 (`use_resource_pub`、既定 `true`) |
+| `bringup_hardware.launch.py` | (実機のみ) `motor_driver_node` (`wheel_pitch` 0.358 m、`max_speed` 1.0 m/s) |
 
-`make obstacle-detection-replay` は `ros2 launch mg_drivers obstacle_detection_replay.launch.py` を実行する。
-主な引数（`OPTS` 経由、例 `make obstacle-detection-replay OPTS="rviz:=false use_color:=true"`）:
+個別に使う launch は次のとおり。
 
-| 引数 | 既定 | 説明 |
-| --- | --- | --- |
-| `use_color` | `false` | カラー付き点群を復元するか。RGB は RViz の Image 表示で確認できるため既定は無効 |
-| `param_file` | `params/obstacle_detection.yaml` | 障害物検出のパラメータYAML。調整用の別ファイルを指定して比較できる |
-| `rviz` | `true` | RViz を起動するか |
-| `rviz_config` | `rviz/obstacle_detection_replay.rviz` | RViz の設定ファイル |
+| ファイル | 内容 |
+| :--- | :--- |
+| `bringup_realsense.launch.py` | RealSense の起動 (`use_rs_d415` 既定 `true`、`use_rs_d435i` 既定 `false`) |
+| `bringup_kissicp.launch.py` | KISS-ICP のオドメトリ。`/cloud_top_lidar` を入力に、`/kissicp/odom` を出す (`pc_topic`、`odom_topic`、`visualize`、`deskew`、`max_range`、`min_range` など) |
+| `laser_filters.launch.py` | LiDAR のスキャンのフィルタ (`front_laser_filter_yaml`、`top_laser_filter_yaml`)。`bringup_postprocess` では無効 |
+| `depth_to_pointcloud.launch.py` | 深度画像からの点群の復元 (`use_color`、トピック名、`depth_scale`、`stride`) |
+| `obstacle_detection_3d.launch.py` | 障害物検出 (`use_sim_time`、`use_sensor_data_qos`、`param_file`) |
+| `obstacle_detection_replay.launch.py` | rosbag の再生確認用。点群の復元 + 障害物検出 + RViz2 ([doc](./doc/obstacle_detection_3d.md)) |
 
-RViz（[`rviz/obstacle_detection_replay.rviz`](./rviz/obstacle_detection_replay.rviz)、Fixed Frame: `base_link`）には次を表示する:
+### bringup.launch.py の引数
 
-- RGB画像: `/camera/camera/color/image_raw`
-- Depth画像: `/camera/camera/depth/image_rect_raw`
-- 復元点群: `/rs_d435i/depth/color/points`（グレー）
-- 検出点: `/obstacle_detection_3d_node/points_obstacle`（赤）
-- 検出オブジェクト: `/obstacle_detection_3d_node/cluster_markers`（bbox とクラスタ番号/点数）
+| 引数 | 既定値 | 内容 |
+| :--- | :--- | :--- |
+| `simulation` | `$SIMULATION` | `true` なら、センサのドライバを起動しない (`bringup_sensors` を除く) |
+| `drive` | `false` | `bringup_hardware` を起動するか ([注意](#注意)) |
+| `use_odom` / `use_odom_tf` | `true` | ホイールオドメトリ / TF の配信 |
+| `use_lidar` / `use_gps` | `true` | LiDAR / GNSS |
+| `use_realsense` | `true` | 点群の後処理と障害物検出 (`bringup_postprocess`) |
+| `use_rs_imu` | `true` | RealSense の IMU (ジャイロと加速度) |
+| `use_odom_corrector` | `false` | 補正ノードを起動し、ドライバの出力を `odom/raw` にする |
+| `odom_corrector_params_file` | `wheel_odom_corrector.yaml` | `params/` のファイル名または絶対パス |
 
-パラメータを変えて比較する場合は、端末2を Ctrl-C で止め、yaml を編集（または `param_file` を切り替え）してから
-`make obstacle-detection-replay` を再実行する。端末1の bag 配信は入れ直すか、`ros2 bag play` を最初から再生する。
+### bringup_sensors.launch.py の引数
 
-### ベースライン比較（数値）
+| 引数 | 既定値 | 内容 |
+| :--- | :--- | :--- |
+| `odom_port` | `/dev/ttyRobot-odom` | ホイールオドメトリのシリアルポート |
+| `front_rplidar_port` / `top_rplidar_port` | `/dev/ttyRobot-frontlidar` / `/dev/ttyRobot-toplidar` | LiDAR のポート |
+| `gps_port` | `/dev/ttyRobot-gps` | GNSS のポート |
+| `use_ubx_protocol` | `true` | `true`: u-blox の UBX (`ublox_gps_node`)。`false`: NMEA (`nmea_navsat_driver`) |
+| `use_rs_d435i` / `use_rs_d435` | `true` / `false` | RealSense の機種 |
 
-**自動化された比較ツールは未整備。** `tools/scripts/` の `eval_slam.py` / `run_slam_variant.sh` は SLAM 専用で対象外。
-整備済みの手段は上記の統計ログのみ。同一 bag・同一入力に対し `param_file` を切り替えて
-`obstacle-detection-replay` を実行し、ログの `stats` 行（`total` の平均/最大、`output` 点数、`clusters` 数）を
-手動で比較する。過去の PCL 実装との比較は改修時にコンテナ内でアドホックに行ったもので、再現可能な手順としては整備していない。
+`bringup_hardware.launch.py` の引数は、`device_name` (既定 `/dev/ttyRobot-motordriver`)。
+
+## 主なトピック
+
+| トピック | 出すノード | 内容 |
+| :--- | :--- | :--- |
+| `/odom` (補正あり: `/odom/raw` → `/odom`) | `wheel_odometry_node`、補正ノード | ホイールオドメトリ |
+| `/scan_top_lidar` | `top_rplidar_node` | 上 LiDAR (RPLiDAR S2) |
+| `/scan_front_lidar_origin` → `/scan_front_lidar` | `front_rplidar_node` → `front_lidar_publish_controller_node` | 前方 LiDAR (RPLiDAR A1M8)。ウェイポイントのアクション (`front_lidar_off`) で止められる |
+| `/gps/fix`、`/navpvt` ほか | `ublox_gps_node` | GNSS |
+| `/camera/camera/depth/color/points` → `/camera/depth/points_postprocessed` | RealSense → `depth_postprocess_node` | 点群と、後処理した点群 |
+| `/cmd_vel` | (入力) `motor_driver_node` | 速度指令 |
+
+## パラメータ
+
+`params/` のファイル。
+
+| ファイル | 内容 |
+| :--- | :--- |
+| `wheel_odom_corrector.yaml` | ホイールオドメトリの補正 ([doc](./doc/wheel_odom_corrector.md)) |
+| `obstacle_detection.yaml` | 3D 障害物検出 ([doc](./doc/obstacle_detection_3d.md)) |
+| `ekf_global.yaml` | ナビゲーションの EKF (`ekf_global_node`)。位置はホイールオドメトリの速度、AMCL、GNSS。30 Hz。構成は [mg_navigation](../mg_navigation/README.md) |
+| `ekf_slam.yaml`、`navsat_transform.yaml` | slam_toolbox の SLAM で、`use_ekf:=true` のときに使う EKF と `navsat_transform` |
+| `ublox_ubx_gps.yaml` | u-blox の設定 |
+| `rs_d435i.yaml`、`rs_d415.yaml` | RealSense の設定 |
+| `front_laser_filter.yaml`、`top_laser_filter.yaml` | LiDAR のフィルタ |
+
+ホイールオドメトリ (`wheel_odometry_node`) と、モータドライバのパラメータは、launch に直接書かれている (`bringup_sensors.launch.py`、`bringup_hardware.launch.py`)。
+
+## デバイスと依存
+
+- udev ルール: `config/usb-serial-devices.rules`。センサを `/dev/ttyRobot-*` の名前で見せる (ベンダー ID などの値は空欄)。
+- 外部リポジトリ (`mg_drivers.rosinstall`): `nmea_navsat_driver` (MetroGlide の fork)、`rplidar_ros`、`pointcloud_to_laserscan`、`kiss-icp` (fork)。
+- `requirements.txt`: `psutil`、`pyserial`、`pyproj`。
+- `package.xml`: `rclcpp`、`rclpy`、`laser_filters`、`pcl_ros`、`realsense2_camera`、`robot_localization`、`ublox` など。
+
+## 注意
+
+- `bringup.launch.py` の `bringup_hardware` の条件式は、Python の `and` で書かれていて、`drive` が効かない。実機 (`simulation:=false`) では、`drive` によらず `motor_driver_node` が起動する。
+- `obstacle_detection_3d.launch.py` は、入力 `points` を `/rs_d435i/depth/color/points` に remap している。実機の RealSense が点群を出すトピックは `/camera/camera/depth/color/points` (`depth_postprocess_node` の入力と同じ)。シミュレータのブリッジと、`depth_to_pointcloud` の復元点群は、`/rs_d435i/depth/color/points`。
+- `scripts/generate_static_transforms.py` は、インストールされない。`tools/scripts/generate_static_transforms.py` と内容が異なる別のファイル。
 
 ## テスト
 
 ```bash
-# C++ (検出ロジックの gtest。13 ケース)
+# Python (補正の計算)
+make test pkg=mg_drivers
+
+# C++ (障害物検出のロジックの gtest。13 ケース)
 docker exec <develop コンテナ> bash -c \
   "cd /root/ros2_ws && colcon build --packages-select mg_drivers --cmake-args -DBUILD_TESTING=ON && \
    ./build/mg_drivers/test_obstacle_detector"
 
-# Python (点群復元の点群配列生成。mg_utils 側)
+# 点群の生成 (mg_utils)
 make test pkg=mg_utils
 ```
+
+## ドキュメント
+
+| ファイル | 内容 |
+| :--- | :--- |
+| [doc/wheel_odom_corrector.md](./doc/wheel_odom_corrector.md) | ホイールオドメトリの補正のモデル、速度が 0 になる不具合、影響、元に戻す方法 |
+| [doc/obstacle_detection_3d.md](./doc/obstacle_detection_3d.md) | 3D 障害物検出のパイプライン、パラメータ、統計ログ、rosbag での確認 |
