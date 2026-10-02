@@ -28,15 +28,21 @@ make build-robot                # 実機向けにイメージをビルド
 GNSS 拘束付き 2D SLAM (`slam_gnss_2d`) で作る。詳細は [slam_gnss_2d の README](../slam_gnss_2d/README.md)。
 
 ```bash
-make slam-gnss-2d               # オンライン SLAM。走行して地図を作る
-make rviz2-slam                 # (別端末) 地図の確認
+make slam-gnss-2d               # SLAM ノードと RViz2 だけを起動する (センサのドライバは含まない)
+```
+
+センサのドライバと SLAM を一緒に起動するには、`mg_bringup` の launch を使う。compose にはこの launch を起動するサービスがないので、develop コンテナの中で実行する。
+
+```bash
+make shell-develop
+ros2 launch mg_bringup bringup_slam_gnss_2d.launch.py
 ```
 
 1. 地図にしたい範囲を走行する。必要なら、同時に rosbag を収録しておく (`./tools/scripts/record.sh -m slam`。[tools の README](../tools/README.md))。
 2. 走行が終わったら、地図を保存する。
 
    ```bash
-   make shell svc=slam-gnss-2d
+   make shell-develop
    ros2 run slam_gnss_2d save_slam_map_cli -d /root/ros2_data/map/<地図名>
    ```
 

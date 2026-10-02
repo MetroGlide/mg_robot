@@ -21,7 +21,7 @@
 | コマンド | compose サービス | 起動するもの |
 | :--- | :--- | :--- |
 | `make slam` | `slam` | `mg_bringup` の `bringup_slam_toolbox.launch.py` (slam_toolbox) |
-| `make slam-gnss-2d` | `slam-gnss-2d` | `slam_gnss_2d` の `bringup_slam_gnss_2d.launch.py` (GNSS 拘束付き 2D SLAM) |
+| `make slam-gnss-2d` | `slam-gnss-2d` | `slam_gnss_2d` の `bringup_slam_gnss_2d.launch.py` (GNSS 拘束付き 2D SLAM)。SLAM ノードと RViz2 だけを起動し、センサのドライバは含まない |
 | `make offline-slam-gnss-2d BAG=<bag>` | `offline-slam-gnss-2d` | `mg_bringup` の `offline_slam_gnss_2d.launch.py` (rosbag からの再処理。`BAG` は `ROSBAG_FILE` でも指定できる) |
 | `make reoptimize` | `reoptimize-slam` | `slam_gnss_2d` の `reoptimize.launch.py`。`INPUT_DIR`・`SAVE_DIR`・`BAG_PATH` を渡せる |
 | `make navigation` | `navigation` | `mg_bringup` の `bringup_navigation.launch.py` (自己位置推定 + Nav2 + ウェイポイントシーケンサ) |

@@ -55,7 +55,8 @@ SLAM 側の launch は次のとおり。
 | サービス | launch | 備考 |
 | :--- | :--- | :--- |
 | `slam` | `mg_bringup/slam/bringup_slam_toolbox.launch.py` | slam_toolbox ([mg_slam](../mg_slam/README.md)) |
-| `slam-gnss-2d` | `slam_gnss_2d/bringup_slam_gnss_2d.launch.py` | GNSS 拘束付き 2D SLAM (現役) |
+| `slam-gnss-2d` | `slam_gnss_2d/bringup_slam_gnss_2d.launch.py` | GNSS 拘束付き 2D SLAM (現役)。SLAM ノードと RViz2 だけで、センサのドライバは含まない |
+| (サービスなし) | `mg_bringup/slam/bringup_slam_gnss_2d.launch.py` | ドライバ (`bringup_common`) と上の SLAM を束ねる |
 | `offline-slam-gnss-2d` | `mg_bringup/slam/offline_slam_gnss_2d.launch.py` | rosbag からの再処理 |
 | `reoptimize-slam` | `slam_gnss_2d/reoptimize.launch.py` | ポーズグラフの再最適化 |
 
