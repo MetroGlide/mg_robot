@@ -1,6 +1,8 @@
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from mg_system_manager.routers.maps import list_navigation_maps
 from sm_fakes import FakeContainer
 
 
@@ -123,3 +125,61 @@ def test_list_slam_gnss_2d_maps(client, tmp_path):
         "/slam_gnss_2d/maps", params={"base_dir": str(base)}).json()
 
     assert body == {"success": True, "maps": ["20260101_000000"]}
+
+
+def _write_map_list(tmp_path, text):
+    (tmp_path / "map_list.txt").write_text(text, encoding="utf-8")
+
+
+def test_list_navigation_maps(tmp_path):
+    _write_map_list(
+        tmp_path,
+        "# 測位用\nlocalization_1.yaml\n\n  planning_1.yaml  \nmissing.yaml\n")
+    (tmp_path / "localization_1.yaml").write_text("image: a.pgm")
+    (tmp_path / "planning_1.yaml").write_text("image: b.pgm")
+
+    body = list_navigation_maps(str(tmp_path))
+
+    assert body["success"] is True
+    assert body["maps"] == [
+        {"name": "localization_1.yaml",
+         "path": str(tmp_path / "localization_1.yaml"), "missing": False},
+        {"name": "planning_1.yaml",
+         "path": str(tmp_path / "planning_1.yaml"), "missing": False},
+        {"name": "missing.yaml",
+         "path": str(tmp_path / "missing.yaml"), "missing": True},
+    ]
+    assert body["skipped"] == []
+
+
+def test_list_navigation_maps_skips_paths_outside_map_path(tmp_path):
+    _write_map_list(
+        tmp_path, "../secret.yaml\n/etc/passwd\nsub/../../x.yaml\na b.yaml\nok.yaml\n")
+
+    body = list_navigation_maps(str(tmp_path))
+
+    assert [m["name"] for m in body["maps"]] == ["ok.yaml"]
+    assert body["skipped"] == [
+        "../secret.yaml", "/etc/passwd", "sub/../../x.yaml", "a b.yaml"]
+
+
+def test_list_navigation_maps_without_map_list(tmp_path):
+    body = list_navigation_maps(str(tmp_path))
+
+    assert body["success"] is False
+    assert "map_list.txt" in body["message"]
+
+
+def test_list_navigation_maps_without_map_path():
+    assert list_navigation_maps("") == {
+        "success": False, "message": "MAP_PATH is not set"}
+
+
+def test_get_navigation_maps_uses_map_path_setting(client, settings, tmp_path):
+    _write_map_list(tmp_path, "a.yaml\n")
+    client.app.state.settings = replace(settings, map_path=str(tmp_path))
+
+    body = client.get("/navigation/maps").json()
+
+    assert body["success"] is True
+    assert [m["name"] for m in body["maps"]] == ["a.yaml"]
