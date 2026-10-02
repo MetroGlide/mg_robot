@@ -46,6 +46,7 @@ make test             # 全テスト実行
 make test pkg=<pkg>   # 特定パッケージのテスト
 make bag-summary      # .env指定のrosbagを解析し同ディレクトリにsummary.mdを出力
 make bag-plot-gnss    # GNSS軌跡・Fix状態・精度を可視化（CIRCLES=1で精度円、SCALE=10で倍率指定、TO_TOOLS=1でtools/data/保存）
+make bag-plot-gnss-map  # MAP_PATH/map_list.txtの地図群に、gnss_transform.yamlで変換したGNSSの位置・精度を重ねて描画（CIRCLES=1, SCALE=10, TO_TOOLS=1対応）
 make bag-plot-scans   # LiDARスキャン点群を2D画像化（NODES=1:20等でノード指定）
 make bag-eval-localization BAG=<bag> [GT_DIR=<SLAM出力>]  # 自己位置推定(EKF融合)の評価。滑らかさ・真値との誤差・NEES・AMCL遅延
 tools/scripts/run_localization_variant.sh <名前> [ekf.KEY=V amcl.KEY=V ...]  # 自己位置推定のパラメータ変種をrosbag再生で評価（実機不要。tools/README.md）

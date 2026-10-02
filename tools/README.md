@@ -182,7 +182,14 @@ python3 tools/scripts/plot_gnss_trajectory.py /path/to/rosbag --accuracy-circles
 # 精度円を定数倍（例: 10倍）に拡大描画、サンプリング間隔や最大半径 [m] の調整
 python3 tools/scripts/plot_gnss_trajectory.py /path/to/rosbag --circle-scale 10.0 --circle-step 10 -o gnss_circles_x10.png
 
+# 5.5. 地図群 + gnss_transform.yaml (ナビゲーションの slam_gnss_nav_bridge と同じ変換) での重ね描き
+# --map は複数指定でき、--map-list で map_list.txt の地図をまとめて指定できる。
+# --gnss-transform 指定時は UTM ゾーンもそのファイルの値を使い、/odom は描かない。
+python3 tools/scripts/plot_gnss_trajectory.py /path/to/rosbag --map-list $MAP_PATH/map_list.txt --gnss-transform $MAP_PATH/gnss_transform.yaml --accuracy-circles -o gnss_on_map.png
+
 # 6. make コマンド経由
+make bag-plot-gnss-map                        # MAP_PATH の地図群 + gnss_transform.yaml で gnss_on_map.png を bag ディレクトリに保存
+make bag-plot-gnss-map TO_TOOLS=1 CIRCLES=1   # tools/data/ に精度円つきで保存 (MAP_LIST= / GNSS_TRANSFORM= で別ファイルを指定可)
 make bag-plot-gnss                            # bag ディレクトリに gnss_trajectory.png を保存
 make bag-plot-gnss TO_TOOLS=1                 # tools/data/ に gnss_trajectory.png を保存
 make bag-plot-gnss CIRCLES=1                  # 精度円 (hAcc) を等倍で描画
