@@ -516,10 +516,19 @@ export default function WaypointNavPage({
                 ))}
               </select>
             </label>
-            <p className="mt-1 text-xs text-gray-500">
-              Queue wait は BT だけを切り替えます (コストマップは変えません)。
-              シーケンスの走行中は拒否されます。
-            </p>
+            <ul className="mt-1 list-disc pl-4 text-xs text-gray-500">
+              <li>Nav2 default: BT もコストマップも変えません。</li>
+              <li>
+                Normal: BT を normal にし、global_costmap
+                のセンサ障害物レイヤーを有効にします。
+              </li>
+              <li>
+                Queue wait: BT を queue_wait にし、global_costmap
+                のセンサ障害物レイヤーを無効にします。戻すときは Normal
+                でゴールを送るか、Nav2 を再起動してください。
+              </li>
+              <li>シーケンスの走行中は拒否されます。</li>
+            </ul>
             {interactionMode !== "none" && (
               <p className="mt-2 text-xs text-gray-400">
                 マップをクリックしてドラッグし、位置と向きを指定してください。
