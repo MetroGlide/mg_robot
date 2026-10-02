@@ -31,7 +31,8 @@ def generate_launch_description():
         "map_path",
         default=os.path.join(
             os.environ.get("MAP_PATH", "/root/ros2_data/map"),
-            "localization_1.yaml"
+            # "localization_1.yaml"
+            "Region1_jikoichi.yaml"
         )
     )
     planning_map_path_arg = launch_argument_creator.create(
@@ -39,7 +40,8 @@ def generate_launch_description():
         "planning_map_path",
         default=os.path.join(
             os.environ.get("MAP_PATH", "/root/ros2_data/map"),
-            "planning_1.yaml"
+            # "planning_1.yaml"
+            "Region1_kinshi.yaml"
         )
     )
     simulation_arg = launch_argument_creator.create(
@@ -77,7 +79,8 @@ def generate_launch_description():
     # false にすると、ドライバの /odom をそのまま使う従来の構成に戻る。
     use_odom_corrector_arg = launch_argument_creator.create(
         "use_odom_corrector",
-        default=IfElseSubstitution(simulation_arg.launch_config, "false", "true"))
+        # default=IfElseSubstitution(simulation_arg.launch_config, "false", "true"))
+        default="true")
     # ファイル名 (mg_drivers/params 配下) または絶対パス
     odom_corrector_params_file_arg = launch_argument_creator.create(
         "odom_corrector_params_file", default="wheel_odom_corrector.yaml")
