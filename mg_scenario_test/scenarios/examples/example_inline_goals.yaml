@@ -9,7 +9,7 @@ tags: [example, nav2_goals, smoke]
 
 # 障害物の名前付き定義 (action から参照する)。
 # 大きなメッシュのモデルはソフトウェアレンダリング環境で RTF を大きく下げるため、
-# 壁・バリア類は primitive を推奨する (docs/writing_scenarios.md 参照)
+# 壁・バリア類は primitive を推奨する (doc/writing_scenarios.md 参照)
 obstacles:
   barrier_0:
     model: { type: primitive, shape: box, size: { x: 2.0, y: 0.6, z: 0.8 } }

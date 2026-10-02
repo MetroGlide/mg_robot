@@ -1,6 +1,6 @@
 # MG-01 向けシナリオの書き方
 
-書式の全項目は [scenario_format.md](../../sim_scenario_test/docs/scenario_format.md)、MG 固有の型は [mg_plugins.md](mg_plugins.md) を参照。
+書式の全項目は [scenario_format.md](../../sim_scenario_test/doc/scenario_format.md)、MG 固有の型は [mg_plugins.md](mg_plugins.md) を参照。
 ここでは典型パターンと、つまずきやすい点をまとめます。まず同梱シナリオ ([一覧](../scenarios/README.md)) を真似るのが早道です。
 
 ## 基本の骨組み

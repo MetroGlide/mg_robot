@@ -69,7 +69,7 @@ make web-ui-dev                  # または make web-ui
 
 開発PCでシミュレータを、実機PCでセンサ・モータドライバ以外 (EKF・Nav2・後処理など) を動かして、実機の構成でシナリオテストを行えます。
 実機PCのスタックはシナリオごとに mg_system_manager から起動・停止され、`stack_args` の上書きや `run-all` もそのまま使えます
-(仕組みは [sim_scenario_test/docs/remote_stack.md](../sim_scenario_test/docs/remote_stack.md))。
+(仕組みは [sim_scenario_test/doc/remote_stack.md](../sim_scenario_test/doc/remote_stack.md))。
 
 準備 (両方のPCで同じコミットを使い、`make build-robot` / `make build-sim` 済みであること):
 
@@ -112,7 +112,7 @@ make scenario-test-all TIER=smoke ROBOT=<実機PCのIP>
 - 終了コード: 0=PASSED、1=FAILED、2=ERROR。**make 経由では失敗時に make の仕様で常に非 0 (2) になる**ので、
   区別が必要なら実行末尾の `Summary` か `result.json` / `junit.xml` を見てください。
 - `FAILED` はロボットが期待どおりに動かなかった場合、`ERROR` はテスト基盤・セットアップの失敗です
-  (起動しない、障害物が生成されない、シミュレータが止まった等。詳細は `sim_scenario_test/docs/architecture.md`)。
+  (起動しない、障害物が生成されない、シミュレータが止まった等。詳細は `sim_scenario_test/doc/architecture.md`)。
 
 ## シミュレーション用のデータ
 
@@ -141,6 +141,6 @@ make scenario-test-all TIER=smoke ROBOT=<実機PCのIP>
 
 | ファイル | 内容 |
 |---|---|
-| [docs/mg_plugins.md](docs/mg_plugins.md) | MG 固有の拡張 (driver / action / trigger / monitor / waypoint 形式) |
-| [docs/writing_scenarios.md](docs/writing_scenarios.md) | MG-01 向けのシナリオの書き方・パターン・デバッグ |
+| [doc/mg_plugins.md](doc/mg_plugins.md) | MG 固有の拡張 (driver / action / trigger / monitor / waypoint 形式) |
+| [doc/writing_scenarios.md](doc/writing_scenarios.md) | MG-01 向けのシナリオの書き方・パターン・デバッグ |
 | [scenarios/README.md](scenarios/README.md) | 同梱シナリオの一覧 |
