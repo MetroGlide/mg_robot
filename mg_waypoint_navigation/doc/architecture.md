@@ -146,6 +146,7 @@ stateDiagram-v2
 | Service | `~/start`                   | `mg_msgs/StartSequence`          | IDLE/GOAL_REACHED → ON_STARTING (pause 中は拒否) |
 | Service | `~/stop`                    | `std_srvs/Trigger`               | 任意状態 → IDLE (pause スロットも全解除)     |
 | Service | `~/reload_waypoints`        | `std_srvs/Trigger`               | IDLE/GOAL_REACHED/ERROR 時のみ有効           |
+| Service | `~/navigate_to_pose`        | `mg_msgs/SendGoal`               | BT を指定してゴールを 1 つ送る手動ゴール。`navigation_mode` は `normal` / `queue_wait` (ウェイポイントと同じ XML) か `default` (BT を指定せず Nav2 の既定)。IDLE/GOAL_REACHED/ERROR で pause 中でないときだけ受け付ける。実行中は `~/start` を拒否し、`~/stop` でキャンセルする。BT だけを切り替え、コストマップのレイヤーと `~/navigation_mode` は変えない |
 | Service | `~/load_map`                | `mg_msgs/LoadMaps`               | 測位用・計画用の地図を map_server に読み込ませる (空文字の側は変更しない)。状態によらず実行でき、`load_map` アクションと同じ経路 |
 | Sub     | `~/set_next_waypoint_index` | `std_msgs/Int16`                 | IDLE/SUSPENDED 時のみ有効                    |
 | Sub     | `~/pause_request`           | `mg_msgs/PauseRequest`           | Named Pause Slot 制御 (複数ノードから送信可) |
