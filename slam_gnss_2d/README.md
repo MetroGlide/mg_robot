@@ -373,7 +373,7 @@ TF が無い・`yaw_max_age_sec` より古いときは、アンテナ位置の�
 
 **負荷とロールバック**: 1 Hz の測位ごとの座標変換だけで、負荷はごくわずかです。`lever_arm_compensation: false` で従来どおりアンテナ位置を出します。
 
-**配信の切り替え**: `~/change_publish_state` (`std_srvs/srv/SetBool`、ノード名 `slam_gnss_nav_bridge` なら `/slam_gnss_nav_bridge/change_publish_state`) で `/odom/gps` の配信を止める・再開できます (ウェイポイントの `gps_on` / `gps_off` が使う)。
+**配信の切り替え**: `~/change_publish_state` (`std_srvs/srv/SetBool`、ノード名 `slam_gnss_nav_bridge` なら `/slam_gnss_nav_bridge/change_publish_state`) で `/odom/gps` の配信を止める・再開できます (ウェイポイントの `gps_on` / `gps_off` が使う)。現在の状態は `~/publish_state` (`std_msgs/msg/Bool`、transient_local) に、起動時と切り替えたときだけ配信されます。
 
 ### /slam_gnss_2d/anchor の配信
 

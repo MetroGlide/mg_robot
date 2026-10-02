@@ -73,6 +73,7 @@ frontend/src/
     panels/     計器・ログなどの表示パネル
     status/     コンテナ状態・サービス操作のカード
     sections/   複数の操作をまとめた節（rosbag 再生など）
+    waypoint-actions/ ウェイポイントナビ画面の「Actions」（AMCL・GNSS の入切、地図の切り替え、任意のサービス・トピック）
     ros-viewer/ three.js による 2D/3D ビューワー（hooks/ と layers/）
     ui/         ボタンなどの汎用部品
   pages/        ルーティングされるページ
@@ -93,6 +94,13 @@ frontend/src/
   呼ばずに初めて publish すると、DDS のマッチングを待つため最初のメッセージが約 0.4 秒遅れる。
 - publish するメッセージは `ros/schemas.ts` にスキーマを追加する。cdr でエンコードできない場合は例外になる（壊れたデータは送らない）。
 - 新しいトピックは `ros/topics.ts`、サービスは `ros/services.ts` に定義する。
+- 任意のトピックに 1 回だけ publish するときは `client.publishOnce(topic, schemaName, data)` を使う（送信後に publisher を片付ける）。
+  型のスキーマは `ros/schemas.ts` に無くても、ブリッジが同じ型のトピックを公開していればそれを使う。どちらにも無ければ JSON で送る。
+  publisher は volatile なので、あとから起動した購読者には届かない。
+- サービスはブリッジが公開しているスキーマで encode / decode されるため、`ros/schemas.ts` への追加は要らない。
+  公開中のサービス・トピックの一覧は `client.listServices()` / `client.listTopics()`（呼んだ時点のスナップショット）で取る。
+- ゲートの状態など、ノード側の状態を表示したいときは、変化したときだけ配信する latched（transient_local）のトピックをノード側に足して購読する。
+  UI 側で別のトピックの流れ具合から推定しない（センサ停止とゲート OFF を区別できないため）。
 
 ### 新しい機能を追加するとき
 
@@ -121,6 +129,10 @@ mg_system_manager/
 - `docker compose` は `.env` の `USE_GPU` に応じて GPU 用の compose ファイルを重ねて実行する（Makefile と同じ）。
 - シナリオテストの API は `routers/scenario_test.py`（`/scenario/...`）。`scenario-test` / `scenario-env` は `SERVICES` の汎用ルート
   （`/<service>/start` など）と重ならないよう `/scenario/` の下に置いている。使い方は [mg_scenario_test/README.md](../mg_scenario_test/README.md#web-ui-から実行する)。
+
+- `GET /navigation/maps`（`routers/maps.py`）は、環境変数 `MAP_PATH` の `map_list.txt`（1 行 1 ファイル、`MAP_PATH` からの相対パス。空行と `#` 始まりの行は無視）から地図の一覧を返す。
+  `MAP_PATH` はコンテナの起動時の値なので、`.env` を変えたら `system-manager` を起動し直す。`map_list.txt` が無ければ `success: false` を返し、UI にそのまま表示する。
+  地図の切り替えは、sequencer の `~/load_map` を呼ぶ（読み込み済みの地図の記録を更新するため）。
 
 - コンテナは compose のプロジェクト（`COMPOSE_PROJECT_NAME`、未設定ならディレクトリ名）で絞り込む。
   `docker compose run` で作られた one-off コンテナも対象で、同じサービスに複数ある場合は動作中のものを優先する。

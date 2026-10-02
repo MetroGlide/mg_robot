@@ -146,11 +146,14 @@ stateDiagram-v2
 | Service | `~/start`                   | `mg_msgs/StartSequence`          | IDLE/GOAL_REACHED → ON_STARTING (pause 中は拒否) |
 | Service | `~/stop`                    | `std_srvs/Trigger`               | 任意状態 → IDLE (pause スロットも全解除)     |
 | Service | `~/reload_waypoints`        | `std_srvs/Trigger`               | IDLE/GOAL_REACHED/ERROR 時のみ有効           |
+| Service | `~/load_map`                | `mg_msgs/LoadMaps`               | 測位用・計画用の地図を map_server に読み込ませる (空文字の側は変更しない)。状態によらず実行でき、`load_map` アクションと同じ経路 |
 | Sub     | `~/set_next_waypoint_index` | `std_msgs/Int16`                 | IDLE/SUSPENDED 時のみ有効                    |
 | Sub     | `~/pause_request`           | `mg_msgs/PauseRequest`           | Named Pause Slot 制御 (複数ノードから送信可) |
 | Pub     | `~/status`                  | `mg_msgs/SequencerStatus`        | 10Hz, パラメータで無効化可                   |
 | Pub     | `~/waypoints`               | `mg_msgs/WaypointList`           | transient_local latched                      |
 | Pub     | `~/waypoints_markers`       | `visualization_msgs/MarkerArray` | RViz 表示                                    |
+| Pub     | `~/loaded_maps`             | `mg_msgs/LoadedMaps`             | map_server に読み込ませた地図 (読み込みに成功したものだけを記録)。transient_local latched |
+| Pub     | `~/navigation_mode`         | `std_msgs/String`                | 次のゴールで使うモードと BT の JSON (`{"mode": "normal", "behavior_tree": "<ファイル名>"}`)。変化したときだけ。transient_local latched |
 
 ### ノードパラメータ
 
@@ -163,6 +166,11 @@ stateDiagram-v2
 | `bt_xml_normal`           | string | パッケージ内 `mg_navigate_to_pose.xml` | 通常モードの BT |
 | `bt_xml_queue_wait`       | string | パッケージ内 `mg_navigate_to_pose_queue_wait.xml` | queue_wait モードの BT |
 | `plan_topic`              | string | `/plan`    | 通過点判定に使う経路のトピック   |
+| `initial_localization_map` | string | `""`      | 起動時に map_server が読み込んでいる測位用地図 (`~/loaded_maps` の初期値。`mg_navigation` の bringup が渡す) |
+| `initial_planning_map`    | string | `""`       | 起動時に planning_map_server が読み込んでいる計画用地図 (同上) |
+
+> 読み込み済みの地図の記録は、`load_map` アクションと `~/load_map` を通した読み込みだけが更新する。
+> `/map_server/load_map` などを直接呼んだ場合は記録とずれる。
 | `plan_goal_match_tolerance` | double | `0.6`    | 経路の終点をゴールのものとみなす距離 [m]（NavFn の `tolerance` 以上にする） |
 
 ### 到達判定
