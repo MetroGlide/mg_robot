@@ -3,8 +3,6 @@ from __future__ import annotations
 
 import time
 
-from rcl_interfaces.msg import Parameter, ParameterType
-from rcl_interfaces.srv import SetParametersAtomically
 from std_srvs.srv import Empty
 
 from mg_waypoint_navigation.waypoint_sequencer.actions.base import BaseAction
@@ -56,28 +54,11 @@ class SetNavigationModeAction(BaseAction):
         # queue_waitの場合はグローバルコストマップの動的障害物を無視してパスを引かせる
         enabled = (mode != "queue_wait")
 
-        req = SetParametersAtomically.Request()
-        req.parameters = [
-            self._bool_param("top_obstacle_layer.enabled", enabled),
-            self._bool_param("obstacle_stvl_layer.enabled", enabled),
-        ]
-        response = self._call_service(
-            SetParametersAtomically,
-            "/global_costmap/global_costmap/set_parameters_atomically",
-            req,
-        )
-        if response is not None and response.result.successful:
+        ok, _ = self._costmap_switcher.set_global_obstacle_layers(enabled)
+        if ok:
             self._node.get_logger().info(
                 f"Set navigation mode to '{mode}' "
                 f"(global obstacles enabled: {enabled})")
         else:
             self._node.get_logger().error(
                 f"Failed to set navigation mode to '{mode}'")
-
-    @staticmethod
-    def _bool_param(name: str, value: bool) -> Parameter:
-        param = Parameter()
-        param.name = name
-        param.value.type = ParameterType.PARAMETER_BOOL
-        param.value.bool_value = value
-        return param

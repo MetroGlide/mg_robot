@@ -22,6 +22,9 @@ from mg_waypoint_navigation.waypoint_sequencer.actions.generic import (
 )
 
 if TYPE_CHECKING:
+    from mg_waypoint_navigation.waypoint_sequencer.costmap_mode import (
+        CostmapModeSwitcher,
+    )
     from mg_waypoint_navigation.waypoint_sequencer.map_loader import MapLoader
 
 _ACTION_REGISTRY = {
@@ -40,12 +43,15 @@ def build_action(
     node: rclpy.node.Node,
     endpoints: EndpointCache,
     map_loader: MapLoader,
+    costmap_switcher: CostmapModeSwitcher,
 ) -> BaseAction:
     cls = _ACTION_REGISTRY.get(config.type)
     if cls is None:
         raise ValueError(f"Unknown action type: {config.type!r}")
     if cls is LoadMapAction:
-        return cls(config, node, endpoints, map_loader)
+        return cls(config, node, endpoints, map_loader=map_loader)
+    if cls is SetNavigationModeAction:
+        return cls(config, node, endpoints, costmap_switcher=costmap_switcher)
     return cls(config, node, endpoints)
 
 

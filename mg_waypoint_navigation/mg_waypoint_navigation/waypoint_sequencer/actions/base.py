@@ -12,6 +12,9 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from mg_waypoint_navigation.waypoint import ActionConfig
 
 if TYPE_CHECKING:
+    from mg_waypoint_navigation.waypoint_sequencer.costmap_mode import (
+        CostmapModeSwitcher,
+    )
     from mg_waypoint_navigation.waypoint_sequencer.map_loader import MapLoader
 
 # publisher を新規に作ったとき、購読側が見つかるまで待つ最大時間 [s]
@@ -89,11 +92,13 @@ class BaseAction(abc.ABC):
         node: rclpy.node.Node,
         endpoints: EndpointCache,
         map_loader: Optional[MapLoader] = None,
+        costmap_switcher: Optional[CostmapModeSwitcher] = None,
     ):
         self._config = config
         self._node = node
         self._endpoints = endpoints
         self._map_loader = map_loader
+        self._costmap_switcher = costmap_switcher
 
     @abc.abstractmethod
     def execute(self) -> None:

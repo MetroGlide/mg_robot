@@ -234,25 +234,28 @@ class WaypointSequencerFSM:
 
         シーケンスが走行中でないとき (IDLE / GOAL_REACHED / ERROR) で、pause 中でないときだけ受け付ける。
         手動ゴールの実行中は start() を拒否し、stop() でキャンセルする。
+
+        normal / queue_wait は、set_navigation_mode アクションと同じく BT と global_costmap の
+        センサ障害物層を切り替える (queue_wait で無効、normal で有効)。default は BT も層も変えない。
+        戻すのは normal で送るか Nav2 の再起動で、ゴールの終了時には戻さない。
         """
         with self._lock:
-            if navigation_mode not in MANUAL_GOAL_MODES:
-                return CommandResult(
-                    False,
-                    f"Unknown navigation_mode {navigation_mode!r}; "
-                    f"expected one of {MANUAL_GOAL_MODES}",
-                )
-            if self._state not in MANUAL_GOAL_STATES:
-                return CommandResult(
-                    False,
-                    f"Cannot send a manual goal in state {self._state.value}; "
-                    "stop the sequence first",
-                )
-            if self._pause_manager.is_active:
-                return CommandResult(
-                    False,
-                    f"Paused by {', '.join(self._pause_manager.requesters)}",
-                )
+            rejection = self._manual_goal_rejection(navigation_mode)
+        if rejection is not None:
+            return CommandResult(False, rejection)
+
+        if navigation_mode != DEFAULT_BT_MODE:
+            # サービスの応答待ち (最長数秒) の間も stop などを受けられるよう、ロックの外で呼ぶ
+            ok, message = self._executor.costmap_switcher.set_global_obstacle_layers(
+                navigation_mode != "queue_wait")
+            if not ok:
+                return CommandResult(False, message)
+
+        with self._lock:
+            # 層の切り替えの待ちの間に状態が変わっていたら、ゴールは送らない
+            rejection = self._manual_goal_rejection(navigation_mode)
+            if rejection is not None:
+                return CommandResult(False, rejection)
             waypoint = Waypoint(
                 index=-1,
                 pose=pose,
@@ -265,6 +268,18 @@ class WaypointSequencerFSM:
                 navigation_mode=navigation_mode,
             )
             return CommandResult(True, "OK")
+
+    def _manual_goal_rejection(self, navigation_mode: str) -> Optional[str]:
+        """ロック保持中に呼ぶ。手動ゴールを受け付けられない理由。受け付けられるなら None。"""
+        if navigation_mode not in MANUAL_GOAL_MODES:
+            return (f"Unknown navigation_mode {navigation_mode!r}; "
+                    f"expected one of {MANUAL_GOAL_MODES}")
+        if self._state not in MANUAL_GOAL_STATES:
+            return (f"Cannot send a manual goal in state {self._state.value}; "
+                    "stop the sequence first")
+        if self._pause_manager.is_active:
+            return f"Paused by {', '.join(self._pause_manager.requesters)}"
+        return None
 
     def start(self, countdown_ms: int) -> CommandResult:
         with self._lock:

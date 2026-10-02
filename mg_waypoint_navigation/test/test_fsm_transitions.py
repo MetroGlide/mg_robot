@@ -54,6 +54,8 @@ def env():
         mock_exec = MagicMock()
         MockNav.return_value = mock_nav
         MockExec.return_value = mock_exec
+        mock_exec.costmap_switcher.set_global_obstacle_layers.return_value = (
+            True, "ok")
 
         mock_nav.send_goal.side_effect = lambda wp, cb, **kw: nav_cb.__setitem__(
             0, cb)
@@ -621,6 +623,56 @@ class TestManualGoal:
     def test_stop_without_a_manual_goal_does_not_cancel(self, env):
         env.fsm.stop()
         env.nav.cancel.assert_not_called()
+
+    @pytest.mark.parametrize("mode,layers_enabled", [
+        ("normal", True),
+        ("queue_wait", False),
+    ])
+    def test_costmap_layers_follow_the_mode_before_the_goal_is_sent(
+            self, env, mode, layers_enabled):
+        order = []
+        switcher = env.executor.costmap_switcher
+        switcher.set_global_obstacle_layers.side_effect = (
+            lambda enabled: order.append(("layers", enabled)) or (True, "ok"))
+        env.nav.send_goal.side_effect = lambda *a, **kw: order.append("goal")
+
+        assert env.fsm.navigate_to_pose(MagicMock(), mode).success
+
+        assert order == [("layers", layers_enabled), "goal"]
+
+    def test_default_mode_leaves_the_costmap_layers_alone(self, env):
+        assert env.fsm.navigate_to_pose(MagicMock(), "default").success
+        env.executor.costmap_switcher.set_global_obstacle_layers.assert_not_called()
+
+    def test_goal_is_not_sent_when_the_layers_cannot_be_switched(self, env):
+        env.executor.costmap_switcher.set_global_obstacle_layers.return_value = (
+            False, "global_costmap is not available")
+        result = env.fsm.navigate_to_pose(MagicMock(), "queue_wait")
+        assert not result.success
+        assert "global_costmap" in result.message
+        env.nav.send_goal.assert_not_called()
+        # 受け付けていないので、START は拒否されない
+        env.fsm.load_waypoints(_make_wl([]))
+        assert env.fsm.start(600_000).success
+
+    def test_rejected_without_touching_the_layers(self, env):
+        env.fsm.pause_request("p1", True)
+        assert not env.fsm.navigate_to_pose(MagicMock(), "queue_wait").success
+        assert not env.fsm.navigate_to_pose(MagicMock(), "fast").success
+        env.executor.costmap_switcher.set_global_obstacle_layers.assert_not_called()
+
+    def test_goal_is_not_sent_if_the_state_changed_while_switching_layers(self, env):
+        env.fsm.load_waypoints(_make_wl([]))
+
+        def switch(enabled):
+            env.fsm.start(600_000)  # 層の切り替えの待ちの間にシーケンスが始まった
+            return True, "ok"
+
+        env.executor.costmap_switcher.set_global_obstacle_layers.side_effect = switch
+        result = env.fsm.navigate_to_pose(MagicMock(), "queue_wait")
+        assert not result.success
+        assert "stop the sequence first" in result.message
+        env.nav.send_goal.assert_not_called()
 
     def test_a_new_manual_goal_replaces_the_running_one(self, env):
         env.fsm.navigate_to_pose(MagicMock(), "normal")
