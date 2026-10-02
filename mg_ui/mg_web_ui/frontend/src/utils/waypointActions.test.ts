@@ -4,6 +4,8 @@ import {
   describeAmclGate,
   describeGnssGate,
   describeServiceResponse,
+  GOAL_BT_OPTIONS,
+  isGoalBtMode,
   mapDisplayName,
   parseJsonObject,
   parseNavigationMode,
@@ -83,6 +85,22 @@ describe("parseNavigationMode", () => {
     expect(parseNavigationMode("normal")).toBeNull();
     expect(parseNavigationMode('{"mode":"normal"}')).toBeNull();
     expect(parseNavigationMode("null")).toBeNull();
+  });
+});
+
+describe("goal BT options", () => {
+  it("offers the three modes the sequencer accepts, Nav2 default first", () => {
+    expect(GOAL_BT_OPTIONS.map((o) => o.value)).toEqual([
+      "default",
+      "normal",
+      "queue_wait",
+    ]);
+  });
+
+  it("recognizes only those modes", () => {
+    expect(isGoalBtMode("queue_wait")).toBe(true);
+    expect(isGoalBtMode("fast")).toBe(false);
+    expect(isGoalBtMode("")).toBe(false);
   });
 });
 

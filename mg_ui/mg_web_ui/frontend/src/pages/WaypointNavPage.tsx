@@ -26,7 +26,15 @@ import SimulationPoseSection, {
 } from "../components/status/SimulationPoseSection";
 import RosbagReplaySection from "../components/sections/RosbagReplaySection";
 import WaypointActionsSection from "../components/waypoint-actions/WaypointActionsSection";
-import { parseNavigationMode } from "../utils/waypointActions";
+import ActionResultText from "../components/waypoint-actions/ActionResultText";
+import { useActionRunner } from "../hooks/useActionRunner";
+import {
+  describeServiceResponse,
+  GOAL_BT_OPTIONS,
+  GoalBtMode,
+  isGoalBtMode,
+  parseNavigationMode,
+} from "../utils/waypointActions";
 
 const STATE_COLOR: Record<string, string> = {
   IDLE: "text-gray-300",
@@ -87,6 +95,8 @@ export default function WaypointNavPage({
   const [interactionMode, setInteractionMode] = useState<
     "none" | "pose_estimate" | "nav_goal"
   >("none");
+  const [goalBt, setGoalBt] = useState<GoalBtMode>("default");
+  const goalRunner = useActionRunner();
   const { call, loading, error } = useServiceCaller(client);
   const { isSimulation } = useSimulation();
   const { isRosbagReplayVisible } = useRosbagReplay();
@@ -187,10 +197,15 @@ export default function WaypointNavPage({
           buildInitialPoseMessage({ x, y, z: 0.0, yaw }),
         );
       } else if (interactionMode === "nav_goal") {
-        client.publish(
-          TOPICS.GOAL_POSE,
-          "geometry_msgs/msg/PoseStamped",
-          buildNavGoalMessage({ x, y, z: 0.0, yaw }),
+        // BT を指定できるよう、/goal_pose ではなく sequencer のサービスでゴールを送る
+        const pose = buildNavGoalMessage({ x, y, z: 0.0, yaw });
+        void goalRunner.run(async () =>
+          describeServiceResponse(
+            await client.callService(SERVICES.WAYPOINT_NAVIGATE_TO_POSE, {
+              pose,
+              navigation_mode: goalBt,
+            }),
+          ),
         );
       }
     } catch (e) {
@@ -485,11 +500,32 @@ export default function WaypointNavPage({
                 </button>
               )}
             </div>
+            <label className="mt-2 block text-xs text-gray-400">
+              Behavior tree for Nav2 Goal
+              <select
+                value={goalBt}
+                onChange={(e) => {
+                  if (isGoalBtMode(e.target.value)) setGoalBt(e.target.value);
+                }}
+                className="mt-1 block w-full rounded bg-gray-700 px-2 py-1 text-sm text-white"
+              >
+                {GOAL_BT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="mt-1 text-xs text-gray-500">
+              Queue wait は BT だけを切り替えます (コストマップは変えません)。
+              シーケンスの走行中は拒否されます。
+            </p>
             {interactionMode !== "none" && (
               <p className="mt-2 text-xs text-gray-400">
                 マップをクリックしてドラッグし、位置と向きを指定してください。
               </p>
             )}
+            <ActionResultText result={goalRunner.result} />
           </SectionCard>
         </div>
       ),

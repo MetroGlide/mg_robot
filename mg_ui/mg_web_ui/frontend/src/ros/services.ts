@@ -4,6 +4,7 @@ export const SERVICES = {
   WAYPOINT_START: nodeNs(NODE_NS.WAYPOINT_SEQUENCER, '/start'),
   WAYPOINT_STOP: nodeNs(NODE_NS.WAYPOINT_SEQUENCER, '/stop'),
   WAYPOINT_RELOAD: nodeNs(NODE_NS.WAYPOINT_SEQUENCER, '/reload_waypoints'),
+  WAYPOINT_NAVIGATE_TO_POSE: nodeNs(NODE_NS.WAYPOINT_SEQUENCER, '/navigate_to_pose'),
   WAYPOINT_LOAD_MAP: nodeNs(NODE_NS.WAYPOINT_SEQUENCER, '/load_map'),
   // ウェイポイントの amcl_on / amcl_off と同じ要求元として、AMCL のゲートを切り替える
   AMCL_GATE_WAYPOINT: '/amcl_gate_arbiter/waypoint/change_publish_state',

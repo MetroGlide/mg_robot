@@ -87,6 +87,19 @@ export function parseNavigationMode(data: string): NavigationModeInfo | null {
   return { mode, behavior_tree: behaviorTree };
 }
 
+/** 手動の Nav2 Goal で使う BT。default は BT を指定せず、Nav2 の既定の BT に任せる。 */
+export type GoalBtMode = "default" | "normal" | "queue_wait";
+
+export const GOAL_BT_OPTIONS: { value: GoalBtMode; label: string }[] = [
+  { value: "default", label: "Nav2 default" },
+  { value: "normal", label: "Normal" },
+  { value: "queue_wait", label: "Queue wait" },
+];
+
+export function isGoalBtMode(value: string): value is GoalBtMode {
+  return GOAL_BT_OPTIONS.some((option) => option.value === value);
+}
+
 export interface ActionResult {
   ok: boolean;
   text: string;
