@@ -56,7 +56,8 @@ def generate_launch_description():
     record_bag_arg = launch_argument_creator.create(
         "record_bag", default="false")
     global_planner_arg = launch_argument_creator.create(
-        "global_planner", default="smac_lattice")
+        # "global_planner", default="smac_lattice")
+        "global_planner", default="navfn")
 
     use_ekf_arg = launch_argument_creator.create(
         "use_ekf", default="True")

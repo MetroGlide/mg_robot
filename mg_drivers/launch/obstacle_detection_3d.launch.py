@@ -40,8 +40,8 @@ def generate_launch_description():
             {"use_sensor_data_qos": use_sensor_data_qos_arg.launch_config},
         ],
         remappings=[
-            # ("points", "/camera/camera/depth/color/points"),
-            ("points", "/rs_d435i/depth/color/points"),
+            ("points", "/camera/camera/depth/color/points"),
+            # ("points", "/rs_d435i/depth/color/points"),
             # Outputs: ~/points_obstacle, ~/cluster_markers
         ],
     )
