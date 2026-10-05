@@ -105,7 +105,7 @@ export default function SlamPage({
               </div>
               <button
                 onClick={() =>
-                  call("/map/save", { map_dir: mapDir, map_name: mapName })
+                  call("/map/common/save", { map_dir: mapDir, map_name: mapName })
                 }
                 disabled={loading}
                 className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 px-4 py-2 rounded font-medium text-sm"

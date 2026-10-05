@@ -45,7 +45,7 @@ export default function SlamControl({
         <OpsButton
           tone="primary"
           disabled={loading || !running}
-          onClick={() => call("/map/save", { map_dir: mapDir, map_name: mapName })}
+          onClick={() => call("/map/common/save", { map_dir: mapDir, map_name: mapName })}
         >
           地図を保存
         </OpsButton>
