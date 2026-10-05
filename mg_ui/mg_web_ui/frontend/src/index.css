@@ -1,3 +1,55 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/*
+ * 新 UI (/ops/*) 用の色トークン。値は "R G B" で持ち、Tailwind の不透明度指定(bg-surface/80 など)に対応する。
+ * 旧ページは gray-* を直接使っており、このトークンの影響を受けない。
+ */
+:root {
+  --surface: 241 245 252;
+  --surface-elevated: 255 255 255;
+  --surface-sunken: 226 233 246;
+  --line: 208 217 235;
+  --text: 22 30 51;
+  --muted: 100 112 140;
+  --accent: 37 99 235;
+  --ok: 22 163 74;
+  --warn: 217 119 6;
+  --error: 220 38 38;
+  --map-free: 255 255 255;
+  --map-unknown: 214 222 240;
+  --shadow-card: 0 4px 16px rgb(30 50 110 / 0.14);
+}
+
+:root.dark {
+  --surface: 17 24 39;
+  --surface-elevated: 31 41 55;
+  --surface-sunken: 11 17 30;
+  --line: 55 65 81;
+  --text: 243 244 246;
+  --muted: 156 163 175;
+  --accent: 96 165 250;
+  --ok: 74 222 128;
+  --warn: 251 191 36;
+  --error: 248 113 113;
+  --map-free: 55 65 81;
+  --map-unknown: 17 24 39;
+  --shadow-card: 0 4px 16px rgb(0 0 0 / 0.5);
+}
+
+/* 低負荷モード: 影とトランジションを切る */
+:root.low-load {
+  --shadow-card: none;
+}
+:root.low-load * {
+  transition: none !important;
+  animation: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
