@@ -31,6 +31,11 @@ export const USE_CASES: UseCase[] = [
     label: "SLAM",
     Operate: lazy(() => import("./SlamOperate")),
   },
+  {
+    id: "slam-gnss-2d",
+    label: "SLAM-GNSS-2D",
+    Operate: lazy(() => import("./SlamGnssOperate")),
+  },
 ];
 
 export function findUseCase(id: string | undefined): UseCase | undefined {
@@ -42,7 +47,6 @@ export function findUseCase(id: string | undefined): UseCase | undefined {
  * 移行したら USE_CASES に移し、ここから消す(doc/ui_migration_todo.md)。
  */
 const LEGACY_LINKS: NavLinkItem[] = [
-  { id: "slam-gnss-2d", label: "SLAM-GNSS-2D (旧)", to: "/slam-gnss-2d" },
   { id: "scenario-test", label: "Scenario Test (旧)", to: "/scenario-test" },
 ];
 
