@@ -12,7 +12,9 @@ import PoseArrowInteraction, {
 } from "../ros-viewer/layers/PoseArrowInteraction";
 import { RenderTicker } from "../ros-viewer/RosViewer";
 import { TOPICS } from "../../ros/interfaces";
+import { useOpsValue } from "../../hooks/useOpsValue";
 import {
+  CameraView,
   DEFAULT_ZOOM,
   FollowRobot,
   MapCameraControls,
@@ -37,18 +39,27 @@ interface Props {
   /** 地図の上に重ねる、ユースケース固有のシーン要素 */
   sceneChildren?: ReactNode;
   className?: string;
+  /** カメラを画面の切り替えをまたいで保持するためのキー(ユースケースの id など) */
+  viewKey: string;
 }
+
+type SceneProps = Omit<Props, "className" | "viewKey"> & {
+  initialView: CameraView | null;
+  onViewSave: (view: CameraView) => void;
+};
 
 function OperateScene({
   client,
   command,
   follow,
   onUserPan,
+  initialView,
+  onViewSave,
   interactionMode,
   onPoseSet,
   showNavLayers = true,
   sceneChildren,
-}: Omit<Props, "className">) {
+}: SceneProps) {
   const { resolved } = useTheme();
   const tfBuffer = useTfBuffer(client);
 
@@ -59,13 +70,15 @@ function OperateScene({
         command={command}
         dragPanEnabled={interactionMode === "none"}
         onUserPan={onUserPan}
+        initialView={initialView}
+        onViewSave={onViewSave}
       />
       <RenderTicker intervalMs={OPERATE_RENDER_INTERVAL_MS} />
       {follow && <FollowRobot tfBuffer={tfBuffer} />}
       <ambientLight intensity={1} />
       <MapLayer
         client={client}
-        palette={resolved === "light" ? "mapLight" : "map"}
+        palette={resolved === "light" ? "mapLight" : "mapDark"}
       />
       {showNavLayers && (
         <>
@@ -82,7 +95,17 @@ function OperateScene({
   );
 }
 
-export default function OperateMap({ className, ...sceneProps }: Props) {
+export default function OperateMap({
+  className,
+  viewKey,
+  ...sceneProps
+}: Props) {
+  // カメラは再読み込みでは残さず、画面の切り替えの間だけ保持する
+  const [view, setView] = useOpsValue<CameraView | null>(
+    `${viewKey}.camera`,
+    null,
+    false,
+  );
   return (
     <div className={className ?? "h-full w-full"}>
       <Canvas
@@ -98,7 +121,11 @@ export default function OperateMap({ className, ...sceneProps }: Props) {
         dpr={1}
       >
         <Suspense fallback={null}>
-          <OperateScene {...sceneProps} />
+          <OperateScene
+            {...sceneProps}
+            initialView={view}
+            onViewSave={setView}
+          />
         </Suspense>
       </Canvas>
     </div>

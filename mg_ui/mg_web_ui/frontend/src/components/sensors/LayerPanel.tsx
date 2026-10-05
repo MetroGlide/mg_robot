@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useOpsValue } from "../../hooks/useOpsValue";
 import { LayerKey, useVisualization } from "../../contexts/VisualizationContext";
 import {
   PRESET_DESCRIPTIONS,
@@ -50,13 +50,13 @@ const GROUPS: LayerGroup[] = [
 /** センサビューのレイヤー切替。設定は旧 UI と共有される */
 export default function LayerPanel() {
   const { layers, toggleLayer, applyPreset } = useVisualization();
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useOpsValue<boolean>("sensors.layerPanel", true);
 
   return (
     <Card className="w-64 p-3">
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => setOpen(!open)}
         className="flex w-full items-center justify-between text-sm font-bold"
       >
         レイヤー

@@ -41,12 +41,25 @@ function lookDown(camera: THREE.Camera): void {
   camera.updateMatrixWorld();
 }
 
+/** 地図のカメラの位置・拡大・向き。画面を切り替えても保持するために、離れるときに保存する */
+export interface CameraView {
+  x: number;
+  y: number;
+  zoom: number;
+  upX: number;
+  upY: number;
+}
+
 interface Props {
   command: MapCommand | null;
   /** false にすると、ドラッグでの移動を止める(姿勢・ゴールの指定中に使う) */
   dragPanEnabled: boolean;
   /** 利用者が手で動かしたときに呼ぶ。追従を切るために使う */
   onUserPan?: () => void;
+  /** 最初に復元するカメラ。マウント時の値だけを使う */
+  initialView?: CameraView | null;
+  /** 画面を離れる(アンマウントする)ときに、最後のカメラを渡す */
+  onViewSave?: (view: CameraView) => void;
 }
 
 /**
@@ -58,8 +71,39 @@ export function MapCameraControls({
   command,
   dragPanEnabled,
   onUserPan,
+  initialView,
+  onViewSave,
 }: Props) {
   const { camera, gl, invalidate } = useThree();
+  const initialViewRef = useRef(initialView);
+  const onViewSaveRef = useRef(onViewSave);
+  onViewSaveRef.current = onViewSave;
+
+  useEffect(() => {
+    const view = initialViewRef.current;
+    if (!view) return;
+    const cam = camera as THREE.OrthographicCamera;
+    cam.position.set(view.x, view.y, 100);
+    cam.up.set(view.upX, view.upY, 0);
+    cam.zoom = clampZoom(view.zoom);
+    lookDown(cam);
+    cam.updateProjectionMatrix();
+    invalidate();
+  }, [camera, invalidate]);
+
+  useEffect(
+    () => () => {
+      const cam = camera as THREE.OrthographicCamera;
+      onViewSaveRef.current?.({
+        x: cam.position.x,
+        y: cam.position.y,
+        zoom: cam.zoom,
+        upX: cam.up.x,
+        upY: cam.up.y,
+      });
+    },
+    [camera],
+  );
   const onUserPanRef = useRef(onUserPan);
   onUserPanRef.current = onUserPan;
   const dragPanEnabledRef = useRef(dragPanEnabled);

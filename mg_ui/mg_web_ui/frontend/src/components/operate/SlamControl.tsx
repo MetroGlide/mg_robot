@@ -1,5 +1,5 @@
-import { useState } from "react";
 import { SystemManagerHandle } from "../../hooks/useSystemManagerClient";
+import { useOpsValue } from "../../hooks/useOpsValue";
 import { useSystemManagerAction } from "../../hooks/useSystemManagerAction";
 import Card from "../ui/Card";
 import OpsButton from "../ui/OpsButton";
@@ -21,8 +21,8 @@ export default function SlamControl({
   sysManager: SystemManagerHandle;
 }) {
   const { call, loading, error } = useSystemManagerAction(sysManager);
-  const [mapDir, setMapDir] = useState("/root/ros2_data");
-  const [mapName, setMapName] = useState("map");
+  const [mapDir, setMapDir] = useOpsValue("slam.mapDir", "/root/ros2_data");
+  const [mapName, setMapName] = useOpsValue("slam.mapName", "map");
 
   const state = sysManager.containers["slam"];
   const display = state

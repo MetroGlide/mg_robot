@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { FoxgloveClientHandle } from "../../hooks/useFoxgloveClient";
 import { SystemManagerHandle } from "../../hooks/useSystemManagerClient";
+import { useOpsValue } from "../../hooks/useOpsValue";
 import OperateLayout from "../../components/operate/OperateLayout";
 import OperateMap from "../../components/operate/OperateMap";
 import KpiRow from "../../components/operate/KpiRow";
@@ -8,6 +9,8 @@ import MapToolbar from "../../components/operate/MapToolbar";
 import HealthTabsCard from "../../components/operate/HealthTabsCard";
 import SlamControl from "../../components/operate/SlamControl";
 import { MapCommand } from "../../components/operate/MapCameraControls";
+
+const VIEW_KEY = "slam";
 
 /** SLAM(slam_toolbox)の運用ビュー。地図づくりの様子を見ながら、SLAM の起動・停止と地図の保存を行う */
 export default function SlamOperate({
@@ -18,7 +21,7 @@ export default function SlamOperate({
   sysManager: SystemManagerHandle;
 }) {
   const [command, setCommand] = useState<MapCommand | null>(null);
-  const [follow, setFollow] = useState(true);
+  const [follow, setFollow] = useOpsValue<boolean>(`${VIEW_KEY}.follow`, true);
 
   const issueCommand = (kind: MapCommand["kind"]) =>
     setCommand((prev) => ({ kind, n: (prev?.n ?? 0) + 1 }));
@@ -27,6 +30,7 @@ export default function SlamOperate({
     <OperateLayout
       map={
         <OperateMap
+          viewKey={VIEW_KEY}
           client={client}
           command={command}
           follow={follow}
@@ -41,7 +45,7 @@ export default function SlamOperate({
         <MapToolbar
           onCommand={issueCommand}
           follow={follow}
-          onToggleFollow={() => setFollow((v) => !v)}
+          onToggleFollow={() => setFollow(!follow)}
         />
       }
       bottomLeft={<SlamControl sysManager={sysManager} />}

@@ -1,4 +1,4 @@
-export type GridPalette = "map" | "mapLight" | "costmap" | "overlay";
+export type GridPalette = "map" | "mapLight" | "mapDark" | "costmap" | "overlay";
 
 type PixelWriter = (value: number, out: Uint8ClampedArray, index: number) => void;
 
@@ -37,6 +37,20 @@ const PALETTES: Record<GridPalette, PixelWriter> = {
       Math.floor(255 - 195 * t),
       Math.floor(255 - 185 * t),
       Math.floor(255 - 150 * t),
+      255,
+    );
+  },
+  // 暗いテーマ用の地図: 未知=背景に近い濃紺, 自由=暗い青灰, 占有率が高いほど明るい(壁が浮かぶ)
+  mapDark: (value, out, i) => {
+    if (isUnknown(value)) return setPixel(out, i, 20, 28, 44, 255);
+    if (value === 0) return setPixel(out, i, 44, 54, 72, 255);
+    const t = value / 100;
+    setPixel(
+      out,
+      i,
+      Math.floor(44 + 186 * t),
+      Math.floor(54 + 182 * t),
+      Math.floor(72 + 168 * t),
       255,
     );
   },
