@@ -71,7 +71,7 @@ export default function TopBar({ client, links, onSettingClick }: Props) {
         <button
           type="button"
           aria-pressed={lowLoad}
-          title="影とアニメーションを切り、更新を減らす(端末ごとの設定)"
+          title="影とアニメーションを切る(端末ごとの設定)"
           onClick={() => setLowLoad(!lowLoad)}
           className={`rounded-lg px-2.5 py-1 text-xs font-semibold ${
             lowLoad ? "bg-accent text-surface-elevated" : "text-muted hover:bg-surface-sunken"
