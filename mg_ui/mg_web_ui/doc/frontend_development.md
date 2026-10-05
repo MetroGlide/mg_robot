@@ -18,12 +18,13 @@ frontend/src/
   components/
     layout/     旧 UI のページの骨格 (LegacyLayout、NavBar、RobotPageLayout、SideAccordion、SectionCard)
     shell/      新 UI (/ops) の枠 (AppShell、TopBar、ConnectionBanner)
-    operate/    新 UI の運用ビューの部品 (地図、KPI、進捗、状態、操作)
+    operate/    新 UI の運用ビューの部品 (地図、KPI、進捗、状態、操作、コンテナ、SLAM-GNSS-2D の地図)
+    work/       新 UI の作業ビュー (地図を使わず、表とフォームが中心) の枠 (WorkLayout、Panel)
     sensors/    新 UI のセンサビューの部品
     panels/     計器・ログなどの表示パネル
     status/     コンテナの状態・サービス操作のカード
     sections/   複数の操作をまとめた節 (rosbag の再生など)
-    scenario/   シナリオテストのページの部品
+    scenario/   シナリオテストの部品と、画面の本体 (ScenarioWorkspace)
     waypoint-actions/  ウェイポイントナビの「Actions」(AMCL・GNSS の入/切、地図の切り替え、任意のサービス・トピック)
     ros-viewer/ three.js による 2D/3D のビューワー (hooks/ と layers/)
     ui/         ボタンなどの汎用の部品
@@ -143,15 +144,16 @@ client.publish(TOPICS.MY_TOPIC, 'pkg/msg/MyMessage', { value: 1, label: 'hello' 
 
 | パス | 内容 | 実装 |
 | :--- | :--- | :--- |
-| `/ops/:useCase` | 運用ビュー。ユースケースごと (`waypoint`、`slam`) | `pages/ops/OperatePage.tsx` が `pages/ops/useCases.ts` から選ぶ |
+| `/ops/:useCase` | ユースケースごとのビュー (`waypoint`、`slam`、`slam-gnss-2d` は地図を使う運用ビュー。`scenario-test` は地図を使わない作業ビュー) | `pages/ops/OperatePage.tsx` が `pages/ops/useCases.ts` から選ぶ |
 | `/ops/sensors` | RViz ライクなセンサビュー (全レイヤー、2D/3D) | `pages/ops/SensorsPage.tsx` |
-| `/ops/system` | コンテナ・診断・ログ | `pages/ops/SystemOpsPage.tsx` (旧 `SystemPage` を表示) |
+| `/ops/system` | サービスの操作・診断・ログ (作業ビュー) | `pages/ops/SystemOpsPage.tsx` (`SystemPage` を `WorkLayout` に置く) |
 
 `App.tsx` は、旧 UI の枠 (`LegacyLayout`) と新 UI の枠 (`AppShell`) を、別のレイアウトルートにしている。旧ページの URL は変わらない。
 
 ### ユースケースを足す
 
-1. `pages/ops/MyOperate.tsx` を作る。`{ client, sysManager }` を受け取り、`OperateLayout` のスロット (`map`、`topLeft`、`toolbar`、`topRight`、`notice`、`bottomLeft`、`bottomRight`) に、`components/operate/` の部品を置く。地図は `OperateMap`。
+1. `pages/ops/MyOperate.tsx` を作る。`{ client, sysManager }` を受け取り、`OperateLayout` のスロット (`map`、`topLeft`、`toolbar`、`topRight`、`notice`、`bottomLeft`、`bottomRight`) に、`components/operate/` の部品を置く。地図は `OperateMap` (ユースケース固有の描画は `sceneChildren`)。地図を使わず表とフォームが中心なら、`WorkLayout` と `Panel` (`components/work/`) に置く。
+   コンテナの操作は `ContainerControl`、ジョイスティックと GPS のミニ地図は `MapOverlays` が使える。
 2. `pages/ops/useCases.ts` の `USE_CASES` に 1 行足す (`id` は `sensors`、`system` と重ねない)。上部バーには自動で出る。
 
 操作のロジックは、画面から切り離してフックにする (例: `hooks/useWaypointControl.ts`)。旧ページと新 UI の両方が使える。
@@ -178,7 +180,7 @@ client.publish(TOPICS.MY_TOPIC, 'pkg/msg/MyMessage', { value: 1, label: 'hello' 
 
 - 色は `index.css` の CSS 変数 (`--surface`、`--text`、`--accent`、`--ok`、`--warn`、`--error` など。値は `R G B`) で定義し、`tailwind.config.js` で `bg-surface`、`text-content`、`text-muted`、`bg-accent`、`text-ok` などの名前にしている。**新 UI の部品は、`gray-*` や色名を直接書かず、このトークンを使う**。
 - ライトは `:root`、ダークは `.dark` に値を定義する。`ThemeProvider` が `<html>` に `dark` クラスを付ける。
-- 旧ページの枠 (`LegacyLayout`) とシステムビューの面は、`dark` クラスを付けて、トークンを常に濃色にしている。旧ページの `gray-*` の直書きは、テーマの影響を受けない。
+- 旧ページの枠 (`LegacyLayout`) は、`dark` クラスを付けて、トークンを常に濃色にしている。旧ページの `gray-*` の直書きは、テーマの影響を受けない。
 - 新旧で共有する部品 (`components/waypoint-actions/` など) は、トークンで色を書く。旧ページでは `dark` の中なので、従来どおり濃色に見える。
 - 地図の配色は `gridColors.ts` のパレット (`map` が旧ビューワー、`mapLight` / `mapDark` が新 UI のライト / ダーク)。
 
@@ -191,7 +193,9 @@ client.publish(TOPICS.MY_TOPIC, 'pkg/msg/MyMessage', { value: 1, label: 'hello' 
 - 切断中は `ConnectionBanner` を出し、送信系のボタンを無効にする (`client.status !== "connected"`)。
 - WebGL のキャンバスの上のカードでは、`backdrop-filter` (ぼかし) を使わない。キャンバスが更新されるたびに再合成が走る。半透明の単色と影にする (`components/ui/Card.tsx`)。アニメーションは transform と opacity に限る。
 - `OperateMap` は 10fps の描画要求、`dpr=1`。`RenderTicker` の間隔は `intervalMs` で指定できる (`RosViewer` の既定は 50ms)。
-- 上部バーの「低負荷」(`ThemeContext.lowLoad`) で、影とトランジションを切る。
+- 上部バーの「低負荷」(`ThemeContext.lowLoad`。設定のタブにもある) で、影とトランジションを切る。
+- 地図の上に重ねる GPS のミニ地図 (`overlays.gpsMap`) は、地図タイルを読み込み、GNSS を購読するので、既定はオフ。ツールバーのボタンで、使うときだけオンにする。
+- Nav2 のライフサイクルは、定期的に呼ばず、ロボットの詳細カードの「確認」を押したときだけ調べる (`useNav2LifecycleCheck`)。衝突検知の状態は 2Hz に間引いて購読する。
 
 ## ページを足す
 
