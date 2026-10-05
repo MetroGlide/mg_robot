@@ -54,7 +54,7 @@ def generate_launch_description():
         'velocity_smoother',
         # 'costmap_filter_info_server',
         'collision_monitor',
-        'collision_detector',
+        # 'collision_detector',
     ]
 
     remappings = [('/tf', 'tf'),
@@ -221,18 +221,18 @@ def generate_launch_description():
                 arguments=['--ros-args', '--log-level', log_level],
                 remappings=remappings
             ),
-            Node(
-                package='nav2_collision_monitor',
-                executable='collision_detector',
-                name='collision_detector',
-                output='screen',
-                emulate_tty=True,
-                respawn=use_respawn,
-                respawn_delay=2.0,
-                parameters=[configured_params],
-                arguments=['--ros-args', '--log-level', log_level],
-                remappings=remappings,
-            ),
+            # Node(
+            #     package='nav2_collision_monitor',
+            #     executable='collision_detector',
+            #     name='collision_detector',
+            #     output='screen',
+            #     emulate_tty=True,
+            #     respawn=use_respawn,
+            #     respawn_delay=2.0,
+            #     parameters=[configured_params],
+            #     arguments=['--ros-args', '--log-level', log_level],
+            #     remappings=remappings,
+            # ),
             Node(
                 package='nav2_collision_monitor',
                 executable='collision_monitor',
