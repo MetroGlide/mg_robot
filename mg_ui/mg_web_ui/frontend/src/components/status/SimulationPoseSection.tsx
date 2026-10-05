@@ -1,12 +1,6 @@
 import { useState } from "react";
 import SectionCard from "../layout/SectionCard";
-
-export interface PoseInput {
-  x: number;
-  y: number;
-  z: number;
-  yaw: number;
-}
+import { PoseInput } from "../../hooks/useWaypointControl";
 
 interface SimulationPoseSectionProps {
   onResetRobot: (pose: PoseInput) => void;
