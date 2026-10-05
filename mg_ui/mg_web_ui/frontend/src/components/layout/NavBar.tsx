@@ -34,7 +34,13 @@ export default function NavBar({ onSettingClick }: NavBarProps) {
           </NavLink>
         ))}
       </div>
-      <div className="ml-auto pr-3">
+      <div className="ml-auto flex items-center gap-2 pr-3">
+        <NavLink
+          to="/ops"
+          className="text-xs font-semibold text-blue-400 hover:text-blue-300"
+        >
+          新 UI (Ops) を開く
+        </NavLink>
         <button
           onClick={onSettingClick}
           className="p-2 text-gray-400 hover:text-white rounded transition-colors"
