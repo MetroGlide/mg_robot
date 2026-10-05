@@ -1,12 +1,9 @@
 import { FoxgloveClientHandle } from "../../hooks/useFoxgloveClient";
 import { SystemManagerHandle } from "../../hooks/useSystemManagerClient";
 import SystemPage from "../SystemPage";
+import WorkLayout from "../../components/work/WorkLayout";
 
-/**
- * システムビュー。コンテナの操作・診断の全件・ログは、旧 SystemPage をそのまま表示する。
- * 旧ページの部品は濃色の配色を直接書いているので、テーマに関わらず濃色の面に置く
- * (新しいテーマへの置き換えは doc/ui_migration_todo.md)。
- */
+/** システムビュー。サービスの操作とログの設定、診断の全件、サービスのログ、API のログ */
 export default function SystemOpsPage({
   client,
   sysManager,
@@ -15,8 +12,8 @@ export default function SystemOpsPage({
   sysManager: SystemManagerHandle;
 }) {
   return (
-    <div className="dark h-full overflow-y-auto bg-gray-900 p-4 text-white">
+    <WorkLayout title="システム">
       <SystemPage client={client} sysManager={sysManager} />
-    </div>
+    </WorkLayout>
   );
 }

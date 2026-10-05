@@ -248,10 +248,10 @@ export const DIAG_LEVEL: Record<number, string> = {
 }
 
 export const DIAG_COLOR: Record<number, string> = {
-  0: 'text-green-500',
-  1: 'text-yellow-500',
-  2: 'text-red-500',
-  3: 'text-gray-400',
+  0: 'text-ok',
+  1: 'text-warn',
+  2: 'text-error',
+  3: 'text-muted',
 }
 
 export interface GoalStatus {
