@@ -34,7 +34,7 @@ export default function RunOptionsForm({
   return (
     <div className="space-y-3 text-sm">
       <fieldset className="space-y-1" disabled={disabled}>
-        <legend className="text-xs text-gray-400 mb-1">実行方法</legend>
+        <legend className="text-xs text-muted mb-1">実行方法</legend>
         <label className="flex items-start gap-2">
           <input
             type="radio"
@@ -44,7 +44,7 @@ export default function RunOptionsForm({
           />
           <span>
             シナリオごとに起動し直す
-            <span className="block text-xs text-gray-400">
+            <span className="block text-xs text-muted">
               シミュレータとナビゲーションを毎回起動する(回帰テストと同じ条件)
             </span>
           </span>
@@ -58,7 +58,7 @@ export default function RunOptionsForm({
           />
           <span>
             起動済みの環境で実行する(attach)
-            <span className="block text-xs text-gray-400">
+            <span className="block text-xs text-muted">
               下の「起動済み環境」を先に起動しておく。シミュレータを閉じずに続けて確認できる
             </span>
           </span>
@@ -91,14 +91,14 @@ export default function RunOptionsForm({
                 ),
               })
             }
-            className="w-16 bg-gray-700 text-gray-100 rounded px-2 py-0.5 disabled:opacity-50"
+            className="w-16 bg-surface-sunken text-content rounded px-2 py-0.5 disabled:opacity-50"
           />
           回
         </label>
       </div>
 
       <label className="block">
-        <span className="text-xs text-gray-400">
+        <span className="text-xs text-muted">
           実機PCのアドレス(任意。指定するとナビゲーションを実機PCで動かす)
         </span>
         <input
@@ -108,12 +108,12 @@ export default function RunOptionsForm({
           placeholder={
             value.attach ? "attach では使えません" : "例: 192.168.0.10"
           }
-          className={`mt-1 w-full bg-gray-700 text-gray-100 rounded px-2 py-1 disabled:opacity-50 ${
-            robotValid ? "" : "ring-1 ring-red-500"
+          className={`mt-1 w-full bg-surface-sunken text-content rounded px-2 py-1 disabled:opacity-50 ${
+            robotValid ? "" : "ring-1 ring-error"
           }`}
         />
         {!robotValid && (
-          <span className="text-xs text-red-400">
+          <span className="text-xs text-error">
             IP アドレスまたはホスト名を入力してください
           </span>
         )}

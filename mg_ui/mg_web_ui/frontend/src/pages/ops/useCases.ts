@@ -36,21 +36,19 @@ export const USE_CASES: UseCase[] = [
     label: "SLAM-GNSS-2D",
     Operate: lazy(() => import("./SlamGnssOperate")),
   },
+  {
+    id: "scenario-test",
+    label: "Scenario Test",
+    Operate: lazy(() => import("./ScenarioOperate")),
+  },
 ];
 
 export function findUseCase(id: string | undefined): UseCase | undefined {
   return USE_CASES.find((u) => u.id === id);
 }
 
-/**
- * 運用ビューに移していないユースケース。旧ページへのリンクとして上部バーに並べる。
- * 移行したら USE_CASES に移し、ここから消す(doc/ui_migration_todo.md)。
- */
-const LEGACY_LINKS: NavLinkItem[] = [
-  { id: "scenario-test", label: "Scenario Test (旧)", to: "/scenario-test" },
-];
-
-export const USE_CASE_LINKS: NavLinkItem[] = [
-  ...USE_CASES.map((u) => ({ id: u.id, label: u.label, to: `/ops/${u.id}` })),
-  ...LEGACY_LINKS,
-];
+export const USE_CASE_LINKS: NavLinkItem[] = USE_CASES.map((u) => ({
+  id: u.id,
+  label: u.label,
+  to: `/ops/${u.id}`,
+}));

@@ -69,12 +69,12 @@ export default function ServiceLogPanel({
   }
 
   return (
-    <section className="bg-gray-800 rounded-lg p-4 space-y-3">
+    <section className="bg-surface-elevated rounded-lg p-4 space-y-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <p className="text-xs text-gray-400">Service Log</p>
+          <p className="text-xs text-muted">Service Log</p>
           <span
-            className={`text-xs font-semibold ${connected ? "text-green-400" : "text-yellow-400"}`}
+            className={`text-xs font-semibold ${connected ? "text-ok" : "text-warn"}`}
           >
             {connected ? "Connected" : "Reconnecting"}
           </span>
@@ -82,7 +82,7 @@ export default function ServiceLogPanel({
         <button
           type="button"
           onClick={onClear}
-          className="text-xs text-gray-300 hover:text-white"
+          className="text-xs text-content hover:text-content"
         >
           Clear
         </button>
@@ -93,9 +93,9 @@ export default function ServiceLogPanel({
           value={filterText}
           onChange={(e) => setFilterText(e.target.value)}
           placeholder="Filter keyword"
-          className="flex-1 min-w-0 bg-gray-700 text-gray-100 text-sm rounded px-2 py-1"
+          className="flex-1 min-w-0 bg-surface-sunken text-content text-sm rounded px-2 py-1"
         />
-        <label className="flex items-center gap-1 text-xs text-gray-300 select-none">
+        <label className="flex items-center gap-1 text-xs text-content select-none">
           <input
             type="checkbox"
             checked={autoScroll}
@@ -106,22 +106,22 @@ export default function ServiceLogPanel({
       </div>
 
       {displayOnlyServices.length > 0 && (
-        <p className="text-xs text-yellow-300">
+        <p className="text-xs text-warn">
           表示対象で受信OFFのサービス: {displayOnlyServices.join(", ")}
         </p>
       )}
 
       <div
         ref={scrollRef}
-        className="max-h-96 overflow-y-auto rounded bg-gray-900 p-2 font-mono text-xs space-y-1"
+        className="max-h-96 overflow-y-auto rounded bg-surface-sunken p-2 font-mono text-xs space-y-1"
       >
         {visibleEntries.length === 0 ? (
-          <p className="text-gray-500">No logs for selected services.</p>
+          <p className="text-muted">No logs for selected services.</p>
         ) : (
           visibleEntries.map((entry) => (
             <div key={entry.id} className="flex gap-2 items-start">
-              <span className="shrink-0 text-cyan-300">[{entry.service}]</span>
-              <span className="text-gray-200 break-all">
+              <span className="shrink-0 text-accent">[{entry.service}]</span>
+              <span className="text-content break-all">
                 <HighlightText text={entry.line} keyword={filterText.trim()} />
               </span>
             </div>

@@ -44,7 +44,7 @@ export default function ScenarioSelector({
   };
 
   const selectClass =
-    "bg-gray-700 text-gray-100 text-xs rounded px-2 py-1 disabled:opacity-50";
+    "bg-surface-sunken text-content text-xs rounded px-2 py-1 disabled:opacity-50";
 
   return (
     <div className="space-y-2">
@@ -73,7 +73,7 @@ export default function ScenarioSelector({
             </option>
           ))}
         </select>
-        <label className="flex items-center gap-1 text-xs text-gray-300 select-none">
+        <label className="flex items-center gap-1 text-xs text-content select-none">
           <input
             type="checkbox"
             checked={showKnownIssues}
@@ -88,7 +88,7 @@ export default function ScenarioSelector({
           type="button"
           onClick={selectVisible}
           disabled={disabled || visible.length === 0}
-          className="text-blue-300 hover:text-blue-200 disabled:opacity-50"
+          className="text-accent hover:opacity-80 disabled:opacity-50"
         >
           表示中をすべて選択
         </button>
@@ -96,23 +96,23 @@ export default function ScenarioSelector({
           type="button"
           onClick={() => onChange(new Set())}
           disabled={disabled || selected.size === 0}
-          className="text-gray-300 hover:text-white disabled:opacity-50"
+          className="text-content hover:text-content disabled:opacity-50"
         >
           選択を解除
         </button>
         <button
           type="button"
           onClick={onReload}
-          className="text-gray-300 hover:text-white"
+          className="text-content hover:text-content"
         >
           一覧を再読み込み
         </button>
-        <span className="ml-auto text-gray-400">{selected.size} 件選択</span>
+        <span className="ml-auto text-muted">{selected.size} 件選択</span>
       </div>
 
-      <ul className="max-h-80 overflow-y-auto divide-y divide-gray-700 rounded bg-gray-900">
+      <ul className="max-h-80 overflow-y-auto divide-y divide-line rounded bg-surface-sunken">
         {visible.length === 0 && (
-          <li className="px-2 py-3 text-xs text-gray-500">
+          <li className="px-2 py-3 text-xs text-muted">
             シナリオがありません(system_manager
             に接続できているか確認してください)
           </li>
@@ -120,7 +120,7 @@ export default function ScenarioSelector({
         {visible.map((s) => (
           <li key={`${s.group}/${s.name}`}>
             <label
-              className="flex items-start gap-2 px-2 py-1.5 hover:bg-gray-800 cursor-pointer"
+              className="flex items-start gap-2 px-2 py-1.5 hover:bg-surface-sunken cursor-pointer"
               title={s.description || s.error}
             >
               <input
@@ -131,14 +131,14 @@ export default function ScenarioSelector({
                 disabled={disabled}
               />
               <span className="min-w-0 flex-1">
-                <span className="block text-sm text-gray-100 break-all">
+                <span className="block text-sm text-content break-all">
                   {s.name}
-                  <span className="ml-2 text-[10px] text-gray-500">
+                  <span className="ml-2 text-[10px] text-muted">
                     {s.group}
                   </span>
                 </span>
                 {s.error ? (
-                  <span className="block text-[10px] text-red-400">
+                  <span className="block text-[10px] text-error">
                     YAML を読めません: {s.error}
                   </span>
                 ) : (
@@ -146,7 +146,7 @@ export default function ScenarioSelector({
                     {s.tags.map((t) => (
                       <span
                         key={t}
-                        className="rounded bg-gray-700 px-1 text-[10px] text-gray-300"
+                        className="rounded bg-surface-sunken px-1 text-[10px] text-content"
                       >
                         {t}
                       </span>
