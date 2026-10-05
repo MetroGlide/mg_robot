@@ -22,7 +22,7 @@
   --shadow-card: 0 4px 16px rgb(30 50 110 / 0.14);
 }
 
-:root.dark {
+.dark {
   --surface: 17 24 39;
   --surface-elevated: 31 41 55;
   --surface-sunken: 11 17 30;

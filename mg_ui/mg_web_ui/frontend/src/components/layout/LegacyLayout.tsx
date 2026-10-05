@@ -10,7 +10,7 @@ export default function LegacyLayout({ status }: { status: ConnectionStatus }) {
   const [settingOpen, setSettingOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
+    <div className="dark min-h-screen bg-gray-900 text-white">
       <header className="flex items-center justify-between px-4 py-3 bg-gray-800 shadow-md">
         <span className="text-lg font-bold tracking-wide">MG-01 Control UI</span>
         <ConnectionBadge status={status} />

@@ -15,7 +15,7 @@ export default function SystemOpsPage({
   sysManager: SystemManagerHandle;
 }) {
   return (
-    <div className="h-full overflow-y-auto bg-gray-900 p-4 text-white">
+    <div className="dark h-full overflow-y-auto bg-gray-900 p-4 text-white">
       <SystemPage client={client} sysManager={sysManager} />
     </div>
   );

@@ -64,7 +64,7 @@ export default function GenericServiceCaller({
 
   return (
     <div className="space-y-2">
-      <label className="block text-xs text-gray-400">
+      <label className="block text-xs text-muted">
         Service
         <input
           list={LIST_ID}
@@ -72,7 +72,7 @@ export default function GenericServiceCaller({
           onChange={(e) => setService(e.target.value)}
           onFocus={() => setServices(client.listServices())}
           placeholder="/node/service"
-          className="mt-1 block w-full rounded bg-gray-800 px-2 py-1 text-sm text-white"
+          className="mt-1 block w-full rounded bg-surface-sunken px-2 py-1 text-sm text-content"
         />
         <datalist id={LIST_ID}>
           {services.map((s) => (
@@ -81,18 +81,18 @@ export default function GenericServiceCaller({
         </datalist>
       </label>
       {requestSchema && (
-        <p className="text-xs text-gray-400">
+        <p className="text-xs text-muted">
           Request type: {requestSchema.schemaName}
         </p>
       )}
-      <label className="block text-xs text-gray-400">
+      <label className="block text-xs text-muted">
         Request (JSON)
         <textarea
           value={requestJson}
           onChange={(e) => setRequestJson(e.target.value)}
           rows={4}
           spellCheck={false}
-          className="mt-1 block w-full rounded bg-gray-800 px-2 py-1 font-mono text-xs text-white"
+          className="mt-1 block w-full rounded bg-surface-sunken px-2 py-1 font-mono text-xs text-content"
         />
       </label>
       <div className="flex gap-2">
@@ -109,7 +109,7 @@ export default function GenericServiceCaller({
           onClick={handleInsertTemplate}
         />
       </div>
-      {inputError && <p className="text-xs text-red-400">{inputError}</p>}
+      {inputError && <p className="text-xs text-error">{inputError}</p>}
       <ActionResultText result={result} />
     </div>
   );
