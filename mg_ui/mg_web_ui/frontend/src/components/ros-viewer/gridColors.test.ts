@@ -20,6 +20,12 @@ describe("fillGridRgba", () => {
     ]);
   });
 
+  it("colors the light map palette", () => {
+    expect(fill([-1, 0, 100], 3, 1, "mapLight")).toEqual([
+      214, 222, 240, 255, 255, 255, 255, 255, 60, 70, 105, 255,
+    ]);
+  });
+
   it("treats 255 as unknown for unsigned data", () => {
     expect(fill([255], 1, 1, "map")).toEqual([127, 127, 127, 255]);
   });

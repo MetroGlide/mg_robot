@@ -31,13 +31,17 @@ const RENDER_INTERVAL_MS = 50;
 // 高 DPI の端末で描画解像度が大きくなりすぎないようにする
 const MAX_DEVICE_PIXEL_RATIO = 1.5;
 
-function RenderTicker() {
+export function RenderTicker({
+  intervalMs = RENDER_INTERVAL_MS,
+}: {
+  intervalMs?: number;
+}) {
   const invalidate = useThree((state) => state.invalidate);
 
   useEffect(() => {
-    const id = setInterval(invalidate, RENDER_INTERVAL_MS);
+    const id = setInterval(invalidate, intervalMs);
     return () => clearInterval(id);
-  }, [invalidate]);
+  }, [invalidate, intervalMs]);
 
   return null;
 }

@@ -1,4 +1,4 @@
-export type GridPalette = "map" | "costmap" | "overlay";
+export type GridPalette = "map" | "mapLight" | "costmap" | "overlay";
 
 type PixelWriter = (value: number, out: Uint8ClampedArray, index: number) => void;
 
@@ -25,6 +25,20 @@ const PALETTES: Record<GridPalette, PixelWriter> = {
     if (value === 0) return setPixel(out, i, 210, 210, 210, 255);
     const v = Math.floor((255 * (100 - value)) / 100);
     setPixel(out, i, v, v, v, 255);
+  },
+  // 明るいテーマ用の地図: 未知=青みのある薄い灰, 自由=白, 占有率が高いほど暗い青灰(すべて不透明)
+  mapLight: (value, out, i) => {
+    if (isUnknown(value)) return setPixel(out, i, 214, 222, 240, 255);
+    if (value === 0) return setPixel(out, i, 255, 255, 255, 255);
+    const t = value / 100;
+    setPixel(
+      out,
+      i,
+      Math.floor(255 - 195 * t),
+      Math.floor(255 - 185 * t),
+      Math.floor(255 - 150 * t),
+      255,
+    );
   },
   // コストマップ: 0 以下は透明, 100 は赤, 中間は緑から赤へ
   costmap: (value, out, i) => {
