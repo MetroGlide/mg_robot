@@ -32,6 +32,8 @@ interface Props {
   onUserPan: () => void;
   interactionMode: "none" | PoseInteractionMode;
   onPoseSet: (x: number, y: number, yaw: number) => void;
+  /** 計画経路とウェイポイントを描く(購読する)か。SLAM のように使わないビューでは false にして負荷を避ける */
+  showNavLayers?: boolean;
   /** 地図の上に重ねる、ユースケース固有のシーン要素 */
   sceneChildren?: ReactNode;
   className?: string;
@@ -44,6 +46,7 @@ function OperateScene({
   onUserPan,
   interactionMode,
   onPoseSet,
+  showNavLayers = true,
   sceneChildren,
 }: Omit<Props, "className">) {
   const { resolved } = useTheme();
@@ -64,8 +67,12 @@ function OperateScene({
         client={client}
         palette={resolved === "light" ? "mapLight" : "map"}
       />
-      <PathLine client={client} topic={TOPICS.NAV_PLAN} color="#ef4444" />
-      <WaypointMarkers client={client} />
+      {showNavLayers && (
+        <>
+          <PathLine client={client} topic={TOPICS.NAV_PLAN} color="#ef4444" />
+          <WaypointMarkers client={client} />
+        </>
+      )}
       <RobotArrow client={client} tfBuffer={tfBuffer} />
       {interactionMode !== "none" && (
         <PoseArrowInteraction mode={interactionMode} onPoseSet={onPoseSet} />

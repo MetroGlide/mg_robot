@@ -23,18 +23,20 @@ function navClass({ isActive }: { isActive: boolean }) {
   }`;
 }
 
-export interface UseCaseLink {
+export interface NavLinkItem {
   id: string;
   label: string;
+  to: string;
 }
 
 interface Props {
   client: FoxgloveClientHandle;
-  useCases: UseCaseLink[];
+  /** ユースケースへのリンク(運用ビュー、または旧ページ) */
+  links: NavLinkItem[];
   onSettingClick: () => void;
 }
 
-export default function TopBar({ client, useCases, onSettingClick }: Props) {
+export default function TopBar({ client, links, onSettingClick }: Props) {
   const { resolved, setMode, lowLoad, setLowLoad } = useTheme();
   // E-stop は安全に関わるので、どのビューでも見えるようにする(1Hz の軽いトピック)
   const estop = useTopicSubscriber<BoolMsg>(
@@ -48,9 +50,9 @@ export default function TopBar({ client, useCases, onSettingClick }: Props) {
     <header className="flex items-center gap-4 border-b border-line bg-surface-elevated px-4 py-2">
       <span className="text-base font-bold tracking-wide">MG-01</span>
       <nav className="flex gap-1">
-        {useCases.map((u) => (
-          <NavLink key={u.id} to={`/ops/${u.id}`} className={navClass}>
-            {u.label}
+        {links.map((link) => (
+          <NavLink key={link.id} to={link.to} className={navClass}>
+            {link.label}
           </NavLink>
         ))}
         <span className="mx-1 w-px bg-line" />

@@ -9,7 +9,7 @@ import { RosbagReplayProvider } from "./contexts/RosbagReplayContext";
 import LegacyLayout from "./components/layout/LegacyLayout";
 import AppShell from "./components/shell/AppShell";
 import OperatePage from "./pages/ops/OperatePage";
-import { USE_CASES } from "./pages/ops/useCases";
+import { USE_CASES, USE_CASE_LINKS } from "./pages/ops/useCases";
 
 // three.js や地図ライブラリを使うページは、開いたときに読み込む
 const SensorsPage = lazy(() => import("./pages/ops/SensorsPage"));
@@ -34,7 +34,7 @@ export default function App() {
               {/* 新 UI。ユースケースごとの運用ビューを /ops/:useCase に置く */}
               <Route
                 path="/ops"
-                element={<AppShell client={client} useCases={USE_CASES} />}
+                element={<AppShell client={client} links={USE_CASE_LINKS} />}
               >
                 <Route
                   index
@@ -46,7 +46,9 @@ export default function App() {
                 />
                 <Route
                   path=":useCase"
-                  element={<OperatePage client={client} />}
+                  element={
+                    <OperatePage client={client} sysManager={sysManager} />
+                  }
                 />
               </Route>
 
