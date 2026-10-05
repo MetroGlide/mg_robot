@@ -1,0 +1,197 @@
+{
+  "options": [
+    {
+      "name": "navigation",
+      "label": "ナビゲーション設定 (navigation)",
+      "description": "省略したフィールドは defaults の値が使われる。",
+      "type": "object",
+      "fields": [
+        {
+          "name": "is_through_point",
+          "label": "通過点として扱う (is_through_point)",
+          "type": "boolean",
+          "default_global": "default_is_through_point"
+        },
+        {
+          "name": "through_tolerance",
+          "label": "通過判定半径 [m] (through_tolerance)",
+          "description": "運用上は小/大の2種類しか使わないため、プリセットから選ぶ。数値を直接入力することもできる。",
+          "type": "float",
+          "default_global": "default_through_tolerance",
+          "presets": [
+            { "name": "small", "label": "小 (1.5m)", "value": 1.5 },
+            { "name": "large", "label": "大 (3.0m)", "value": 3.0 }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "on_reached_actions",
+      "label": "到達時アクション (on_reached_actions)",
+      "description": "definitions.action（到達時に実行するアクション）を要素とするリスト。",
+      "type": "list",
+      "item": { "type": "ref", "ref": "action" }
+    }
+  ],
+  "globals": [
+    {
+      "name": "default_is_through_point",
+      "label": "既定: 通過点として扱う (defaults.is_through_point)",
+      "type": "boolean",
+      "value": true
+    },
+    {
+      "name": "default_through_tolerance",
+      "label": "既定: 通過判定半径 [m] (defaults.through_tolerance)",
+      "type": "float",
+      "value": 1.5
+    }
+  ],
+  "definitions": [
+    {
+      "name": "action",
+      "label": "到達時アクション",
+      "description": "type によってフィールド構成が変わるタグ付きユニオン。mg_waypoint_navigation の ActionConfig (waypoint.py) に対応する。",
+      "type": "union",
+      "discriminator": "type",
+      "presets": [
+        {
+          "name": "front_lidar_on",
+          "label": "前方LiDAR 有効化",
+          "value": {
+            "type": "service",
+            "service": "/front_lidar_publish_controller_node/change_publish_state",
+            "srv_module": "std_srvs.srv",
+            "srv_class": "SetBool",
+            "request": { "data": true }
+          }
+        },
+        {
+          "name": "front_lidar_off",
+          "label": "前方LiDAR 無効化",
+          "value": {
+            "type": "service",
+            "service": "/front_lidar_publish_controller_node/change_publish_state",
+            "srv_module": "std_srvs.srv",
+            "srv_class": "SetBool",
+            "request": { "data": false }
+          }
+        },
+        {
+          "name": "amcl_on",
+          "label": "AMCL の出力を EKF に入れる",
+          "value": {
+            "type": "service",
+            "service": "/amcl_gate_arbiter/waypoint/change_publish_state",
+            "srv_module": "std_srvs.srv",
+            "srv_class": "SetBool",
+            "request": { "data": true }
+          }
+        },
+        {
+          "name": "amcl_off",
+          "label": "AMCL の出力を EKF から切り離す",
+          "value": {
+            "type": "service",
+            "service": "/amcl_gate_arbiter/waypoint/change_publish_state",
+            "srv_module": "std_srvs.srv",
+            "srv_class": "SetBool",
+            "request": { "data": false }
+          }
+        },
+        {
+          "name": "gps_on",
+          "label": "GNSS (odom/gps) の配信を有効化",
+          "value": {
+            "type": "service",
+            "service": "/slam_gnss_nav_bridge/change_publish_state",
+            "srv_module": "std_srvs.srv",
+            "srv_class": "SetBool",
+            "request": { "data": true }
+          }
+        },
+        {
+          "name": "gps_off",
+          "label": "GNSS (odom/gps) の配信を無効化",
+          "value": {
+            "type": "service",
+            "service": "/slam_gnss_nav_bridge/change_publish_state",
+            "srv_module": "std_srvs.srv",
+            "srv_class": "SetBool",
+            "request": { "data": false }
+          }
+        },
+        {
+          "name": "queue_wait_mode",
+          "label": "ナビゲーションモード: queue_wait",
+          "value": { "type": "set_navigation_mode", "mode": "queue_wait" }
+        },
+        {
+          "name": "normal_mode",
+          "label": "ナビゲーションモード: normal",
+          "value": { "type": "set_navigation_mode", "mode": "normal" }
+        }
+      ],
+      "variants": [
+        {
+          "value": "service",
+          "label": "サービス呼び出し",
+          "fields": [
+            { "name": "service", "label": "サービスパス", "type": "string", "required": true },
+            { "name": "srv_module", "label": "Python モジュール", "type": "string", "required": true },
+            { "name": "srv_class", "label": "サービス型クラス名", "type": "string", "required": true },
+            { "name": "request", "label": "リクエスト", "type": "map" }
+          ]
+        },
+        {
+          "value": "publish",
+          "label": "トピックパブリッシュ",
+          "fields": [
+            { "name": "topic", "label": "トピックパス", "type": "string", "required": true },
+            { "name": "msg_module", "label": "Python モジュール", "type": "string", "required": true },
+            { "name": "msg_class", "label": "メッセージ型クラス名", "type": "string", "required": true },
+            { "name": "data", "label": "メッセージフィールド", "type": "map" }
+          ]
+        },
+        {
+          "value": "load_map",
+          "label": "マップロード",
+          "fields": [
+            { "name": "localization", "label": "測位マップ YAML パス", "type": "string" },
+            { "name": "planning", "label": "計画マップ YAML パス", "type": "string" }
+          ]
+        },
+        {
+          "value": "amcl_reset",
+          "label": "AMCL リセット",
+          "fields": []
+        },
+        {
+          "value": "wait",
+          "label": "待機",
+          "fields": [
+            { "name": "countdown_ms", "label": "待機時間 [ms]", "type": "integer", "default": 3000 }
+          ]
+        },
+        {
+          "value": "wait_trigger",
+          "label": "外部トリガー待ち",
+          "fields": []
+        },
+        {
+          "value": "set_navigation_mode",
+          "label": "ナビゲーションモード切替",
+          "fields": [
+            {
+              "name": "mode",
+              "label": "モード",
+              "type": "string",
+              "default": "normal",
+              "enum_values": ["normal", "queue_wait"]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

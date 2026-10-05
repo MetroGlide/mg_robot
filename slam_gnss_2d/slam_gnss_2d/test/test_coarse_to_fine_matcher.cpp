@@ -1,0 +1,297 @@
+#include <gtest/gtest.h>
+#include <cmath>
+#include <memory>
+#include <vector>
+#include <Eigen/Dense>
+
+#include "slam_gnss_2d/core/data_types.hpp"
+#include "slam_gnss_2d/scan_matching/coarse_to_fine_matcher.hpp"
+#include "slam_gnss_2d/scan_matching/icp_matcher.hpp"
+#include "slam_gnss_2d/scan_matching/ndt_matcher.hpp"
+#include "slam_gnss_2d/pose_graph/scan_matching_builder.hpp"
+#include "slam_gnss_2d/scan_matching/reference_provider/local_map.hpp"
+
+namespace slam_gnss_2d {
+namespace scan_matching {
+
+static core::ScanDataPtr make_box_scan() {
+  auto scan = std::make_shared<core::ScanData>();
+  scan->timestamp = 100.0;
+  scan->angle_min = -M_PI;
+  scan->angle_increment = 2.0 * M_PI / 360.0;
+  scan->range_min = 0.1;
+  scan->range_max = 30.0;
+  scan->lidar_x = 0.0;
+  scan->lidar_y = 0.0;
+  scan->lidar_yaw = 0.0;
+  scan->ranges.assign(360, 10.0f);
+
+  for (int i = 0; i < 360; ++i) {
+    double angle = scan->angle_min + i * scan->angle_increment;
+    double ca = std::cos(angle);
+    double sa = std::sin(angle);
+    if (ca > 0.1 && std::abs(sa / ca) <= 1.0) {
+      double r = 1.0 / ca;
+      if (r < scan->ranges[i]) scan->ranges[i] = static_cast<float>(r);
+    }
+    if (sa > 0.1 && std::abs(ca / sa) <= 1.0) {
+      double r = 1.0 / sa;
+      if (r < scan->ranges[i]) scan->ranges[i] = static_cast<float>(r);
+    }
+  }
+  return scan;
+}
+
+TEST(CoarseToFineMatcherTest, ConvergesAccurately) {
+  auto coarse = std::make_shared<NDTMatcher>(
+      50, 1e-3, std::vector<double>{1.0, 0.5}, true, 1.0);
+  auto fine = std::make_shared<ICPMatcher>(
+      50, 1e-3, 1.5, "huber", 0.15, 1.0);
+
+  CoarseToFineMatcher matcher(coarse, fine);
+
+  std::vector<Eigen::Vector2d> target_pts;
+  for (double y = -1.0; y <= 1.0; y += 0.05) {
+    target_pts.emplace_back(1.0, y);
+  }
+  for (double x = 0.0; x <= 1.0; x += 0.05) {
+    target_pts.emplace_back(x, 1.0);
+  }
+  matcher.set_target_cloud(target_pts);
+
+  auto scan = make_box_scan();
+  core::OdomData initial_guess{100.0, 0.15, -0.10, 0.05};
+
+  auto result = matcher.match(scan, initial_guess);
+  EXPECT_TRUE(result.converged);
+  EXPECT_NEAR(result.dx, 0.0, 0.08);
+  EXPECT_NEAR(result.dy, 0.0, 0.10);
+  EXPECT_NEAR(result.dyaw, 0.0, 0.05);
+}
+
+// 常に非収束を返すモックマッチャー
+class MockFailMatcher : public ScanMatcherBase {
+ public:
+  void set_target_cloud(const std::vector<Eigen::Vector2d>&) override {}
+  core::MatchResult match(
+      const core::ConstScanDataPtr&,
+      const core::OdomData& initial_guess) override {
+    return core::MatchResult{
+        initial_guess.x, initial_guess.y, initial_guess.yaw,
+        false, Eigen::Matrix3d::Zero(), 0.0};
+  }
+};
+
+TEST(ScanMatchingBuilderTest, NonConvergenceFallsBackToOdometryWithoutDropping) {
+  auto mock_matcher = std::make_shared<MockFailMatcher>();
+  auto provider = std::make_shared<LocalMapProvider>(10, 20.0);
+
+  pose_graph::ScanMatchingBuilder builder(mock_matcher, provider, 0.2, 0.1, 5);
+
+  auto scan1 = make_box_scan();
+  core::OdomData odom1{100.0, 0.0, 0.0, 0.0};
+  auto node1 = builder.add_scan(scan1, odom1);
+  ASSERT_TRUE(node1.has_value());
+  EXPECT_EQ(node1->index, 0);
+
+  // 0.25m 移動（キーフレーム閾値超え）
+  auto scan2 = make_box_scan();
+  core::OdomData odom2{100.1, 0.25, 0.0, 0.0};
+  auto node2 = builder.add_scan(scan2, odom2);
+
+  // マッチャーが非収束でも、オドメトリフォールバックによりノードが必ず作成される！
+  ASSERT_TRUE(node2.has_value());
+  EXPECT_EQ(node2->index, 1);
+  EXPECT_NEAR(node2->x, 0.25, 1e-4);
+  EXPECT_NEAR(node2->y, 0.0, 1e-4);
+
+  // エッジがオドメトリフォールバックとして記録されていることを確認
+  auto edges = builder.get_edges();
+  ASSERT_EQ(edges.size(), 1u);
+  EXPECT_TRUE(edges[0].is_odom_fallback);
+  EXPECT_NEAR(edges[0].dx, 0.25, 1e-4);
+}
+
+// 理想的なマッチャー (微小変位を正確に追従)
+class MockPerfectMatcher : public ScanMatcherBase {
+ public:
+  void set_target_cloud(const std::vector<Eigen::Vector2d>&) override {}
+  core::MatchResult match(
+      const core::ConstScanDataPtr&,
+      const core::OdomData& initial_guess) override {
+    Eigen::Matrix3d info = Eigen::Matrix3d::Identity() * 500.0;
+    return core::MatchResult{
+        initial_guess.x, initial_guess.y, initial_guess.yaw,
+        true, info, 0.01};
+  }
+};
+
+TEST(ScanMatchingBuilderTest, KeyframeScanMatchingGeneratesAccuratePoses) {
+  auto mock_matcher = std::make_shared<MockPerfectMatcher>();
+  auto provider = std::make_shared<LocalMapProvider>(10, 20.0);
+
+  // min_translation = 0.2m
+  pose_graph::ScanMatchingBuilder builder(mock_matcher, provider, 0.2, 0.1, 5);
+
+  auto scan = make_box_scan();
+
+  // フレーム1: 原点 (ノード0生成)
+  auto n0 = builder.add_scan(scan, core::OdomData{100.0, 0.0, 0.0, 0.0});
+  ASSERT_TRUE(n0.has_value());
+  EXPECT_EQ(n0->index, 0);
+
+  // フレーム2: +0.05m 移動 (キーフレーム閾値未達 -> nullopt)
+  auto n_sub1 = builder.add_scan(scan, core::OdomData{100.05, 0.05, 0.0, 0.0});
+  EXPECT_FALSE(n_sub1.has_value());
+
+  // フレーム3: +0.10m 移動 (キーフレーム閾値未達 -> nullopt)
+  auto n_sub2 = builder.add_scan(scan, core::OdomData{100.10, 0.10, 0.0, 0.0});
+  EXPECT_FALSE(n_sub2.has_value());
+
+  // フレーム4: +0.22m 移動 (累積0.22m > 0.2m -> ノード1生成)
+  auto n1 = builder.add_scan(scan, core::OdomData{100.22, 0.22, 0.0, 0.0});
+  ASSERT_TRUE(n1.has_value());
+  EXPECT_EQ(n1->index, 1);
+  EXPECT_NEAR(n1->x, 0.22, 1e-4);
+
+  // 生成されたエッジが高精度マッチングエッジであること
+  auto edges = builder.get_edges();
+  ASSERT_EQ(edges.size(), 1u);
+  EXPECT_FALSE(edges[0].is_odom_fallback);
+  EXPECT_NEAR(edges[0].dx, 0.22, 1e-4);
+  EXPECT_EQ(edges[0].from_index, 0);
+  EXPECT_EQ(edges[0].to_index, 1);
+
+  auto all_nodes = builder.get_nodes();
+  ASSERT_EQ(all_nodes.size(), 2u);
+  EXPECT_EQ(all_nodes[0].index, 0);
+  EXPECT_EQ(all_nodes[1].index, 1);
+}
+
+TEST(ScanMatchingBuilderTest, StillMotionDoesNotAddKeyframes) {
+  auto mock_matcher = std::make_shared<MockPerfectMatcher>();
+  auto provider = std::make_shared<LocalMapProvider>(10, 20.0);
+
+  pose_graph::ScanMatchingBuilder builder(mock_matcher, provider, 0.2, 0.1, 5);
+
+  auto scan = make_box_scan();
+
+  // 原点
+  auto n0 = builder.add_scan(scan, core::OdomData{100.0, 0.0, 0.0, 0.0});
+  ASSERT_TRUE(n0.has_value());
+
+  int initial_attempts = builder.icp_attempt_count();
+
+  // 静止中（移動量微小）のスキャンが何回入ってもスキップされること
+  for (int i = 1; i <= 20; ++i) {
+    auto n_still = builder.add_scan(scan, core::OdomData{100.0 + i * 0.025, 0.0001, 0.0001, 0.0});
+    EXPECT_FALSE(n_still.has_value());
+  }
+
+  // ノード数は原点の1つのみであること
+  EXPECT_EQ(builder.get_nodes().size(), 1u);
+  EXPECT_EQ(builder.icp_attempt_count(), initial_attempts);
+}
+
+TEST(ScanMatchingBuilderTest, NearKeyframeLinksFormMeshGraph) {
+  auto mock_matcher = std::make_shared<MockPerfectMatcher>();
+  auto provider = std::make_shared<LocalMapProvider>(10, 20.0);
+
+  // near_links enabled, buffer_size=10, max_distance=2.0, min_index_diff=2, max_links=3
+  pose_graph::ScanMatchingBuilder builder(
+      mock_matcher, provider,
+      0.2, 0.1, 5, 0.08,
+      true, 10, 2.0, 2, 3);
+
+  auto scan = make_box_scan();
+
+  // ノード0 (x=0.0)
+  auto n0 = builder.add_scan(scan, core::OdomData{100.0, 0.0, 0.0, 0.0});
+  ASSERT_TRUE(n0.has_value());
+
+  // ノード1 (x=0.25) -> エッジ 0->1 のみ (差分1)
+  auto n1 = builder.add_scan(scan, core::OdomData{101.0, 0.25, 0.0, 0.0});
+  ASSERT_TRUE(n1.has_value());
+  EXPECT_EQ(builder.get_edges().size(), 1u);
+
+  // ノード2 (x=0.50) -> 直前エッジ 1->2 + 近接メッシュリンク 0->2 (diff=2 <= 10, dist=0.5m <= 2.0m)
+  auto n2 = builder.add_scan(scan, core::OdomData{102.0, 0.50, 0.0, 0.0});
+  ASSERT_TRUE(n2.has_value());
+  // エッジは合計 3本 (0->1, 1->2, 0->2) になる
+  EXPECT_EQ(builder.get_edges().size(), 3u);
+  EXPECT_GT(builder.near_link_success_count(), 0);
+
+  // ノード3 (x=0.75) -> 直前エッジ 2->3 + 近接リンク 1->3, 0->3 (計3本追加で合計6本)
+  auto n3 = builder.add_scan(scan, core::OdomData{103.0, 0.75, 0.0, 0.0});
+  ASSERT_TRUE(n3.has_value());
+  EXPECT_EQ(builder.get_edges().size(), 6u);
+}
+
+// 並進を常に 0.9 倍に縮めて返すマッチャー (縮退方向の並進の偏りを模擬)
+class MockShrinkingMatcher : public ScanMatcherBase {
+ public:
+  explicit MockShrinkingMatcher(double info_x) : info_x_(info_x) {}
+  void set_target_cloud(const std::vector<Eigen::Vector2d>&) override {}
+  core::MatchResult match(
+      const core::ConstScanDataPtr&,
+      const core::OdomData& initial_guess) override {
+    Eigen::Matrix3d info = Eigen::Matrix3d::Identity() * 500.0;
+    info(0, 0) = info_x_;
+    return core::MatchResult{
+        initial_guess.x * 0.9, initial_guess.y, initial_guess.yaw + 0.01,
+        true, info, 0.01};
+  }
+
+ private:
+  double info_x_;
+};
+
+pose_graph::ScanMatchingBuilder make_fusion_builder(double match_info_x, core::OdomFusionConfig fusion) {
+  return pose_graph::ScanMatchingBuilder(
+      std::make_shared<MockShrinkingMatcher>(match_info_x),
+      std::make_shared<LocalMapProvider>(10, 20.0),
+      0.2, 0.1, 5, /*max_translation_drift=*/0.0,
+      /*enable_near_keyframe_links=*/false, 10, 2.0, 2, 3, 0.4, 15.0, 10.0, fusion);
+}
+
+TEST(ScanMatchingBuilderOdomFusionTest, WeakAxisFollowsOdometryStrongAxisFollowsMatcher) {
+  core::OdomFusionConfig fusion;
+  fusion.information_x = 100.0;
+
+  // 縮退 (情報量 20): 融合後はオドメトリ寄り
+  auto weak = make_fusion_builder(20.0, fusion);
+  auto scan = make_box_scan();
+  weak.add_scan(scan, core::OdomData{100.0, 0.0, 0.0, 0.0});
+  ASSERT_TRUE(weak.add_scan(scan, core::OdomData{100.2, 0.3, 0.0, 0.0}).has_value());
+  auto weak_edge = weak.get_edges().front();
+  const double weak_expected = (20.0 * (0.3 * 0.9) + 100.0 * 0.3) / 120.0;
+  EXPECT_NEAR(weak_edge.dx, weak_expected, 1e-9);
+  EXPECT_NEAR(weak_edge.information(0, 0), 120.0, 1e-9);
+
+  // 拘束が強い (情報量 5000): 融合してもマッチャーの結果に近い
+  auto strong = make_fusion_builder(5000.0, fusion);
+  strong.add_scan(scan, core::OdomData{100.0, 0.0, 0.0, 0.0});
+  ASSERT_TRUE(strong.add_scan(scan, core::OdomData{100.2, 0.3, 0.0, 0.0}).has_value());
+  auto strong_edge = strong.get_edges().front();
+  const double strong_expected = (5000.0 * (0.3 * 0.9) + 100.0 * 0.3) / 5100.0;
+  EXPECT_NEAR(strong_edge.dx, strong_expected, 1e-9);
+  EXPECT_LT(std::abs(strong_edge.dx - 0.27), std::abs(weak_edge.dx - 0.27));
+
+  // 方位と横方向は情報量 0 なので融合されない
+  EXPECT_NEAR(weak_edge.dyaw, 0.01, 1e-9);
+  EXPECT_NEAR(weak_edge.information(1, 1), 500.0, 1e-9);
+  EXPECT_NEAR(weak_edge.information(2, 2), 500.0, 1e-9);
+}
+
+TEST(ScanMatchingBuilderOdomFusionTest, DisabledLeavesMatcherResultUntouched) {
+  auto builder = make_fusion_builder(20.0, core::OdomFusionConfig{0.0, 0.0, 0.0});
+  auto scan = make_box_scan();
+  builder.add_scan(scan, core::OdomData{100.0, 0.0, 0.0, 0.0});
+  ASSERT_TRUE(builder.add_scan(scan, core::OdomData{100.2, 0.3, 0.0, 0.0}).has_value());
+  auto edge = builder.get_edges().front();
+  EXPECT_NEAR(edge.dx, 0.27, 1e-9);
+  EXPECT_NEAR(edge.information(0, 0), 20.0, 1e-9);
+}
+
+}  // namespace scan_matching
+}  // namespace slam_gnss_2d

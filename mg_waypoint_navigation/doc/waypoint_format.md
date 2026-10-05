@@ -1,0 +1,262 @@
+# ウェイポイント YAML フォーマット v2.0
+
+## 概要
+
+`mg_waypoint_navigation` で使用するウェイポイントファイルの仕様。
+`version: "2.0"` キーで識別される。旧フォーマット(v1)は `load()` で直接は読み込めないため、v2.0 形式への migrate が必要。
+
+---
+
+## v2.0 フォーマット仕様
+
+```yaml
+version: "2.0"
+
+# 全ウェイポイントに適用するデフォルト値 (省略可)
+defaults:
+  reach_tolerance: 0.5       # 現在は到達判定に使われない（下記参照）。停止点の到達半径は nav2_params.yaml の general_goal_checker.xy_goal_tolerance
+  through_tolerance: 3.0     # 通過点で、Nav2 の完了を待たずに次へ進む半径 [m]
+  is_through_point: true     # true=通過点, false=停止点
+
+waypoints:
+  - index: 0
+    pose:
+      position: {x: 1.0, y: 2.0, z: 0.0}
+      orientation: {x: 0.0, y: 0.0, z: 0.707, w: 0.707}
+    navigation:               # このウェイポイント固有の設定 (省略=defaults適用)
+      is_through_point: false
+    on_reached_actions: []    # 到達時アクションリスト (省略可)
+```
+
+- `reach_tolerance` は読み込み・保存・配信されるが、到達判定には使われない。`controller_server` の `xy_goal_tolerance` を実行時に書き換えると、controller が速度 0 を出し続けてロボットが走り出さなくなるため（Nav2 Humble で再現）、ゴールごとの設定は廃止した。停止点の到達半径は `nav2_params.yaml` の値が全 WP 共通で適用される。
+- `index` は 0 からの連番とする（重複・欠番があると読み込みエラー）。
+- `defaults` を省略した場合は `is_through_point: true` / `through_tolerance: 3.0` になる。**最終ウェイポイントや on_reached_actions を持つウェイポイントも、指定しなければ通過点扱い**（3m 手前で到達とみなしてアクションを実行する）になる。その場で止まってほしい地点は `is_through_point: false` を明示すること。
+- 次の設定は読み込みを拒否せず、警告ログを出す: 隣り合う WP の間隔が後ろの WP の `through_tolerance` より短い通過点（すぐ通過扱いになる）、on_reached_actions を持つ通過点、最終 WP の通過点。
+- 読み込み時に on_reached_actions を検証する（未知の type、必須フィールドの欠落、import できない型の指定はエラー）。不正なファイルは読み込み・reload とも拒否される。
+
+---
+
+## on_reached_actions 型一覧
+
+### type: service — サービス呼び出し
+
+```yaml
+- type: service
+  service: /front_lidar_publish_controller_node/change_publish_state
+  srv_module: std_srvs.srv
+  srv_class: SetBool
+  request:
+    data: false
+```
+
+| フィールド   | 型     | 説明                                   |
+| ------------ | ------ | -------------------------------------- |
+| `service`    | string | サービスパス                           |
+| `srv_module` | string | Python モジュール (例: `std_srvs.srv`) |
+| `srv_class`  | string | サービス型クラス名 (例: `SetBool`)     |
+| `request`    | dict   | リクエストフィールドと値               |
+
+### type: publish — トピックパブリッシュ
+
+```yaml
+- type: publish
+  topic: /example_topic
+  msg_module: std_msgs.msg
+  msg_class: String
+  data:
+    data: "example"
+```
+
+| フィールド   | 型     | 説明                                   |
+| ------------ | ------ | -------------------------------------- |
+| `topic`      | string | トピックパス                           |
+| `msg_module` | string | Python モジュール (例: `std_msgs.msg`) |
+| `msg_class`  | string | メッセージ型クラス名 (例: `String`)    |
+| `data`       | dict   | メッセージフィールドと値               |
+
+### type: load_map — マップロード
+
+```yaml
+- type: load_map
+  localization: /root/ros2_data/map/area1/localization.yaml
+  planning: /root/ros2_data/map/area1/planning.yaml
+```
+
+| フィールド     | 型     | 説明                          |
+| -------------- | ------ | ----------------------------- |
+| `localization` | string | 測位マップ YAML パス (省略可) |
+| `planning`     | string | 計画マップ YAML パス (省略可) |
+
+### type: amcl_reset — AMCL リセット
+
+```yaml
+- type: amcl_reset
+```
+
+`/reinitialize_global_localization` (std_srvs/Empty) を呼び出す。
+
+### type: wait — 待機
+
+```yaml
+- type: wait
+  countdown_ms: 3000
+```
+
+| フィールド     | 型  | デフォルト | 説明          |
+| -------------- | --- | ---------- | ------------- |
+| `countdown_ms` | int | 3000       | 待機時間 [ms] |
+
+### type: wait_trigger — 外部トリガー待ち
+
+```yaml
+- type: wait_trigger
+```
+
+到達時アクションをすべて実行した後、FSM を IDLE 状態に移行させ外部からの `~/start` サービス呼び出しを待つ。
+`~/start` リクエストの `countdown_ms` でカウントダウン後に次のウェイポイントへ進む。
+
+フィールドなし。
+
+### type: set_navigation_mode — ナビゲーションモード切替
+
+```yaml
+- type: set_navigation_mode
+  mode: queue_wait
+```
+
+| フィールド | 型     | デフォルト | 説明                                                             |
+| ---------- | ------ | ---------- | ---------------------------------------------------------------- |
+| `mode`     | string | `normal`   | `normal` / `queue_wait`。以降のゴールで使う BT と global_costmap の障害物レイヤーを切り替える |
+
+---
+
+## 実際の設定例
+
+```yaml
+version: "2.0"
+defaults:
+  reach_tolerance: 0.8       # 参考値（到達判定には使われない）
+  is_through_point: true
+
+waypoints:
+  - index: 0
+    pose:
+      position: {x: 0.0, y: 0.0, z: 0.0}
+      orientation: {x: 0.0, y: 0.0, z: 0.0, w: 1.0}
+    navigation:
+      is_through_point: true
+
+  - index: 1
+    pose:
+      position: {x: 10.0, y: 0.0, z: 0.0}
+      orientation: {x: 0.0, y: 0.0, z: 0.0, w: 1.0}
+    navigation:
+      is_through_point: false
+    on_reached_actions:
+      - type: service
+        service: /front_lidar_publish_controller_node/change_publish_state
+        srv_module: std_srvs.srv
+        srv_class: SetBool
+        request: {data: false}
+      - type: load_map
+        localization: /root/ros2_data/map/area2/localization.yaml
+        planning: /root/ros2_data/map/area2/planning.yaml
+      - type: wait
+        countdown_ms: 3000
+      - type: amcl_reset
+      - type: service
+        service: /front_lidar_publish_controller_node/change_publish_state
+        srv_module: std_srvs.srv
+        srv_class: SetBool
+        request: {data: true}
+
+  - index: 2
+    pose:
+      position: {x: 20.0, y: 5.0, z: 0.0}
+      orientation: {x: 0.0, y: 0.0, z: 0.707, w: 0.707}
+    on_reached_actions:
+      - type: publish
+        topic: /example_topic
+        msg_module: std_msgs.msg
+        msg_class: String
+        data: {data: "example"}
+```
+
+---
+
+## waypoint-tool での作成
+
+[waypoint-tool](https://github.com/Chu-son/waypoint-tool) を使うと、上記の v2.0 形式を GUI で作成・編集できる。
+定義ファイルは [`waypoint_tool/`](../waypoint_tool/) に置いている。
+
+1. waypoint-tool の `Settings > Option Schema` の **Import** から
+   [`mg_waypoint.schema.json`](../waypoint_tool/mg_waypoint.schema.json) を読み込む。
+   `navigation`（`is_through_point` / `through_tolerance`）と `on_reached_actions`
+   （本ドキュメントの7種類のアクション）が Inspector に入力フォームとして現れる。
+2. `Settings > Export Templates` の **Import** から
+   [`mg_waypoint_v2.wpt_template`](../waypoint_tool/mg_waypoint_v2.wpt_template) を読み込む。
+   エクスポート時にこのテンプレートを選ぶと、本ドキュメントの v2.0 形式で YAML が出力される。
+3. `index` は 0 からの連番である必要があるため、エクスポート設定の Index Start は `0` にする。
+4. `Settings > General` の **Export Integers as Float** はオン（既定）のままにする。`z` などの float 型に整数 (`0`) を書くと mg 側が読み込めないため。
+
+既存の `waypoint.yaml` を waypoint-tool に読み込み直す（インポートする）場合は、`File > Import Waypoints...`
+で次のように対応付ける。
+
+| フィールド | パス |
+| --- | --- |
+| Items Path | `waypoints` |
+| X / Y / Z | `pose.position.x` / `pose.position.y` / `pose.position.z` |
+| Qx / Qy / Qz / Qw | `pose.orientation.x` / `pose.orientation.y` / `pose.orientation.z` / `pose.orientation.w` |
+| Options Path | (空のまま。ウェイポイントのルートを直接見せる) |
+
+### GNSS 変換 (gnss_transform.yaml) の出力
+
+背景地図で位置合わせしたプロジェクトからは、GNSS ブリッジ (`slam_gnss_2d` の `slam_gnss_nav_bridge_node`) が読む
+`gnss_transform.yaml` も出力できる。[`mg_gnss_transform.wpt_template`](../waypoint_tool/mg_gnss_transform.wpt_template)
+を `Settings > Export Templates` の **Import** から読み込み、エクスポートプロファイルの項目に追加する
+（ウェイポイント用のテンプレートと並べて出力できる）。
+
+- マップ原点の緯度経度・UTM を `anchor` / `anchor_utm` に、位置合わせの回転を `map_rotation_rad` に書く。
+  `map_rotation_rad` は、ブリッジが GNSS を地図座標へ変換するときの回転（`map = R(map_rotation_rad) · (UTM − anchor_utm)`）。
+  SLAM が出力する `rotation_rad`（初期方位の記録値）とは別のキーで、このテンプレートは `rotation_rad` を出力しない。
+- テンプレートが使う `geo` 変数は、waypoint-tool の背景地図の位置合わせ設定から作られる。
+  背景地図の表示を OFF にしていても出力されるため、位置合わせを済ませてから出力する。
+  `geo` に対応した版の waypoint-tool が必要（未対応の版では描画エラーになる）。
+- 出力先は、ナビゲーションが読む `${MAP_PATH}/gnss_transform.yaml`（`bringup_navigation.launch.py` の `gnss_transform_file` の既定）。
+  SLAM の出力ディレクトリにある `gnss_transform.yaml` は再最適化 (reoptimize) が読むため、上書きしない。
+
+## v1 フォーマットとの差分
+
+| 項目                  | v1                                 | v2.0                                     |
+| --------------------- | ---------------------------------- | ---------------------------------------- |
+| ファイル構造          | リスト直接                         | `{version, defaults, waypoints}`         |
+| アクション定義        | `on_reached_action: [string]` enum | `on_reached_actions: [{type, ...}]` dict |
+| reach_tolerance       | トップレベルフィールド             | `navigation.reach_tolerance`             |
+| is_through_point      | トップレベルフィールド             | `navigation.is_through_point`            |
+| gnss_transform_label  | トップレベルフィールド             | 廃止 (対応するノードが無い)              |
+| localization_map_yaml | トップレベルフィールド             | `load_map` アクションで代替              |
+
+---
+
+## v1 → v2 マイグレーション
+
+```bash
+ros2 run mg_waypoint_navigation migrate_waypoints.py input.yaml output_v2.yaml
+```
+
+出力ファイル名を省略した場合は `input_v2.yaml` として出力される。
+
+### v1 アクション文字列と v2 の対応
+
+| v1 文字列                     | v2 type       | 備考                                                                   |
+| ----------------------------- | ------------- | ---------------------------------------------------------------------- |
+| `front_lidar_off`             | `service`     | `/front_lidar_publish_controller_node/change_publish_state` data=false |
+| `front_lidar_on`              | `service`     | 同 data=true                                                           |
+| `amcl_on`                     | `service`     | `/amcl_gate_arbiter/waypoint/change_publish_state` data=true (AMCL の出力を EKF に入れる) |
+| `amcl_off`                    | `service`     | `/amcl_gate_arbiter/waypoint/change_publish_state` data=false        |
+| `gps_on`                      | `service`     | `/slam_gnss_nav_bridge/change_publish_state` data=true (`/odom/gps` の配信) |
+| `gps_off`                     | `service`     | `/slam_gnss_nav_bridge/change_publish_state` data=false                |
+| `reload_map`                  | `load_map`    | `localization_map_yaml` / `planning_map_yaml` を引き継ぎ               |
+| `wait_trigger`                | `wait_trigger`| トリガー待ち専用アクション                                             |
+
+v1 の `gnss_transform_label` (複数の GNSS 変換を切り替える機能) は、対応するノードが無くなったため変換しません。

@@ -1,0 +1,55 @@
+# waypoint の到達時アクション (on_reached_actions) を全種類含む waypoint (version 2.0)。
+# 座標は through_waypoints.yaml と同じ (sim の warehouse で到達を確認済み)。すべて停止点。
+#   index 0: publish, service, wait
+#   index 1: load_map, wait_trigger (外部の ~/start を待つ)
+#   index 2: set_navigation_mode (queue_wait), wait
+#   index 3: set_navigation_mode (normal), amcl_reset
+version: "2.0"
+defaults:
+  reach_tolerance: 0.5
+  through_tolerance: 1.5
+  is_through_point: false
+waypoints:
+  - index: 0
+    pose:
+      position: {x: 4.449, y: -0.5386, z: 0.0}
+      orientation: {x: 0.0, y: 0.0, z: -0.0029, w: 1.0}
+    on_reached_actions:
+      - type: publish
+        topic: /scenario_marker
+        msg_module: std_msgs.msg
+        msg_class: String
+        data: {data: "wp0_published"}
+      - type: service
+        service: /front_lidar_publish_controller_node/change_publish_state
+        srv_module: std_srvs.srv
+        srv_class: SetBool
+        request: {data: true}
+      - type: wait
+        countdown_ms: 1000
+  - index: 1
+    pose:
+      position: {x: 9.977, y: 1.7435, z: 0.0}
+      orientation: {x: 0.0, y: 0.0, z: -0.4467, w: 0.8947}
+    on_reached_actions:
+      - type: load_map
+        localization: /root/ros2_ws/install/mg_simulation/share/mg_simulation/maps/warehouse/localization.yaml
+        planning: /root/ros2_ws/install/mg_simulation/share/mg_simulation/maps/warehouse/planning.yaml
+      - type: wait_trigger
+  - index: 2
+    pose:
+      position: {x: 9.972, y: -5.5797, z: 0.0}
+      orientation: {x: 0.0, y: 0.0, z: -0.6855, w: 0.7281}
+    on_reached_actions:
+      - type: set_navigation_mode
+        mode: queue_wait
+      - type: wait
+        countdown_ms: 1000
+  - index: 3
+    pose:
+      position: {x: 4.601, y: 5.847, z: 0.0}
+      orientation: {x: 0.0, y: 0.0, z: 0.2152, w: 0.9766}
+    on_reached_actions:
+      - type: set_navigation_mode
+        mode: normal
+      - type: amcl_reset

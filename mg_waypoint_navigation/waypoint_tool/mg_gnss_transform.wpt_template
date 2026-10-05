@@ -1,0 +1,7 @@
+{
+  "name": "mg gnss_transform",
+  "extension": "yaml",
+  "suffix": "",
+  "engine": "jinja",
+  "content": "# waypoint-tool の背景地図の位置合わせから出力した GNSS 変換。map_rotation_rad は地図を UTM のグリッドに合わせる回転\nanchor:\n  latitude: {{ geo.lat }}\n  longitude: {{ geo.lon }}\nanchor_utm:\n  easting: {{ geo.utm.easting }}\n  northing: {{ geo.utm.northing }}\n  zone: {{ geo.utm.zone }}\n  hemisphere: {{ \"north\" if geo.utm.hemisphere == \"N\" else \"south\" }}\nmap_rotation_rad: {{ 0 - geo.heading }}\nmetadata:\n  source: waypoint-tool (背景地図の位置合わせから出力)\n"
+}

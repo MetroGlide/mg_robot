@@ -1,0 +1,39 @@
+version: "2.0"
+name: dynamic_stop_and_resume
+description: >
+  走行中に人が目の前 (0.6m) に飛び出しても、3 秒で立ち去れば、リカバリー (BackUp) に入らず
+  停止して待つだけで走行を再開し、ゴールへ到達することを確認する。
+  nav2_params.yaml の controller_server.failure_tolerance (待機時間) が有効に働いていることの回帰確認。
+profile: mg01
+world: warehouse
+tags: [smoke, dynamic_obstacle, nav2_goals]
+
+obstacles:
+  person:
+    model: { type: fuel, uri: "OpenRobotics/models/MaleVisitorOnPhone" }
+
+setup:
+  - respawn: { pose: { x: 0.0, y: 0.0, yaw: 0.0 }, settle_sec: 3.0 }
+
+run:
+  nav2_goals:
+    behavior_tree: "pkg://mg_waypoint_navigation/behavior_trees/mg_navigate_to_pose.xml"
+    goals:
+      - pose: { x: 5.0, y: 2.0, yaw: 0.0 }
+
+timeline:
+  - name: person_jumps_out
+    when: { robot_travelled: { distance: 1.0 } }
+    do:
+      - spawn: { obstacle: person, pose: { frame: robot, x: 0.6, yaw: 3.14 } }
+      - delay: { sec: 3.0 }
+      - despawn: { obstacle: person }
+
+monitors:
+  # collision_monitor の STOP は判定に含めない: 障害物が近づくと controller (RPP) の衝突予測が先に
+  # 速度を 0 にするため、STOP は発動しない
+  - bt_node: { node: BackUp, status: RUNNING, expect: never }
+
+expect:
+  - reached_all
+  - time_limit: { sec: 90 }

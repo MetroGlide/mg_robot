@@ -1,0 +1,35 @@
+version: "2.0"
+name: sequencer_stop_restart
+description: >
+  走行中に waypoint_sequencer を停止 (~/stop) し、次の waypoint index を設定 (set_next_waypoint_index) すると、
+  停止中はロボットが止まり (2 秒以上)、driver (auto_start) が再開して、その index から走行を続けて
+  最後まで到達することを確認する。
+profile: mg01
+world: warehouse
+tags: [full, mg_sequencer, stop_restart]
+
+stack_args:
+  waypoints_load_path: "pkg://mg_scenario_test/scenarios/data/through_waypoints.yaml"
+
+setup:
+  - respawn: { pose: { x: 0.0, y: 0.0, yaw: 0.0 }, settle_sec: 3.0 }
+
+run:
+  mg_sequencer:
+    waypoints_file: "pkg://mg_scenario_test/scenarios/data/through_waypoints.yaml"
+
+timeline:
+  - name: stop_then_restart_from_1
+    when: { robot_travelled: { distance: 3.0 } }
+    do:
+      - sequencer_stop: {}
+      - delay: { sec: 3.0 }
+      - sequencer_set_index: { index: 1 }
+      # 再開 (~/start) は、sequencer が IDLE のままなのを検出した mg_sequencer driver (auto_start) が行う
+
+monitors:
+  - max_stop_duration: { min_stop_sec: 2.0, from_goal_started: 0, until_goal_reached: 2 }
+
+expect:
+  - reached_all
+  - time_limit: { sec: 200 }

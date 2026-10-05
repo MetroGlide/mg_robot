@@ -1,0 +1,19 @@
+version: "2.0"
+name: full_lap_sequencer
+description: >
+  シミュレーション用の waypoint (mg_simulation/maps/warehouse/waypoints.yaml, 9 個。通過点と
+  wait_trigger の停止点を含む) を、waypoint_sequencer で 1 周する長時間テスト。
+profile: mg01
+world: warehouse
+tags: [full, mg_sequencer, long]
+
+setup:
+  - respawn: { pose: { x: 0.0, y: 0.0, yaw: 0.0 }, settle_sec: 3.0 }
+
+run:
+  mg_sequencer:
+    waypoints_file: "{world.waypoints}"
+
+expect:
+  - reached_all
+  - time_limit: { sec: 400 }

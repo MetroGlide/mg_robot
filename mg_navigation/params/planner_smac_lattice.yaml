@@ -1,0 +1,47 @@
+# グローバルプランナ: Smac Lattice Planner (launch 引数 global_planner:=smac_lattice、既定)
+#
+# 点ロボットとして計画する NavFn と違い、グローバルコストマップの footprint 全体で衝突判定し、
+# 差動二輪の動き (前進・その場旋回) の経路を作る。通れない隙間へ経路を引いて RPP が詰まる問題を減らせる。
+#
+# 【負荷の目安 (Gazebo、シナリオ through_point_continuity の走行中に計測)】
+#   planner_server の CPU: Smac Lattice 平均 6.7% / NavFn 平均 6.7% (1 コアに対する割合。差はほぼなし)、
+#   メモリ (RSS): 99MB / 93MB。1 回の計画が重くなるのは、経路がない・狭い場所のときで、
+#   その場合は max_planning_time (下記) まで CPU を使う。実機の CPU では、再計測すること。
+#
+# 【実機で負荷が高いとき】
+#   1. 従来の NavFn に戻す: global_planner:=navfn (planner_navfn.yaml を読む)。
+#      NavFn に戻すときは、nav2_params.yaml の inflation_layer / footprint_padding の
+#      「NavFn に戻す場合」のコメントも参照すること。
+#   2. NavFn に戻さず負荷だけ下げる場合は、下記の「負荷を下げる」印のパラメータを調整する。
+planner_server:
+  ros__parameters:
+    GridBased:
+      plugin: "nav2_smac_planner/SmacPlannerLattice"
+      # 差動二輪用の動作プリミティブ (最小旋回半径 0.5m、地図の解像度 0.05m に対応)。
+      # 旋回半径の大きい 1m_turning_radius に替えると探索は速くなるが、狭い所で曲がれなくなる。
+      lattice_filepath: "$(find-pkg-share nav2_smac_planner)/sample_primitives/5cm_resolution/0.5m_turning_radius/diff/output.json"
+      allow_unknown: true
+      tolerance: 0.5
+      # 負荷を下げる: 1 回の計画の上限時間 [s]。経路がない・狭いときは、この時間まで CPU を使い切る。
+      # BT が 1Hz で再計画するので、1.0 以下でもよいが、短すぎると遠いゴールで計画に失敗する。
+      max_planning_time: 2.0
+      # 負荷を下げる: 探索の反復回数の上限。max_planning_time が先に効くので、通常は変更しない。
+      max_iterations: 1000000
+      max_on_approach_iterations: 1000
+      # 負荷を下げる: ゴール付近を、探索せずに解析的な経路でつなぐ範囲。大きくするとゴール付近の探索が早く終わる。
+      analytic_expansion_ratio: 3.5
+      analytic_expansion_max_length: 3.0
+      # 負荷を下げる: 起動時に作る距離ヒューリスティックの表の大きさ [m]。小さくすると起動時のメモリ・時間が減る。
+      lookup_table_size: 20.0
+      # 負荷を下げる: true で、障害物のヒューリスティックを再利用する (地図が変わらない間の計画が速い)。
+      cache_obstacle_heuristic: true
+      # 負荷を下げる: false にすると、経路の平滑化 (smoother) を省く。経路が角ばる。
+      smooth_path: true
+      # 後退を含む経路の展開。前進のみで走らせたいので false。
+      allow_reverse_expansion: false
+      reverse_penalty: 2.0
+      change_penalty: 0.05
+      non_straight_penalty: 1.05
+      cost_penalty: 2.0
+      rotation_penalty: 5.0
+      retrospective_penalty: 0.015

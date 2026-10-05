@@ -1,0 +1,7 @@
+/odom
+/scan_top_lidar
+/tf_static
+/tf
+/navpvt
+/gps/fix
+/nmea_sentence

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!--
+  開発PC(シミュレータ)と実機PC(ナビゲーションスタック)を跨いでシナリオテストを行うための
+  CycloneDDS 設定。マルチキャストを使わず、MG_REMOTE_PEER で指定した相手PCへユニキャストで探索する
+  (Wi-Fi でも動くようにするため)。両方のPCで MG_REMOTE_PEER に「相手PCの IP」を設定する。
+  MG_DDS_INTERFACE で使うネットワークインターフェース (IP またはインターフェース名) を固定できる。
+-->
+<CycloneDDS xmlns="https://cdds.io/config"
+            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            xsi:schemaLocation="https://cdds.io/config https://raw.githubusercontent.com/eclipse-cyclonedds/cyclonedds/master/etc/cyclonedds.xsd">
+  <Domain id="any">
+    <General>
+      <AllowMulticast>false</AllowMulticast>
+      <NetworkInterfaceAddress>${MG_DDS_INTERFACE:-auto}</NetworkInterfaceAddress>
+    </General>
+    <Discovery>
+      <ParticipantIndex>auto</ParticipantIndex>
+      <MaxAutoParticipantIndex>120</MaxAutoParticipantIndex>
+      <Peers>
+        <Peer address="localhost"/>
+        <Peer address="${MG_REMOTE_PEER}"/>
+      </Peers>
+    </Discovery>
+  </Domain>
+</CycloneDDS>

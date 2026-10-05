@@ -1,0 +1,20 @@
+version: "2.0"
+name: nav_unreachable_goal
+description: >
+  地図の外にあるゴールへの走行が失敗として扱われることを確認する異常系テスト。
+  navigation_fails により「失敗すること」が期待結果になる。
+profile: mg01
+world: warehouse
+tags: [smoke, negative, nav2_goals]
+
+setup:
+  - respawn: { pose: { x: 0.0, y: 0.0, yaw: 0.0 }, settle_sec: 3.0 }
+
+run:
+  nav2_goals:
+    goal_timeout_sec: 60.0
+    goals:
+      - pose: { x: 100.0, y: 100.0, yaw: 0.0 }
+
+expect:
+  - navigation_fails: { index: 0 }

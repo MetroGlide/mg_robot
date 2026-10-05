@@ -1,0 +1,14 @@
+# 同じ走行での評価 (手早いチェック用): 地図を作った走行をそのまま評価する。
+# 地図がその走行のスキャンに合わせ込まれているため、結果は別走行の評価より楽観的になる。
+# パスはコンテナ内 (/root/ros2_data = ホストの ~/ros2_data)。
+name: same_run_043837
+description: 同じ走行での評価 (地図・評価とも 043837 の SLAM 出力)
+map:
+  localization_yaml: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_043837/20260921_2248/map.yaml
+  gnss_transform: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_043837/20260921_2248/gnss_transform.yaml
+  slam_dir: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_043837/20260921_2248
+eval:
+  bag: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_043837
+  slam_dir: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_043837/20260921_2248
+  start_offset: 0.0
+  duration: 300.0

@@ -1,0 +1,211 @@
+import os
+
+import launch
+import launch_ros
+
+from ament_index_python.packages import get_package_share_directory
+from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument, EmitEvent, GroupAction
+from launch.actions import IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import AndSubstitution, LaunchConfiguration, EnvironmentVariable
+from launch.conditions import IfCondition
+from launch_ros.actions import Node, LifecycleNode, PushRosNamespace
+from launch_ros.descriptions import ParameterFile
+
+from nav2_common.launch import RewrittenYaml, ReplaceString
+
+import lifecycle_msgs.msg
+
+from mg_utils.launch_argument import LaunchArgumentCreator
+
+
+def generate_launch_description():
+    # Getting directories and launch-files
+    pkg_dir = get_package_share_directory('mg_navigation')
+    pkg_launch_dir = os.path.join(pkg_dir, 'launch')
+    utils_pkg_dir = get_package_share_directory('mg_utils')
+
+    rviz_config_dir = os.path.join(
+        pkg_dir, 'rviz', 'rviz.rviz')
+
+    # Launch arguments
+    launch_argument_creator = LaunchArgumentCreator()
+
+    # false にすると自己位置推定 (map_server / AMCL など) だけを起動し、
+    # ナビゲーション (planner / controller など) とウェイポイントシーケンサを起動しない
+    use_navigation_arg = launch_argument_creator.create(
+        'use_navigation', default="true")
+    use_gnss_amcl_initializer_arg = launch_argument_creator.create(
+        'use_gnss_amcl_initializer', default="true")
+    # 自己位置の監視ノード (none | watchdog | supervisor)
+    localization_monitor_arg = launch_argument_creator.create(
+        'localization_monitor', default="watchdog")
+    supervisor_params_file_arg = launch_argument_creator.create(
+        'supervisor_params_file',
+        default=os.path.join(pkg_dir, 'params', 'localization_supervisor.yaml'))
+    use_waypoints_follower_arg = launch_argument_creator.create(
+        'use_waypoints_follower', default="true")
+    waypoints_load_path_arg = launch_argument_creator.create(
+        'waypoints_load_path', default=EnvironmentVariable('WAYPOINT_PATH'))
+
+    namespace_arg = launch_argument_creator.create(
+        'namespace', default='')
+    use_namespace_arg = launch_argument_creator.create(
+        'use_namespace', default="false")
+    autostart_arg = launch_argument_creator.create(
+        'autostart', default="true")
+    use_composition_arg = launch_argument_creator.create(
+        # 'use_composition', default="True")
+        'use_composition', default="False")
+    use_respawn_arg = launch_argument_creator.create(
+        'use_respawn', default="false")
+    log_level_arg = launch_argument_creator.create(
+        'log_level', default="info")
+
+    simulation_arg = launch_argument_creator.create(
+        'simulation', default=EnvironmentVariable('SIMULATION'))
+    rviz_arg = launch_argument_creator.create(
+        'rviz', default=EnvironmentVariable("USE_RVIZ")
+    )
+    record_bag_arg = launch_argument_creator.create(
+        'record_bag', default="false")
+    # グローバルプランナ: params/planner_<名前>.yaml を読み込む (smac_lattice | navfn)。
+    # 実機で計画の負荷が高い場合は global_planner:=navfn で従来の NavFn に戻せる。
+    global_planner_arg = launch_argument_creator.create(
+        'global_planner', default="smac_lattice")
+
+    localization_map_yamL_file_arg = launch_argument_creator.create(
+        'localization_map', default=os.path.join(pkg_dir, 'map', 'map.yaml'))
+    planning_map_yaml_file_arg = launch_argument_creator.create(
+        'planning_map', default=os.path.join(pkg_dir, 'map', 'map.yaml'))
+
+    params_file = LaunchConfiguration(
+        'params_file',
+        default=os.path.join(
+            pkg_dir, 'params', 'nav2_params.yaml'))
+
+    remappings = [('/tf', 'tf'),
+                  ('/tf_static', 'tf_static')]
+
+    param_substitutions = {
+        'use_sim_time': simulation_arg.launch_config,
+        'yaml_filename': localization_map_yamL_file_arg.launch_config, }
+
+    params_file = ReplaceString(
+        source_file=params_file,
+        replacements={'<robot_namespace>': ('/', namespace_arg.launch_config)},
+        condition=IfCondition(use_namespace_arg.launch_config))
+
+    configured_params = ParameterFile(
+        RewrittenYaml(
+            source_file=params_file,
+            root_key=namespace_arg.launch_config,
+            param_rewrites=param_substitutions,
+            convert_types=True),
+        allow_substs=True)
+
+    record_bag_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(utils_pkg_dir, 'launch', 'record_bag.launch.py')
+        ),
+        launch_arguments={
+            'caller_pkg_name': 'mg_navigation',
+            'record_bag_base_name': 'navigation_',
+        }.items(),
+        condition=IfCondition(record_bag_arg.launch_config),
+    )
+
+    # Specify the actions
+    bringup_cmd_group = GroupAction([
+        PushRosNamespace(
+            condition=IfCondition(use_namespace_arg.launch_config),
+            namespace=namespace_arg.launch_config),
+
+        # Composer
+        Node(
+            condition=IfCondition(use_composition_arg.launch_config),
+            name='nav2_container',
+            package='rclcpp_components',
+            executable='component_container_isolated',
+            parameters=[configured_params, {
+                'autostart': autostart_arg.launch_config}],
+            arguments=['--ros-args', '--log-level',
+                       log_level_arg.launch_config],
+            remappings=remappings,
+            emulate_tty=True,
+            output='screen'
+        ),
+
+        # Localization
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(os.path.join(pkg_launch_dir,
+                                                       'localization_launch.py')),
+            launch_arguments={'namespace': namespace_arg.launch_config,
+                              'map': localization_map_yamL_file_arg.launch_config,
+                              'use_sim_time': simulation_arg.launch_config,
+                              'autostart': autostart_arg.launch_config,
+                              'params_file': params_file,
+                              'use_composition': use_composition_arg.launch_config,
+                              'use_respawn': use_respawn_arg.launch_config,
+                              'use_gnss_amcl_initializer': use_gnss_amcl_initializer_arg.launch_config,
+                              'localization_monitor': localization_monitor_arg.launch_config,
+                              'supervisor_params_file': supervisor_params_file_arg.launch_config,
+                              'container_name': 'nav2_container'}.items()
+        ),
+
+        # Navigation
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(os.path.join(
+                pkg_launch_dir, 'navigation_launch.py')),
+            launch_arguments={'namespace': namespace_arg.launch_config,
+                              'use_sim_time': simulation_arg.launch_config,
+                              'autostart': autostart_arg.launch_config,
+                              'params_file': params_file,
+                              'use_composition': use_composition_arg.launch_config,
+                              'use_respawn': use_respawn_arg.launch_config,
+                              'planning_map': planning_map_yaml_file_arg.launch_config,
+                              'global_planner': global_planner_arg.launch_config,
+                              'container_name': 'nav2_container'}.items(),
+            condition=IfCondition(use_navigation_arg.launch_config),
+        ),
+
+        # Waypoint Sequencer
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                os.path.join(
+                    get_package_share_directory('mg_waypoint_navigation'),
+                    'launch',
+                    'waypoint_sequencer.launch.py',
+                )
+            ),
+            launch_arguments={
+                'simulation': simulation_arg.launch_config,
+                'load_path': waypoints_load_path_arg.launch_config,
+                'initial_localization_map': localization_map_yamL_file_arg.launch_config,
+                'initial_planning_map': planning_map_yaml_file_arg.launch_config,
+            }.items(),
+            condition=IfCondition(AndSubstitution(
+                use_waypoints_follower_arg.launch_config,
+                use_navigation_arg.launch_config)),
+        ),
+
+    ])
+
+    return LaunchDescription([
+        *launch_argument_creator.get_created_declare_launch_args(),
+        bringup_cmd_group,
+
+        record_bag_launch,
+
+        # Rviz
+        Node(
+            package='rviz2',
+            executable='rviz2',
+            name='rviz2',
+            arguments=['-d', rviz_config_dir],
+            parameters=[{'use_sim_time': simulation_arg.launch_config}],
+            # output='screen',
+            condition=IfCondition(rviz_arg.launch_config),
+        ),
+    ])

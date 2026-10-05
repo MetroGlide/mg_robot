@@ -1,0 +1,603 @@
+amcl:
+  ros__parameters:
+    use_sim_time: False
+    base_frame_id: "base_footprint"
+    global_frame_id: "map"
+    odom_frame_id: "odom"
+
+    scan_topic: /scan_top_lidar
+    laser_max_range: -1.0
+    laser_min_range: -1.0
+    # ビームとパーティクルを減らして負荷と遅れを減らす (再生評価で、精度は同等以上で AMCL の遅延が約 26% 減った)。
+    # 元の値は max_beams 1500 / max_particles 5000 / min_particles 1000
+    max_beams: 240
+    max_particles: 2000
+    min_particles: 500
+
+    # For filter update rates
+    update_min_a: 0.2
+    update_min_d: 0.25
+    pf_err: 0.05
+    pf_z: 0.99
+
+    robot_model_type: "nav2_amcl::DifferentialMotionModel"
+    alpha1: 0.2
+    alpha2: 0.2
+    alpha3: 0.2
+    alpha4: 0.2
+    alpha5: 0.2
+
+    laser_model_type: "likelihood_field"
+    sigma_hit: 0.2
+    z_hit: 0.7
+    z_rand: 0.3
+    laser_likelihood_max_dist: 15.0
+    z_max: 0.05
+    z_short: 0.05
+    lambda_short: 0.1
+    beam_skip_distance: 0.5
+    beam_skip_error_threshold: 0.9
+    beam_skip_threshold: 0.3
+    do_beamskip: false
+    recovery_alpha_fast: 0.0
+    recovery_alpha_slow: 0.0
+    resample_interval: 1
+    save_pose_rate: 0.5
+
+    tf_broadcast: false # EKF being used; AMCL should not broadcast TF
+    transform_tolerance: 1.0
+    set_initial_pose: true
+    initial_pose: { x: 0.0, y: 0.0, z: 0.0, yaw: 0.0 }
+
+bt_navigator:
+  ros__parameters:
+    use_sim_time: False
+    global_frame: map
+    robot_base_frame: base_footprint
+    odom_topic: /odom
+    default_bt_xml_filename: "navigate_w_replanning_and_recovery.xml"
+    bt_loop_duration: 10
+    default_server_timeout: 20
+    enable_groot_monitoring: True
+    groot_zmq_publisher_port: 1666
+    groot_zmq_server_port: 1667
+    plugin_lib_names:
+      - nav2_compute_path_to_pose_action_bt_node
+      - nav2_compute_path_through_poses_action_bt_node
+      - nav2_follow_path_action_bt_node
+      - nav2_back_up_action_bt_node
+      - nav2_spin_action_bt_node
+      - nav2_wait_action_bt_node
+      - nav2_clear_costmap_service_bt_node
+      - nav2_is_stuck_condition_bt_node
+      - nav2_goal_reached_condition_bt_node
+      - nav2_goal_updated_condition_bt_node
+      - nav2_goal_updated_controller_bt_node
+      - nav2_initial_pose_received_condition_bt_node
+      - nav2_reinitialize_global_localization_service_bt_node
+      - nav2_rate_controller_bt_node
+      - nav2_distance_controller_bt_node
+      - nav2_speed_controller_bt_node
+      - nav2_truncate_path_action_bt_node
+      - nav2_goal_updater_node_bt_node
+      - nav2_recovery_node_bt_node
+      - nav2_pipeline_sequence_bt_node
+      - nav2_round_robin_node_bt_node
+      - nav2_transform_available_condition_bt_node
+      - nav2_time_expired_condition_bt_node
+      - nav2_distance_traveled_condition_bt_node
+      - nav2_single_trigger_bt_node
+      - nav2_is_battery_low_condition_bt_node
+      - nav2_navigate_through_poses_action_bt_node
+      - nav2_navigate_to_pose_action_bt_node
+      - nav2_remove_passed_goals_action_bt_node
+      - nav2_planner_selector_bt_node
+      - nav2_controller_selector_bt_node
+      - nav2_goal_checker_selector_bt_node
+
+# behavior_server: BackUp/Spin/Wait/DriveOnHeading等のリカバリー動作を実行するノード。
+# cmd_velはcollision_monitorを経由せず直接publishするため、後退・回転中の衝突回避は
+# このノード自身のローカルコストマップベースの衝突チェック（simulate_ahead_time）が担う。
+# 以前はNav2パッケージデフォルトに依存していたが、安全に関わるため明示的に設定する。
+# 値はNav2標準デフォルトを踏襲しているが、Docker内での実際のデフォルト値確認および
+# Gazebo/実機での検証を経て最終確定すること。
+# NOTE: Humbleのnav2_behaviors::BehaviorServerが実際に読むのは costmap_topic/footprint_topic
+# のみ（local_/global_の接頭辞や transform_timeout は存在せず無視される）。グローバル
+# コストマップでの衝突チェックはこのバージョンでは行えないため、必要ならNav2アップグレード
+# を検討すること。
+behavior_server:
+  ros__parameters:
+    use_sim_time: False
+    costmap_topic: local_costmap/costmap_raw
+    footprint_topic: local_costmap/published_footprint
+    cycle_frequency: 10.0
+    behavior_plugins: ["spin", "backup", "drive_on_heading", "wait"]
+    spin:
+      plugin: "nav2_behaviors/Spin"
+    backup:
+      plugin: "nav2_behaviors/BackUp"
+    drive_on_heading:
+      plugin: "nav2_behaviors/DriveOnHeading"
+    wait:
+      plugin: "nav2_behaviors/Wait"
+    global_frame: odom
+    robot_base_frame: base_footprint
+    transform_tolerance: 0.1
+    # バックアップ/スピン実行中に衝突予測のためシミュレートする時間。値が短すぎると
+    # 急な後方障害物の検知が間に合わない可能性があるため要検証。
+    simulate_ahead_time: 2.0
+    max_rotational_vel: 1.0
+    min_rotational_vel: 0.4
+    rotational_acc_lim: 3.2
+
+controller_server:
+  ros__parameters:
+    use_sim_time: False
+    controller_frequency: 10.0
+    min_x_velocity_threshold: 0.001
+    min_y_velocity_threshold: 0.5
+    min_theta_velocity_threshold: 0.001
+    # controller が有効な速度を出せない状態 (前方に障害物、進捗なし等) を許容する時間 [s]。
+    # この間は速度 0 を出して待ち、超えると FollowPath が失敗して BT のリカバリー (Wait/BackUp) に入る。
+    # 一時的な障害物なら消えるまで待つだけで再開できるよう、progress_checker の
+    # movement_time_allowance と同じ 5.0 にしている (0.5 だと出現から 1 秒足らずでリカバリーに入る)。
+    # -1 (無期限) にはしないこと: progress_checker の「進捗なし」の失敗まで無視され、詰まっても
+    # FollowPath が失敗せず、リカバリーにも入れず永久に停止する (Gazebo で確認)。
+    failure_tolerance: 5.0
+    progress_checker_plugin: "progress_checker"
+    goal_checker_plugins: ["general_goal_checker"]
+    controller_plugins: ["FollowPath"]
+
+    speed_limit_topic: "/speed_limit"
+
+    # Progress checker parameters
+    # movement_time_allowance: 「一定時間進まなければ詰まりとみなしFollowPathを失敗させる」タイムアウト。
+    # 衝突検知後の待機時間としても機能する（初期値は旧collision_behavior_nodeのstop_wait_timeを踏襲）。
+    # 現地/Gazebo検証で最終値を確定すること。
+    progress_checker:
+      plugin: "nav2_controller::SimpleProgressChecker"
+      required_movement_radius: 0.5
+      movement_time_allowance: 5.0
+
+    general_goal_checker:
+      stateful: True
+      plugin: "nav2_controller::SimpleGoalChecker"
+      xy_goal_tolerance: 0.25
+      yaw_goal_tolerance: 0.25
+
+    # RPP parameters
+    FollowPath:
+      plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
+      desired_linear_vel: 1.0
+      lookahead_dist: 1.6
+      min_lookahead_dist: 1.3
+      max_lookahead_dist: 1.9
+      lookahead_time: 1.5
+      rotate_to_heading_angular_vel: 0.8
+      transform_tolerance: 0.1
+      use_velocity_scaled_lookahead_dist: true
+      min_approach_linear_velocity: 0.05
+      approach_velocity_scaling_dist: 1.0
+      use_collision_detection: true
+      max_allowed_time_to_collision_up_to_carrot: 1.0
+      use_regulated_linear_velocity_scaling: true
+      use_cost_regulated_linear_velocity_scaling: true
+      regulated_linear_scaling_min_radius: 0.9
+      regulated_linear_scaling_min_speed: 0.25
+      cost_scaling_dist: 0.3
+      cost_scaling_gain: 1.0
+      inflation_cost_scaling_factor: 1.0
+
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      update_frequency: 5.0
+      publish_frequency: 2.0
+      global_frame: odom
+      robot_base_frame: base_footprint
+      use_sim_time: False
+      rolling_window: true
+      width: 8
+      height: 8
+      resolution: 0.05
+
+      footprint: "[[0.4, 0.3], [0.4, -0.3], [-0.2, -0.3], [-0.2, 0.3]]"
+      # 膨張レイヤーの内接半径は「フットプリントの原点から最も近い辺までの距離」で決まる。
+      # このフットプリントは原点が後端寄り (後端 0.2m) なので、半幅 (0.3m) より小さい 0.2m になり、
+      # 幅 0.5m 未満の隙間 (例: 間隔 0.8m のコーン) が致死扱いにならず、プランナ (NavFn) が
+      # 通れると誤認してその隙間へ経路を引く。RPP は実フットプリントで衝突と判定して進めず、
+      # 詰まって失敗する。0.1 の余白で内接半径を 0.3m (= 半幅) にして、通れない隙間を塞ぐ。
+      footprint_padding: 0.1
+
+      plugins: [
+          "top_obstacle_layer",
+          # "obstacle_layer",
+          # "depth_voxel_layer",
+          "obstacle_stvl_layer",
+          # "denoise_layer",
+          "inflation_layer",
+        ]
+
+      denoise_layer:
+        plugin: "nav2_costmap_2d::DenoiseLayer"
+        enabled: True
+        minimal_group_size: 4
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        # 膨張の計算量は半径内のセル数に比例するので、半径を小さくすると負荷が減る。
+        # 半径はフットプリントの外接半径 (padding 込みで約 0.64m) 以上にすること (Smac の衝突判定の高速化の条件)。
+        # NavFn に戻す場合 (global_planner:=navfn) は、従来の inflation_radius: 2.5 / cost_scaling_factor: 1.0 も検討する。
+        inflation_radius: 0.8
+        cost_scaling_factor: 3.0
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: True
+        observation_sources: scan
+        scan:
+          topic: /scan_front_lidar
+          max_obstacle_height: 2.0
+          clearing: True
+          marking: True
+          data_type: "LaserScan"
+      top_obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: True
+        observation_sources: scan
+        scan:
+          topic: /scan_top_lidar
+          max_obstacle_height: 2.0
+          clearing: True
+          marking: True
+          data_type: "LaserScan"
+      depth_voxel_layer:
+        plugin: "nav2_costmap_2d::VoxelLayer"
+        enabled: True
+        publish_voxel_map: True
+        origin_z: 0.0
+        z_resolution: 0.05
+        z_voxels: 16
+        max_obstacle_height: 3.0
+        mark_threshold: 0
+        observation_sources: depth_camera
+        depth_camera:
+          topic: /camera/camera/depth/color/points
+          max_obstacle_height: 1.5
+          min_obstacle_height: 0.3
+          clearing: True
+          marking: True
+          data_type: "PointCloud2"
+          raytrace_max_range: 2.5
+          raytrace_min_range: 0.0
+          obstacle_max_range: 2.0
+          obstacle_min_range: 0.0
+      obstacle_stvl_layer:
+        plugin: "spatio_temporal_voxel_layer/SpatioTemporalVoxelLayer"
+        enabled: True
+        voxel_decay: 5.0
+        decay_model: 0
+        voxel_size: 0.05
+        track_unknown_space: True
+        observation_persistence: 0.0
+        max_obstacle_height: 2.0
+        mark_threshold: 0
+        update_footprint_enabled: True
+        combination_method: 1
+        origin_z: 0.0
+        publish_voxel_map: True
+        transform_tolerance: 0.5
+        mapping_mode: False
+        map_save_duration: 60.0
+        observation_sources: obstacle_points
+        obstacle_points:
+          data_type: PointCloud2
+          topic: /obstacle_detection_3d_node/points_obstacle
+          marking: True
+          clearing: True
+          obstacle_range: 2.5
+          raytrace_range: 3.0
+          min_obstacle_height: 0.0
+          max_obstacle_height: 2.0
+          expected_update_rate: 0.0
+          observation_persistence: 0.0
+          inf_is_valid: False
+          filter: "voxel"
+          voxel_min_points: 1
+          qos_overrides:
+            reliability: reliable
+      always_send_full_costmap: True
+
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      map_topic: /planning_map
+      update_frequency: 1.0
+      publish_frequency: 1.0
+      global_frame: map
+      robot_base_frame: base_footprint
+      use_sim_time: False
+
+      footprint: "[[0.4, 0.3], [0.4, -0.3], [-0.2, -0.3], [-0.2, 0.3]]"
+      # 膨張レイヤーの内接半径は「フットプリントの原点から最も近い辺までの距離」で決まる。
+      # このフットプリントは原点が後端寄り (後端 0.2m) なので、半幅 (0.3m) より小さい 0.2m になり、
+      # 幅 0.5m 未満の隙間 (例: 間隔 0.8m のコーン) が致死扱いにならず、プランナ (NavFn) が
+      # 通れると誤認してその隙間へ経路を引く。RPP は実フットプリントで衝突と判定して進めず、
+      # 詰まって失敗する。0.1 の余白で内接半径を 0.3m (= 半幅) にして、通れない隙間を塞ぐ。
+      footprint_padding: 0.1
+
+      resolution: 0.05
+      track_unknown_space: true
+
+      plugins: [
+          "static_layer",
+          "top_obstacle_layer",
+          # "obstacle_layer",
+          "obstacle_stvl_layer",
+          # "denoise_layer",
+          "inflation_layer",
+        ]
+
+      # filters: ["speed_filter"]
+
+      top_obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: True
+        observation_sources: scan
+        scan:
+          topic: /scan_top_lidar
+          max_obstacle_height: 2.0
+          clearing: True
+          marking: True
+          data_type: "LaserScan"
+          raytrace_max_range: 6.0
+          raytrace_min_range: 0.0
+          obstacle_max_range: 5.5
+          obstacle_min_range: 0.0
+
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: True
+        observation_sources: scan
+        scan:
+          topic: /scan_front_lidar
+          max_obstacle_height: 2.0
+          clearing: True
+          marking: True
+          data_type: "LaserScan"
+          raytrace_max_range: 3.0
+          raytrace_min_range: 0.0
+          obstacle_max_range: 2.5
+          obstacle_min_range: 0.0
+
+      depth_voxel_layer:
+        plugin: "nav2_costmap_2d::VoxelLayer"
+        enabled: True
+        publish_voxel_map: True
+        origin_z: 0.0
+        z_resolution: 0.05
+        z_voxels: 16
+        max_obstacle_height: 3.0
+        mark_threshold: 0
+        observation_sources: depth_camera
+        depth_camera:
+          topic: /rs_d435i/depth/color/points
+          max_obstacle_height: 2.0
+          clearing: True
+          marking: True
+          data_type: "PointCloud2"
+          raytrace_max_range: 3.0
+          raytrace_min_range: 0.0
+          obstacle_max_range: 2.5
+          obstacle_min_range: 0.0
+
+      obstacle_stvl_layer:
+        plugin: "spatio_temporal_voxel_layer/SpatioTemporalVoxelLayer"
+        enabled: true
+        voxel_decay: 25.0
+        decay_model: 0
+        voxel_size: 0.05
+        track_unknown_space: true
+        unknown_threshold: 15
+        mark_threshold: 0
+        update_footprint_enabled: true
+        combination_method: 1
+        origin_z: 0.0
+        publish_voxel_map: false
+        transform_tolerance: 0.2
+        mapping_mode: false
+        map_save_duration: 60.0
+        observation_sources: pointcloud
+        pointcloud:
+          data_type: PointCloud2
+          topic: /obstacle_detection_3d_node/points_obstacle
+          marking: true
+          clearing: true
+          obstacle_range: 3.0
+          min_obstacle_height: 0.0
+          max_obstacle_height: 2.0
+          expected_update_rate: 0.0
+          observation_persistence: 0.0
+          inf_is_valid: false
+          voxel_filter: true
+          clear_after_reading: true
+          max_z: 2.0
+          min_z: 0.0
+          vertical_fov_angle: 0.8745
+          horizontal_fov_angle: 1.047
+          decay_acceleration: 1.0
+          model_type: 0
+          qos_overrides:
+            reliability: reliable
+
+      denoise_layer:
+        plugin: "nav2_costmap_2d::DenoiseLayer"
+        enabled: True
+        minimal_group_size: 10
+
+      static_layer:
+        plugin: "nav2_costmap_2d::StaticLayer"
+        map_subscribe_transient_local: True
+
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        # local_costmap の inflation_layer と同じ理由 (負荷・外接半径) で小さくしている。
+        # 従来値は 2.5 / 1.0 (NavFn に戻す場合 global_planner:=navfn は、この値も検討する)。
+        cost_scaling_factor: 3.0
+        inflation_radius: 1.0
+
+      speed_filter:
+        plugin: "nav2_costmap_2d::SpeedFilter"
+        enabled: True
+        filter_info_topic: "/costmap_filter_info"
+        speed_limit_topic: "/speed_limit"
+
+      always_send_full_costmap: True
+
+map_server:
+  ros__parameters:
+    use_sim_time: False
+    yaml_filename: "map.yaml"
+
+# planner_server: グローバルプランナ (プラグイン名は BT の planner_id に合わせて GridBased で固定)。
+# GridBased の設定は launch 引数 global_planner (既定 smac_lattice) で選んだ次のファイルにある:
+#   params/planner_smac_lattice.yaml : Smac Lattice (フットプリントで衝突判定。負荷を下げるパラメータのコメントあり)
+#   params/planner_navfn.yaml        : NavFn (従来。計算負荷が小さい)
+# 実機で負荷が高い場合は、global_planner:=navfn で NavFn に戻せる。
+planner_server:
+  ros__parameters:
+    expected_planner_frequency: 1.0
+    use_sim_time: False
+    planner_plugins: ["GridBased"]
+
+costmap_filter_info_server:
+  ros__parameters:
+    use_sim_time: False
+    type: 1
+    filter_info_topic: "/costmap_filter_info"
+    mask_topic: "/local_costmap/costmap"
+    base: 100.0
+    multiplier: -0.6
+
+collision_detector:
+  ros__parameters:
+    use_sim_time: False
+    base_frame_id: "base_footprint"
+    odom_frame_id: "odom"
+    state_topic: "collision_detector_state"
+    transform_tolerance: 0.5
+    source_timeout: 3.0
+    base_shift_correction: True
+    polygons: ["PolygonFront", "PolygonRear"]
+
+    PolygonFront:
+      type: "polygon"
+      points: [0.6, 0.3, 0.6, -0.3, 0.3, -0.3, 0.3, 0.3]
+      action_type: "none"
+      min_points: 4
+      visualize: True
+      polygon_pub_topic: "~/polygon_front"
+    PolygonRear:
+      type: "polygon"
+      points: [-0.2, 0.3, -0.2, -0.3, -0.4, -0.3, -0.4, 0.3]
+      action_type: "none"
+      min_points: 4
+      visualize: True
+      polygon_pub_topic: "~/polygon_rear"
+
+    observation_sources: ["scan_top", "scan_front"]
+    scan_top:
+      type: "scan"
+      topic: "scan_top_lidar"
+      enabled: True
+    scan_front:
+      type: "scan"
+      topic: "scan_front_lidar"
+      enabled: False
+
+collision_monitor:
+  ros__parameters:
+    use_sim_time: False
+    base_frame_id: "base_footprint"
+    odom_frame_id: "odom"
+    cmd_vel_in_topic: "cmd_vel_nav" # controller_server の出力
+    cmd_vel_out_topic: "cmd_vel_collision" # velocity_smoother へ渡す
+    state_topic: "collision_monitor_state" # TUI/診断での観測用
+    transform_tolerance: 0.5
+    source_timeout: 3.0
+    base_shift_correction: True
+    # 順序重要: STOPを先に評価させる（polygons.cpp のロジック上、STOPが決まった時点で
+    # それ以降のpolygonはスキップされるため、より優先度の高いSTOPを先に置く）
+    polygons: ["PolygonStop", "PolygonSlowdown", "PolygonApproach"]
+    # polygons: []
+
+    # 即時の緊急停止（速度ゼロ）。現地チューニングで enabled を false にする、
+    # あるいは approach のみで十分と判断できればブロックごと削除してよい。
+    # enabled は動的パラメータのため ros2 param set での即時切替も可能。
+    PolygonStop:
+      type: "polygon"
+      points: [0.6, 0.3, 0.6, -0.3, 0.3, -0.3, 0.3, 0.3]
+      action_type: "stop"
+      min_points: 4
+      enabled: False
+      visualize: True
+      polygon_pub_topic: "~/polygon_stop"
+
+    # 側方から進路へ入ってくる対象 (横切る歩行者など) に早めに減速して、反応時間を稼ぐ。
+    # ロボットの進路を横切る歩行者は、前方の箱 (Stop / Approach) に入る前に車体の側面・後部へ当たりうる
+    # (Gazebo で、横切る歩行者が車体の右後方に接触した)。そのため両脇 0.8m、前方 1.4m、後方 0.3m と広く取る。
+    # 狭い通路の壁で常に減速するようなら、y を狭める、slowdown_ratio を上げる、
+    # enabled を false にする (ros2 param set で即時に切替可) で調整する。
+    PolygonSlowdown:
+      type: "polygon"
+      points: [1.4, 0.8, 1.4, -0.8, -0.3, -0.8, -0.3, 0.8]
+      action_type: "slowdown"
+      slowdown_ratio: 0.3
+      min_points: 4
+      enabled: False
+      visualize: True
+      polygon_pub_topic: "~/polygon_slowdown"
+
+    # points を指定せず footprint_topic を使う: 現在の速度 (旋回を含む) でフットプリント全体を前方へ
+    # シミュレートし、time_before_collision 以内に接触するなら減速する。旋回中の側面接触も対象になる。
+    # 従来の固定の前方の箱に戻す場合は、footprint_topic を消して次の points を有効にする:
+    #   points: [0.6, 0.3, 0.6, -0.3, 0.3, -0.3, 0.3, 0.3]
+    # 実機の注意: footprint は padding (0.1m) を含むので、LiDAR が車体の一部を検出する配置だと、
+    # 常に接触と判定して止まる。実機では、scan に車体の点が入っていないか確認すること。
+    PolygonApproach:
+      type: "polygon"
+      footprint_topic: "local_costmap/published_footprint"
+      action_type: "approach"
+      time_before_collision: 2.0
+      simulation_time_step: 0.1
+      min_points: 4
+      visualize: True
+      enabled: False
+      polygon_pub_topic: "~/polygon_approach"
+
+    observation_sources: ["scan_top"]
+    scan_top:
+      type: "scan"
+      topic: "scan_top_lidar"
+      enabled: True
+
+# https://docs.nav2.org/configuration/packages/configuring-velocity-smoother.html
+# collision_monitor/PolygonStopによる急停止からの復帰時に速度が滑らかに立ち上がるよう、
+# 加減速リミットを明示的に設定する（以前はパッケージデフォルト依存だった）。
+# 値はNav2標準デフォルト相当。Gazebo/実機で、急停止からの復帰が唐突にならないか、
+# かつ停止までの制動距離が安全か、両面を検証したうえで最終確定すること。
+# NOTE: 以前コメントアウトされていたmax_velocity: [0.65, 0.0, 3.0]は、FollowPathの
+# desired_linear_vel: 1.0と整合しない（0.65に頭打ちされてしまう）ため、そのまま有効化せず
+# 意図する巡航速度に合わせて別途決定すること。
+velocity_smoother:
+  ros__parameters:
+    use_sim_time: False
+    smoothing_frequency: 20.0
+    scale_velocities: false
+    # feedback: OPEN_LOOP時はOdomSmoother(odom_topic/odom_duration)は生成・参照されない。
+    # 実測速度から滑らかに追従させたい場合はCLOSED_LOOPに変更しodom_topic/odom_durationを
+    # 追加すること（挙動が変わるため今回は変更しない）。
+    feedback: "OPEN_LOOP"
+    max_accel: [2.5, 0.0, 3.2]
+    max_decel: [-2.5, 0.0, -3.2]
+    deadband_velocity: [0.0, 0.0, 0.0]
+    velocity_timeout: 1.0
+    # max_velocity: [0.65, 0.0, 3.0] # x, y, theta. default: [0.5, 0.0, 2.0]

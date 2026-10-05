@@ -1,0 +1,34 @@
+version: "2.0"
+name: sequencer_pause_resume
+description: >
+  走行中に waypoint_sequencer へ一時停止を要求するとロボットが停止し、解除すると走行を再開して
+  最後まで到達することを確認する (Named Pause Slot)。
+  区間内に 4 秒以上の連続した停止があることで、一時停止が効いたことを確認する。
+profile: mg01
+world: warehouse
+tags: [full, mg_sequencer, pause]
+
+stack_args:
+  waypoints_load_path: "pkg://mg_scenario_test/scenarios/data/through_waypoints.yaml"
+
+setup:
+  - respawn: { pose: { x: 0.0, y: 0.0, yaw: 0.0 }, settle_sec: 3.0 }
+
+run:
+  mg_sequencer:
+    waypoints_file: "pkg://mg_scenario_test/scenarios/data/through_waypoints.yaml"
+
+timeline:
+  - name: pause_for_5s
+    when: { robot_travelled: { distance: 3.0 } }
+    do:
+      - sequencer_pause: { active: true }
+      - delay: { sec: 5.0 }
+      - sequencer_pause: { active: false }
+
+monitors:
+  - max_stop_duration: { min_stop_sec: 4.0, from_goal_started: 0, until_goal_reached: 2 }
+
+expect:
+  - reached_all
+  - time_limit: { sec: 200 }

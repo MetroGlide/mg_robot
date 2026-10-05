@@ -1,0 +1,25 @@
+# mg_waypoint_navigation の waypoint (version 2.0)。通過点 3 つと停止点 1 つ。
+# sim の warehouse で到達を確認済みの座標 (実機の waypoint.yaml の WP0, WP2, WP3, WP1)。
+version: "2.0"
+defaults:
+  reach_tolerance: 0.5
+  through_tolerance: 1.5
+  is_through_point: true
+waypoints:
+  - index: 0
+    pose:
+      position: {x: 4.449, y: -0.5386, z: 0.0}
+      orientation: {x: 0.0, y: 0.0, z: -0.0029, w: 1.0}
+  - index: 1
+    pose:
+      position: {x: 9.977, y: 1.7435, z: 0.0}
+      orientation: {x: 0.0, y: 0.0, z: -0.4467, w: 0.8947}
+  - index: 2
+    pose:
+      position: {x: 9.972, y: -5.5797, z: 0.0}
+      orientation: {x: 0.0, y: 0.0, z: -0.6855, w: 0.7281}
+  - index: 3
+    navigation: {is_through_point: false}
+    pose:
+      position: {x: 4.601, y: 5.847, z: 0.0}
+      orientation: {x: 0.0, y: 0.0, z: 0.2152, w: 0.9766}

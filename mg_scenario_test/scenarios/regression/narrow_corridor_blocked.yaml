@@ -1,0 +1,32 @@
+version: "2.0"
+name: narrow_corridor_blocked
+description: >
+  進路の脇を 2 枚の長い壁で挟んだ、ロボットが通れない狭い回廊 (幅 0.5m、長さ 3m。スタートからゴールへの直線に沿う)。
+  ロボットは回廊へ入らず、壁の外側を迂回してゴールへ到達し、壁に接触しない (通れない隙間へ経路を引いて詰まらない)。
+profile: mg01
+world: warehouse
+tags: [full, static_obstacle, narrow_corridor, nav2_goals]
+
+obstacles:
+  wall_left:
+    model: { type: primitive, shape: box, size: { x: 3.0, y: 0.2, z: 1.5 }, static: true }
+  wall_right:
+    model: { type: primitive, shape: box, size: { x: 3.0, y: 0.2, z: 1.5 }, static: true }
+
+setup:
+  - respawn: { pose: { x: 0.0, y: 0.0, yaw: 0.0 }, settle_sec: 3.0 }
+  # 内側の間隔 = 0.5m
+  - spawn: { obstacle: wall_left, pose: { frame: world, x: 2.37, y: 1.32, z: 0.75, yaw: 0.381 } }
+  - spawn: { obstacle: wall_right, pose: { frame: world, x: 2.63, y: 0.68, z: 0.75, yaw: 0.381 } }
+
+run:
+  nav2_goals:
+    goals:
+      - pose: { x: 5.0, y: 2.0, yaw: 0.0 }
+
+monitors:
+  - obstacle_clearance: { obstacles: [wall_left, wall_right], min_clearance: 0.0 }
+
+expect:
+  - reached_all
+  - time_limit: { sec: 120 }

@@ -1,0 +1,23 @@
+# ==============================================================================
+# SLAMGNSS2D & TF & RealSense  (約39.0 GB / 30分)
+# ==============================================================================
+# --- SLAMGNSS2D & TF ---
+/odom
+/scan_top_lidar
+/tf_static
+/tf
+/navpvt
+/gps/fix
+/nmea_sentence
+
+# --- RealSense D435i ---
+# 可視画像 (RGB) & カメラ情報
+/camera/camera/color/image_raw
+/camera/camera/color/camera_info
+
+# デプス画像 & カメラ情報 (点群復元用)
+/camera/camera/depth/image_rect_raw
+/camera/camera/depth/camera_info
+
+# 6軸IMU (ジャイロ・加速度統合)
+/camera/camera/imu

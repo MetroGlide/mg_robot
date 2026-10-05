@@ -1,0 +1,265 @@
+#include "slam_gnss_2d/core/slam_node_base.hpp"
+
+#include <cmath>
+#include <iomanip>
+#include <sstream>
+
+#include "slam_gnss_2d/core/component_factory.hpp"
+#include "slam_gnss_2d/core/config_loader.hpp"
+#include "slam_gnss_2d/core/timing.hpp"
+
+namespace slam_gnss_2d {
+namespace core {
+
+SlamNodeBase::SlamNodeBase(const std::string& node_name)
+    : rclcpp::Node(node_name),
+      last_stat_time_(std::chrono::steady_clock::now()) {
+  ConfigLoader::declare_params(*this);
+}
+
+SlamNodeBase::~SlamNodeBase() {
+  if (synchronizer_) {
+    synchronizer_->stop();
+  }
+}
+
+void SlamNodeBase::init() {
+  config_ = ConfigLoader::build_config(*this);
+  skip_intermediate_rendering_ = config_.map.skip_intermediate_rendering;
+  if (has_parameter("skip_intermediate_rendering")) {
+    skip_intermediate_rendering_ = get_parameter("skip_intermediate_rendering").as_bool();
+  }
+
+
+  auto [scan_src, odom_src] = setup_io(config_);
+  scan_source_ = scan_src;
+  odom_source_ = odom_src;
+
+  pose_graph_ = build_pose_graph_builder(config_);
+  renderer_ = build_renderer(config_);
+
+  if (config_.gnss.enabled) {
+    gnss_source_ = setup_gnss_source(config_);
+  }
+
+  synchronizer_ = std::make_shared<SensorSynchronizer>(
+      scan_source_, odom_source_, gnss_source_, config_.deskew);
+  synchronizer_->set_frame_callback([this](const SensorFrame& frame) {
+    this->on_frame(frame);
+  });
+  synchronizer_->start();
+
+  orchestrator_ = std::make_shared<GraphOrchestrator>(
+      pose_graph_,
+      config_.gnss.enabled,
+      config_.optimization.isam2.relinearize_threshold,
+      config_.gnss.anchor.min_fix_status,
+      config_.gnss.sigma.fix_m,
+      config_.gnss.sigma.float_m,
+      config_.gnss.sigma.factor_yaw_variance,
+      config_.gnss.anchor.init_distance_m,
+      config_.gnss.validation.max_sigma_m,
+      config_.optimization.rerender_threshold_m,
+      config_.gnss.min_interval_m,
+      config_.gnss.anchor.sigma_m,
+      config_.gnss.anchor.init_yaw_sigma_rad,
+      config_.gnss.max_innovation_m,
+      config_.gnss.robust_kernel,
+      config_.gnss.robust_kernel_scale,
+      config_.gnss.prior_min_fix_status,
+      config_.gnss.dynamic_reanchor.enabled,
+      config_.gnss.dynamic_reanchor.min_fix_status,
+      config_.gnss.dynamic_reanchor.min_samples,
+      config_.gnss.dynamic_reanchor.min_distance_m,
+      config_.gnss.dynamic_reanchor.max_residual_rms_m,
+      config_.optimization.batch_on_finalize,
+      config_.optimization.batch_max_iterations,
+      config_.gnss.lever_arm);
+
+  orchestrator_->set_between_robust_kernel(
+      config_.optimization.between_robust_kernel, config_.optimization.between_robust_kernel_scale);
+
+  auto node_shared = shared_from_this();
+  visualizer_ = std::make_shared<ros::SlamVisualizer>(node_shared, config_.gnss.enabled);
+  tf_broadcaster_ = std::make_shared<ros::SlamTfBroadcaster>(node_shared);
+  save_service_ = std::make_shared<ros::MapSaveService>(node_shared, pose_graph_, orchestrator_);
+  pose_graph_service_ = std::make_shared<ros::PoseGraphService>(node_shared, pose_graph_, orchestrator_);
+
+  double map_period_sec = 1.0 / std::max(config_.map.publish_hz, 0.1);
+  map_timer_ = create_wall_timer(
+      std::chrono::duration<double>(map_period_sec),
+      [this]() { this->publish_map_timer(); });
+
+  tf_timer_ = create_wall_timer(
+      std::chrono::milliseconds(100),
+      [this]() { this->publish_tf_timer(); });
+
+  RCLCPP_INFO(
+      get_logger(),
+      "%s started (scan_matching=%d, loop_closure=%d, matcher=%s, ref=%s)\n"
+      "  scan: %s, odom: %s\n"
+      "  map: dynamic @ %.2fm/px, margin=%.1fm",
+      get_name(), config_.scan_matching.enabled, config_.loop_closure.enabled,
+      config_.scan_matching.type.c_str(), config_.scan_matching.reference.c_str(),
+      config_.topics.scan.c_str(), config_.topics.odom.c_str(),
+      config_.map.resolution, config_.map.expansion_margin);
+  last_map_publish_time_ = std::chrono::steady_clock::now();
+}
+
+void SlamNodeBase::on_frame(const SensorFrame& frame) {
+  const auto t_process_start = std::chrono::steady_clock::now();
+  auto result = orchestrator_->process_frame(frame);
+  stage_times_.process_frame_sec += elapsed_sec(t_process_start);
+  const auto& node = result.node;
+  if (!node.has_value()) {
+    RCLCPP_DEBUG(
+        get_logger(),
+        "Scan rejected: below threshold at (%.2f, %.2f)",
+        frame.odom.x, frame.odom.y);
+    return;
+  }
+
+  tf_broadcaster_->update(*node, frame.odom);
+  node_count_++;
+  if (node_count_ == 1 || node_count_ % 10 == 0) {
+    RCLCPP_DEBUG(
+        get_logger(),
+        "Node #%d: x=%.2f y=%.2f yaw=%.1fdeg",
+        node->index, node->x, node->y, node->yaw * 180.0 / M_PI);
+  }
+
+  if (result.loop_closed) {
+    RCLCPP_INFO(get_logger(), "Loop closed at node #%d", node->index);
+  }
+
+  // 中間描画をスキップする場合、描画・可視化配信はすべて finalize で一括実行する
+  if (skip_intermediate_rendering_) {
+    return;
+  }
+
+  const auto t_render_start = std::chrono::steady_clock::now();
+  if (result.loop_closed || result.rerender_required) {
+    if (result.loop_closed) {
+      visualizer_->publish_path_before_optimize();
+    }
+    auto nodes = pose_graph_->get_nodes();
+    renderer_->rerender_all(nodes);
+    visualizer_->rebuild_path(nodes);
+  } else {
+    if (!renderer_->add_node(*node)) {
+      renderer_->rerender_all(pose_graph_->get_nodes());
+    }
+    visualizer_->publish_path_increment(*node);
+  }
+  const auto t_publish_start = std::chrono::steady_clock::now();
+  stage_times_.render_sec += std::chrono::duration<double>(t_publish_start - t_render_start).count();
+
+  visualizer_->publish_pose_graph_markers(*pose_graph_);
+
+  std::vector<PoseNode> new_nodes = {*node};
+  std::vector<PoseEdge> new_seq_edges;
+  if (result.new_seq_edge.has_value()) {
+    new_seq_edges.push_back(*result.new_seq_edge);
+  }
+  std::vector<GnssPrior> new_priors;
+  if (result.new_gnss_prior.has_value()) {
+    new_priors.push_back(*result.new_gnss_prior);
+  }
+
+  visualizer_->publish_pose_graph_diff(
+      new_nodes,
+      new_seq_edges,
+      new_priors,
+      result.new_loop_edges,
+      result.loop_closed,
+      result.rerender_required);
+  stage_times_.publish_sec += elapsed_sec(t_publish_start);
+
+  map_dirty_ = true;
+}
+
+void SlamNodeBase::publish_map_timer(bool force) {
+  visualizer_->publish_anchor(*orchestrator_);
+
+  auto now = std::chrono::steady_clock::now();
+  if (std::chrono::duration<double>(now - last_stat_time_).count() >= 30.0) {
+    auto stats = synchronizer_->get_stats();
+    RCLCPP_DEBUG(
+        get_logger(),
+        "[stat] nodes=%d, scans=%d, odom_miss=%d",
+        node_count_, stats.scans, stats.odom_miss);
+    last_stat_time_ = now;
+  }
+
+  if (!map_dirty_) {
+    return;
+  }
+
+  double min_interval_sec = 1.0 / std::max(config_.map.publish_hz, 0.01);
+  if (!force &&
+      std::chrono::duration<double>(now - last_map_publish_time_).count() < min_interval_sec) {
+    return;
+  }
+
+  last_map_publish_time_ = now;
+  map_dirty_ = false;
+
+  visualizer_->publish_map(*renderer_);
+}
+
+void SlamNodeBase::publish_tf_timer() {
+  tf_broadcaster_->publish();
+}
+
+void SlamNodeBase::finalize() {
+  if (finalized_) {
+    return;
+  }
+  finalized_ = true;
+  if (!orchestrator_) {
+    return;
+  }
+  RCLCPP_INFO(get_logger(), "Finalizing SLAM node...");
+
+  const auto t_finalize_start = std::chrono::steady_clock::now();
+  auto finalize_result = orchestrator_->finalize();
+  const double batch_sec = elapsed_sec(t_finalize_start);
+
+  const auto t_final_render_start = std::chrono::steady_clock::now();
+  // 中間描画をスキップした場合は、最適化結果の有無に関わらずここで初めて描画する
+  if (finalize_result.rerender_required || skip_intermediate_rendering_) {
+    auto nodes = pose_graph_->get_nodes();
+    renderer_->rerender_all(nodes);
+
+    if (config_.trajectory_noise_filter.enabled) {
+      map_manager::TrajectoryNoiseFilter noise_filter(config_.trajectory_noise_filter);
+      noise_filter.apply(*renderer_, nodes);
+    }
+
+    visualizer_->rebuild_path(nodes);
+    map_dirty_ = true;
+    publish_map_timer(true);
+    RCLCPP_INFO(get_logger(), "Final map optimization and rendering complete.");
+  } else {
+    map_dirty_ = true;
+    publish_map_timer(true);
+    RCLCPP_INFO(get_logger(), "Final map published.");
+  }
+  const double final_render_sec = elapsed_sec(t_final_render_start);
+
+  RCLCPP_INFO(
+      get_logger(),
+      "[timing] nodes=%d process_frame(match+graph+optimize)=%.2fs render=%.2fs publish=%.2fs "
+      "finalize_batch=%.2fs final_render=%.2fs",
+      node_count_, stage_times_.process_frame_sec, stage_times_.render_sec,
+      stage_times_.publish_sec, batch_sec, final_render_sec);
+  const auto& os = orchestrator_->stage_times();
+  RCLCPP_INFO(
+      get_logger(),
+      "[timing] process_frame breakdown: add_scan(match)=%.2fs gnss+edges=%.2fs "
+      "optimize(update+estimate)=%.2fs apply_poses=%.2fs",
+      os.add_scan_sec, os.gnss_init_sec, os.optimize_sec, os.apply_poses_sec);
+}
+
+}  // namespace core
+}  // namespace slam_gnss_2d

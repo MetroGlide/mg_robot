@@ -1,0 +1,205 @@
+#!/usr/bin/env python3
+import os
+
+import launch
+from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription
+from launch_ros.actions import Node
+from launch.substitutions import (
+    EnvironmentVariable, IfElseSubstitution, LaunchConfiguration, PathJoinSubstitution)
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from ament_index_python.packages import get_package_share_directory
+
+from mg_utils import launch_argument
+
+
+def generate_launch_description():
+    pkg_name = "mg_bringup"
+    pkg_share = get_package_share_directory(pkg_name)
+
+    drivers_pkg_name = "mg_drivers"
+    drivers_pkg_share = get_package_share_directory(drivers_pkg_name)
+
+    navigation_pkg_name = "mg_navigation"
+    navigation_pkg_share = get_package_share_directory(navigation_pkg_name)
+
+    # Launch configurations
+    launch_argument_creator = launch_argument.LaunchArgumentCreator()
+
+    map_path_arg = launch_argument_creator.create(
+        # "map_path", default=EnvironmentVariable("LOCALIZATION_MAP_PATH")
+        "map_path",
+        default=os.path.join(
+            os.environ.get("MAP_PATH", "/root/ros2_data/map"),
+            # "localization_1.yaml"
+            "Region1_jikoichi.yaml"
+        )
+    )
+    planning_map_path_arg = launch_argument_creator.create(
+        # "planning_map_path", default=EnvironmentVariable("PLANNING_MAP_PATH")
+        "planning_map_path",
+        default=os.path.join(
+            os.environ.get("MAP_PATH", "/root/ros2_data/map"),
+            # "planning_1.yaml"
+            "Region1_kinshi.yaml"
+        )
+    )
+    simulation_arg = launch_argument_creator.create(
+        "simulation", default=EnvironmentVariable("SIMULATION")
+    )
+    waypoints_load_path_arg = launch_argument_creator.create(
+        "waypoints_load_path", default=EnvironmentVariable("WAYPOINT_PATH")
+    )
+    rviz_arg = launch_argument_creator.create(
+        "rviz", default=EnvironmentVariable("USE_RVIZ")
+    )
+    record_bag_arg = launch_argument_creator.create(
+        "record_bag", default="false")
+    global_planner_arg = launch_argument_creator.create(
+        # "global_planner", default="smac_lattice")
+        "global_planner", default="navfn")
+
+    use_ekf_arg = launch_argument_creator.create(
+        "use_ekf", default="True")
+    # "use_ekf", default="False")
+    # ファイル名 (mg_drivers/params 配下) または絶対パス
+    ekf_params_file_arg = launch_argument_creator.create(
+        "ekf_params_file", default="ekf_global.yaml")
+    ekf_odom_topic_arg = launch_argument_creator.create(
+        "ekf_odom_topic", default="ekf_global_odom")
+
+    use_odom_arg = launch_argument_creator.create(
+        "use_odom", default="true")
+    use_lidar_arg = launch_argument_creator.create(
+        "use_lidar", default="true")
+    use_gps_arg = launch_argument_creator.create(
+        "use_gps", default="true")
+    use_realsense_arg = launch_argument_creator.create(
+        "use_realsense", default="true")
+    # 実機ではホイールオドメトリを補正して /odom に出す (シミュレータの /odom はそのまま使う)。
+    # false にすると、ドライバの /odom をそのまま使う従来の構成に戻る。
+    use_odom_corrector_arg = launch_argument_creator.create(
+        "use_odom_corrector",
+        # default=IfElseSubstitution(simulation_arg.launch_config, "false", "true"))
+        default="true")
+    # ファイル名 (mg_drivers/params 配下) または絶対パス
+    odom_corrector_params_file_arg = launch_argument_creator.create(
+        "odom_corrector_params_file", default="wheel_odom_corrector.yaml")
+
+    # false にすると自己位置推定 (map_server / AMCL / EKF など) だけを起動する。
+    # rosbag を再生して自己位置推定を評価するときに使う。
+    use_navigation_arg = launch_argument_creator.create(
+        "use_navigation", default="true")
+    # GNSS から AMCL の初期姿勢を与えるノードと、自己位置の監視ノード (none | watchdog | supervisor)
+    use_gnss_amcl_initializer_arg = launch_argument_creator.create(
+        "use_gnss_amcl_initializer", default="true")
+    localization_monitor_arg = launch_argument_creator.create(
+        "localization_monitor", default="watchdog")
+    supervisor_params_file_arg = launch_argument_creator.create(
+        "supervisor_params_file", default=os.path.join(
+            navigation_pkg_share, "params", "localization_supervisor.yaml"))
+    nav2_params_file_arg = launch_argument_creator.create(
+        "nav2_params_file", default=os.path.join(
+            navigation_pkg_share, "params", "nav2_params.yaml"))
+    bridge_params_file_arg = launch_argument_creator.create(
+        "bridge_params_file", default=os.path.join(
+            get_package_share_directory("slam_gnss_2d"), "params", "nav_bridge.yaml"))
+
+    use_slam_gnss_bridge_arg = launch_argument_creator.create(
+        "use_slam_gnss_bridge", default="true")
+    gnss_transform_file_arg = launch_argument_creator.create(
+        "gnss_transform_file", default=os.path.join(
+            os.environ.get("MAP_PATH", "/root/ros2_data/map"),
+            "gnss_transform.yaml"
+        )
+    )
+
+    # Launch descriptions
+    launch_common = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            pkg_share + "/launch/common/bringup_common.launch.py"
+        ),
+        launch_arguments={
+            "simulation": simulation_arg.launch_config,
+            "drive": "false",
+            "use_odom": use_odom_arg.launch_config,
+            "use_odom_tf": "true",
+            "use_lidar": use_lidar_arg.launch_config,
+            "use_gps": use_gps_arg.launch_config,
+            "use_realsense": use_realsense_arg.launch_config,
+            "use_odom_corrector": use_odom_corrector_arg.launch_config,
+            "odom_corrector_params_file": odom_corrector_params_file_arg.launch_config,
+        }.items(),
+    )
+
+    ekf_group = launch.actions.GroupAction(
+        [
+            Node(
+                package="robot_localization",
+                executable="ekf_node",
+                name="ekf_global_node",
+                output="screen",
+                parameters=[
+                    {"use_sim_time": simulation_arg.launch_config},
+                    PathJoinSubstitution(
+                        [drivers_pkg_share, "params",
+                            ekf_params_file_arg.launch_config]
+                    ),
+                ],
+                remappings=[
+                    ("odometry/filtered", ekf_odom_topic_arg.launch_config),
+                ],
+            ),
+
+        ],
+        condition=launch.conditions.IfCondition(
+            use_ekf_arg.launch_config),
+    )
+
+    bridge_node = Node(
+        package='slam_gnss_2d',
+        executable='slam_gnss_nav_bridge_node',
+        name='slam_gnss_nav_bridge',
+        output='screen',
+        parameters=[
+            bridge_params_file_arg.launch_config,
+            {'use_sim_time': simulation_arg.launch_config,
+             'gnss_transform_file': gnss_transform_file_arg.launch_config},
+        ],
+        condition=launch.conditions.IfCondition(
+            use_slam_gnss_bridge_arg.launch_config),
+    )
+
+    # map_path = PathJoinSubstitution(
+    #     ["/root/ros2_data", map_path_arg.launch_config, "map.yaml"])
+    map_path = map_path_arg.launch_config
+    launch_navigation = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            navigation_pkg_share + "/launch/bringup.launch.py"
+        ),
+        launch_arguments={
+            "simulation": simulation_arg.launch_config,
+            "localization_map": map_path,
+            "planning_map": planning_map_path_arg.launch_config,
+            "waypoints_load_path": waypoints_load_path_arg.launch_config,
+            "rviz": rviz_arg.launch_config,
+            "record_bag": record_bag_arg.launch_config,
+            "global_planner": global_planner_arg.launch_config,
+            "use_navigation": use_navigation_arg.launch_config,
+            "params_file": nav2_params_file_arg.launch_config,
+            "use_gnss_amcl_initializer": use_gnss_amcl_initializer_arg.launch_config,
+            "localization_monitor": localization_monitor_arg.launch_config,
+            "supervisor_params_file": supervisor_params_file_arg.launch_config,
+        }.items(),
+    )
+
+    return LaunchDescription(
+        [
+            *launch_argument_creator.get_created_declare_launch_args(),
+
+            launch_common,
+            ekf_group,
+            bridge_node,
+            launch_navigation,
+        ]
+    )

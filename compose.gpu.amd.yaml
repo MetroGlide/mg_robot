@@ -1,0 +1,13 @@
+services:
+  gazebo-simulation:
+    devices:
+      - /dev/kfd
+      - /dev/dri
+  scenario-test:
+    devices:
+      - /dev/kfd
+      - /dev/dri
+  scenario-env:
+    devices:
+      - /dev/kfd
+      - /dev/dri

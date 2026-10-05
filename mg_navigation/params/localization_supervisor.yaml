@@ -1,0 +1,81 @@
+localization_supervisor_node:
+  ros__parameters:
+    # 判定と復旧の周期 [s]
+    period_sec: 1.0
+
+    # --- 判定のしきい値 ---
+    # AMCL との比較に使う GNSS の位置の標準偏差の上限 [m]。単独測位 (σ 約 1 m) でも、AMCL が数 m ずれれば
+    # 食い違いとして検知できる (分散は AMCL と GNSS の両方を使うので、精度の悪い GNSS では検知が鈍くなる)
+    gnss_max_sigma_m: 2.0
+    gnss_max_age_sec: 3.0
+    # AMCL と GNSS の位置の差のマハラノビス距離の二乗 (2 自由度) がこれを超えたら異常
+    gnss_d2_threshold: 6.0
+    # 測位が届く時刻のずれなどによる位置の不確かさ [m]
+    gnss_extra_std_m: 0.3
+    amcl_max_age_sec: 3.0
+    # 連続する AMCL の推定が示す map->odom の位置・向きの飛び
+    jump_threshold_m: 0.6
+    jump_threshold_rad: 0.35
+    # AMCL が初期化し直された直後は、飛びを異常としない [s]
+    ignore_jump_after_init_sec: 5.0
+    # EKF の姿勢でスキャンを地図に重ね、占有セルから tolerance 以内の点の割合 (一致率) を見る。
+    # 一致率の絶対値は地図の質や LiDAR の特性で決まる (正しい姿勢でも 0.3 前後のことがある) ので、
+    # 次の 2 つを使う。どちらかに当てはまれば異常
+    #  - 一致率が、正常なときの中央値の scan_ratio_factor 倍 (下限 scan_ratio_min) 未満
+    #  - 姿勢の周り (±scan_search_range_m) でずらしたほうが、一致率が scan_gain_threshold 以上増える
+    #    (別走行の地図との位置合わせのずれで、正しい姿勢でも利得が 0.4 前後になるため、既定では使わない (1.0 = 無効))
+    scan_max_age_sec: 2.0
+    scan_radius_m: 25.0
+    scan_tolerance_m: 0.3
+    scan_ratio_min: 0.1
+    scan_ratio_factor: 0.5
+    # 基準の中央値に使う、正常なときの一致率の数 (最初の scan_baseline_min_samples 個までは下限だけを使う)
+    scan_baseline_min_samples: 20
+    scan_baseline_window: 120
+    scan_gain_threshold: 1.0
+    scan_search_range_m: 1.0
+    scan_search_step_m: 0.25
+    scan_max_points: 180
+    # AMCL と EKF の位置の差 [m]
+    diff_threshold_m: 1.0
+    # 復旧の確認: AMCL と EKF の位置の差がこれ以下 [m] (これが続けば AMCL を EKF に戻す)
+    recover_diff_m: 1.0
+    # 起動直後と復旧直後は、EKF・AMCL が落ち着くまで判定しない [s]
+    startup_grace_sec: 30.0
+    grace_after_recovery_sec: 10.0
+
+    # --- 状態遷移 (周期ごとの回数) ---
+    gnss_suspect_ticks: 2
+    gnss_isolate_ticks: 3
+    scan_suspect_ticks: 5
+    scan_isolate_ticks: 10
+    diff_suspect_ticks: 3
+    diff_isolate_ticks: 5
+    corroborate_ticks: 2
+    clear_ticks: 5
+    # AMCL を切り離してから、初期化し直すまで待つ時間 [s]
+    isolate_hold_sec: 3.0
+    recover_ok_ticks: 5
+    recover_timeout_sec: 30.0
+    max_reinit_attempts: 3
+    degraded_retry_sec: 60.0
+    # false: 検知と通知だけを行う (異常を確認したら DEGRADED、消えたら NORMAL。AMCL は切り離さない)。
+    # true: AMCL を切り離し、姿勢を選んで再初期化する。
+    # 再生評価 (kidnap) では、再初期化の姿勢が誤ると誤差が数十 m に広がる試行があり、安全のため既定は false
+    recovery_enabled: false
+
+    # --- 復旧 ---
+    # 復旧の姿勢の候補は、EKF の姿勢、異常が始まる前の map->odom に今のオドメトリの動きを足した姿勢 (巻き戻し)、
+    # 精度の良い GNSS の位置。スキャンが地図に最もよく合うものを選ぶ
+    history_sec: 60.0
+    rollback_margin_sec: 3.0
+    # EKF の姿勢以外の候補に入れ替えるのに必要な、スキャンの一致率の差
+    reinit_min_gain: 0.05
+    # 初期化に使う GNSS の位置の標準偏差の上限 [m]。初期化の広がり (標準偏差) には GNSS の標準偏差を使う
+    reinit_gnss_max_sigma_m: 1.5
+    reinit_position_std_m: 0.5
+    reinit_yaw_std_rad: 0.3
+
+    # 復旧できないとき: warn (通知のみ) | slow (速度を制限する)
+    action_on_degraded: warn
+    degraded_speed_limit_percent: 30.0

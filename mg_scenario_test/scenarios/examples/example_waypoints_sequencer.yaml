@@ -1,0 +1,46 @@
+version: "2.0"
+name: waypoints_sequencer_mode
+description: >
+  走行を waypoint_sequencer に委ねる例。sequencer の status を監視して waypoint の
+  通過を判定する。wait_trigger で停止する waypoint では自動的に start を呼ぶ。
+profile: mg01
+world: warehouse
+tags: [example, mg_sequencer]
+
+obstacles:
+  person_0:
+    model: { type: fuel, uri: "OpenRobotics/models/MaleVisitorOnPhone" }
+  barrier_mid:
+    model: { type: primitive, shape: box, size: { x: 2.0, y: 0.6, z: 0.8 } }
+
+setup:
+  - respawn: { pose: { x: 0.0, y: 0.0, yaw: 0.0 }, settle_sec: 3.0 }
+
+run:
+  mg_sequencer:
+    # 省略時は sequencer が配信する ~/waypoints トピックから取得する
+    # waypoints_file: "{world.waypoints}"
+    start_index: 0
+    countdown_ms: 0
+    hooks:
+      1:
+        # waypoint 0 通過後、障害物を設置してから 3 秒のカウントダウンで waypoint 1 へ
+        # (waypoint 0 が wait_trigger でない場合、sequencer は既に走行を続けている)
+        before:
+          - spawn: { obstacle: barrier_mid, pose: { x: 7.0, y: 3.5, z: 0.4, yaw: 1.57 } }
+        after:
+          - despawn: { obstacle: barrier_mid }
+        countdown_ms: 3000
+
+timeline:
+  - name: person_jumps_out
+    when: { goal_started: { index: 0 } }
+    until: { goal_reached: { index: 0 } }
+    do:
+      - delay: { sec: 5.0 }
+      - spawn: { obstacle: person_0, pose: { frame: robot, x: 3.0, y: 0.5, yaw: 3.14 } }
+  - name: person_leaves
+    when: { goal_reached: { index: 0 } }
+    required: false
+    do:
+      - despawn: { obstacle: person_0 }

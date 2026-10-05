@@ -1,0 +1,28 @@
+version: "2.0"
+name: through_point_continuity
+description: >
+  通過点 (is_through_point) を、減速・停止せずに次のゴールへ連続して走り抜けることを確認する
+  (waypoint_sequencer の通過点判定と、ゴールの上書き (preemption) の回帰確認)。
+  通過点 3 つ + 停止点 1 つの経路で、最初の通過点から 3 つ目の通過点に到達するまでの間、
+  停止が 3 秒を超えないこと。
+profile: mg01
+world: warehouse
+tags: [smoke, mg_sequencer, through_point]
+
+stack_args:
+  waypoints_load_path: "pkg://mg_scenario_test/scenarios/data/through_waypoints.yaml"
+
+setup:
+  - respawn: { pose: { x: 0.0, y: 0.0, yaw: 0.0 }, settle_sec: 3.0 }
+
+run:
+  mg_sequencer:
+    waypoints_file: "pkg://mg_scenario_test/scenarios/data/through_waypoints.yaml"
+
+monitors:
+  # 走り出しの加速時間を含めて 3 秒。通過点で止まる実装だと、通過点ごとに停止・回頭で超える
+  - max_stop_duration: { max_stop_sec: 3.0, from_goal_started: 0, until_goal_reached: 2 }
+
+expect:
+  - reached_all
+  - time_limit: { sec: 150 }

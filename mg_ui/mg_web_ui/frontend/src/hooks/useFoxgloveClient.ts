@@ -1,0 +1,92 @@
+import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { AdvertisedSchema } from "../ros/codec";
+import {
+  ConnectionStatus,
+  FoxgloveConnection,
+  GraphTopic,
+} from "../ros/foxgloveConnection";
+
+export type { ConnectionStatus, GraphTopic };
+
+export interface FoxgloveClientHandle {
+  status: ConnectionStatus;
+  /** 接続前や再接続中でも呼べる。接続後にサーバ側の購読が自動で張られる。 */
+  subscribe: (
+    topic: string,
+    schemaName: string,
+    onMessage: (data: unknown) => void,
+  ) => () => void;
+  callService: (service: string, payload: unknown) => Promise<unknown>;
+  publish: (topic: string, schemaName: string, data: unknown) => void;
+  /** publish の前に呼んでおくと、最初のメッセージが取りこぼされにくくなる */
+  advertise: (topic: string, schemaName: string) => () => void;
+  /** トピックの最後のメッセージを受信した時刻(ms)。未受信なら null */
+  getLastMessageAt: (topic: string) => number | null;
+  /** ブリッジが公開しているサービス名の一覧。呼んだ時点のスナップショット */
+  listServices: () => string[];
+  /** ブリッジが公開しているトピックと型の一覧。呼んだ時点のスナップショット */
+  listTopics: () => GraphTopic[];
+  /** サービスのリクエストのスキーマ。公開されていなければ undefined */
+  getServiceRequestSchema: (service: string) => AdvertisedSchema | undefined;
+  /** 型のスキーマ。既知の型か、ブリッジが公開しているトピックの型なら返す */
+  getMessageSchema: (schemaName: string) => AdvertisedSchema | undefined;
+  /** 任意のトピックに 1 回だけ publish する。送信が終わるまで待つ */
+  publishOnce: (
+    topic: string,
+    schemaName: string,
+    data: unknown,
+  ) => Promise<void>;
+}
+
+function getWsUrl(): string {
+  return `ws://${window.location.hostname}:8765/`;
+}
+
+export function useFoxgloveClient(): FoxgloveClientHandle {
+  const connection = useMemo(
+    () => new FoxgloveConnection({ url: getWsUrl() }),
+    [],
+  );
+
+  useEffect(() => {
+    connection.start();
+    return () => connection.stop();
+  }, [connection]);
+
+  // 見えていないタブでは、地図・点群などのデータを受け取り続けない
+  useEffect(() => {
+    const update = () => connection.setPaused(document.hidden);
+    update();
+    document.addEventListener("visibilitychange", update);
+    return () => document.removeEventListener("visibilitychange", update);
+  }, [connection]);
+
+  const status = useSyncExternalStore(
+    (onChange) => connection.onStatusChange(onChange),
+    () => connection.status,
+  );
+
+  // status 以外は接続が変わらない限り同一の関数にして、依存に入れた側の再実行を避ける
+  const methods = useMemo<Omit<FoxgloveClientHandle, "status">>(
+    () => ({
+      subscribe: (topic, _schemaName, onMessage) =>
+        connection.subscribe(topic, onMessage),
+      callService: (service, payload) =>
+        connection.callService(service, payload),
+      publish: (topic, schemaName, data) =>
+        connection.publish(topic, schemaName, data),
+      advertise: (topic, schemaName) => connection.advertise(topic, schemaName),
+      getLastMessageAt: (topic) => connection.getLastMessageAt(topic),
+      listServices: () => connection.listServices(),
+      listTopics: () => connection.listTopics(),
+      getServiceRequestSchema: (service) =>
+        connection.getServiceRequestSchema(service),
+      getMessageSchema: (schemaName) => connection.getMessageSchema(schemaName),
+      publishOnce: (topic, schemaName, data) =>
+        connection.publishOnce(topic, schemaName, data),
+    }),
+    [connection],
+  );
+
+  return useMemo(() => ({ status, ...methods }), [status, methods]);
+}

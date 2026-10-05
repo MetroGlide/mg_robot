@@ -1,0 +1,617 @@
+import { useState } from "react";
+import { FoxgloveClientHandle } from "../hooks/useFoxgloveClient";
+import { SystemManagerHandle } from "../hooks/useSystemManagerClient";
+import { useTopicSubscriber } from "../hooks/useTopicSubscriber";
+import { useServiceCaller } from "../hooks/useServiceCaller";
+import { useNav2Status } from "../hooks/useNav2Status";
+import { useSimulation } from "../contexts/SimulationContext";
+import { useRosbagReplay } from "../contexts/RosbagReplayContext";
+import {
+  SequencerStatus,
+  BoolMsg,
+  StringMsg,
+  CollisionDetectorState,
+  GOAL_STATUS,
+  GOAL_STATUS_COLOR,
+} from "../types";
+import { TOPICS, SERVICES } from "../ros/interfaces";
+import SectionCard from "../components/layout/SectionCard";
+import RobotPageLayout from "../components/layout/RobotPageLayout";
+import VelocityGauge from "../components/panels/VelocityGauge";
+import ApiLogPanel from "../components/panels/ApiLogPanel";
+import ContainerStatusCard from "../components/status/ContainerStatusCard";
+import ServiceControlCard from "../components/status/ServiceControlCard";
+import SimulationPoseSection, {
+  PoseInput,
+} from "../components/status/SimulationPoseSection";
+import RosbagReplaySection from "../components/sections/RosbagReplaySection";
+import WaypointActionsSection from "../components/waypoint-actions/WaypointActionsSection";
+import ActionResultText from "../components/waypoint-actions/ActionResultText";
+import { useActionRunner } from "../hooks/useActionRunner";
+import {
+  describeServiceResponse,
+  GOAL_BT_OPTIONS,
+  GoalBtMode,
+  isGoalBtMode,
+  parseNavigationMode,
+} from "../utils/waypointActions";
+
+const STATE_COLOR: Record<string, string> = {
+  IDLE: "text-gray-300",
+  ON_STARTING: "text-yellow-400",
+  NAVIGATING: "text-blue-400",
+  ON_ARRIVING: "text-cyan-400",
+  GOAL_REACHED: "text-green-400",
+  SUSPENDED: "text-yellow-500",
+  ERROR: "text-red-400",
+};
+
+function buildInitialPoseMessage(pose: PoseInput) {
+  const nowMs = Date.now();
+  const sec = Math.floor(nowMs / 1000);
+  const nanosec = Math.floor((nowMs % 1000) * 1_000_000);
+  const qz = Math.sin(pose.yaw / 2.0);
+  const qw = Math.cos(pose.yaw / 2.0);
+  const covariance = Array(36).fill(0.0);
+  covariance[0] = 0.25;
+  covariance[7] = 0.25;
+  covariance[35] = 0.06853891945200942;
+  return {
+    header: { stamp: { sec, nanosec }, frame_id: "map" },
+    pose: {
+      pose: {
+        position: { x: pose.x, y: pose.y, z: 0.0 },
+        orientation: { x: 0.0, y: 0.0, z: qz, w: qw },
+      },
+      covariance,
+    },
+  };
+}
+
+function buildNavGoalMessage(pose: PoseInput) {
+  const nowMs = Date.now();
+  const sec = Math.floor(nowMs / 1000);
+  const nanosec = Math.floor((nowMs % 1000) * 1_000_000);
+  const qz = Math.sin(pose.yaw / 2.0);
+  const qw = Math.cos(pose.yaw / 2.0);
+  return {
+    header: { stamp: { sec, nanosec }, frame_id: "map" },
+    pose: {
+      position: { x: pose.x, y: pose.y, z: 0.0 },
+      orientation: { x: 0.0, y: 0.0, z: qz, w: qw },
+    },
+  };
+}
+
+export default function WaypointNavPage({
+  client,
+  sysManager,
+}: {
+  client: FoxgloveClientHandle;
+  sysManager: SystemManagerHandle;
+}) {
+  const [countdownMs, setCountdownMs] = useState(3000);
+  const [jumpIndex, setJumpIndex] = useState(0);
+  const [interactionMode, setInteractionMode] = useState<
+    "none" | "pose_estimate" | "nav_goal"
+  >("none");
+  const [goalBt, setGoalBt] = useState<GoalBtMode>("default");
+  const goalRunner = useActionRunner();
+  const { call, loading, error } = useServiceCaller(client);
+  const { isSimulation } = useSimulation();
+  const { isRosbagReplayVisible } = useRosbagReplay();
+
+  const status = useTopicSubscriber<SequencerStatus>(
+    client,
+    TOPICS.WAYPOINT_STATUS,
+    "mg_msgs/msg/SequencerStatus",
+  );
+
+  const navigationModeMsg = useTopicSubscriber<StringMsg>(
+    client,
+    TOPICS.WAYPOINT_NAVIGATION_MODE,
+    "std_msgs/msg/String",
+  );
+  const navigationMode = navigationModeMsg
+    ? parseNavigationMode(navigationModeMsg.data)
+    : null;
+
+  const nav2 = useNav2Status(client);
+
+  const emergencyStop = useTopicSubscriber<BoolMsg>(
+    client,
+    TOPICS.EMERGENCY_STOP,
+    "std_msgs/msg/Bool",
+  );
+
+  const collisionState = useTopicSubscriber<CollisionDetectorState>(
+    client,
+    TOPICS.COLLISION_STATE,
+    "nav2_msgs/msg/CollisionDetectorState",
+  );
+
+  const [sysLoading, setSysLoading] = useState(false);
+  const [sysError, setSysError] = useState<string | null>(null);
+  const { containers, callApi } = sysManager;
+  const navState = containers["navigation"] ?? "unknown";
+  const scenarioState = containers["scenario-test"] ?? "unknown";
+
+  const callSystemManager = async (path: string, body?: unknown) => {
+    setSysLoading(true);
+    setSysError(null);
+    try {
+      const result = await callApi(path, body);
+      if (!result.success) setSysError(result.message);
+    } catch (e) {
+      setSysError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSysLoading(false);
+    }
+  };
+
+  const handleStart = () =>
+    call(SERVICES.WAYPOINT_START, { countdown_ms: countdownMs });
+  const handleStartImmediate = () =>
+    call(SERVICES.WAYPOINT_START, { countdown_ms: 0 });
+  const handleStop = () => call(SERVICES.WAYPOINT_STOP, {});
+  const handlePause = () =>
+    client.publish(TOPICS.WAYPOINT_PAUSE_REQUEST, "mg_msgs/msg/PauseRequest", {
+      requester_id: "web_ui",
+      active: true,
+      reason: "manual pause",
+    });
+  const handleResume = () =>
+    client.publish(TOPICS.WAYPOINT_PAUSE_REQUEST, "mg_msgs/msg/PauseRequest", {
+      requester_id: "web_ui",
+      active: false,
+      reason: "",
+    });
+  const handleJump = () =>
+    client.publish(TOPICS.WAYPOINT_SET_NEXT_INDEX, "std_msgs/msg/Int16", {
+      data: jumpIndex,
+    });
+  const handleReload = () => call(SERVICES.WAYPOINT_RELOAD, {});
+
+  const handleResetRobotPose = (pose: PoseInput) =>
+    callSystemManager("/simulation/reset-pose", pose);
+  const handleResetAmclPose = (pose: PoseInput) => {
+    setSysError(null);
+    try {
+      client.publish(
+        TOPICS.INITIALPOSE,
+        "geometry_msgs/msg/PoseWithCovarianceStamped",
+        buildInitialPoseMessage(pose),
+      );
+    } catch (e) {
+      setSysError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const handleMapPoseSet = (x: number, y: number, yaw: number) => {
+    setSysError(null);
+    try {
+      if (interactionMode === "pose_estimate") {
+        client.publish(
+          TOPICS.INITIALPOSE,
+          "geometry_msgs/msg/PoseWithCovarianceStamped",
+          buildInitialPoseMessage({ x, y, z: 0.0, yaw }),
+        );
+      } else if (interactionMode === "nav_goal") {
+        // BT を指定できるよう、/goal_pose ではなく sequencer のサービスでゴールを送る
+        const pose = buildNavGoalMessage({ x, y, z: 0.0, yaw });
+        void goalRunner.run(async () =>
+          describeServiceResponse(
+            await client.callService(SERVICES.WAYPOINT_NAVIGATE_TO_POSE, {
+              pose,
+              navigation_mode: goalBt,
+            }),
+          ),
+        );
+      }
+    } catch (e) {
+      setSysError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setInteractionMode("none");
+    }
+  };
+
+  const stateColor = status
+    ? (STATE_COLOR[status.state] ?? "text-white")
+    : "text-gray-500";
+  const actionStatusLabel =
+    nav2.actionStatus !== null
+      ? (GOAL_STATUS[nav2.actionStatus] ?? String(nav2.actionStatus))
+      : "—";
+  const actionStatusColor =
+    nav2.actionStatus !== null
+      ? (GOAL_STATUS_COLOR[nav2.actionStatus] ?? "text-white")
+      : "text-gray-500";
+
+  const accordionItems = [
+    {
+      id: "container_status",
+      label: "Container",
+      children: (
+        <div className="space-y-2">
+          <ContainerStatusCard title="Navigation" status={navState} />
+          <ServiceControlCard
+            title="Control"
+            buttons={[
+              navState === "running"
+                ? {
+                    label: "Restart",
+                    onClick: () => callSystemManager("/navigation/restart"),
+                    variant: "blue" as const,
+                  }
+                : {
+                    label: "Start",
+                    onClick: () => callSystemManager("/navigation/start"),
+                    variant: "green" as const,
+                  },
+              {
+                label: "Stop",
+                onClick: () => callSystemManager("/navigation/stop"),
+                variant: "red",
+              },
+            ]}
+            loading={sysLoading}
+            error={sysError}
+          />
+        </div>
+      ),
+    },
+    {
+      id: "waypointnav_status",
+      label: "Status",
+      children: (
+        <div className="space-y-2">
+          <SectionCard title="Sequencer">
+            <p className={`text-3xl font-bold ${stateColor}`}>
+              {status?.state ?? "—"}
+            </p>
+            {status && (
+              <div className="mt-2 grid grid-cols-2 gap-2 text-sm text-gray-300">
+                <span>
+                  Waypoint:{" "}
+                  {Math.min(status.current_index + 1, status.total_waypoints)} /{" "}
+                  {status.total_waypoints}
+                </span>
+                <span>Remaining: {status.distance_remaining.toFixed(1)} m</span>
+                {status.countdown_ms_remaining > 0 && (
+                  <span className="col-span-2 text-yellow-400">
+                    Countdown:{" "}
+                    {(status.countdown_ms_remaining / 1000).toFixed(1)} s
+                  </span>
+                )}
+                {status.is_paused && (
+                  <span className="col-span-2 text-yellow-500">
+                    Paused by: {status.pause_requesters.join(", ")}
+                  </span>
+                )}
+              </div>
+            )}
+            <p className="mt-2 text-sm text-gray-300">
+              Behavior tree:{" "}
+              {navigationMode
+                ? `${navigationMode.mode} (${navigationMode.behavior_tree})`
+                : "—"}
+            </p>
+          </SectionCard>
+          <SectionCard title="Nav2">
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div>
+                <span className="text-xs text-gray-400">
+                  Navigation Lifecycle
+                </span>
+                <p
+                  className={`font-semibold ${nav2.navLifecycleActive ? "text-green-400" : "text-red-400"}`}
+                >
+                  {nav2.navLifecycleActive ? "Active" : "Inactive"}
+                </p>
+              </div>
+              <div>
+                <span className="text-xs text-gray-400">
+                  Localization Lifecycle
+                </span>
+                <p
+                  className={`font-semibold ${nav2.locLifecycleActive ? "text-green-400" : "text-red-400"}`}
+                >
+                  {nav2.locLifecycleActive ? "Active" : "Inactive"}
+                </p>
+              </div>
+              <div>
+                <span className="text-xs text-gray-400">Action Status</span>
+                <p className={`font-semibold ${actionStatusColor}`}>
+                  {actionStatusLabel}
+                </p>
+              </div>
+              <div>
+                <span className="text-xs text-gray-400">AMCL</span>
+                <p
+                  className={`font-semibold ${nav2.amclActive ? "text-green-400" : "text-gray-500"}`}
+                >
+                  {nav2.amclActive ? "Receiving" : "No data"}
+                </p>
+              </div>
+            </div>
+          </SectionCard>
+          <SectionCard title="Safety">
+            <div className="flex flex-wrap gap-2 text-sm">
+              <span
+                className={`px-2 py-0.5 rounded font-semibold ${
+                  emergencyStop?.data
+                    ? "bg-red-600 text-white"
+                    : "bg-gray-700 text-gray-400"
+                }`}
+              >
+                E-Stop {emergencyStop?.data ? "ACTIVE" : "OFF"}
+              </span>
+              {collisionState &&
+                collisionState.polygons.map((name, i) => (
+                  <span
+                    key={name}
+                    className={`px-2 py-0.5 rounded text-xs font-medium ${
+                      collisionState.detections[i]
+                        ? "bg-orange-600 text-white"
+                        : "bg-gray-700 text-gray-500"
+                    }`}
+                  >
+                    {name}
+                  </span>
+                ))}
+              {!collisionState && (
+                <span className="text-xs text-gray-500">
+                  collision: no data
+                </span>
+              )}
+            </div>
+          </SectionCard>
+          <SectionCard title="Velocity">
+            <VelocityGauge client={client} />
+          </SectionCard>
+        </div>
+      ),
+    },
+    {
+      id: "control",
+      label: "Control",
+      children: (
+        <div className="space-y-2">
+          <SectionCard title="Navigation Control">
+            <div className="flex flex-wrap gap-3 items-end">
+              <button
+                onClick={handleStartImmediate}
+                disabled={loading}
+                className="bg-green-700 hover:bg-green-800 disabled:opacity-50 px-4 py-2 rounded font-medium text-sm"
+              >
+                START IMMEDIATE
+              </button>
+              <button
+                onClick={handleStart}
+                disabled={loading}
+                className="bg-green-600 hover:bg-green-700 disabled:opacity-50 px-4 py-2 rounded font-medium text-sm"
+              >
+                START
+              </button>
+              <button
+                onClick={handleStop}
+                disabled={loading}
+                className="bg-red-600 hover:bg-red-700 disabled:opacity-50 px-4 py-2 rounded font-medium text-sm"
+              >
+                STOP
+              </button>
+              <button
+                onClick={handlePause}
+                disabled={loading}
+                className="bg-yellow-600 hover:bg-yellow-700 disabled:opacity-50 px-4 py-2 rounded font-medium text-sm"
+              >
+                PAUSE
+              </button>
+              <button
+                onClick={handleResume}
+                disabled={loading}
+                className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 px-4 py-2 rounded font-medium text-sm"
+              >
+                RESUME
+              </button>
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">
+                  Countdown (ms)
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  step={500}
+                  value={countdownMs}
+                  onChange={(e) => setCountdownMs(Number(e.target.value))}
+                  className="w-28 bg-gray-700 rounded px-2 py-1 text-sm"
+                />
+              </div>
+              <button
+                onClick={handleReload}
+                disabled={loading}
+                className="bg-gray-600 hover:bg-gray-500 disabled:opacity-50 px-4 py-2 rounded font-medium text-sm"
+              >
+                Reload WPs
+              </button>
+            </div>
+            {error && <p className="text-red-400 text-sm">{error}</p>}
+          </SectionCard>
+          <SectionCard title="Jump">
+            <div className="flex gap-3 items-end">
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">
+                  Jump to Index
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  value={jumpIndex}
+                  onChange={(e) => setJumpIndex(Number(e.target.value))}
+                  className="w-20 bg-gray-700 rounded px-2 py-1 text-sm"
+                />
+              </div>
+              <button
+                onClick={handleJump}
+                className="bg-gray-600 hover:bg-gray-500 px-4 py-2 rounded font-medium text-sm"
+              >
+                Jump
+              </button>
+            </div>
+          </SectionCard>
+          <SectionCard title="Map Interaction">
+            <div className="flex flex-wrap gap-2 items-center">
+              <button
+                onClick={() =>
+                  setInteractionMode(
+                    interactionMode === "pose_estimate"
+                      ? "none"
+                      : "pose_estimate",
+                  )
+                }
+                className={`px-3 py-2 rounded font-medium text-sm ${
+                  interactionMode === "pose_estimate"
+                    ? "bg-yellow-500 text-gray-900"
+                    : "bg-gray-600 hover:bg-gray-500 text-white"
+                }`}
+              >
+                2D Pose Estimate
+              </button>
+              <button
+                onClick={() =>
+                  setInteractionMode(
+                    interactionMode === "nav_goal" ? "none" : "nav_goal",
+                  )
+                }
+                className={`px-3 py-2 rounded font-medium text-sm ${
+                  interactionMode === "nav_goal"
+                    ? "bg-orange-500 text-white"
+                    : "bg-gray-600 hover:bg-gray-500 text-white"
+                }`}
+              >
+                Nav2 Goal
+              </button>
+              {interactionMode !== "none" && (
+                <button
+                  onClick={() => setInteractionMode("none")}
+                  className="px-3 py-2 rounded font-medium text-sm bg-gray-700 hover:bg-gray-600 text-white"
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
+            <label className="mt-2 block text-xs text-gray-400">
+              Behavior tree for Nav2 Goal
+              <select
+                value={goalBt}
+                onChange={(e) => {
+                  if (isGoalBtMode(e.target.value)) setGoalBt(e.target.value);
+                }}
+                className="mt-1 block w-full rounded bg-gray-700 px-2 py-1 text-sm text-white"
+              >
+                {GOAL_BT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <ul className="mt-1 list-disc pl-4 text-xs text-gray-500">
+              <li>Nav2 default: BT もコストマップも変えません。</li>
+              <li>
+                Normal: BT を normal にし、global_costmap
+                のセンサ障害物レイヤーを有効にします。
+              </li>
+              <li>
+                Queue wait: BT を queue_wait にし、global_costmap
+                のセンサ障害物レイヤーを無効にします。戻すときは Normal
+                でゴールを送るか、Nav2 を再起動してください。
+              </li>
+              <li>シーケンスの走行中は拒否されます。</li>
+            </ul>
+            {interactionMode !== "none" && (
+              <p className="mt-2 text-xs text-gray-400">
+                マップをクリックしてドラッグし、位置と向きを指定してください。
+              </p>
+            )}
+            <ActionResultText result={goalRunner.result} />
+          </SectionCard>
+        </div>
+      ),
+    },
+    {
+      id: "waypoint_actions",
+      label: "Actions",
+      children: <WaypointActionsSection client={client} />,
+    },
+    ...(isSimulation
+      ? [
+          {
+            id: "simulation",
+            label: "Simulation",
+            children: (
+              <div className="space-y-2">
+                <ContainerStatusCard
+                  title="Scenario Test"
+                  status={scenarioState}
+                />
+                <ServiceControlCard
+                  title="Scenario Test Control"
+                  buttons={[
+                    {
+                      label: "Start",
+                      onClick: () => callSystemManager("/scenario-test/start"),
+                      variant: "green",
+                    },
+                    {
+                      label: "Stop",
+                      onClick: () => callSystemManager("/scenario-test/stop"),
+                      variant: "red",
+                    },
+                  ]}
+                  loading={sysLoading}
+                />
+                <SimulationPoseSection
+                  onResetRobot={handleResetRobotPose}
+                  onResetAmcl={handleResetAmclPose}
+                  loading={sysLoading}
+                  error={sysError}
+                />
+              </div>
+            ),
+          },
+        ]
+      : []),
+    ...(isRosbagReplayVisible
+      ? [
+          {
+            id: "rosbag-replay",
+            label: "Rosbag Replay",
+            children: (
+              <RosbagReplaySection client={client} sysManager={sysManager} />
+            ),
+          },
+        ]
+      : []),
+    {
+      id: "log",
+      label: "Log",
+      children: <ApiLogPanel logs={sysManager.logs} />,
+    },
+  ];
+
+  return (
+    <RobotPageLayout
+      client={client}
+      accordionItems={accordionItems}
+      defaultOpen={[
+        "waypointnav_status",
+        "control",
+        ...(isSimulation ? ["simulation"] : []),
+      ]}
+      viewerMode="2d"
+      interactionMode={interactionMode}
+      onPoseSet={handleMapPoseSet}
+    />
+  );
+}

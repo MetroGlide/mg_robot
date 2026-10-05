@@ -1,0 +1,16 @@
+# ホイールオドメトリの速度 (twist) が 0 のまま姿勢だけ更新される期間の評価。
+# 評価する走行 (record_slam_20260913_051635) の 370-730 s で、ドライバの速度が 0 になっている
+# (姿勢は正常)。EKF は速度を観測として使うため、速度の共分散を小さくするほど破綻する。
+# 補正ノードの twist_source: pose_diff (姿勢の差分から速度を求める) で影響を受けないことの確認に使う。
+# 540 s からの 180 s は、地図 (043837) の内側で、端に入った直後 (462-540 s) を避けた区間。
+name: map043837_eval051635_twist_glitch
+description: 速度が 0 になる不具合区間の評価 (地図 043837、評価 051635 の 540-720 s)
+map:
+  localization_yaml: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_043837/20260921_2248/map.yaml
+  gnss_transform: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_043837/20260921_2248/gnss_transform.yaml
+  slam_dir: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_043837/20260921_2248
+eval:
+  bag: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_051635
+  slam_dir: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_051635/20260921_2243
+  start_offset: 540.0
+  duration: 180.0

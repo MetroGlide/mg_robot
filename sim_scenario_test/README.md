@@ -1,0 +1,130 @@
+# sim_scenario_test
+
+Gazebo (Fortress) 上でロボットのナビゲーションを検証する、**ロボット非依存**のシナリオテスト基盤です。
+シナリオは YAML で宣言的に書き、ロボット固有の設定は「プロファイル」と「プラグイン」で外から注入します。
+このパッケージは `mg_*` など特定のロボットのパッケージに依存しません (テストで検査しています)。
+
+## できること
+
+- ロボットのリスポーン (移動 → 自己位置の初期化 → 収束確認 → コストマップのクリア)
+- 単体ゴール・複数ゴール・waypoint ファイルによるナビゲーション (Nav2 の NavigateToPose)
+- 障害物の静的・動的な配置と削除、等速で移動する障害物 (歩行者など)
+- 時間・進捗・位置・ゴール到達をきっかけにしたイベント実行 (タイムライン)
+- 走行中の常時監視 (monitor) と、走行後の判定 (expectation)。PASSED / FAILED / ERROR を区別
+- シナリオごとにシミュレータとナビゲーションを起動し直すヘッドレス自動実行、JUnit と結果 JSON の出力
+- Python の dict / pytest でシナリオを組み立てて実行
+
+## 構成
+
+```
+シナリオ YAML ─┐
+              ├─ Loader (厳格な検証) ─ ScenarioEngine ─ RunDriver (nav2_goals / プラグイン提供)
+プロファイル ───┘        ▲                   │         ├─ Timeline (trigger → action)
+ (ロボット固有)          │                   │         ├─ Monitor (常時監視)
+プラグイン ─ 型を登録 ───┘                   │         └─ SimulationBackend (gazebo_fortress)
+                                             └─ 結果 (PASSED / FAILED / ERROR, result.json, JUnit)
+```
+
+詳細は [doc/architecture.md](doc/architecture.md) を参照してください。
+
+### 実行ファイルと launch
+
+| ファイル | 内容 |
+|---|---|
+| `scripts/scenario_cli.py` | 利用者が使う CLI (`run`、`run-all`、`validate`、`list-types` など。[CLI](#cli)) |
+| `scripts/scenario_runner.py` | シナリオ 1 本を実行する ROS ノード (`sim_scenario_test.node`)。CLI が launch 経由で起動する |
+| `launch/scenario_full.launch.py` | シミュレータ・ナビゲーションスタック・runner を起動する (引数: `scenario_file`、`profile`、`result_file`、`headless`、`launch_stack`、`seed`) |
+| `launch/scenario.launch.py` | runner だけを起動する (起動済みの環境への attach 用。引数: `scenario_file`、`profile`、`result_file`、`seed`) |
+| `launch/scenario_env.launch.py` | attach 用に、プロファイルのシミュレータとスタックだけを起動する (引数: `profile`、`world`、`headless`) |
+
+## 依存
+
+ROS 2 (Humble) の `rclpy`, `nav2_msgs`, `nav2_simple_commander`, `tf2_ros`, `sensor_msgs`, `diagnostic_msgs`, `std_srvs`,
+`ros_gz` 一式と Gazebo Fortress (`ign` コマンド)、PyYAML。ロボット固有のパッケージには依存しません。
+
+## クイックスタート (別のロボットで使う)
+
+1. **プロファイルを書く**: 起動する sim / ナビゲーションの launch、ロボットのエンティティ名、座標系、
+   ワールドごとの地図などを YAML にまとめる ([doc/profile_reference.md](doc/profile_reference.md))。
+   `share/<your_pkg>/profiles/<name>.yaml` に置き、CMake で
+   `ament_index_register_resource("sim_scenario_test.profiles")` を呼ぶと名前で参照できる。
+2. **(必要なら) プラグインを書く**: ロボット固有の走行ドライバや action / trigger を登録する
+   ([doc/plugin_development.md](doc/plugin_development.md))。標準の Nav2 だけなら不要。
+3. **シナリオを書く** ([doc/scenario_format.md](doc/scenario_format.md)) 。`profile:` にプロファイル名を指定する。
+4. 検証と実行:
+
+```bash
+ros2 run sim_scenario_test scenario_cli.py validate scenarios/*.yaml        # 静的検証 (シミュレータ不要)
+ros2 run sim_scenario_test scenario_cli.py list-types --profile <name>      # 使える型の一覧
+ros2 run sim_scenario_test scenario_cli.py run scenario.yaml                # 1 本を起動から判定まで実行
+ros2 run sim_scenario_test scenario_cli.py run-all scenarios/ --tags smoke  # スイート実行
+```
+
+## CLI
+
+| コマンド | 内容 |
+|---|---|
+| `validate <files>...` | シナリオを検証する。未知のキー・型・未定義の障害物・プロファイルにないワールドなどをエラーにする |
+| `list-types [--profile]` | 登録済みの action / trigger / expectation / monitor / driver / backend / waypoint 形式を一覧する |
+| `run <files>...` / `run-all <files\|dirs>...` | `ros2 launch` でシミュレータとスタックを起動して実行する。1 本ごとに起動し直す |
+
+`run` / `run-all` の共通オプション:
+
+| オプション | 内容 |
+|---|---|
+| `--profile NAME` | シナリオの `profile:` を上書きする |
+| `--scenario-dir DIR` | ファイルの代わりに名前 (`<name>` → `<name>.yaml`) を渡したとき、DIR 配下 (再帰) から探す。複数指定可。ディレクトリを渡すと配下 (再帰。`data/` は除く) のシナリオを集める |
+| `--gui` | シミュレータの GUI を表示する (既定はヘッドレス) |
+| `--attach` | 起動済みのシミュレータ・スタックに接続して実行する (起動は行わない) |
+| `--remote-stack URL` | ナビゲーションスタックを別のマシン (実機PCなど) に起動させ、シミュレータはローカルで起動する ([doc/remote_stack.md](doc/remote_stack.md))。`--attach` とは併用できない |
+| `--results-dir DIR` | 結果の保存先 (既定 `~/.ros/scenario_results/<日時>`) |
+| `--timeout SEC` | 1 本あたりの壁時計の上限 (既定 1800 秒)。超えると ERROR |
+| `--infra-retries N` | シミュレータの起動失敗など、シナリオの内容と無関係な ERROR (準備完了のタイムアウト、結果が出ない、sim 時計の停止) のとき、その走行を N 回まで再実行する (既定 1)。テスト内容による ERROR や FAILED は再実行しない。再実行の結果は `<シナリオ名>_retryN/` に保存 |
+| `--tags a,b` / `--exclude-tags a,b` / `--repeat N` | いずれかのタグを持つものに絞り込み / いずれかのタグを持つものを除外 / 各シナリオを N 回繰り返す |
+| `--seed N` | シナリオの seed を上書きする (繰り返しごとに +1) |
+
+終了コードは 0=PASSED、1=FAILED、2=ERROR (複数実行では最悪のもの)。
+
+## 結果
+
+`<results-dir>/<シナリオ名>/` に `result.json` (チェックごとの結果とイベント)、`launch.log`、
+ルートに `junit.xml` を保存します。`FAILED` は「ロボットが期待どおりに動かなかった」、
+`ERROR` は「テスト基盤・セットアップの失敗 (起動しない、障害物が生成されない、シミュレータが止まった等)」を意味します。
+
+実行中は `<results-dir>/progress.json` に進み具合を書き出します (一時ファイルに書いてから置き換えるので、書きかけは読まれません)。
+Web UI などから監視するためのものです。
+
+| キー | 内容 |
+|---|---|
+| `started_at` / `options` | 開始時刻、実行時のオプション (`attach`・`gui`・`remote_stack`・`repeat`・`tags` など) |
+| `entries[]` | 実行予定の走行ごとに `name`・`file`・`result_dir` (`<results-dir>` からの相対パス)・`status` (`PENDING` → `RUNNING` → `PASSED` / `FAILED` / `ERROR`)・`message`・`elapsed_sec`・`attempt` (インフラ再試行の回数) |
+| `finished` / `exit_code` | 全体が終わったか、終了コード。途中で強制終了されると `finished` は `false` のまま残る |
+
+## attach モード用の環境
+
+`--attach` はシミュレータとナビゲーションスタックを起動しません。起動しておくには、プロファイルの `sim.launch` と `stack` だけを
+include する launch を使います (scenario_runner は起動しない)。
+
+```bash
+ros2 launch sim_scenario_test scenario_env.launch.py profile:=<name> world:=<world> headless:=false
+```
+
+シナリオごとにシミュレータを起動し直さないので、GUI を開いたまま続けて確認できます。ただしスタックの状態 (自己位置など) が
+前のシナリオから引き継がれるため、結果の判定には使わず、確認・反復開発用に使ってください。
+
+## テスト
+
+```bash
+make test pkg=sim_scenario_test      # ROS・シミュレータ不要のユニットテスト
+```
+
+## ドキュメント
+
+| ファイル | 内容 |
+|---|---|
+| [doc/architecture.md](doc/architecture.md) | 層構成、実行の流れ、結果の定義、拡張ポイント |
+| [doc/scenario_format.md](doc/scenario_format.md) | シナリオ YAML (v2.0) の全項目と組み込みの型 |
+| [doc/profile_reference.md](doc/profile_reference.md) | ロボットプロファイルの全項目、変数展開 |
+| [doc/plugin_development.md](doc/plugin_development.md) | プラグイン (独自の型) の作り方 |
+| [doc/remote_stack.md](doc/remote_stack.md) | スタックを別のマシンで起動するときの流れと HTTP プロトコル |
+| [doc/python_scenarios.md](doc/python_scenarios.md) | Python / pytest でシナリオを書く方法 |
