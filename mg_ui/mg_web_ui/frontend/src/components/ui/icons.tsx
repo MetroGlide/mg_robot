@@ -84,3 +84,15 @@ export const SatelliteIcon = () => (
     <path d="M12 3a9 9 0 0 1 9 9M12 7a5 5 0 0 1 5 5" />
   </Icon>
 );
+export const JoystickIcon = () => (
+  <Icon>
+    <circle cx="12" cy="8" r="3" />
+    <path d="M12 11v5M5 16h14v4H5z" />
+  </Icon>
+);
+export const GlobeIcon = () => (
+  <Icon>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />
+  </Icon>
+);

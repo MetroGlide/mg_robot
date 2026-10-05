@@ -1,3 +1,4 @@
+import { ReactNode } from "react";
 import Card from "../ui/Card";
 import IconButton from "../ui/IconButton";
 import {
@@ -20,6 +21,8 @@ interface Props {
   interactionMode?: MapInteractionMode;
   onInteractionModeChange?: (mode: MapInteractionMode) => void;
   disabled?: boolean;
+  /** ユースケース固有のボタン(表示の切り替えなど)。区切りの下に並べる */
+  extra?: ReactNode;
 }
 
 export default function MapToolbar({
@@ -29,6 +32,7 @@ export default function MapToolbar({
   interactionMode,
   onInteractionModeChange,
   disabled = false,
+  extra,
 }: Props) {
   const toggleMode = (mode: Exclude<MapInteractionMode, "none">) =>
     onInteractionModeChange?.(interactionMode === mode ? "none" : mode);
@@ -62,6 +66,12 @@ export default function MapToolbar({
             disabled={disabled}
             onClick={() => toggleMode("nav_goal")}
           />
+        </>
+      )}
+      {extra && (
+        <>
+          <div className="my-0.5 h-px bg-line" />
+          {extra}
         </>
       )}
     </Card>

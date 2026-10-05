@@ -9,6 +9,10 @@ import MapToolbar from "../../components/operate/MapToolbar";
 import HealthTabsCard from "../../components/operate/HealthTabsCard";
 import SlamControl from "../../components/operate/SlamControl";
 import { MapCommand } from "../../components/operate/MapCameraControls";
+import {
+  OverlayCards,
+  OverlayToggleButtons,
+} from "../../components/operate/MapOverlays";
 
 const VIEW_KEY = "slam";
 
@@ -46,9 +50,16 @@ export default function SlamOperate({
           onCommand={issueCommand}
           follow={follow}
           onToggleFollow={() => setFollow(!follow)}
+          disabled={client.status !== "connected"}
+          extra={<OverlayToggleButtons disabled={client.status !== "connected"} />}
         />
       }
-      bottomLeft={<SlamControl sysManager={sysManager} />}
+      bottomLeft={
+        <div className="flex flex-col items-start gap-2">
+          <OverlayCards client={client} />
+          <SlamControl client={client} sysManager={sysManager} />
+        </div>
+      }
       bottomRight={<HealthTabsCard client={client} />}
     />
   );

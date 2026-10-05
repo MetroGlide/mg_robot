@@ -206,7 +206,7 @@ export default function JoystickPad({ client, onVelChange }: JoystickPadProps) {
           strokeWidth={2}
         />
       </svg>
-      <span className="text-xs text-gray-500 mt-1">drag to drive</span>
+      <span className="mt-1 text-xs text-muted">drag to drive</span>
     </div>
   );
 }

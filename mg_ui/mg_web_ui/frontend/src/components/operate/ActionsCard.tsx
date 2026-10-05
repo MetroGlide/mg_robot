@@ -1,4 +1,7 @@
 import { FoxgloveClientHandle } from "../../hooks/useFoxgloveClient";
+import { SystemManagerHandle } from "../../hooks/useSystemManagerClient";
+import { useSimulation } from "../../contexts/SimulationContext";
+import { useRosbagReplay } from "../../contexts/RosbagReplayContext";
 import { useOpsValue } from "../../hooks/useOpsValue";
 import { useWaypointControl } from "../../hooks/useWaypointControl";
 import {
@@ -16,12 +19,16 @@ import {
   LocalizationActions,
   MapActions,
 } from "../waypoint-actions/WaypointActionsSection";
+import RosbagReplaySection from "../sections/RosbagReplaySection";
+import ContainerControl from "./ContainerControl";
+import SimulationActions from "./SimulationActions";
 
 const INPUT_CLASS =
   "rounded-md border border-line bg-surface-elevated px-2 py-1 text-xs text-content";
 
 interface Props {
   client: FoxgloveClientHandle;
+  sysManager: SystemManagerHandle;
   control: ReturnType<typeof useWaypointControl>;
   goalBt: GoalBtMode;
   onGoalBtChange: (mode: GoalBtMode) => void;
@@ -29,7 +36,12 @@ interface Props {
 }
 
 /** 走行の補助操作(番号の指定、再読込、待ちなしの開始、手動ゴールの BT) */
-function DriveTools({ control, goalBt, onGoalBtChange, connected }: Omit<Props, "client">) {
+function DriveTools({
+  control,
+  goalBt,
+  onGoalBtChange,
+  connected,
+}: Omit<Props, "client" | "sysManager">) {
   const disabled = control.loading || !connected;
   return (
     <div className="space-y-3">
@@ -80,11 +92,14 @@ function DriveTools({ control, goalBt, onGoalBtChange, connected }: Omit<Props, 
 }
 
 /**
- * 旧 UI の Actions 相当の操作をまとめたカード。節ごとに開閉でき、開閉は画面を切り替えても保持する。
+ * 走行の補助操作をまとめたカード。節ごとに開閉でき、開閉は画面を切り替えても保持する。
  * 走行中は操作しない運用なので、全部を閉じて、状態の表示だけを見られる。
+ * シミュレーションと Rosbag 再生の節は、設定でそれぞれを有効にしたときだけ出す。
  */
-export default function ActionsCard({ client, ...drive }: Props) {
+export default function ActionsCard({ client, sysManager, ...drive }: Props) {
   const [open, setOpen] = useOpsValue<boolean>("actions.card", true);
+  const { isSimulation } = useSimulation();
+  const { isRosbagReplayVisible } = useRosbagReplay();
 
   return (
     <Card className="w-80 p-3">
@@ -114,6 +129,27 @@ export default function ActionsCard({ client, ...drive }: Props) {
           <Disclosure title="トピックの publish" storageKey="actions.topic">
             <GenericTopicPublisher client={client} />
           </Disclosure>
+          <Disclosure title="コンテナ" storageKey="actions.container">
+            <ContainerControl
+              sysManager={sysManager}
+              container="navigation"
+              title="Navigation"
+            />
+          </Disclosure>
+          {isSimulation && (
+            <Disclosure title="シミュレーション" storageKey="actions.simulation">
+              <SimulationActions
+                sysManager={sysManager}
+                onResetAmcl={drive.control.publishInitialPose}
+                showScenarioTest
+              />
+            </Disclosure>
+          )}
+          {isRosbagReplayVisible && (
+            <Disclosure title="Rosbag 再生" storageKey="actions.rosbag">
+              <RosbagReplaySection client={client} sysManager={sysManager} />
+            </Disclosure>
+          )}
         </div>
       )}
     </Card>

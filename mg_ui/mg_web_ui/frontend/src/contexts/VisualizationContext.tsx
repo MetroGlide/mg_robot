@@ -59,7 +59,7 @@ const DEFAULT_OVERLAYS: Record<OverlayKey, boolean> = {
   velocityGauge: true,
   systemMetrics: true,
   gpsStatus: true,
-  gpsMap: true,
+  gpsMap: false,
 };
 
 interface VisualizationContextType {

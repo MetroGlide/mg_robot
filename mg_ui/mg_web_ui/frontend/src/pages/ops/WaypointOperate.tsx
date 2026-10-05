@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { FoxgloveClientHandle } from "../../hooks/useFoxgloveClient";
+import { SystemManagerHandle } from "../../hooks/useSystemManagerClient";
 import { useOpsValue } from "../../hooks/useOpsValue";
 import { useWaypointControl } from "../../hooks/useWaypointControl";
 import { GoalBtMode } from "../../utils/waypointActions";
@@ -13,6 +14,10 @@ import RobotDetailCard from "../../components/operate/RobotDetailCard";
 import WaypointProgress from "../../components/operate/WaypointProgress";
 import ActionsCard from "../../components/operate/ActionsCard";
 import { MapCommand } from "../../components/operate/MapCameraControls";
+import {
+  OverlayCards,
+  OverlayToggleButtons,
+} from "../../components/operate/MapOverlays";
 
 const VIEW_KEY = "waypoint";
 
@@ -23,8 +28,10 @@ const VIEW_KEY = "waypoint";
  */
 export default function WaypointOperate({
   client,
+  sysManager,
 }: {
   client: FoxgloveClientHandle;
+  sysManager: SystemManagerHandle;
 }) {
   const [command, setCommand] = useState<MapCommand | null>(null);
   const [follow, setFollow] = useOpsValue<boolean>(`${VIEW_KEY}.follow`, false);
@@ -79,6 +86,7 @@ export default function WaypointOperate({
           <KpiRow client={client} />
           <ActionsCard
             client={client}
+            sysManager={sysManager}
             control={control}
             goalBt={goalBt}
             onGoalBtChange={setGoalBt}
@@ -94,6 +102,7 @@ export default function WaypointOperate({
           interactionMode={control.interactionMode}
           onInteractionModeChange={control.setInteractionMode}
           disabled={!connected}
+          extra={<OverlayToggleButtons disabled={!connected} />}
         />
       }
       topRight={
@@ -119,7 +128,10 @@ export default function WaypointOperate({
         )
       }
       bottomLeft={
-        <WaypointProgress client={client} control={control} connected={connected} />
+        <div className="flex flex-col items-start gap-2">
+          <OverlayCards client={client} />
+          <WaypointProgress client={client} control={control} connected={connected} />
+        </div>
       }
       bottomRight={<HealthTabsCard client={client} />}
     />
