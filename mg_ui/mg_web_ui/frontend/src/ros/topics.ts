@@ -7,6 +7,7 @@ export const TOPICS = {
   WAYPOINT_LOADED_MAPS: nodeNs(NODE_NS.WAYPOINT_SEQUENCER, '/loaded_maps'),
   WAYPOINT_NAVIGATION_MODE: nodeNs(NODE_NS.WAYPOINT_SEQUENCER, '/navigation_mode'),
   AMCL_GATE_STATE: '/amcl_gate_arbiter/state',
+  LOCALIZATION_STATUS: '/localization/status',
   GNSS_PUBLISH_STATE: '/slam_gnss_nav_bridge/publish_state',
   DIAGNOSTICS: nodeNs(NODE_NS.DIAGNOSTICS, '/diagnostics'),
   INITIALPOSE: nodeNs(NODE_NS.LOCALIZATION, '/initialpose'),

@@ -200,6 +200,22 @@ export interface GateArbiterState {
   holders: string[]
 }
 
+/** localization_supervisor が配信する自己位置推定の状態 (mg_msgs/LocalizationStatus) */
+export interface LocalizationStatus {
+  state: number
+  amcl_attached: boolean
+  last_event: string
+}
+
+/** LocalizationStatus.state の名前。値は mg_msgs/msg/LocalizationStatus.msg に合わせる */
+export const LOCALIZATION_STATE_NAME: Record<number, string> = {
+  0: 'NORMAL',
+  1: 'SUSPECT',
+  2: 'ISOLATED',
+  3: 'RECOVERING',
+  4: 'DEGRADED',
+}
+
 /** waypoint_sequencer が map_server に読み込ませた地図 (mg_msgs/LoadedMaps) */
 export interface LoadedMaps {
   localization: string

@@ -68,6 +68,16 @@ export const CpuIcon = () => (
     <path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4" />
   </Icon>
 );
+export const PoseIcon = () => (
+  <Icon>
+    <path d="M12 3l7 17-7-4-7 4z" />
+  </Icon>
+);
+export const FlagIcon = () => (
+  <Icon>
+    <path d="M5 21V4M5 4h11l-2 4 2 4H5" />
+  </Icon>
+);
 export const SatelliteIcon = () => (
   <Icon>
     <circle cx="12" cy="12" r="3" />

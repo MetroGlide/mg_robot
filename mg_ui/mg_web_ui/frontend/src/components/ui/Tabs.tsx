@@ -23,7 +23,7 @@ export default function Tabs({ items, activeId, onChange }: TabsProps) {
             role="tab"
             aria-selected={active}
             onClick={() => onChange(item.id)}
-            className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${
+            className={`flex-1 whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${
               active
                 ? "bg-surface-elevated text-content shadow-card"
                 : "text-muted hover:text-content"
