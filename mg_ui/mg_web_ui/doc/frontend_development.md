@@ -156,12 +156,31 @@ client.publish(TOPICS.MY_TOPIC, 'pkg/msg/MyMessage', { value: 1, label: 'hello' 
 
 操作のロジックは、画面から切り離してフックにする (例: `hooks/useWaypointControl.ts`)。旧ページと新 UI の両方が使える。
 
+### 操作状態の保持
+
+運用の画面は、ルートを切り替える (センサビューへ移って戻る) とコンポーネントが破棄される。**追従・カードの開閉・タブの選択・入力値のように、戻ったときに残っていてほしい状態は、`useState` ではなく `useOpsValue(key, 既定値)` に持つ** (`hooks/useOpsValue.ts`、実体は `utils/opsViewStore.ts`)。
+
+- 値は端末の localStorage にも保存するので、再読み込みでも残る。全端末で共有される `settingsApi` は使わない。
+- key は `"<ユースケースや部品>.<項目>"` (例: `waypoint.follow`、`health.view`、`actions.map`)。値は JSON にできるものに限る。
+- 地図のカメラ (位置・拡大・向き) は、`OperateMap` の `viewKey` で、画面を離れるときに保存する (メモリのみ。再読み込みでは残さない)。
+- 走行に関わる操作の状態 (姿勢・ゴールの指定モードなど) は、誤操作を避けるため保持しない。
+- `ui/Disclosure.tsx` は、開閉を `useOpsValue` で保持する節。
+
+### 1 画面での表示
+
+走行中は操作しない運用を想定し、運用ビューは状態の表示を 1 画面 (1366×768 以上) に収める。
+
+- 切り替えて見るもの (センサ・トピック・ノード) は、タブの「全て」で 3 つを並べて見られる (`HealthTabsCard`)。
+- 操作のカード (`ActionsCard`) は節ごとに閉じられ、開閉は保持される。閉じておけば、状態の表示だけが残る。
+- カードは地図の上に重ね、右端のツールバーを避けて置く (`OperateLayout`)。
+
 ### テーマ (色のトークン)
 
 - 色は `index.css` の CSS 変数 (`--surface`、`--text`、`--accent`、`--ok`、`--warn`、`--error` など。値は `R G B`) で定義し、`tailwind.config.js` で `bg-surface`、`text-content`、`text-muted`、`bg-accent`、`text-ok` などの名前にしている。**新 UI の部品は、`gray-*` や色名を直接書かず、このトークンを使う**。
-- ライトは `:root`、ダークは `:root.dark` に値を定義する。`ThemeProvider` が `<html>` に `dark` クラスを付ける。
-- 旧ページは `gray-*` を直接使っているので、テーマの影響を受けない (常に濃色)。
-- 地図の配色は `gridColors.ts` のパレット (`map` が濃色向け、`mapLight` が明るい色向け)。
+- ライトは `:root`、ダークは `.dark` に値を定義する。`ThemeProvider` が `<html>` に `dark` クラスを付ける。
+- 旧ページの枠 (`LegacyLayout`) とシステムビューの面は、`dark` クラスを付けて、トークンを常に濃色にしている。旧ページの `gray-*` の直書きは、テーマの影響を受けない。
+- 新旧で共有する部品 (`components/waypoint-actions/` など) は、トークンで色を書く。旧ページでは `dark` の中なので、従来どおり濃色に見える。
+- 地図の配色は `gridColors.ts` のパレット (`map` が旧ビューワー、`mapLight` / `mapDark` が新 UI のライト / ダーク)。
 
 ### 負荷を抑えるルール (新 UI の部品)
 

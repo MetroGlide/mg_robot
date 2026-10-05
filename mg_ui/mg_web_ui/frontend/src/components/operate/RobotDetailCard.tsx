@@ -24,8 +24,8 @@ const AMCL_HZ = 1;
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex justify-between gap-4 py-1 text-xs">
-      <span className="text-muted">{label}</span>
-      <span className="font-semibold tabular-nums">{value}</span>
+      <span className="whitespace-nowrap text-muted">{label}</span>
+      <span className="text-right font-semibold tabular-nums">{value}</span>
     </div>
   );
 }
@@ -59,7 +59,7 @@ export default function RobotDetailCard({
   const pose = amcl?.pose.pose;
 
   return (
-    <Card className="w-64 p-3">
+    <Card className="w-72 p-3">
       <div className="mb-1 flex items-center justify-between">
         <h2 className="text-sm font-bold">MG-01</h2>
         <IconButton icon={<CloseIcon />} title="閉じる" onClick={onClose} />

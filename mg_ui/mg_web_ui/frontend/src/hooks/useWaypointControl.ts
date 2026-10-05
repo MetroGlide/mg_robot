@@ -61,13 +61,15 @@ export function buildNavGoalMessage(pose: PoseInput) {
  * 地図上での初期姿勢・ゴールの指定をまとめる。旧ページと新 UI の両方で使う。
  *
  * onError は地図操作の失敗を呼び出し側のエラー表示に渡す。操作の開始時に null で呼んで前回のエラーを消す。
+ * initialCountdownMs は、出発までの待ち時間の初期値(画面を切り替えても値を保持したい呼び出し側が渡す)。
  */
 export function useWaypointControl(
   client: FoxgloveClientHandle,
   goalBt: GoalBtMode,
   onError: (message: string | null) => void,
+  initialCountdownMs = 3000,
 ) {
-  const [countdownMs, setCountdownMs] = useState(3000);
+  const [countdownMs, setCountdownMs] = useState(initialCountdownMs);
   const [jumpIndex, setJumpIndex] = useState(0);
   const [interactionMode, setInteractionMode] =
     useState<MapInteractionMode>("none");

@@ -21,11 +21,8 @@
 ### 運用ビュー (`/ops/waypoint`)
 
 旧 `/waypoint` にあり、新 UI にまだないもの。
+(Actions 相当は移行済み: 左の「操作」カードに、走行 (Jump・Reload WPs・START IMMEDIATE・手動ゴールの BT)、自己位置 (AMCL・GNSS の入/切、AMCL の初期化)、地図の切り替え、サービスの呼び出し、トピックの publish がある。)
 
-- Jump (次のウェイポイント番号の指定) と Reload WPs (`useWaypointControl` には実装済みで、画面がない)
-- START IMMEDIATE (待ちなしの開始。`startImmediate` は実装済みで、画面がない)
-- Nav2 Goal の BT の選択 (`GOAL_BT_OPTIONS`。新 UI は常に `default`)
-- Actions (AMCL・GNSS の入/切、地図の切り替え、任意のサービス・トピック: `components/waypoint-actions/`)
 - Nav2 のライフサイクル、アクション状態 (旧 `useNav2Status`)。新 UI は、負荷を増やさないため、5 秒ごとのサービス呼び出しをしていない。`/diagnostics` のノードの状態 (`node/*`) で代替している
 - 衝突検知のポリゴンごとの状態 (`/collision_detector_state`)
 - コンテナ (Navigation) の起動・停止
@@ -51,7 +48,7 @@
 - 複数の端末から同時に操作したときの調停 (今は後勝ち。`/pause_request` の `requester_id` が `web_ui` で共通)
 - 診断の対象の拡充: GNSS と RealSense の状態。点群などの重いトピックは `mg_diagnostics` で購読しない。`camera_info` のような軽い付随トピックで代用する
 - 旧ページのトークン化 (`gray-*` の直書きの置き換え)
-- ダークテーマの実機での確認 (ライトテーマのスクリーンショットでレイアウトを確認した)
+- ダークテーマとライトテーマのレイアウトは、foxglove_bridge に接続した状態 (実データ) のスクリーンショットで確認した (1366×768)。実機の走行中の表示の確認は未実施
 - 負荷の実測。ロボットが接続されていない環境で作ったので、実データでの確認 (表示の崩れ、更新の頻度)、ブラウザのフレーム時間・CPU・GPU、foxglove-bridge の CPU (`docker stats`) は未実施。同じ rosbag で旧 `/waypoint` と `/ops/waypoint` を比べる
 - 低負荷モードで、HUD の更新頻度も下げる (今は影とトランジションを切るだけ)
 - タッチパッド操作の実機での確認 (2 本指のスクロール、ピンチ、ドラッグ。ブラウザごとのイベントの違い)

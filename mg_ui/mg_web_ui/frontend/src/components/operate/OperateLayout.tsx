@@ -40,7 +40,7 @@ export default function OperateLayout({
           {notice}
         </div>
         <div className="pointer-events-auto absolute bottom-3 left-3">{bottomLeft}</div>
-        <div className="pointer-events-auto absolute bottom-3 right-3">{bottomRight}</div>
+        <div className="pointer-events-auto absolute bottom-3 right-16">{bottomRight}</div>
       </div>
     </div>
   );

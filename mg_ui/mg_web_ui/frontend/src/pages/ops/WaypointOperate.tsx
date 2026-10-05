@@ -1,6 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { FoxgloveClientHandle } from "../../hooks/useFoxgloveClient";
+import { useOpsValue } from "../../hooks/useOpsValue";
 import { useWaypointControl } from "../../hooks/useWaypointControl";
+import { GoalBtMode } from "../../utils/waypointActions";
 import Card from "../../components/ui/Card";
 import OperateLayout from "../../components/operate/OperateLayout";
 import OperateMap from "../../components/operate/OperateMap";
@@ -9,20 +11,48 @@ import MapToolbar from "../../components/operate/MapToolbar";
 import HealthTabsCard from "../../components/operate/HealthTabsCard";
 import RobotDetailCard from "../../components/operate/RobotDetailCard";
 import WaypointProgress from "../../components/operate/WaypointProgress";
+import ActionsCard from "../../components/operate/ActionsCard";
 import { MapCommand } from "../../components/operate/MapCameraControls";
 
-/** Waypoint 走行の運用ビュー */
+const VIEW_KEY = "waypoint";
+
+/**
+ * Waypoint 走行の運用ビュー。
+ * 追従・カード・タブの開閉と選択・入力値は、他の画面に移って戻っても保持する(useOpsValue)。
+ * 走行中は操作しない運用を想定し、状態の表示は 1 画面に収める(カードは閉じられる)。
+ */
 export default function WaypointOperate({
   client,
 }: {
   client: FoxgloveClientHandle;
 }) {
   const [command, setCommand] = useState<MapCommand | null>(null);
-  const [follow, setFollow] = useState(false);
-  const [detailOpen, setDetailOpen] = useState(true);
+  const [follow, setFollow] = useOpsValue<boolean>(`${VIEW_KEY}.follow`, false);
+  const [detailOpen, setDetailOpen] = useOpsValue<boolean>(
+    `${VIEW_KEY}.detail`,
+    true,
+  );
+  const [goalBt, setGoalBt] = useOpsValue<GoalBtMode>(
+    `${VIEW_KEY}.goalBt`,
+    "default",
+  );
+  const [savedCountdownMs, setSavedCountdownMs] = useOpsValue<number>(
+    `${VIEW_KEY}.countdownMs`,
+    3000,
+  );
   const [mapError, setMapError] = useState<string | null>(null);
-  const control = useWaypointControl(client, "default", setMapError);
+  const control = useWaypointControl(
+    client,
+    goalBt,
+    setMapError,
+    savedCountdownMs,
+  );
   const connected = client.status === "connected";
+
+  const { countdownMs } = control;
+  useEffect(() => {
+    setSavedCountdownMs(countdownMs);
+  }, [countdownMs, setSavedCountdownMs]);
 
   const issueCommand = (kind: MapCommand["kind"]) =>
     setCommand((prev) => ({ kind, n: (prev?.n ?? 0) + 1 }));
@@ -35,6 +65,7 @@ export default function WaypointOperate({
     <OperateLayout
       map={
         <OperateMap
+          viewKey={VIEW_KEY}
           client={client}
           command={command}
           follow={follow}
@@ -43,12 +74,23 @@ export default function WaypointOperate({
           onPoseSet={control.handleMapPoseSet}
         />
       }
-      topLeft={<KpiRow client={client} />}
+      topLeft={
+        <div className="flex flex-col items-start gap-2">
+          <KpiRow client={client} />
+          <ActionsCard
+            client={client}
+            control={control}
+            goalBt={goalBt}
+            onGoalBtChange={setGoalBt}
+            connected={connected}
+          />
+        </div>
+      }
       toolbar={
         <MapToolbar
           onCommand={issueCommand}
           follow={follow}
-          onToggleFollow={() => setFollow((v) => !v)}
+          onToggleFollow={() => setFollow(!follow)}
           interactionMode={control.interactionMode}
           onInteractionModeChange={control.setInteractionMode}
           disabled={!connected}
