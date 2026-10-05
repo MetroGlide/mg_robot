@@ -16,7 +16,10 @@ frontend/src/
   hooks/        通信層を React から使うフック (useFoxgloveClient、useTopicSubscriber、useServiceCaller など)
   contexts/     設定・状態の Provider
   components/
-    layout/     ページの骨格 (NavBar、RobotPageLayout、SideAccordion、SectionCard)
+    layout/     旧 UI のページの骨格 (LegacyLayout、NavBar、RobotPageLayout、SideAccordion、SectionCard)
+    shell/      新 UI (/ops) の枠 (AppShell、TopBar、ConnectionBanner)
+    operate/    新 UI の運用ビューの部品 (地図、KPI、進捗、状態、操作)
+    sensors/    新 UI のセンサビューの部品
     panels/     計器・ログなどの表示パネル
     status/     コンテナの状態・サービス操作のカード
     sections/   複数の操作をまとめた節 (rosbag の再生など)
@@ -24,7 +27,8 @@ frontend/src/
     waypoint-actions/  ウェイポイントナビの「Actions」(AMCL・GNSS の入/切、地図の切り替え、任意のサービス・トピック)
     ros-viewer/ three.js による 2D/3D のビューワー (hooks/ と layers/)
     ui/         ボタンなどの汎用の部品
-  pages/        ルーティングされるページ
+  pages/        ルーティングされるページ (旧 UI のページ)
+  pages/ops/    新 UI のページ (運用ビューのユースケース、センサ、システム)
   utils/、types/
 ```
 
@@ -42,10 +46,11 @@ App.tsx
 
 ### Context
 
-`App.tsx` が、次の 4 つの Provider で全体を包む。
+`App.tsx` が、次の 4 つの Provider で全体を包む。`ThemeProvider` だけは `main.tsx` で `App` を包む。
 
 | Context | フック | 用途 |
 | :--- | :--- | :--- |
+| `ThemeContext` | `useTheme()` | テーマ (light / dark / system) と低負荷モード。**端末ごとに** localStorage へ保存する (他の設定は system_manager 経由で全端末に共有されるが、これは共有しない) |
 | `SimulationContext` | `useSimulation()` | `isSimulation` で、シミュレーションと実機の表示を切り替える |
 | `RosbagReplayContext` | (`RosbagReplayProvider`) | rosbag の再生の状態 |
 | `VisualizationContext` | `useVisualization()` | 3D ビューワーのレイヤーとオーバーレイの表示の切り替え |
@@ -131,7 +136,47 @@ const result = await call(SERVICES.MY_SERVICE, { key: 'value' })
 client.publish(TOPICS.MY_TOPIC, 'pkg/msg/MyMessage', { value: 1, label: 'hello' })
 ```
 
+## 新 UI (`/ops`)
+
+地図を全面に置き、計器と操作を重ねる新しい UI。旧ページ (`/waypoint` など) とは別のレイアウトで、移行が終わるまで両方を残す
+(移行の状況は [ui_migration_todo.md](./ui_migration_todo.md))。
+
+| パス | 内容 | 実装 |
+| :--- | :--- | :--- |
+| `/ops/:useCase` | 運用ビュー。ユースケースごと (`waypoint`、`slam`) | `pages/ops/OperatePage.tsx` が `pages/ops/useCases.ts` から選ぶ |
+| `/ops/sensors` | RViz ライクなセンサビュー (全レイヤー、2D/3D) | `pages/ops/SensorsPage.tsx` |
+| `/ops/system` | コンテナ・診断・ログ | `pages/ops/SystemOpsPage.tsx` (旧 `SystemPage` を表示) |
+
+`App.tsx` は、旧 UI の枠 (`LegacyLayout`) と新 UI の枠 (`AppShell`) を、別のレイアウトルートにしている。旧ページの URL は変わらない。
+
+### ユースケースを足す
+
+1. `pages/ops/MyOperate.tsx` を作る。`{ client, sysManager }` を受け取り、`OperateLayout` のスロット (`map`、`topLeft`、`toolbar`、`topRight`、`notice`、`bottomLeft`、`bottomRight`) に、`components/operate/` の部品を置く。地図は `OperateMap`。
+2. `pages/ops/useCases.ts` の `USE_CASES` に 1 行足す (`id` は `sensors`、`system` と重ねない)。上部バーには自動で出る。
+
+操作のロジックは、画面から切り離してフックにする (例: `hooks/useWaypointControl.ts`)。旧ページと新 UI の両方が使える。
+
+### テーマ (色のトークン)
+
+- 色は `index.css` の CSS 変数 (`--surface`、`--text`、`--accent`、`--ok`、`--warn`、`--error` など。値は `R G B`) で定義し、`tailwind.config.js` で `bg-surface`、`text-content`、`text-muted`、`bg-accent`、`text-ok` などの名前にしている。**新 UI の部品は、`gray-*` や色名を直接書かず、このトークンを使う**。
+- ライトは `:root`、ダークは `:root.dark` に値を定義する。`ThemeProvider` が `<html>` に `dark` クラスを付ける。
+- 旧ページは `gray-*` を直接使っているので、テーマの影響を受けない (常に濃色)。
+- 地図の配色は `gridColors.ts` のパレット (`map` が濃色向け、`mapLight` が明るい色向け)。
+
+### 負荷を抑えるルール (新 UI の部品)
+
+- **運用ビューでは、高頻度のトピック (scan、costmap、点群、画像) を購読しない**。そうした表示は、センサビューに置く。運用ビューが購読するのは、地図・経路・TF のほかは、低頻度の状態のトピックだけ。
+- センサ・トピック・ノードの状態は、`/diagnostics` (1Hz) から `hooks/healthSummary.ts` で分類する。Hz を数えるためにトピックを購読しない。
+- 人が読むだけの値 (速度、GNSS など) は `useThrottledTopic(client, topic, schema, maxHz)` で、再描画を間引く。間引いても最後の値は必ず反映される。**E-Stop や FSM の状態のように、変化を見逃せない値は間引かず `useTopicSubscriber` を使う**。
+- 値には鮮度を付ける。`useFreshness(client, topic, maxAgeSec)` は、最後の受信 (ブラウザの時計) からの経過秒を返す。古くなった値は `StatTile` が `--` と経過秒の表示にする。Wi-Fi の瞬断で、古い値が現在値に見えないようにするため。
+- 切断中は `ConnectionBanner` を出し、送信系のボタンを無効にする (`client.status !== "connected"`)。
+- WebGL のキャンバスの上のカードでは、`backdrop-filter` (ぼかし) を使わない。キャンバスが更新されるたびに再合成が走る。半透明の単色と影にする (`components/ui/Card.tsx`)。アニメーションは transform と opacity に限る。
+- `OperateMap` は 10fps の描画要求、`dpr=1`。`RenderTicker` の間隔は `intervalMs` で指定できる (`RosViewer` の既定は 50ms)。
+- 上部バーの「低負荷」(`ThemeContext.lowLoad`) で、影とトランジションを切る。
+
 ## ページを足す
+
+(旧 UI のページ。新しい運用の画面は、上の「新 UI」に足す。)
 
 ロボットの操作系のページは `RobotPageLayout` を使い、左のサイドバー (`SideAccordion`) と右のビューワーを並べる。
 

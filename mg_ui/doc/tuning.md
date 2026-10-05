@@ -15,6 +15,10 @@
 | foxglove_bridge の `capabilities` と `sysinfo` | UI が使わない機能 (connectionGraph、parameters、assets、sysinfo) を止める | `compose.yaml` の `foxglove-bridge` の `capabilities` と `sysinfo` の 2 行を削除する (既定の動作になる) |
 | コンテナの状態の取得を軽くする | Docker への問い合わせを減らす (1 秒のキャッシュ、inspect を省略) | `docker_ops.py` の `_STATUS_CACHE_TTL_S` |
 | ログの配信 | `docker logs` を共有し、バッファに上限を付けて、まとめて送る | `routers/logs.py` の `MAX_BUFFERED_ENTRIES`、`FLUSH_INTERVAL_S` |
+| 新 UI の運用ビュー (`/ops/waypoint`、`/ops/slam`) | scan・costmap・点群・画像を購読せず、地図・経路・TF と低頻度の状態だけを購読する (旧ビューワーの標準構成より、購読するトピックが少ない。実測は [移行の ToDo](../mg_web_ui/doc/ui_migration_todo.md))。描画は 10fps、`dpr=1` | `components/operate/OperateMap.tsx` の `OPERATE_RENDER_INTERVAL_MS`。重い表示はセンサビュー (`/ops/sensors`) に分けている |
+| 新 UI の値の更新の間引き | 速度・GNSS は 4Hz / 1Hz に間引いて再描画する (最後の値は必ず反映) | `KpiRow.tsx` の `ODOM_HZ`、`GPS_HZ`。`hooks/useThrottledTopic.ts` |
+| 新 UI のセンサ・トピック・ノードの状態 | 高レートのトピックを購読せず、`/diagnostics` (1Hz) だけを使う | `components/operate/HealthTabsCard.tsx` |
+| 新 UI の低負荷モード | 影とトランジションを切る (端末ごとに保存) | 上部バーの「低負荷」。`index.css` の `:root.low-load` |
 | ページ単位の遅延読み込み | 初期に読み込む JS を 1.5 MB から 0.27 MB にする | `App.tsx` の `lazy` |
 
 ## 計測
