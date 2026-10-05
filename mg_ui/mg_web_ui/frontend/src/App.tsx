@@ -12,6 +12,7 @@ import OperatePage from "./pages/ops/OperatePage";
 import { USE_CASES } from "./pages/ops/useCases";
 
 // three.js や地図ライブラリを使うページは、開いたときに読み込む
+const SensorsPage = lazy(() => import("./pages/ops/SensorsPage"));
 const TopPage = lazy(() => import("./pages/TopPage"));
 const WaypointNavPage = lazy(() => import("./pages/WaypointNavPage"));
 const SlamPage = lazy(() => import("./pages/SlamPage"));
@@ -38,6 +39,10 @@ export default function App() {
                 <Route
                   index
                   element={<Navigate to={USE_CASES[0].id} replace />}
+                />
+                <Route
+                  path="sensors"
+                  element={<SensorsPage client={client} />}
                 />
                 <Route
                   path=":useCase"

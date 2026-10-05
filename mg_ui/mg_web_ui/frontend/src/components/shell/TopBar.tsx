@@ -53,6 +53,10 @@ export default function TopBar({ client, useCases, onSettingClick }: Props) {
             {u.label}
           </NavLink>
         ))}
+        <span className="mx-1 w-px bg-line" />
+        <NavLink to="/ops/sensors" className={navClass}>
+          センサ
+        </NavLink>
       </nav>
       <div className="ml-auto flex items-center gap-2">
         <Pill tone={estop?.data ? "error" : "neutral"}>
