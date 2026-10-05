@@ -481,12 +481,14 @@ export default function WaypointNavPage({
                   ]}
                   loading={sysLoading}
                 />
-                <SimulationPoseSection
-                  onResetRobot={handleResetRobotPose}
-                  onResetAmcl={handleResetAmclPose}
-                  loading={sysLoading}
-                  error={sysError}
-                />
+                <SectionCard title="Pose Reset">
+                  <SimulationPoseSection
+                    onResetRobot={handleResetRobotPose}
+                    onResetAmcl={handleResetAmclPose}
+                    loading={sysLoading}
+                    error={sysError}
+                  />
+                </SectionCard>
               </div>
             ),
           },
@@ -498,7 +500,9 @@ export default function WaypointNavPage({
             id: "rosbag-replay",
             label: "Rosbag Replay",
             children: (
-              <RosbagReplaySection client={client} sysManager={sysManager} />
+              <SectionCard>
+                <RosbagReplaySection client={client} sysManager={sysManager} />
+              </SectionCard>
             ),
           },
         ]

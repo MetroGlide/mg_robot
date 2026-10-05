@@ -1,6 +1,6 @@
 import { useState } from "react";
-import SectionCard from "../layout/SectionCard";
 import { PoseInput } from "../../hooks/useWaypointControl";
+import OpsButton from "../ui/OpsButton";
 
 interface SimulationPoseSectionProps {
   onResetRobot: (pose: PoseInput) => void;
@@ -9,6 +9,10 @@ interface SimulationPoseSectionProps {
   error?: string | null;
 }
 
+const INPUT_CLASS =
+  "mt-1 block w-full rounded-md border border-line bg-surface-elevated px-2 py-1 text-xs text-content";
+
+/** シミュレータ上のロボットの姿勢と、AMCL の姿勢を指定した値に戻す。枠は呼び出し側で付ける */
 export default function SimulationPoseSection({
   onResetRobot,
   onResetAmcl,
@@ -26,42 +30,32 @@ export default function SimulationPoseSection({
     setPose((prev) => ({ ...prev, [key]: value }));
 
   return (
-    <SectionCard title="Pose Reset">
-      <div className="grid grid-cols-2 gap-3 mb-3">
+    <div className="space-y-2">
+      <div className="grid grid-cols-4 gap-2">
         {(["x", "y", "z", "yaw"] as const).map((k) => (
-          <label key={k} className="text-sm text-gray-300">
-            <span className="block text-xs text-gray-400 mb-1">
-              {k === "yaw" ? "yaw(rad)" : k}
-            </span>
+          <label key={k} className="text-xs text-muted">
+            {k === "yaw" ? "yaw (rad)" : `${k} (m)`}
             <input
               type="number"
               step={k === "z" ? "0.01" : "0.1"}
               value={pose[k]}
               onChange={(e) => update(k, Number(e.target.value))}
-              className="w-full bg-gray-700 rounded px-2 py-1 text-sm"
+              className={INPUT_CLASS}
             />
           </label>
         ))}
       </div>
       <div className="flex flex-wrap gap-2">
-        <button
-          onClick={() => onResetRobot(pose)}
-          disabled={loading}
-          className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 px-4 py-2 rounded font-medium text-sm"
-        >
-          Reset Robot Pose
-        </button>
+        <OpsButton tone="primary" disabled={loading} onClick={() => onResetRobot(pose)}>
+          ロボットの姿勢をリセット
+        </OpsButton>
         {onResetAmcl && (
-          <button
-            onClick={() => onResetAmcl(pose)}
-            disabled={loading}
-            className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 px-4 py-2 rounded font-medium text-sm"
-          >
-            Reset AMCL Pose
-          </button>
+          <OpsButton disabled={loading} onClick={() => onResetAmcl(pose)}>
+            AMCL の姿勢をリセット
+          </OpsButton>
         )}
       </div>
-      {error && <p className="text-red-400 text-sm mt-2">{error}</p>}
-    </SectionCard>
+      {error && <p className="text-xs text-error">{error}</p>}
+    </div>
   );
 }

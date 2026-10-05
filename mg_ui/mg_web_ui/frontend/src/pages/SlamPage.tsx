@@ -123,10 +123,12 @@ export default function SlamPage({
             id: "simulation",
             label: "Simulation",
             children: (
-              <SimulationPoseSection
-                onResetRobot={(pose) => call("/simulation/reset-pose", pose)}
-                loading={loading}
-              />
+              <SectionCard title="Pose Reset">
+                <SimulationPoseSection
+                  onResetRobot={(pose) => call("/simulation/reset-pose", pose)}
+                  loading={loading}
+                />
+              </SectionCard>
             ),
           },
         ]
@@ -137,7 +139,9 @@ export default function SlamPage({
             id: "rosbag-replay",
             label: "Rosbag Replay",
             children: (
-              <RosbagReplaySection client={client} sysManager={sysManager} />
+              <SectionCard>
+                <RosbagReplaySection client={client} sysManager={sysManager} />
+              </SectionCard>
             ),
           },
         ]
