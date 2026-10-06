@@ -35,7 +35,7 @@ interface Props {
   connected: boolean;
 }
 
-/** 走行の補助操作(番号の指定、再読込、待ちなしの開始、手動ゴールの BT) */
+/** 走行の補助操作(番号の指定、再読込、手動ゴールの BT) */
 function DriveTools({
   control,
   goalBt,
@@ -58,13 +58,6 @@ function DriveTools({
         </label>
         <ActionButton label="Jump" size="sm" disabled={!connected} onClick={control.jump} />
         <ActionButton label="Reload WPs" size="sm" disabled={disabled} onClick={control.reload} />
-        <ActionButton
-          label="START IMMEDIATE"
-          size="sm"
-          variant="green"
-          disabled={disabled}
-          onClick={control.startImmediate}
-        />
       </div>
       <label className="block text-xs text-muted">
         手動ゴールの BT

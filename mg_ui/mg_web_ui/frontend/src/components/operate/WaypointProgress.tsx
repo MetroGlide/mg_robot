@@ -58,6 +58,14 @@ export default function WaypointProgress({ client, control, connected }: Props) 
         <OpsButton tone="primary" disabled={busy} onClick={control.start}>
           START
         </OpsButton>
+        <OpsButton
+          tone="primary"
+          disabled={busy}
+          onClick={control.startImmediate}
+          title="出発までの待ちなしで開始する"
+        >
+          即時 START
+        </OpsButton>
         <OpsButton tone="danger" disabled={busy} onClick={control.stop}>
           STOP
         </OpsButton>

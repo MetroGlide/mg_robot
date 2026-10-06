@@ -19,7 +19,7 @@ export default function SettingModal({ open, onClose }: SettingModalProps) {
         className="absolute inset-0 bg-black/60"
         onClick={onClose}
       />
-      <div className="relative z-10 rounded-xl border border-line bg-surface-elevated text-content shadow-card w-full max-w-2xl max-h-[80vh] flex flex-col">
+      <div className="relative z-10 rounded-xl border border-line bg-surface-elevated text-content shadow-card w-[min(64rem,calc(100vw-2rem))] h-[min(48rem,calc(100vh-4rem))] flex flex-col">
         <div className="flex items-center justify-between px-4 py-3 border-b border-line flex-shrink-0">
           <span className="text-sm font-semibold">Settings</span>
           <div className="flex items-center gap-1">
@@ -44,7 +44,7 @@ export default function SettingModal({ open, onClose }: SettingModalProps) {
             </button>
           </div>
         </div>
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 min-h-0 overflow-hidden">
           <SettingPage />
         </div>
       </div>
