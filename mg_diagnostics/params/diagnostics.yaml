@@ -7,3 +7,54 @@ diagnostics_node:
       - controller_server
       - planner_server
     hz_warn_ratio: 0.5
+
+    # 配信周期を監視するトピック。ここに ID を足し、下に同じ ID の設定を書く。
+    #   topic: トピック名 (相対名はノードの名前空間で解決される)
+    #   type: メッセージの型 (例: sensor_msgs/msg/LaserScan)
+    #   expected_hz: 期待する周期 [Hz]
+    #   qos: best_effort または reliable (省略時 reliable)
+    #   group: sensor または topic (省略時 topic)。sensor は Web UI の「センサ」に出る
+    monitored_topics:
+      - sequencer_status
+      - amcl_pose
+      - cmd_vel
+      - odom
+      - scan_top_lidar
+      - emergency_stop
+      - collision_state
+
+    sequencer_status:
+      topic: waypoint_sequencer_node/status
+      type: mg_msgs/msg/SequencerStatus
+      expected_hz: 10.0
+      qos: best_effort
+    amcl_pose:
+      topic: amcl_pose
+      type: geometry_msgs/msg/PoseWithCovarianceStamped
+      expected_hz: 1.0
+    cmd_vel:
+      topic: cmd_vel
+      type: geometry_msgs/msg/Twist
+      expected_hz: 10.0
+      qos: best_effort
+    odom:
+      topic: odom
+      type: nav_msgs/msg/Odometry
+      expected_hz: 20.0
+      qos: best_effort
+      group: sensor
+    scan_top_lidar:
+      topic: scan_top_lidar
+      type: sensor_msgs/msg/LaserScan
+      expected_hz: 10.0
+      qos: best_effort
+      group: sensor
+    emergency_stop:
+      topic: motor_driver_node/emergency_stop
+      type: std_msgs/msg/Bool
+      expected_hz: 1.0
+    collision_state:
+      topic: collision_detector_state
+      type: nav2_msgs/msg/CollisionDetectorState
+      expected_hz: 5.0
+      qos: best_effort

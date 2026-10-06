@@ -16,8 +16,9 @@ export interface HealthSummary {
 }
 
 // mg_diagnostics に明示的なセンサ接続の確認はないので、センサが出すトピックの配信状態で代用する。
-// センサのトピックを監視対象に加えたら、ここにも名前を足す。
-const SENSOR_TOPIC = /^(scan_|odom$|fix$|camera)/;
+// どのトピックをセンサとするかは、mg_diagnostics の params(監視するトピックの group)で決まる。
+const GROUP_KEY = "group";
+const SENSOR_GROUP = "sensor";
 
 const TOPIC_PREFIX = "topic/";
 const NODE_PREFIX = "node/";
@@ -29,7 +30,10 @@ export function summarizeHealth(statuses: DiagnosticStatus[]): HealthSummary {
     if (s.name.startsWith(TOPIC_PREFIX)) {
       const name = s.name.slice(TOPIC_PREFIX.length);
       const item = { name, level: s.level, message: s.message };
-      (SENSOR_TOPIC.test(name) ? summary.sensors : summary.topics).push(item);
+      const isSensor = s.values.some(
+        (v) => v.key === GROUP_KEY && v.value === SENSOR_GROUP,
+      );
+      (isSensor ? summary.sensors : summary.topics).push(item);
     } else if (s.name.startsWith(NODE_PREFIX)) {
       summary.nodes.push({
         name: s.name.slice(NODE_PREFIX.length),
