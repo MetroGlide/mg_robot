@@ -46,7 +46,10 @@ const GROUPS: LayerGroup[] = [
   },
 ];
 
-/** センサビューのレイヤー切替。設定は旧 UI と共有される */
+/**
+ * センサビューのレイヤー切替。設定は旧 UI と共有される。
+ * センサ系のレイヤー(LiDAR・コストマップ・点群など)の ON/OFF は、運用ビューのセンサ表示にも反映される。
+ */
 export default function LayerPanel() {
   const { layers, toggleLayer, applyPreset } = useVisualization();
   const [open, setOpen] = useOpsValue<boolean>("sensors.layerPanel", true);

@@ -96,3 +96,9 @@ export const GlobeIcon = () => (
     <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />
   </Icon>
 );
+export const LayersIcon = () => (
+  <Icon>
+    <path d="M12 3l9 5-9 5-9-5z" />
+    <path d="M3 13l9 5 9-5" />
+  </Icon>
+);

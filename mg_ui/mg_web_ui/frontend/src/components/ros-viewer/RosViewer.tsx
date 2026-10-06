@@ -9,14 +9,11 @@ import { useTfBuffer, TfBuffer } from "./hooks/useTfBuffer";
 import { TOPICS } from "../../ros/interfaces";
 import { loadSettings, saveSettings } from "../../utils/settingsApi";
 import MapLayer from "./layers/MapLayer";
-import CostmapLayer from "./layers/CostmapLayer";
-import LaserScanLayer from "./layers/LaserScanLayer";
 import RobotArrow from "./layers/RobotArrow";
 import PathLine from "./layers/PathLine";
 import WaypointMarkers from "./layers/WaypointMarkers";
-import CollisionPolygons from "./layers/CollisionPolygons";
-import ParticleCloud from "./layers/ParticleCloud";
-import PointCloud2Layer from "./layers/PointCloud2Layer";
+import SensorLayers from "./SensorLayers";
+import { SCENE_COLORS } from "./sceneColors";
 import PoseArrowInteraction, {
   PoseInteractionMode,
 } from "./layers/PoseArrowInteraction";
@@ -330,45 +327,12 @@ function Scene({
       )}
 
       {layers.map && <MapLayer client={client} />}
-      {layers.globalCostmap && (
-        <CostmapLayer
-          client={client}
-          topic={TOPICS.GLOBAL_COSTMAP}
-          opacity={0.3}
-          tfBuffer={tfBuffer}
-        />
-      )}
-      {layers.localCostmap && (
-        <CostmapLayer
-          client={client}
-          topic={TOPICS.LOCAL_COSTMAP}
-          opacity={0.5}
-          tfBuffer={tfBuffer}
-        />
-      )}
-      {layers.lidarTop && (
-        <LaserScanLayer
-          client={client}
-          topic={TOPICS.SCAN_TOP}
-          color="#00ffff"
-          tfBuffer={tfBuffer}
-        />
-      )}
       {layers.robotPose && <RobotArrow client={client} tfBuffer={tfBuffer} />}
-      {layers.particleCloud && <ParticleCloud client={client} />}
       {layers.planPath && (
         <PathLine client={client} topic={TOPICS.NAV_PLAN} color="#ff0000" />
       )}
-      {layers.actualPath && (
-        <PathLine client={client} topic={TOPICS.ACTUAL_PATH} color="#aa55ff" />
-      )}
       {layers.waypointMarkers && <WaypointMarkers client={client} />}
-      {layers.collisionPolygons && (
-        <CollisionPolygons client={client} tfBuffer={tfBuffer} />
-      )}
-      {layers.pointCloud && (
-        <PointCloud2Layer client={client} tfBuffer={tfBuffer} />
-      )}
+      <SensorLayers client={client} tfBuffer={tfBuffer} colors={SCENE_COLORS.dark} />
       {interactionMode !== "none" && (
         <PoseArrowInteraction mode={interactionMode} onPoseSet={onPoseSet} />
       )}

@@ -10,12 +10,17 @@ interface Props {
   tfBuffer: TfBuffer;
   length?: number;
   width?: number;
+  color?: string;
+  /** 縁取りの色。地図の明るさによらず輪郭が見えるようにする。省略すると縁取りをしない */
+  haloColor?: string;
 }
 
 export default function RobotArrow({
   tfBuffer,
   length = 0.8,
   width = 0.6,
+  color = "#00aaff",
+  haloColor,
 }: Props) {
   const groupRef = useRef<THREE.Group>(null);
 
@@ -48,8 +53,14 @@ export default function RobotArrow({
 
   return (
     <group ref={groupRef}>
-      <Line points={outline} color="#00aaff" lineWidth={2} />
-      <Line points={arrow} color="#00aaff" lineWidth={3} />
+      {haloColor && (
+        <>
+          <Line points={outline} color={haloColor} lineWidth={5} />
+          <Line points={arrow} color={haloColor} lineWidth={6} />
+        </>
+      )}
+      <Line points={outline} color={color} lineWidth={2.5} />
+      <Line points={arrow} color={color} lineWidth={3.5} />
     </group>
   );
 }

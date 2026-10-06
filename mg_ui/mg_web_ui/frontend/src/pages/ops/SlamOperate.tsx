@@ -2,6 +2,7 @@ import { useState } from "react";
 import { FoxgloveClientHandle } from "../../hooks/useFoxgloveClient";
 import { SystemManagerHandle } from "../../hooks/useSystemManagerClient";
 import { useOpsValue } from "../../hooks/useOpsValue";
+import { useSensorsVisible } from "../../hooks/useSensorsVisible";
 import OperateLayout from "../../components/operate/OperateLayout";
 import OperateMap from "../../components/operate/OperateMap";
 import KpiRow from "../../components/operate/KpiRow";
@@ -26,6 +27,7 @@ export default function SlamOperate({
 }) {
   const [command, setCommand] = useState<MapCommand | null>(null);
   const [follow, setFollow] = useOpsValue<boolean>(`${VIEW_KEY}.follow`, true);
+  const [sensorsVisible] = useSensorsVisible();
 
   const issueCommand = (kind: MapCommand["kind"]) =>
     setCommand((prev) => ({ kind, n: (prev?.n ?? 0) + 1 }));
@@ -42,6 +44,7 @@ export default function SlamOperate({
           interactionMode="none"
           onPoseSet={() => {}}
           showNavLayers={false}
+          showSensors={sensorsVisible}
         />
       }
       topLeft={<KpiRow client={client} />}

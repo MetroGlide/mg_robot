@@ -186,12 +186,13 @@ client.publish(TOPICS.MY_TOPIC, 'pkg/msg/MyMessage', { value: 1, label: 'hello' 
 
 ### 負荷を抑えるルール (新 UI の部品)
 
-- **運用ビューでは、高頻度のトピック (scan、costmap、点群、画像) を購読しない**。そうした表示は、センサビューに置く。運用ビューが購読するのは、地図・経路・TF のほかは、低頻度の状態のトピックだけ。
+- **運用ビューでは、高頻度のトピック (scan、costmap、点群、画像) を、既定では購読しない**。そうした表示は、センサビューに置く。運用ビューが購読するのは、地図・経路・TF のほかは、低頻度の状態のトピックだけ。例外は、地図ツールバーの「センサ表示」ボタン (`useSensorsVisible`、既定はオフ。再読み込みでは残さない)。オンにしたときだけ `SensorLayers` が描かれ、そのレイヤー (LiDAR・コストマップ・点群など) の ON/OFF は、センサビューのレイヤーパネルの設定に従う。オフに戻すと購読を止める。画像は運用ビューに出さない。
 - センサ・トピック・ノードの状態は、`/diagnostics` (1Hz) から `hooks/healthSummary.ts` で分類する。Hz を数えるためにトピックを購読しない。
 - 人が読むだけの値 (速度、GNSS など) は `useThrottledTopic(client, topic, schema, maxHz)` で、再描画を間引く。間引いても最後の値は必ず反映される。**E-Stop や FSM の状態のように、変化を見逃せない値は間引かず `useTopicSubscriber` を使う**。
 - 値には鮮度を付ける。`useFreshness(client, topic, maxAgeSec)` は、最後の受信 (ブラウザの時計) からの経過秒を返す。古くなった値は `StatTile` が `--` と経過秒の表示にする。Wi-Fi の瞬断で、古い値が現在値に見えないようにするため。
 - 切断中は `ConnectionBanner` を出し、送信系のボタンを無効にする (`client.status !== "connected"`)。
 - WebGL のキャンバスの上のカードでは、`backdrop-filter` (ぼかし) を使わない。キャンバスが更新されるたびに再合成が走る。半透明の単色と影にする (`components/ui/Card.tsx`)。アニメーションは transform と opacity に限る。
+- 地図の上の色は `components/ros-viewer/sceneColors.ts` (テーマ別) にまとめる。LiDAR の点とウェイポイントのピンは画面上の px で大きさを決め、ズームしても小さくならない。縁取りの色で、地図の明暗によらず見えるようにする。
 - `OperateMap` は 10fps の描画要求、`dpr=1`。`RenderTicker` の間隔は `intervalMs` で指定できる (`RosViewer` の既定は 50ms)。
 - 上部バーの「低負荷」(`ThemeContext.lowLoad`。設定のタブにもある) で、影とトランジションを切る。
 - 地図の上に重ねる GPS のミニ地図 (`overlays.gpsMap`) は、地図タイルを読み込み、GNSS を購読するので、既定はオフ。ツールバーのボタンで、使うときだけオンにする。

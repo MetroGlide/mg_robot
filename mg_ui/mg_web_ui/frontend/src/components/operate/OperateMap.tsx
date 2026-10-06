@@ -6,7 +6,9 @@ import { useTfBuffer } from "../ros-viewer/hooks/useTfBuffer";
 import MapLayer from "../ros-viewer/layers/MapLayer";
 import RobotArrow from "../ros-viewer/layers/RobotArrow";
 import PathLine from "../ros-viewer/layers/PathLine";
-import WaypointMarkers from "../ros-viewer/layers/WaypointMarkers";
+import WaypointPins from "../ros-viewer/layers/WaypointPins";
+import SensorLayers from "../ros-viewer/SensorLayers";
+import { SCENE_COLORS } from "../ros-viewer/sceneColors";
 import PoseArrowInteraction, {
   PoseInteractionMode,
 } from "../ros-viewer/layers/PoseArrowInteraction";
@@ -38,6 +40,8 @@ interface Props {
   showNavLayers?: boolean;
   /** 地図の上に重ねる、ユースケース固有のシーン要素 */
   sceneChildren?: ReactNode;
+  /** センサのレイヤー(LiDAR・コストマップなど)を描く(購読する)か。描く内容は設定のレイヤーに従う */
+  showSensors?: boolean;
   className?: string;
   /** カメラを画面の切り替えをまたいで保持するためのキー(ユースケースの id など) */
   viewKey: string;
@@ -58,9 +62,11 @@ function OperateScene({
   interactionMode,
   onPoseSet,
   showNavLayers = true,
+  showSensors = false,
   sceneChildren,
 }: SceneProps) {
   const { resolved } = useTheme();
+  const colors = SCENE_COLORS[resolved];
   const tfBuffer = useTfBuffer(client);
 
   return (
@@ -82,11 +88,24 @@ function OperateScene({
       />
       {showNavLayers && (
         <>
-          <PathLine client={client} topic={TOPICS.NAV_PLAN} color="#ef4444" />
-          <WaypointMarkers client={client} />
+          <PathLine
+            client={client}
+            topic={TOPICS.NAV_PLAN}
+            color={colors.plan}
+            lineWidth={3}
+          />
+          <WaypointPins client={client} colors={colors} />
         </>
       )}
-      <RobotArrow client={client} tfBuffer={tfBuffer} />
+      {showSensors && (
+        <SensorLayers client={client} tfBuffer={tfBuffer} colors={colors} />
+      )}
+      <RobotArrow
+        client={client}
+        tfBuffer={tfBuffer}
+        color={colors.robot}
+        haloColor={colors.halo}
+      />
       {interactionMode !== "none" && (
         <PoseArrowInteraction mode={interactionMode} onPoseSet={onPoseSet} />
       )}

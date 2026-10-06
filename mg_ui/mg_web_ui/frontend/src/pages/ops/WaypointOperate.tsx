@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { FoxgloveClientHandle } from "../../hooks/useFoxgloveClient";
 import { SystemManagerHandle } from "../../hooks/useSystemManagerClient";
 import { useOpsValue } from "../../hooks/useOpsValue";
+import { useSensorsVisible } from "../../hooks/useSensorsVisible";
 import { useWaypointControl } from "../../hooks/useWaypointControl";
 import { GoalBtMode } from "../../utils/waypointActions";
 import Card from "../../components/ui/Card";
@@ -47,6 +48,7 @@ export default function WaypointOperate({
     `${VIEW_KEY}.countdownMs`,
     3000,
   );
+  const [sensorsVisible] = useSensorsVisible();
   const [mapError, setMapError] = useState<string | null>(null);
   const control = useWaypointControl(
     client,
@@ -79,6 +81,7 @@ export default function WaypointOperate({
           onUserPan={() => setFollow(false)}
           interactionMode={control.interactionMode}
           onPoseSet={control.handleMapPoseSet}
+          showSensors={sensorsVisible}
         />
       }
       topLeft={
