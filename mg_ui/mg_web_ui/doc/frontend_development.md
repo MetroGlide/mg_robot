@@ -52,6 +52,7 @@ App.tsx
 | Context | フック | 用途 |
 | :--- | :--- | :--- |
 | `ThemeContext` | `useTheme()` | テーマ (light / dark / system) と低負荷モード。**端末ごとに** localStorage へ保存する (他の設定は system_manager 経由で全端末に共有されるが、これは共有しない) |
+| `RobotProfileContext` | `useRobotProfile()` | ロボットの名前 (既定 `MG-02`)。画面の見出しとタブのタイトルに使う。system_manager の設定 `robot.name` に保存し、全端末で共有する。設定の「全般」タブで変える |
 | `SimulationContext` | `useSimulation()` | `isSimulation` で、シミュレーションと実機の表示を切り替える |
 | `RosbagReplayContext` | (`RosbagReplayProvider`) | rosbag の再生の状態 |
 | `VisualizationContext` | `useVisualization()` | 3D ビューワーのレイヤーとオーバーレイの表示の切り替え |
