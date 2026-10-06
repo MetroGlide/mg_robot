@@ -38,8 +38,7 @@ const GROUPS: LayerGroup[] = [
   {
     title: "センサ",
     layers: [
-      { key: "lidarTop", label: "LiDAR (上)" },
-      { key: "lidarFront", label: "LiDAR (前)" },
+      { key: "lidarTop", label: "LiDAR" },
       { key: "pointCloud", label: "深度点群", heavy: true },
       { key: "colorImage", label: "カメラ画像", heavy: true },
       { key: "depthImage", label: "深度画像", heavy: true },

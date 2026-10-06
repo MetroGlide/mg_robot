@@ -245,7 +245,7 @@ export default function MyPage({ client, sysManager }: { client: FoxgloveClientH
 | :--- | :--- |
 | `map` | 占有格子の地図 |
 | `globalCostmap` / `localCostmap` | グローバル / ローカルのコストマップ |
-| `lidarTop` / `lidarFront` | 上 (シアン) / 前 (緑) の LiDAR のスキャン |
+| `lidarTop` | LiDAR のスキャン |
 | `robotPose` | ロボットの位置 (矢印) |
 | `particleCloud` | AMCL のパーティクル |
 | `planPath` / `actualPath` | 計画した経路 (赤) / 走った経路 (紫) |

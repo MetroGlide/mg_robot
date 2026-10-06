@@ -354,14 +354,6 @@ function Scene({
           tfBuffer={tfBuffer}
         />
       )}
-      {layers.lidarFront && (
-        <LaserScanLayer
-          client={client}
-          topic={TOPICS.SCAN_FRONT}
-          color="#00ff80"
-          tfBuffer={tfBuffer}
-        />
-      )}
       {layers.robotPose && <RobotArrow client={client} tfBuffer={tfBuffer} />}
       {layers.particleCloud && <ParticleCloud client={client} />}
       {layers.planPath && (

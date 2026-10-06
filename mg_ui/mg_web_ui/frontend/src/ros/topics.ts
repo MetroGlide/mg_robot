@@ -18,7 +18,6 @@ export const TOPICS = {
   TF: '/tf',
   TF_STATIC: '/tf_static',
   SCAN_TOP: '/scan_top_lidar',
-  SCAN_FRONT: '/scan_front_lidar',
   NAV_PLAN: '/plan',
   ACTUAL_PATH: '/actual_path',
   GLOBAL_COSTMAP: '/global_costmap/costmap',

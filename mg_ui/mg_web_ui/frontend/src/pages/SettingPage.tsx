@@ -43,8 +43,7 @@ const LAYER_GROUPS: LayerGroup[] = [
   {
     label: "LiDAR",
     items: [
-      { key: "lidarTop", label: "Top LiDAR" },
-      { key: "lidarFront", label: "Front LiDAR" },
+      { key: "lidarTop", label: "LiDAR" },
     ],
   },
   {
