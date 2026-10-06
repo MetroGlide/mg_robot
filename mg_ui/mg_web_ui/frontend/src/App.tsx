@@ -6,6 +6,7 @@ import { SimulationProvider } from "./contexts/SimulationContext";
 import { VisualizationProvider } from "./contexts/VisualizationContext";
 import { TeleopProvider } from "./contexts/TeleopContext";
 import { RosbagReplayProvider } from "./contexts/RosbagReplayContext";
+import { RobotProfileProvider } from "./contexts/RobotProfileContext";
 import LegacyLayout from "./components/layout/LegacyLayout";
 import AppShell from "./components/shell/AppShell";
 import OperatePage from "./pages/ops/OperatePage";
@@ -27,6 +28,7 @@ export default function App() {
   const sysManager = useSystemManagerClient();
 
   return (
+    <RobotProfileProvider>
     <SimulationProvider>
       <RosbagReplayProvider>
         <VisualizationProvider>
@@ -97,5 +99,6 @@ export default function App() {
         </VisualizationProvider>
       </RosbagReplayProvider>
     </SimulationProvider>
+    </RobotProfileProvider>
   );
 }

@@ -2,6 +2,7 @@ import { NavLink } from "react-router-dom";
 import { ConnectionStatus, FoxgloveClientHandle } from "../../hooks/useFoxgloveClient";
 import { useTopicSubscriber } from "../../hooks/useTopicSubscriber";
 import { useTheme } from "../../contexts/ThemeContext";
+import { useRobotProfile } from "../../contexts/RobotProfileContext";
 import { BoolMsg } from "../../types";
 import { TOPICS } from "../../ros/interfaces";
 import IconButton from "../ui/IconButton";
@@ -45,10 +46,11 @@ export default function TopBar({ client, links, onSettingClick }: Props) {
     "std_msgs/msg/Bool",
   );
   const connection = CONNECTION[client.status];
+  const { name: robotName } = useRobotProfile();
 
   return (
     <header className="flex items-center gap-4 border-b border-line bg-surface-elevated px-4 py-2">
-      <span className="text-base font-bold tracking-wide">MG-01</span>
+      <span className="text-base font-bold tracking-wide">{robotName}</span>
       <nav className="flex gap-1">
         {links.map((link) => (
           <NavLink key={link.id} to={link.to} className={navClass}>

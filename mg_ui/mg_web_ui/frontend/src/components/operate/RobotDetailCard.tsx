@@ -15,6 +15,7 @@ import {
 import { TOPICS } from "../../ros/interfaces";
 import { parseNavigationMode } from "../../utils/waypointActions";
 import Card from "../ui/Card";
+import { useRobotProfile } from "../../contexts/RobotProfileContext";
 import IconButton from "../ui/IconButton";
 import { CloseIcon } from "../ui/icons";
 import { quaternionToYawDeg } from "./displayState";
@@ -91,6 +92,7 @@ export default function RobotDetailCard({
   client: FoxgloveClientHandle;
   onClose: () => void;
 }) {
+  const { name: robotName } = useRobotProfile();
   const amcl = useThrottledTopic<AmclPose>(
     client,
     TOPICS.AMCL_POSE,
@@ -125,7 +127,7 @@ export default function RobotDetailCard({
   return (
     <Card className="w-72 p-3">
       <div className="mb-1 flex items-center justify-between">
-        <h2 className="text-sm font-bold">MG-01</h2>
+        <h2 className="text-sm font-bold">{robotName}</h2>
         <IconButton icon={<CloseIcon />} title="閉じる" onClick={onClose} />
       </div>
       <Row label="X" value={pose ? `${pose.position.x.toFixed(2)} m` : "--"} />

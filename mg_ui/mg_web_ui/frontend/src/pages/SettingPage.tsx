@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSimulation } from "../contexts/SimulationContext";
 import { useRosbagReplay } from "../contexts/RosbagReplayContext";
 import {
@@ -9,6 +9,7 @@ import {
 } from "../contexts/VisualizationContext";
 import { useTeleop } from "../contexts/TeleopContext";
 import { ThemeMode, useTheme } from "../contexts/ThemeContext";
+import { useRobotProfile } from "../contexts/RobotProfileContext";
 import {
   PRESET_DESCRIPTIONS,
   PRESET_LABELS,
@@ -113,7 +114,7 @@ const THEME_MODES: { value: ThemeMode; label: string }[] = [
 ];
 
 const TABS = [
-  { id: "theme", label: "テーマ" },
+  { id: "general", label: "全般" },
   { id: "connection", label: "Connection" },
   { id: "simulation", label: "Simulation" },
   { id: "rosbag-replay", label: "Rosbag Replay" },
@@ -153,7 +154,17 @@ export default function SettingPage() {
 
   const { mode: themeMode, setMode: setThemeMode, lowLoad, setLowLoad } = useTheme();
 
-  const [activeTab, setActiveTab] = useState<TabId>("theme");
+  const { name: robotName, setName: setRobotName } = useRobotProfile();
+  const [robotNameDraft, setRobotNameDraft] = useState(robotName);
+  useEffect(() => setRobotNameDraft(robotName), [robotName]);
+
+  const commitRobotName = () => {
+    const next = robotNameDraft.trim();
+    if (next === "") setRobotNameDraft(robotName);
+    else if (next !== robotName) setRobotName(next);
+  };
+
+  const [activeTab, setActiveTab] = useState<TabId>("general");
 
   const [sysManagerUrl, setSysManagerUrlState] = useState(() =>
     getSysManagerUrl(),
@@ -187,9 +198,23 @@ export default function SettingPage() {
       </nav>
 
       <div className="flex-1 overflow-y-auto p-4">
-        {activeTab === "theme" && (
+        {activeTab === "general" && (
           <div className="space-y-4">
             <div>
+              <label className="mb-1 block text-xs text-muted">
+                ロボットの名前(全端末で共通。画面の見出しとタブの名前に使う)
+              </label>
+              <input
+                value={robotNameDraft}
+                onChange={(e) => setRobotNameDraft(e.target.value)}
+                onBlur={commitRobotName}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") e.currentTarget.blur();
+                }}
+                className="w-full rounded border border-line bg-surface-sunken px-2 py-1.5 text-sm text-content"
+              />
+            </div>
+            <div className="border-t border-line pt-3">
               <p className="mb-2 text-xs text-muted">テーマ(この端末だけの設定)</p>
               <div className="flex gap-2">
                 {THEME_MODES.map(({ value, label }) => (
