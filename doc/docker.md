@@ -112,7 +112,7 @@ docker compose -f compose.yaml -f compose.gpu.nvidia.yaml build gazebo-simulatio
 
 ### ベストプラクティス
 
-- アプリは標準出力に出し、ログのファイル管理は Docker に任せる。
+- アプリは標準出力に出し、ログのファイル管理は Docker に任せる。ROS 2 は標準出力のほかに `ROS_LOG_DIR` へファイルも書くため、ホストにマウントして残し、`make logs-clean-ros` で古いものを消す ([共通のコンテナ設定](#共通のコンテナ設定))。
 - ローテーションは必ず設定する。無制限のままだと、実機 PC で長時間起動したときにディスクを圧迫する。
 - 設定は compose で管理し、ホスト全体の既定 (`/etc/docker/daemon.json`) は保険として使う。
 - ドライバ `local` は Docker 推奨で、圧縮と既定のローテーションを持つ。ただしログファイルを直接読むツールとは相性が悪いため、本プロジェクトは `json-file` にしている。
@@ -133,8 +133,18 @@ compose の設定がないコンテナ (手で `docker run` したものなど) 
 
 ## 共通のコンテナ設定
 
-- ネットワークは `host`、`privileged: true`、`/dev` をマウントする (センサのシリアルポートを使うため)。
+`compose.yaml` の先頭にある YAML アンカー (`x-*`) に共通の設定をまとめ、各サービスが `<<:` で取り込む。
+
+- ネットワークは `host`。
+- **権限**: センサのデバイスを使うサービス (`slam`・`navigation`・`slam-gnss-2d`・`develop`・Gazebo 系など) は、`privileged: true` と `/dev` のマウントを使う (センサのシリアルポートのため)。デバイスを使わないサービス (`diagnostics`・`foxglove-bridge`・`system-manager`・RViz2 系・`waypoint-editor`・`web-ui`) は、`privileged` も `/dev` も使わない。RViz2 系と `waypoint-editor` は、GPU 描画のために `/dev/dri` だけを渡す。新しいサービスを足すときは、デバイスが要らなければ `x-runtime-core` / `x-develop-core` を使う。
 - GUI (RViz2、Gazebo) を使うときは、先にホストで `make xhost` を実行する。
 - データの置き場として、ホストの `${HOME}/ros2_data` を `/root/ros2_data` にマウントする ([environment.md](./environment.md))。
 - DDS は `rmw_cyclonedds_cpp`。開発 PC と実機 PC をまたぐシナリオテストでは、`docker/cyclonedds/remote.xml` で通信相手とインターフェースを指定する ([mg_scenario_test の README](../mg_scenario_test/README.md))。
-- `develop` コンテナの起動コマンドは `docker/docker-entrypoint.sh` (`sleep infinity`)。
+- **起動と終了**
+  - `entrypoint` は `docker/ros_entrypoint.sh`。ROS 2 とワークスペースの `setup.bash` を読み込んでから、`command` に `exec` で置き換わる。`command` に `source` を書く必要はない (`web-ui` だけは、イメージに `/app` を焼き込んでいて再ビルドが要るため、`command` で `source` している)。
+  - `command` は `ros2 launch ...` のようにそのまま書く。`$$VAR` などシェルの展開が要るときだけ `bash -c "exec ..."` とする (`exec` しないとシグナルが届かない)。
+  - `init: true` で PID 1 に tini を置き、`stop_signal: SIGINT`、`stop_grace_period: 30s` にしている。`docker stop` (system_manager の停止も同じ) が SIGINT で ROS 2 の launch を正常終了させるため、rosbag の mcap や Nav2 を安全に閉じられる。猶予内に終わらなければ SIGKILL になる。
+  - `tty` は付けない。ログに色コードが混ざるのを避けるため。対話で使うときは `run -it` や `exec` が tty を確保する。
+- **環境変数**: `x-common-env` が全サービス共通 (`PYTHONUNBUFFERED`、`ROS_LOG_DIR`、`RCUTILS_CONSOLE_OUTPUT_FORMAT`)。GUI を使うサービスは `x-gui-env` (`DISPLAY` を追加)。サービスごとの `environment` は、これを `<<:` で取り込んで追加する。
+- **ROS のファイルログ**: `ROS_LOG_DIR` により、ホストの `${HOME}/ros2_data/ros_log` に保存される (launch のログと、ノードごとのログ)。コンテナを削除しても残る。古いものは `make logs-clean-ros [DAYS=14]` で削除する。コンソールの出力は、上の「ログ」の Docker のログに入る。
+- `develop` コンテナの起動コマンドは `sleep infinity`。

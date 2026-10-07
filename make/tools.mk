@@ -22,13 +22,12 @@ $(strip \
 endef
 
 # develop コンテナで、対象 bag (BAG > BAG_PATH > ROSBAG_FILE) を解決してスクリプトを実行する。
+# ROS 2 の環境は、コンテナの entrypoint (docker/ros_entrypoint.sh) が読み込む。
 #   $(1): bag の解決後・スクリプト実行前に挟むシェルの断片 (空でよい。末尾は && で終える)
 #   $(2): 実行するスクリプトと引数 (対象 bag はシェル変数 TARGET_BAG)
 define _bag_run
 $(COMPOSE) run --rm --no-deps $(if $(BAG),-e BAG="$(BAG)" )$(if $(BAG_PATH),-e BAG_PATH="$(BAG_PATH)" )develop bash -c \
-  "source /opt/ros/humble/setup.bash && \
-   source /root/ros2_ws/install/setup.bash && \
-   TARGET_BAG=\"\$${BAG:-\$${BAG_PATH:-\$$ROSBAG_FILE}}\" && \
+  "TARGET_BAG=\"\$${BAG:-\$${BAG_PATH:-\$$ROSBAG_FILE}}\" && \
    if [ -z \"\$$TARGET_BAG\" ]; then \
      echo 'エラー: 解析対象の rosbag が指定されていません。.env に ROSBAG_FILE を設定するか、BAG=/path/to/bag を指定してください。' >&2; \
      exit 1; \

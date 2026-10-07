@@ -1,6 +1,6 @@
 ##@ コンテナ操作 (シェル・ログ・状態)
 
-.PHONY: shell shell-develop logs logs-all logs-export ps restart down config xhost
+.PHONY: shell shell-develop logs logs-all logs-export logs-clean-ros ps restart down config xhost
 
 # 起動中のコンテナの bash に入る。
 #   svc=<サービス名>  必須 (例: svc=slam)
@@ -36,6 +36,13 @@ logs-export: ## コンテナのログをファイルに書き出す [svc OUT_DIR
 	for s in $(or $(svc),$$($(COMPOSE) ps -a --format '{{.Service}}' | sort -u)); do \
 	  $(COMPOSE) logs --no-color --timestamps "$$s" > "$$d/$$s.log" 2>&1 && echo "$$d/$$s.log"; \
 	done
+
+# ROS のファイルログ (ROS_LOG_DIR=/root/ros2_data/ros_log。ホストの ${HOME}/ros2_data/ros_log) のうち、古いものを削除する。
+# 削除したパスを表示する。
+#   DAYS=<日数>  この日数より古いものを削除する (既定: 14)
+logs-clean-ros: ## 古い ROS のファイルログを削除 [DAYS=14]
+	$(COMPOSE) run --rm --no-deps develop \
+	  find /root/ros2_data/ros_log -mindepth 1 -maxdepth 1 -mtime +$(or $(DAYS),14) -print -exec rm -rf {} +
 
 ps: ## コンテナの状態を表示
 	$(COMPOSE) ps

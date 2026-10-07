@@ -99,6 +99,7 @@ Gazebo とナビゲーションを起動して合否を判定する。詳細は 
 | `make logs svc=<名前> [TAIL=] [SINCE=]` | ログを追う ([docker.md](./docker.md#ログ)) |
 | `make logs-all [TAIL=] [SINCE=]` | 全サービスのログをまとめて追う |
 | `make logs-export [svc=<名前>] [OUT_DIR=]` | コンテナのログを `${HOME}/ros2_data/logs/<日時>/` に書き出す (`down` の前に実行する) |
+| `make logs-clean-ros [DAYS=14]` | ROS のファイルログ (`${HOME}/ros2_data/ros_log`) のうち、古いものを削除する |
 | `make ps` | 起動中のコンテナを表示する |
 | `make restart svc=<名前>` | サービスを再起動する |
 | `make down` | すべてのサービスを止める |

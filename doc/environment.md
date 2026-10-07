@@ -70,6 +70,7 @@ Docker のログのローテーション設定。compose の `${LOG_MAX_SIZE:-10
 | 変数 | 使う場所 | 内容 |
 | :--- | :--- | :--- |
 | `SLAM_MAP_DIR` | `map-preview` | プレビューする SLAM の出力ディレクトリ。`system-manager` が設定して起動する |
+| `ROS_LOG_DIR`、`RCUTILS_CONSOLE_OUTPUT_FORMAT` | 全サービス | compose の `x-common-env` で設定済み。ROS のファイルログを `/root/ros2_data/ros_log` に残し、コンソールログに時刻を付ける ([docker.md](./docker.md#共通のコンテナ設定)) |
 | `PUBLISH_GAZEBO_TF` | `mg_simulation` の launch | `true` で Gazebo の TF を ROS に出す (既定 `false`) |
 | `UI_DATA_DIR`、`SCENARIO_RESULTS_DIR`、`SYSTEM_MANAGER_ALLOW_ORIGINS` ほか | `mg_system_manager` | compose の `system-manager` で設定済み ([mg_ui の README](../mg_ui/README.md)) |
 
@@ -102,6 +103,8 @@ Docker のログのローテーション設定。compose の `${LOG_MAX_SIZE:-10
 | `map/latest`、`map/latest_opt` | SLAM の出力 (再最適化の入力・結果の既定) | SLAM、`make reoptimize` |
 | `rosbag/` | 収録した bag と、`summary.md` などの解析結果 | `record_bag.launch.py`、`tools/scripts/record.sh`、`make bag-*` |
 | `scenario_results/<日時>/` | シナリオテストの結果 | `make scenario-test*` |
+| `ros_log/` | ROS のファイルログ (`ROS_LOG_DIR`)。古いものは `make logs-clean-ros` で削除 | 全サービス |
+| `logs/<日時>/` | `make logs-export` で書き出した Docker のログ | `make logs-export` |
 | `mg_ui_local/` | `system-manager` の設定の保存先 (`UI_DATA_DIR`) | `system-manager` |
 
 `tools/data/` (`TO_TOOLS=1` の出力先) は、リポジトリ内にあり、Git の追跡から外れている。

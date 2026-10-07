@@ -9,8 +9,59 @@ x-logging: &default-logging
     compress: "true"
     labels: com.docker.compose.service
 
-x-runtime-base: &runtime-base
+# 全サービス共通の環境変数。サービスごとの environment は、これを <<: で取り込んで追加する。
+#   ROS_LOG_DIR: ROS のファイルログをホストの ${HOME}/ros2_data/ros_log に残す (古いものは make logs-clean-ros)
+#   RCUTILS_CONSOLE_OUTPUT_FORMAT: コンソールログに時刻を付ける
+x-common-env: &common-env
+  PYTHONUNBUFFERED: "1"
+  ROS_LOG_DIR: /root/ros2_data/ros_log
+  RCUTILS_CONSOLE_OUTPUT_FORMAT: "[{severity}] [{time}] [{name}]: {message}"
+
+# GUI (RViz2、Gazebo) を使うサービス用
+x-gui-env: &gui-env
+  <<: *common-env
+  DISPLAY: ${DISPLAY}
+
+x-simulation-env: &simulation-env
+  <<: *gui-env
+  SIMULATION: "true"
+  IGN_GAZEBO_RESOURCE_PATH: /root/.ignition/fuel
+
+x-volumes-core: &volumes-core
+  - ./:/app/
+  - ${HOME}/ros2_data:/root/ros2_data
+
+# GUI は使うが、センサのデバイスは使わないサービス用
+x-volumes-gui: &volumes-gui
+  - /tmp/.X11-unix:/tmp/.X11-unix
+  - $HOME/.Xauthority:/root/.Xauthority
+  - ./:/app/
+  - ${HOME}/ros2_data:/root/ros2_data
+
+# センサ (シリアルポートなど) を使うサービス用。/dev をそのまま渡す
+x-volumes-hw: &volumes-hw
+  - /tmp/.X11-unix:/tmp/.X11-unix
+  - $HOME/.Xauthority:/root/.Xauthority
+  - ./:/app/
+  - /dev:/dev
+  - ${HOME}/ros2_data:/root/ros2_data
+
+# 全サービス共通のコンテナ設定
+#   init: PID 1 に tini を置き、シグナルの転送とゾンビプロセスの回収をさせる
+#   stop_signal: ROS 2 の launch は SIGINT で正常終了する (rosbag の mcap を閉じる、Nav2 を止めるため)
+#   stop_grace_period: SIGKILL までの猶予
+x-common: &common
   logging: *default-logging
+  network_mode: "host"
+  init: true
+  stop_signal: SIGINT
+  stop_grace_period: 30s
+  env_file:
+    - .env
+
+# 起動時に ROS 2 とワークスペースの setup.bash を読み込む (command の source は不要)
+x-runtime-core: &runtime-core
+  <<: *common
   build:
     context: .
     dockerfile: "docker/Dockerfile.base"
@@ -18,20 +69,18 @@ x-runtime-base: &runtime-base
       ROS_DISTRO: humble
     target: runtime
   image: mg_runtime
-  tty: true
-  network_mode: "host"
-  privileged: true
-  env_file:
-    - .env
-  volumes:
-    - /tmp/.X11-unix:/tmp/.X11-unix
-    - $HOME/.Xauthority:/root/.Xauthority
-    - ./:/app/
-    - /dev:/dev
-    - ${HOME}/ros2_data:/root/ros2_data
+  entrypoint: ["/app/docker/ros_entrypoint.sh"]
+  environment: *common-env
+  volumes: *volumes-core
 
-x-develop-base: &develop-base
-  logging: *default-logging
+# センサのデバイスを使うサービス (privileged + /dev)
+x-runtime-base: &runtime-base
+  <<: *runtime-core
+  privileged: true
+  volumes: *volumes-hw
+
+x-develop-core: &develop-core
+  <<: *common
   build:
     context: .
     dockerfile: "docker/Dockerfile.base"
@@ -39,23 +88,23 @@ x-develop-base: &develop-base
       ROS_DISTRO: humble
     target: develop
   image: mg_develop
-  tty: true
-  network_mode: "host"
+  entrypoint: ["/app/docker/ros_entrypoint.sh"]
+  environment: *gui-env
+  volumes: *volumes-gui
+
+x-develop-base: &develop-base
+  <<: *develop-core
   privileged: true
-  env_file:
-    - .env
-  environment:
-    - DISPLAY=${DISPLAY}
-    - PYTHONUNBUFFERED=1
-  volumes:
-    - /tmp/.X11-unix:/tmp/.X11-unix
-    - $HOME/.Xauthority:/root/.Xauthority
-    - ./:/app/
-    - /dev:/dev
-    - ${HOME}/ros2_data:/root/ros2_data
+  volumes: *volumes-hw
+
+# RViz2 など。GPU 描画のため /dev/dri だけを渡す (privileged と /dev は不要)
+x-develop-gui: &develop-gui
+  <<: *develop-core
+  devices:
+    - /dev/dri
 
 x-simulation-base: &simulation-base
-  logging: *default-logging
+  <<: *common
   build:
     context: .
     dockerfile: "docker/Dockerfile.base"
@@ -64,16 +113,9 @@ x-simulation-base: &simulation-base
     target: simulation
     network: host
   image: mg_simulation
-  tty: true
-  network_mode: "host"
+  entrypoint: ["/app/docker/ros_entrypoint.sh"]
   privileged: true
-  env_file:
-    - .env
-  environment:
-    - DISPLAY=${DISPLAY}
-    - PYTHONUNBUFFERED=1
-    - SIMULATION=true
-    - IGN_GAZEBO_RESOURCE_PATH=/root/.ignition/fuel
+  environment: *simulation-env
   volumes:
     - /tmp/.X11-unix:/tmp/.X11-unix
     - $HOME/.Xauthority:/root/.Xauthority
@@ -82,126 +124,79 @@ x-simulation-base: &simulation-base
     - ${HOME}/ros2_data:/root/ros2_data
     - ${HOME}/.ignition:/root/.ignition
 
+# command の書き方:
+#   - 変数展開 ($$VAR など) が要らないものは、ros2 のコマンドをそのまま書く (${OPTS:-} は空白で分割される)
+#   - シェルの展開が要るものは bash -c "exec ..." とする (exec しないとシグナルが届かない)
+
 services:
   slam:
     <<: *runtime-base
     environment:
-      - DISPLAY=${DISPLAY}
-      - PYTHONUNBUFFERED=1
-      - USE_RVIZ=false
-    command: >
-      bash -c "
-        source /opt/ros/humble/setup.bash &&
-        source /root/ros2_ws/install/setup.bash &&
-        ros2 launch mg_bringup bringup_slam_toolbox.launch.py ${OPTS:-}
-      "
+      <<: *gui-env
+      USE_RVIZ: "false"
+    command: ros2 launch mg_bringup bringup_slam_toolbox.launch.py ${OPTS:-}
 
   slam-gnss-2d:
     <<: *runtime-base
     environment:
-      - DISPLAY=${DISPLAY}
-      - PYTHONUNBUFFERED=1
-      - SIMULATION=${SIMULATION:-false}
-      - USE_RVIZ=${USE_RVIZ:-false}
-    command: >
-      bash -c "
-        source /opt/ros/humble/setup.bash &&
-        source /root/ros2_ws/install/setup.bash &&
-        ros2 launch slam_gnss_2d bringup_slam_gnss_2d.launch.py ${OPTS:-}
-      "
+      <<: *gui-env
+      SIMULATION: ${SIMULATION:-false}
+      USE_RVIZ: ${USE_RVIZ:-false}
+    command: ros2 launch slam_gnss_2d bringup_slam_gnss_2d.launch.py ${OPTS:-}
 
   offline-slam-gnss-2d:
     <<: *runtime-base
     environment:
-      - DISPLAY=${DISPLAY}
-      - PYTHONUNBUFFERED=1
-      - ROSBAG_FILE=${ROSBAG_FILE}
-      - USE_RVIZ=${USE_RVIZ:-false}
-    command: >
-      bash -c "
-        source /opt/ros/humble/setup.bash &&
-        source /root/ros2_ws/install/setup.bash &&
-        ros2 launch mg_bringup offline_slam_gnss_2d.launch.py ${OPTS:-}
-      "
+      <<: *gui-env
+      ROSBAG_FILE: ${ROSBAG_FILE}
+      USE_RVIZ: ${USE_RVIZ:-false}
+    command: ros2 launch mg_bringup offline_slam_gnss_2d.launch.py ${OPTS:-}
 
   reoptimize-slam:
     <<: *runtime-base
     environment:
-      - DISPLAY=${DISPLAY}
-      - PYTHONUNBUFFERED=1
-      - INPUT_DIR=${INPUT_DIR:-}
-      - BAG_PATH=${BAG_PATH:-}
-      - SAVE_DIR=${SAVE_DIR:-}
+      <<: *gui-env
+      INPUT_DIR: ${INPUT_DIR:-}
+      BAG_PATH: ${BAG_PATH:-}
+      SAVE_DIR: ${SAVE_DIR:-}
     command: >
-      bash -c "
-        source /opt/ros/humble/setup.bash &&
-        source /root/ros2_ws/install/setup.bash &&
-        ros2 launch slam_gnss_2d reoptimize.launch.py input_dir:=$$INPUT_DIR $${BAG_PATH:+bag_path:=$$BAG_PATH} $${SAVE_DIR:+save_dir:=$$SAVE_DIR} ${OPTS:-}
-      "
+      bash -c "exec ros2 launch slam_gnss_2d reoptimize.launch.py input_dir:=$$INPUT_DIR $${BAG_PATH:+bag_path:=$$BAG_PATH} $${SAVE_DIR:+save_dir:=$$SAVE_DIR} ${OPTS:-}"
 
   navigation:
     <<: *runtime-base
     environment:
-      - DISPLAY=${DISPLAY}
-      - PYTHONUNBUFFERED=1
-      - USE_RVIZ=false
-    command: >
-      bash -c "
-        source /opt/ros/humble/setup.bash &&
-        source /root/ros2_ws/install/setup.bash &&
-        ros2 launch mg_bringup bringup_navigation.launch.py ${OPTS:-}
-      "
+      <<: *gui-env
+      USE_RVIZ: "false"
+    command: ros2 launch mg_bringup bringup_navigation.launch.py ${OPTS:-}
 
   rosbag-replay:
     <<: *runtime-base
     environment:
-      - DISPLAY=${DISPLAY}
-      - PYTHONUNBUFFERED=1
-      - SIMULATION=true
-      - USE_RVIZ=false
-      - ROSBAG_FILE=${ROSBAG_FILE}
-      - ROSBAG_TOPICS=${ROSBAG_TOPICS:-}
+      <<: *gui-env
+      SIMULATION: "true"
+      USE_RVIZ: "false"
+      ROSBAG_FILE: ${ROSBAG_FILE}
+      ROSBAG_TOPICS: ${ROSBAG_TOPICS:-}
     command: >
-      bash -c "
-        source /opt/ros/humble/setup.bash &&
-        source /root/ros2_ws/install/setup.bash &&
-        ros2 bag play $$ROSBAG_FILE $${ROSBAG_TOPICS:+--topics $$ROSBAG_TOPICS} --clock ${OPTS:-}
-      "
+      bash -c "exec ros2 bag play $$ROSBAG_FILE $${ROSBAG_TOPICS:+--topics $$ROSBAG_TOPICS} --clock ${OPTS:-}"
 
   obstacle-detection-replay:
     <<: *develop-base
     environment:
-      - DISPLAY=${DISPLAY}
-      - PYTHONUNBUFFERED=1
-      - SIMULATION=true
-    command: >
-      bash -c "
-        source /opt/ros/humble/setup.bash &&
-        source /root/ros2_ws/install/setup.bash &&
-        ros2 launch mg_drivers obstacle_detection_replay.launch.py ${OPTS:-}
-      "
+      <<: *gui-env
+      SIMULATION: "true"
+    command: ros2 launch mg_drivers obstacle_detection_replay.launch.py ${OPTS:-}
 
   map-preview:
     <<: *runtime-base
     environment:
-      - DISPLAY=${DISPLAY}
-      - PYTHONUNBUFFERED=1
-      - SLAM_MAP_DIR=${SLAM_MAP_DIR}
-    command: >
-      bash -c "
-        source /opt/ros/humble/setup.bash &&
-        source /root/ros2_ws/install/setup.bash &&
-        ros2 launch mg_slam map_preview.launch.py slam_map_dir:=$$SLAM_MAP_DIR
-      "
+      <<: *gui-env
+      SLAM_MAP_DIR: ${SLAM_MAP_DIR}
+    command: bash -c "exec ros2 launch mg_slam map_preview.launch.py slam_map_dir:=$$SLAM_MAP_DIR"
 
   gazebo-simulation:
     <<: *simulation-base
-    command: >
-      bash -c "
-        source /opt/ros/humble/setup.bash &&
-        source /root/ros2_ws/install/setup.bash &&
-        ros2 launch mg_simulation bringup.launch.py ${OPTS:-}
-      "
+    command: ros2 launch mg_simulation bringup.launch.py ${OPTS:-}
 
   # シナリオテスト: シミュレータ・ナビゲーション・実行ノードを 1 コンテナで起動し、
   # sim_scenario_test の CLI の終了コード (0=PASSED, 1=FAILED, 2=ERROR) を返す。
@@ -209,34 +204,18 @@ services:
   scenario-test:
     <<: *simulation-base
     environment:
-      - DISPLAY=${DISPLAY}
-      - PYTHONUNBUFFERED=1
-      - SIMULATION=true
-      - IGN_GAZEBO_RESOURCE_PATH=/root/.ignition/fuel
-      - SCENARIO_ARGS=${SCENARIO_ARGS:-}
-    command: |
-      bash -c "
-        source /opt/ros/humble/setup.bash &&
-        source /root/ros2_ws/install/setup.bash &&
-        ros2 run sim_scenario_test scenario_cli.py $$SCENARIO_ARGS
-      "
+      <<: *simulation-env
+      SCENARIO_ARGS: ${SCENARIO_ARGS:-}
+    command: bash -c "exec ros2 run sim_scenario_test scenario_cli.py $$SCENARIO_ARGS"
 
   # シナリオテストの attach モード用に、プロファイルのシミュレータとナビゲーションスタックだけを起動したままにする。
   # `make scenario-env` や mg_system_manager の /scenario-env/start から SCENARIO_ENV_ARGS を渡して起動する。
   scenario-env:
     <<: *simulation-base
     environment:
-      - DISPLAY=${DISPLAY}
-      - PYTHONUNBUFFERED=1
-      - SIMULATION=true
-      - IGN_GAZEBO_RESOURCE_PATH=/root/.ignition/fuel
-      - SCENARIO_ENV_ARGS=${SCENARIO_ENV_ARGS:-profile:=mg01 world:=warehouse}
-    command: >
-      bash -c "
-        source /opt/ros/humble/setup.bash &&
-        source /root/ros2_ws/install/setup.bash &&
-        ros2 launch sim_scenario_test scenario_env.launch.py $$SCENARIO_ENV_ARGS
-      "
+      <<: *simulation-env
+      SCENARIO_ENV_ARGS: ${SCENARIO_ENV_ARGS:-profile:=mg01 world:=warehouse}
+    command: bash -c "exec ros2 launch sim_scenario_test scenario_env.launch.py $$SCENARIO_ENV_ARGS"
 
   # 実機PC側のナビゲーションスタック (センサ・モータドライバを除く)。開発PCのシミュレータと
   # DDS で接続してシナリオテストを行う。mg_system_manager の /scenario-stack/start から、
@@ -244,141 +223,101 @@ services:
   scenario-remote-stack:
     <<: *runtime-base
     environment:
-      - PYTHONUNBUFFERED=1
-      - SIMULATION=true
-      - USE_RVIZ=false
-      - ROS_DOMAIN_ID=${SCENARIO_ROS_DOMAIN_ID:-42}
-      - CYCLONEDDS_URI=file:///app/docker/cyclonedds/remote.xml
-      - MG_REMOTE_PEER=${MG_REMOTE_PEER:-127.0.0.1}
-      - MG_DDS_INTERFACE=${MG_DDS_INTERFACE:-auto}
-      - STACK_PACKAGE=${STACK_PACKAGE:-}
-      - STACK_FILE=${STACK_FILE:-}
-      - STACK_ARGS=${STACK_ARGS:-}
+      <<: *common-env
+      SIMULATION: "true"
+      USE_RVIZ: "false"
+      ROS_DOMAIN_ID: ${SCENARIO_ROS_DOMAIN_ID:-42}
+      CYCLONEDDS_URI: file:///app/docker/cyclonedds/remote.xml
+      MG_REMOTE_PEER: ${MG_REMOTE_PEER:-127.0.0.1}
+      MG_DDS_INTERFACE: ${MG_DDS_INTERFACE:-auto}
+      STACK_PACKAGE: ${STACK_PACKAGE:-}
+      STACK_FILE: ${STACK_FILE:-}
+      STACK_ARGS: ${STACK_ARGS:-}
     command: >
-      bash -c "
-        source /opt/ros/humble/setup.bash &&
-        source /root/ros2_ws/install/setup.bash &&
-        ros2 launch $$(ros2 pkg prefix --share $$STACK_PACKAGE)/$$STACK_FILE $$STACK_ARGS
-      "
+      bash -c "exec ros2 launch $$(ros2 pkg prefix --share $$STACK_PACKAGE)/$$STACK_FILE $$STACK_ARGS"
 
   develop:
     <<: *develop-base
-    command: "/app/docker/docker-entrypoint.sh"
+    command: sleep infinity
 
   rviz2-slam:
-    <<: *develop-base
-    command: >
-      bash -c "
-        source /opt/ros/humble/setup.bash &&
-        source /root/ros2_ws/install/setup.bash &&
-        rviz2 --display-config /app/mg_slam/rviz/rviz.rviz
-      "
+    <<: *develop-gui
+    command: rviz2 --display-config /app/mg_slam/rviz/rviz.rviz
 
   rviz2-slam-gnss-2d:
-    <<: *develop-base
-    command: >
-      bash -c "
-        source /opt/ros/humble/setup.bash &&
-        source /root/ros2_ws/install/setup.bash &&
-        rviz2 --display-config /app/slam_gnss_2d/slam_gnss_2d/rviz/slam_gnss_2d.rviz
-      "
+    <<: *develop-gui
+    command: rviz2 --display-config /app/slam_gnss_2d/slam_gnss_2d/rviz/slam_gnss_2d.rviz
 
   rviz2-navigation:
-    <<: *develop-base
-    command: >
-      bash -c "
-        source /opt/ros/humble/setup.bash &&
-        source /root/ros2_ws/install/setup.bash &&
-        rviz2 --display-config /app/mg_navigation/rviz/rviz.rviz
-      "
+    <<: *develop-gui
+    command: rviz2 --display-config /app/mg_navigation/rviz/rviz.rviz
 
   rviz2:
-    <<: *develop-base
+    <<: *develop-gui
     environment:
-      - DISPLAY=${DISPLAY}
-      - PYTHONUNBUFFERED=1
-      - RVIZ_CONFIG=${RVIZ_CONFIG:-}
-    command: >
-      bash -c "
-        source /opt/ros/humble/setup.bash &&
-        source /root/ros2_ws/install/setup.bash &&
-        rviz2 $${RVIZ_CONFIG:+--display-config $$RVIZ_CONFIG}
-      "
+      <<: *gui-env
+      RVIZ_CONFIG: ${RVIZ_CONFIG:-}
+    command: bash -c "exec rviz2 $${RVIZ_CONFIG:+--display-config $$RVIZ_CONFIG}"
 
   diagnostics:
-    <<: *runtime-base
-    environment:
-      - PYTHONUNBUFFERED=1
-    command: >
-      bash -c "
-        source /opt/ros/humble/setup.bash &&
-        source /root/ros2_ws/install/setup.bash &&
-        ros2 launch mg_diagnostics diagnostics.launch.py
-      "
+    <<: *runtime-core
+    command: ros2 launch mg_diagnostics diagnostics.launch.py
 
   waypoint-editor:
-    <<: *develop-base
-    environment:
-      - DISPLAY=${DISPLAY}
-      - PYTHONUNBUFFERED=1
-    command: >
-      bash -c "
-        source /opt/ros/humble/setup.bash &&
-        source /root/ros2_ws/install/setup.bash &&
-        ros2 launch mg_waypoint_navigation waypoint_editor.launch.py
-      "
+    <<: *develop-gui
+    command: ros2 launch mg_waypoint_navigation waypoint_editor.launch.py
 
   system-manager:
-    <<: *develop-base
+    <<: *develop-core
     environment:
-      - DISPLAY=${DISPLAY}
-      - PYTHONUNBUFFERED=1
-      - PROJECT_DIR=/app
-      - HOST_PROJECT_DIR=${PWD}
-      - HOST_HOME=${HOME}
-      - SIMULATION_WORLD=warehouse
-      - SIMULATION_ROBOT_NAME=mg
-      - UI_DATA_DIR=/root/ros2_data/mg_ui_local
-      - SYSTEM_MANAGER_ALLOW_ORIGINS=http://localhost:8080,http://localhost:5173
+      <<: *gui-env
+      PROJECT_DIR: /app
+      HOST_PROJECT_DIR: ${PWD}
+      HOST_HOME: ${HOME}
+      SIMULATION_WORLD: warehouse
+      SIMULATION_ROBOT_NAME: mg
+      UI_DATA_DIR: /root/ros2_data/mg_ui_local
+      SYSTEM_MANAGER_ALLOW_ORIGINS: http://localhost:8080,http://localhost:5173
     volumes:
       - /tmp/.X11-unix:/tmp/.X11-unix
       - $HOME/.Xauthority:/root/.Xauthority
       - ./:/app/
       - ${PWD}:${PWD}
-      - /dev:/dev
       - ${HOME}/ros2_data:/root/ros2_data
       - /var/run/docker.sock:/var/run/docker.sock
-    command: >
-      bash -c "
-        cd /app/mg_ui/mg_system_manager &&
-        python3 -m mg_system_manager
-      "
+    working_dir: /app/mg_ui/mg_system_manager
+    command: python3 -m mg_system_manager
 
   foxglove-bridge:
-    <<: *runtime-base
-    environment:
-      - PYTHONUNBUFFERED=1
-    command: >
-      bash -c "
-        source /opt/ros/humble/setup.bash &&
-        source /root/ros2_ws/install/setup.bash &&
-        ros2 run foxglove_bridge foxglove_bridge
-          --ros-args
-          -p port:=8765
-          -p address:=0.0.0.0
-          -p send_buffer_limit:=10000000
-          -p use_sim_time:=false
-          -p 'capabilities:=[clientPublish,services]'
-          -p sysinfo:=false
-      "
+    <<: *runtime-core
+    command:
+      - ros2
+      - run
+      - foxglove_bridge
+      - foxglove_bridge
+      - --ros-args
+      - -p
+      - port:=8765
+      - -p
+      - address:=0.0.0.0
+      - -p
+      - send_buffer_limit:=10000000
+      - -p
+      - use_sim_time:=false
+      - -p
+      - "capabilities:=[clientPublish,services]"
+      - -p
+      - sysinfo:=false
     # 負荷を下げるため、Web UI が使わない機能を止めている。
     #   capabilities: 既定は connectionGraph / parameters / parametersSubscribe / assets も有効。
     #     UI は publish(clientPublish)とサービス呼び出し(services)しか使わない。
     #   sysinfo: 既定は true。UI は使わない。
-    # 元に戻すには、この 2 行(capabilities / sysinfo)を削除する(既定の動作になる)。
+    # 元に戻すには、この 2 つの -p (capabilities / sysinfo) を削除する(既定の動作になる)。
 
+  # イメージに /app を焼き込んでおり、ボリュームを使わない。そのため ros_entrypoint.sh は使わず、
+  # source を command に書く (entrypoint を使うにはイメージの再ビルドが要る)。
   web-ui:
-    logging: *default-logging
+    <<: *common
     build:
       context: .
       dockerfile: "docker/Dockerfile.base"
@@ -386,17 +325,14 @@ services:
         ROS_DISTRO: humble
       target: web-ui
     image: mg_web_ui
-    tty: true
-    network_mode: "host"
-    env_file:
-      - .env
-    environment:
-      - PYTHONUNBUFFERED=1
+    environment: *common-env
+    volumes:
+      - ${HOME}/ros2_data:/root/ros2_data
     command: >
       bash -c "
         source /opt/ros/humble/setup.bash &&
         source /root/ros2_ws/install/setup.bash &&
-        ros2 launch mg_web_ui web_ui.launch.py
+        exec ros2 launch mg_web_ui web_ui.launch.py
       "
 
   web-ui-dev:
