@@ -22,6 +22,15 @@ cp .env.example .env
 | `ROS_DOMAIN_ID` | ROS 2 のドメイン ID | 未設定 |
 | `ROS_LOCALHOST_ONLY` | `1` で ROS 2 の通信をローカルに限る | 未設定 |
 
+### ログ
+
+Docker のログのローテーション設定。compose の `${LOG_MAX_SIZE:-10m}` などで参照される。詳細は [docker.md](./docker.md#ログ)。
+
+| 変数 | 内容 | 既定 |
+| :--- | :--- | :--- |
+| `LOG_MAX_SIZE` | ログ 1 ファイルの上限 | `10m` |
+| `LOG_MAX_FILE` | 残す世代数 | `5` |
+
 ### データのパス
 
 パスはすべて**コンテナ内**のもの。ホストの `${HOME}/ros2_data` が `/root/ros2_data` にマウントされる。

@@ -96,7 +96,9 @@ Gazebo とナビゲーションを起動して合否を判定する。詳細は 
 | `make develop` | develop コンテナをバックグラウンドで起動する (`ATTACH=1` でアタッチ) |
 | `make shell-develop` | develop コンテナの bash に入る (未起動なら起動する) |
 | `make shell svc=<名前>` | 起動中のコンテナの bash に入る |
-| `make logs svc=<名前>` | ログを追う |
+| `make logs svc=<名前> [TAIL=] [SINCE=]` | ログを追う ([docker.md](./docker.md#ログ)) |
+| `make logs-all [TAIL=] [SINCE=]` | 全サービスのログをまとめて追う |
+| `make logs-export [svc=<名前>] [OUT_DIR=]` | コンテナのログを `${HOME}/ros2_data/logs/<日時>/` に書き出す (`down` の前に実行する) |
 | `make ps` | 起動中のコンテナを表示する |
 | `make restart svc=<名前>` | サービスを再起動する |
 | `make down` | すべてのサービスを止める |

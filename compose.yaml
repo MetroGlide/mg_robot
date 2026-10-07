@@ -1,4 +1,16 @@
+# 全サービス共通のログ設定。Docker 既定の json-file は無制限に溜まるため、サイズと世代数で回す。
+# 1 コンテナあたり最大 LOG_MAX_SIZE x LOG_MAX_FILE (既定 10MB x 5 世代)。古い世代は gzip 圧縮する。
+# コンテナを削除 (down / run --rm) するとログも消える。残すときは make logs-export。
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: ${LOG_MAX_SIZE:-10m}
+    max-file: ${LOG_MAX_FILE:-5}
+    compress: "true"
+    labels: com.docker.compose.service
+
 x-runtime-base: &runtime-base
+  logging: *default-logging
   build:
     context: .
     dockerfile: "docker/Dockerfile.base"
@@ -19,6 +31,7 @@ x-runtime-base: &runtime-base
     - ${HOME}/ros2_data:/root/ros2_data
 
 x-develop-base: &develop-base
+  logging: *default-logging
   build:
     context: .
     dockerfile: "docker/Dockerfile.base"
@@ -42,6 +55,7 @@ x-develop-base: &develop-base
     - ${HOME}/ros2_data:/root/ros2_data
 
 x-simulation-base: &simulation-base
+  logging: *default-logging
   build:
     context: .
     dockerfile: "docker/Dockerfile.base"
@@ -364,6 +378,7 @@ services:
     # 元に戻すには、この 2 行(capabilities / sysinfo)を削除する(既定の動作になる)。
 
   web-ui:
+    logging: *default-logging
     build:
       context: .
       dockerfile: "docker/Dockerfile.base"
@@ -385,6 +400,7 @@ services:
       "
 
   web-ui-dev:
+    logging: *default-logging
     image: node:20-slim
     network_mode: "host"
     volumes:
