@@ -1,26 +1,14 @@
-version: '3.4'
 services:
-  # Update this to the name of the service you want to work with in your docker-compose.yml file
+  # devcontainer.json の service と同じ名前にする
   develop:
-    # Uncomment if you want to override the service's Dockerfile to one in the .devcontainer 
-    # folder. Note that the path of the Dockerfile and context is relative to the *primary* 
-    # docker-compose.yml file (the first in the devcontainer.json "dockerComposeFile"
-    # array). The sample below assumes your primary file is in the root of your project.
-    #
-    # build:
-    #   context: .
-    #   dockerfile: .devcontainer/Dockerfile
+    # develop は ../compose.yaml で ./:/app/ をマウント済み (workspaceFolder は /app)。
+    # 追加のマウントは不要
 
-    volumes:
-      # Update this to wherever you want VS Code to mount the folder of your project
-      - ..:/workspaces:cached
-
-    # Uncomment the next four lines if you will use a ptrace-based debugger like C++, Go, and Rust.
+    # C++ / Go / Rust などの ptrace ベースのデバッガを使う場合は、次の 4 行を有効にする。
     # cap_add:
     #   - SYS_PTRACE
     # security_opt:
     #   - seccomp:unconfined
 
-    # Overrides default command so things don't shut down after the process ends.
+    # コマンドが終了してもコンテナが止まらないようにする
     command: /bin/sh -c "while sleep 1000; do :; done"
- 
