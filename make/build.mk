@@ -1,8 +1,7 @@
 ##@ ビルド (Docker イメージ)
 # ビルドは collect_deps.sh (docker/deps/ の準備) を先に実行する。詳細: doc/docker.md
 
-.PHONY: _collect-deps build build-no-cache build-robot build-robot-no-cache \
-        build-real-no-cache build-sim build-all
+.PHONY: _collect-deps build build-no-cache build-robot build-robot-no-cache build-sim
 
 _collect-deps:
 	bash docker/collect_deps.sh
@@ -27,10 +26,6 @@ build-robot: _collect-deps ## 実機向けに一括ビルド (Gazebo を除外)
 build-robot-no-cache: _collect-deps ## 実機向けに一括ビルド (キャッシュ無効)
 	$(COMPOSE_BASE) build --no-cache slam develop web-ui
 
-build-real-no-cache: build-robot-no-cache ## build-robot-no-cache の別名
-
 # シミュレータ含む一括ビルド
 build-sim: _collect-deps ## シミュレータ込みで一括ビルド
 	$(COMPOSE_BASE) build slam develop gazebo-simulation web-ui
-
-build-all: build-sim ## build-sim の別名

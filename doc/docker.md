@@ -47,7 +47,7 @@ make build svc=slam              # 特定サービスのイメージだけビル
 make build-no-cache svc=slam     # キャッシュ無効でビルド
 ```
 
-`build-real-no-cache` は `build-robot-no-cache` の、`build-all` は `build-sim` の別名。`make` の全ターゲットは [commands.md](./commands.md) を参照。
+`make` の全ターゲットは [commands.md](./commands.md) を参照。
 
 `make build` は、先に `docker/collect_deps.sh` を実行する。`make` を使わずに Docker を直接使うときは、同じスクリプトを自分で先に実行する。
 
