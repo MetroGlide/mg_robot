@@ -12,7 +12,7 @@ import { TOPICS } from "../../ros/interfaces";
 import Card from "../ui/Card";
 import StatTile from "../ui/StatTile";
 import VelocityTile from "./VelocityTile";
-import GnssDetailCard from "./GnssDetailCard";
+import { GNSS_DETAIL_KEY } from "./GnssDetailCard";
 import { CpuIcon, SatelliteIcon } from "../ui/icons";
 import { localizationTone } from "./displayState";
 
@@ -34,56 +34,53 @@ export default function KpiRow({ client }: { client: FoxgloveClientHandle }) {
     "mg_msgs/msg/LocalizationStatus",
   );
   const gnss = useGnss(client, GNSS_HZ);
-  const [gnssOpen, setGnssOpen] = useOpsValue<boolean>("kpi.gnssDetail", false);
+  const [gnssOpen, setGnssOpen] = useOpsValue<boolean>(GNSS_DETAIL_KEY, false);
 
   const cpuAge = useFreshness(client, TOPICS.CPU_USAGE, STALE_AFTER_SEC);
   const memAge = useFreshness(client, TOPICS.MEMORY_USAGE, STALE_AFTER_SEC);
   const locAge = useFreshness(client, TOPICS.LOCALIZATION_STATUS, STALE_AFTER_SEC);
 
   return (
-    <div className="flex flex-col items-start gap-2">
-      <Card className="flex divide-x divide-line">
-        <StatTile
-          widthClass="w-32"
-          icon={<CpuIcon />}
-          label="CPU"
-          value={cpu ? cpu.data.toFixed(0) : "--"}
-          unit="%"
-          tone={cpu && cpu.data > 85 ? "warn" : "neutral"}
-          stale={cpuAge.stale}
-          ageSec={cpuAge.ageSec}
-        />
-        <StatTile
-          widthClass="w-28"
-          label="Memory"
-          value={mem ? mem.data.toFixed(0) : "--"}
-          unit="%"
-          tone={mem && mem.data > 90 ? "warn" : "neutral"}
-          stale={memAge.stale}
-          ageSec={memAge.ageSec}
-        />
-        <StatTile
-          widthClass="w-36"
-          label="自己位置"
-          value={loc ? (LOCALIZATION_STATE_NAME[loc.state] ?? String(loc.state)) : "--"}
-          tone={loc ? localizationTone(loc.state) : "neutral"}
-          stale={locAge.stale}
-          ageSec={locAge.ageSec}
-        />
-        <StatTile
-          widthClass="w-36"
-          icon={<SatelliteIcon />}
-          label="GNSS"
-          value={gnss.reading ? gnss.reading.label : "--"}
-          tone={gnss.reading ? gnss.reading.tone : "neutral"}
-          stale={gnss.freshness.stale}
-          ageSec={gnss.freshness.ageSec}
-          onClick={() => setGnssOpen(!gnssOpen)}
-          active={gnssOpen}
-        />
-        <VelocityTile client={client} />
-      </Card>
-      {gnssOpen && <GnssDetailCard gnss={gnss} />}
-    </div>
+    <Card className="flex divide-x divide-line">
+      <StatTile
+        widthClass="w-32"
+        icon={<CpuIcon />}
+        label="CPU"
+        value={cpu ? cpu.data.toFixed(0) : "--"}
+        unit="%"
+        tone={cpu && cpu.data > 85 ? "warn" : "neutral"}
+        stale={cpuAge.stale}
+        ageSec={cpuAge.ageSec}
+      />
+      <StatTile
+        widthClass="w-28"
+        label="Memory"
+        value={mem ? mem.data.toFixed(0) : "--"}
+        unit="%"
+        tone={mem && mem.data > 90 ? "warn" : "neutral"}
+        stale={memAge.stale}
+        ageSec={memAge.ageSec}
+      />
+      <StatTile
+        widthClass="w-36"
+        label="自己位置"
+        value={loc ? (LOCALIZATION_STATE_NAME[loc.state] ?? String(loc.state)) : "--"}
+        tone={loc ? localizationTone(loc.state) : "neutral"}
+        stale={locAge.stale}
+        ageSec={locAge.ageSec}
+      />
+      <StatTile
+        widthClass="w-36"
+        icon={<SatelliteIcon />}
+        label="GNSS"
+        value={gnss.reading ? gnss.reading.label : "--"}
+        tone={gnss.reading ? gnss.reading.tone : "neutral"}
+        stale={gnss.freshness.stale}
+        ageSec={gnss.freshness.ageSec}
+        onClick={() => setGnssOpen(!gnssOpen)}
+        active={gnssOpen}
+      />
+      <VelocityTile client={client} />
+    </Card>
   );
 }

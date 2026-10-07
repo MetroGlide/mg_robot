@@ -10,7 +10,9 @@ import MapToolbar from "../../components/operate/MapToolbar";
 import HealthTabsCard from "../../components/operate/HealthTabsCard";
 import SlamControl from "../../components/operate/SlamControl";
 import { MapCommand } from "../../components/operate/MapCameraControls";
+import GnssDetailCard from "../../components/operate/GnssDetailCard";
 import {
+  JoystickCard,
   OverlayCards,
   OverlayToggleButtons,
 } from "../../components/operate/MapOverlays";
@@ -63,7 +65,13 @@ export default function SlamOperate({
           <SlamControl client={client} sysManager={sysManager} />
         </div>
       }
-      bottomRight={<HealthTabsCard client={client} />}
+      topRight={<GnssDetailCard client={client} />}
+      bottomRight={
+        <div className="flex flex-col items-end gap-2">
+          <JoystickCard client={client} />
+          <HealthTabsCard client={client} />
+        </div>
+      }
     />
   );
 }

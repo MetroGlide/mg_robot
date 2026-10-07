@@ -9,6 +9,7 @@ import Card from "../../components/ui/Card";
 import OperateLayout from "../../components/operate/OperateLayout";
 import OperateMap from "../../components/operate/OperateMap";
 import KpiRow from "../../components/operate/KpiRow";
+import GnssDetailCard from "../../components/operate/GnssDetailCard";
 import MapToolbar from "../../components/operate/MapToolbar";
 import HealthTabsCard from "../../components/operate/HealthTabsCard";
 import SlamGnssMapCard from "../../components/operate/SlamGnssMapCard";
@@ -120,14 +121,17 @@ export default function SlamGnssOperate({
         )
       }
       topRight={
-        layers.poseGraphNodes && !satellite.enabled ? (
-          <PoseGraphDetailPanel
-            state={poseGraphState}
-            selectedNodeIndex={selectedNodeIndex}
-            onClose={() => setSelectedNodeIndex(null)}
-            className=""
-          />
-        ) : undefined
+        <div className="flex flex-col items-end gap-2">
+          {layers.poseGraphNodes && !satellite.enabled && (
+            <PoseGraphDetailPanel
+              state={poseGraphState}
+              selectedNodeIndex={selectedNodeIndex}
+              onClose={() => setSelectedNodeIndex(null)}
+              className=""
+            />
+          )}
+          <GnssDetailCard client={client} />
+        </div>
       }
       notice={
         maps.notice && (

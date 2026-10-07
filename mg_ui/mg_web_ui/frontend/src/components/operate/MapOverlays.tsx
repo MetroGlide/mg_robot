@@ -40,17 +40,18 @@ export function OverlayToggleButtons({ disabled = false }: { disabled?: boolean 
   );
 }
 
-/** 表示を有効にしたジョイスティックと GPS のミニ地図。どちらも無効なら何も描かない */
+/** 表示を有効にした GPS のミニ地図。無効なら何も描かない */
 export function OverlayCards({ client }: { client: FoxgloveClientHandle }) {
   const { overlays } = useVisualization();
-  return (
-    <>
-      {overlays.gpsMap && <GpsMiniMap client={client} />}
-      {overlays.joystick && (
-        <Card className="p-2">
-          <JoystickPad client={client} />
-        </Card>
-      )}
-    </>
-  );
+  return overlays.gpsMap ? <GpsMiniMap client={client} /> : null;
+}
+
+/** 表示を有効にしたジョイスティック。右下の診断カードの上に置く */
+export function JoystickCard({ client }: { client: FoxgloveClientHandle }) {
+  const { overlays } = useVisualization();
+  return overlays.joystick ? (
+    <Card className="p-2">
+      <JoystickPad client={client} />
+    </Card>
+  ) : null;
 }

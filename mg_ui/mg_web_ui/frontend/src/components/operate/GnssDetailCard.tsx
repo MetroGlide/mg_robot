@@ -1,7 +1,12 @@
 import { useMemo } from "react";
-import { GnssState } from "../../hooks/useGnss";
+import { FoxgloveClientHandle } from "../../hooks/useFoxgloveClient";
+import { GnssState, useGnss } from "../../hooks/useGnss";
+import { useOpsValue } from "../../hooks/useOpsValue";
 import { GnssReading, toUtm } from "../../utils/gnssReading";
 import Card from "../ui/Card";
+
+/** KPI の GNSS タイルと共有する、詳細カードの開閉の保存キー */
+export const GNSS_DETAIL_KEY = "kpi.gnssDetail";
 
 const NO_VALUE = "--";
 
@@ -32,9 +37,8 @@ function missing(reading: GnssReading, value: number | null, digits: number, uni
 
 /**
  * GNSS の詳細。測位の種類、衛星数、緯度経度、UTM 座標、精度、DOP、高さ。
- * 値は KPI の GNSS と同じ購読(useGnss)から受け取り、このカードのための購読は増やさない。
  */
-export default function GnssDetailCard({ gnss }: { gnss: GnssState }) {
+function GnssDetailBody({ gnss }: { gnss: GnssState }) {
   const { reading, freshness, topic } = gnss;
   const utm = useMemo(
     () =>
@@ -87,4 +91,20 @@ export default function GnssDetailCard({ gnss }: { gnss: GnssState }) {
       <Row label="標高(海抜)" value={msl.value} hint={msl.hint} />
     </Card>
   );
+}
+
+// 詳細は人が読む速さで十分なので間引く(Hz)
+const DETAIL_HZ = 2;
+
+function GnssDetailSubscribed({ client }: { client: FoxgloveClientHandle }) {
+  return <GnssDetailBody gnss={useGnss(client, DETAIL_HZ)} />;
+}
+
+/**
+ * KPI の GNSS タイルで開閉する詳細カード。右側のカードの列に置く。
+ * 開いている間だけ購読する(閉じると購読をやめる)。
+ */
+export default function GnssDetailCard({ client }: { client: FoxgloveClientHandle }) {
+  const [open] = useOpsValue<boolean>(GNSS_DETAIL_KEY, false);
+  return open ? <GnssDetailSubscribed client={client} /> : null;
 }

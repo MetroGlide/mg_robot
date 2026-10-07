@@ -15,7 +15,9 @@ import RobotDetailCard from "../../components/operate/RobotDetailCard";
 import WaypointProgress from "../../components/operate/WaypointProgress";
 import ActionsCard from "../../components/operate/ActionsCard";
 import { MapCommand } from "../../components/operate/MapCameraControls";
+import GnssDetailCard from "../../components/operate/GnssDetailCard";
 import {
+  JoystickCard,
   OverlayCards,
   OverlayToggleButtons,
 } from "../../components/operate/MapOverlays";
@@ -109,17 +111,20 @@ export default function WaypointOperate({
         />
       }
       topRight={
-        detailOpen ? (
-          <RobotDetailCard client={client} onClose={() => setDetailOpen(false)} />
-        ) : (
-          <button
-            type="button"
-            onClick={() => setDetailOpen(true)}
-            className="rounded-lg border border-line bg-surface-elevated px-3 py-1.5 text-xs font-semibold shadow-card"
-          >
-            ロボットの詳細
-          </button>
-        )
+        <div className="flex flex-col items-end gap-2">
+          {detailOpen ? (
+            <RobotDetailCard client={client} onClose={() => setDetailOpen(false)} />
+          ) : (
+            <button
+              type="button"
+              onClick={() => setDetailOpen(true)}
+              className="rounded-lg border border-line bg-surface-elevated px-3 py-1.5 text-xs font-semibold shadow-card"
+            >
+              ロボットの詳細
+            </button>
+          )}
+          <GnssDetailCard client={client} />
+        </div>
       }
       notice={
         notice && (
@@ -136,7 +141,12 @@ export default function WaypointOperate({
           <WaypointProgress client={client} control={control} connected={connected} />
         </div>
       }
-      bottomRight={<HealthTabsCard client={client} />}
+      bottomRight={
+        <div className="flex flex-col items-end gap-2">
+          <JoystickCard client={client} />
+          <HealthTabsCard client={client} />
+        </div>
+      }
     />
   );
 }
