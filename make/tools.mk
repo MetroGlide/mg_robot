@@ -12,7 +12,7 @@
 define _resolve_bag_output_opts
 $(strip \
   $(if $(OUT),-o "$(OUT)", \
-    $(if $(filter 1 true,$(TO_TOOLS)$(TOOLS)),--output-dir /app/tools/data, \
+    $(if $(filter 1 true,$(TO_TOOLS)),--output-dir /app/tools/data, \
       $(if $(filter tools,$(OUT_DIR)),--output-dir /app/tools/data, \
         $(if $(OUT_DIR),--output-dir "$(OUT_DIR)",--output-to-bag-dir) \
       ) \
@@ -41,11 +41,11 @@ bag-summary: ## rosbag の統計サマリーを出力 [BAG TO_TOOLS OPTS]
 	$(call _bag_run,,python3 /app/tools/scripts/rosbag_summary.py \"\$$TARGET_BAG\" $(_resolve_bag_output_opts) --all $(OPTS))
 
 # GNSS 軌跡・Fix 状態・精度の可視化。
-#   CIRCLES=1        精度円を描く (ACC_CIRCLES=1 でも可)
-#   SCALE=<倍率>     精度円の倍率 (CIRCLE_SCALE=<倍率> でも可)
+#   CIRCLES=1        精度円を描く
+#   SCALE=<倍率>     精度円の倍率
 #   例: make bag-plot-gnss CIRCLES=1 SCALE=5 / make bag-plot-gnss BAG=/path OPTS="--circle-step 1"
 bag-plot-gnss: ## GNSS 軌跡・Fix 状態・精度を画像化 [BAG CIRCLES SCALE TO_TOOLS OPTS]
-	$(call _bag_run,,python3 /app/tools/scripts/plot_gnss_trajectory.py \"\$$TARGET_BAG\" $(_resolve_bag_output_opts) $(if $(filter 1 true,$(CIRCLES)$(ACC_CIRCLES)),--accuracy-circles )$(if $(SCALE),--circle-scale $(SCALE) )$(if $(CIRCLE_SCALE),--circle-scale $(CIRCLE_SCALE) )$(OPTS))
+	$(call _bag_run,,python3 /app/tools/scripts/plot_gnss_trajectory.py \"\$$TARGET_BAG\" $(_resolve_bag_output_opts) $(if $(filter 1 true,$(CIRCLES)),--accuracy-circles )$(if $(SCALE),--circle-scale $(SCALE) )$(OPTS))
 
 # MAP_PATH/map_list.txt の地図群と ROSBAG_FILE の GNSS 位置・精度を、
 # MAP_PATH/gnss_transform.yaml で map 座標に直して重ね描きする。
@@ -55,7 +55,7 @@ bag-plot-gnss: ## GNSS 軌跡・Fix 状態・精度を画像化 [BAG CIRCLES SCA
 bag-plot-gnss-map: ## 地図群に変換後の GNSS を重ね描き [MAP_LIST GNSS_TRANSFORM CIRCLES SCALE TO_TOOLS]
 	$(call _bag_run,MAP_LIST_FILE=\"$(if $(MAP_LIST),$(MAP_LIST),\$$MAP_PATH/map_list.txt)\" && \
 	   GNSS_TRANSFORM_FILE=\"$(if $(GNSS_TRANSFORM),$(GNSS_TRANSFORM),\$$MAP_PATH/gnss_transform.yaml)\" && \
-	   ,python3 /app/tools/scripts/plot_gnss_trajectory.py \"\$$TARGET_BAG\" --mode map --map-list \"\$$MAP_LIST_FILE\" --gnss-transform \"\$$GNSS_TRANSFORM_FILE\" -o gnss_on_map.png $(_resolve_bag_output_opts) $(if $(filter 1 true,$(CIRCLES)$(ACC_CIRCLES)),--accuracy-circles )$(if $(SCALE),--circle-scale $(SCALE) )$(if $(CIRCLE_SCALE),--circle-scale $(CIRCLE_SCALE) )$(OPTS))
+	   ,python3 /app/tools/scripts/plot_gnss_trajectory.py \"\$$TARGET_BAG\" --mode map --map-list \"\$$MAP_LIST_FILE\" --gnss-transform \"\$$GNSS_TRANSFORM_FILE\" -o gnss_on_map.png $(_resolve_bag_output_opts) $(if $(filter 1 true,$(CIRCLES)),--accuracy-circles )$(if $(SCALE),--circle-scale $(SCALE) )$(OPTS))
 
 # LiDAR スキャン点群の 2D 画像化。
 #   NODES=<範囲>  対象ノード (例: NODES=1:20)

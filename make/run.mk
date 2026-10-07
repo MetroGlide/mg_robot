@@ -25,10 +25,10 @@ slam-gnss-2d: ## GNSS 拘束付き 2D SLAM を起動 [DETACH OPTS]
 	$(_compose_opts)$(COMPOSE) up $(_up_flags) slam-gnss-2d
 
 # rosbag から GNSS 拘束付き 2D SLAM をオフラインで再処理する。
-#   BAG=<bag> (または ROSBAG_FILE=<bag>)  対象の rosbag。省略時は .env の ROSBAG_FILE
+#   BAG=<bag>  対象の rosbag。省略時は .env の ROSBAG_FILE
 #   DETACH=1 / OPTS="..."
 offline-slam-gnss-2d: ## rosbag からオフライン SLAM [BAG DETACH OPTS]
-	$(if $(BAG),ROSBAG_FILE=$(BAG) )$(if $(ROSBAG_FILE),ROSBAG_FILE=$(ROSBAG_FILE) )$(_compose_opts)$(COMPOSE) up $(_up_flags) offline-slam-gnss-2d
+	$(if $(BAG),ROSBAG_FILE=$(BAG) )$(_compose_opts)$(COMPOSE) up $(_up_flags) offline-slam-gnss-2d
 
 # 保存済みの SLAM 出力を再最適化する。.env に各変数があれば引数なしで実行できる。
 #   INPUT_DIR=<dir>  入力する SLAM 出力 (例: /app/maps/latest)
