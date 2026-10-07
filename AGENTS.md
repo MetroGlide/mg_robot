@@ -58,6 +58,8 @@ make scenario-test SCENARIO=<名前> ROBOT=<実機PCのIP>  # シミュレータ
 make scenario-env GUI=1  # attach用にシミュレータ+ナビゲーションを起動したままにする（make scenario-test-attach で起動し直さずに実行。Web UI の Scenario Test ページからも操作可）
 ```
 
+`make help` でターゲット一覧を表示できる。`Makefile` はエントリポイントで、ターゲットは `make/*.mk` に分類して書く（引数は各ターゲット上のコメントに書き、行末の `## 説明` が help に載る）。
+
 make ターゲットと compose サービスの全一覧は [doc/commands.md](./doc/commands.md)、`.env` の変数は [doc/environment.md](./doc/environment.md)、システム構成は [doc/system_architecture.md](./doc/system_architecture.md)。
 
 コンテナ内でROS2コマンドを使う場合:
