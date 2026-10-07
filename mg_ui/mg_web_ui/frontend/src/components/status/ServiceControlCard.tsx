@@ -14,10 +14,10 @@ interface ServiceControlCardProps {
 }
 
 const VARIANT_CLASS: Record<NonNullable<ServiceButton["variant"]>, string> = {
-  green: "bg-green-600 hover:bg-green-700",
-  red: "bg-red-600 hover:bg-red-700",
-  blue: "bg-blue-600 hover:bg-blue-700",
-  gray: "bg-gray-600 hover:bg-gray-500",
+  green: "bg-ok text-surface-elevated hover:opacity-90",
+  red: "bg-error text-surface-elevated hover:opacity-90",
+  blue: "bg-accent text-surface-elevated hover:opacity-90",
+  gray: "bg-surface-sunken text-content hover:bg-line",
 };
 
 export default function ServiceControlCard({
@@ -40,7 +40,7 @@ export default function ServiceControlCard({
           </button>
         ))}
       </div>
-      {error && <p className="text-red-400 text-sm mt-2">{error}</p>}
+      {error && <p className="mt-2 text-sm text-error">{error}</p>}
     </SectionCard>
   );
 }

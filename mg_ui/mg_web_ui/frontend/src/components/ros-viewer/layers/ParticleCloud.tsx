@@ -5,8 +5,10 @@ import { useParticleCloud } from "../hooks/useParticleCloud";
 
 export default function ParticleCloud({
   client,
+  color = "#00b400",
 }: {
   client: FoxgloveClientHandle;
+  color?: string;
 }) {
   const cloud = useParticleCloud(client);
 
@@ -28,7 +30,7 @@ export default function ParticleCloud({
       <bufferGeometry>
         <bufferAttribute attach="attributes-position" args={[positions, 3]} />
       </bufferGeometry>
-      <pointsMaterial color="#00b400" size={0.1} sizeAttenuation />
+      <pointsMaterial color={color} size={0.1} sizeAttenuation />
     </points>
   );
 }

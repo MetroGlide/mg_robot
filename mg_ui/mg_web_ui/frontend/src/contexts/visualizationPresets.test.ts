@@ -7,7 +7,6 @@ const LAYER_KEYS: LayerKey[] = [
   "globalCostmap",
   "localCostmap",
   "lidarTop",
-  "lidarFront",
   "robotPose",
   "particleCloud",
   "planPath",

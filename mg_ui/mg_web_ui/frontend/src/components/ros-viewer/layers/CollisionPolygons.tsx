@@ -41,22 +41,24 @@ function PolygonOutline({
 export default function CollisionPolygons({
   client,
   tfBuffer,
+  color = "#aa0088",
 }: {
   client: FoxgloveClientHandle;
   tfBuffer?: TfBuffer;
+  color?: string;
 }) {
   return (
     <>
       <PolygonOutline
         client={client}
         topic={TOPICS.COLLISION_FRONT}
-        color="#aa0088"
+        color={color}
         tfBuffer={tfBuffer}
       />
       <PolygonOutline
         client={client}
         topic={TOPICS.COLLISION_REAR}
-        color="#aa0088"
+        color={color}
         tfBuffer={tfBuffer}
       />
     </>

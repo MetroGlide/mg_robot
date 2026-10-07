@@ -6,11 +6,11 @@ export type LabeledValueVariant =
   | "muted";
 
 const VALUE_CLASS: Record<LabeledValueVariant, string> = {
-  normal: "text-white",
-  success: "text-green-400",
-  warn: "text-yellow-400",
-  error: "text-red-400",
-  muted: "text-gray-400",
+  normal: "text-content",
+  success: "text-ok",
+  warn: "text-warn",
+  error: "text-error",
+  muted: "text-muted",
 };
 
 interface LabeledValueProps {
@@ -28,7 +28,7 @@ export default function LabeledValue({
 }: LabeledValueProps) {
   return (
     <div>
-      <span className="block text-xs text-gray-400">{label}</span>
+      <span className="block text-xs text-muted">{label}</span>
       <p className={`${VALUE_CLASS[variant]} ${bold ? "font-semibold" : ""}`}>
         {value}
       </p>

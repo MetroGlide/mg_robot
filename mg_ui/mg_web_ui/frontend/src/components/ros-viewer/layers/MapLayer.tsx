@@ -1,16 +1,19 @@
 import { FoxgloveClientHandle } from "../../../hooks/useFoxgloveClient";
 import { useOccupancyGrid } from "../hooks/useOccupancyGrid";
 import { useGridTexture } from "../hooks/useGridTexture";
+import { GridPalette } from "../gridColors";
 
 export default function MapLayer({
   client,
   topic,
+  palette = "map",
 }: {
   client: FoxgloveClientHandle;
   topic?: string;
+  palette?: GridPalette;
 }) {
   const grid = useOccupancyGrid(client, topic);
-  const texture = useGridTexture(grid, "map");
+  const texture = useGridTexture(grid, palette);
 
   if (!grid || !texture) return null;
 

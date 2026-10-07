@@ -9,7 +9,7 @@ export default function ActionResultText({ result }: ActionResultTextProps) {
   return (
     <p
       className={`text-xs break-all whitespace-pre-wrap ${
-        result.ok ? "text-green-400" : "text-red-400"
+        result.ok ? "text-ok" : "text-error"
       }`}
     >
       {result.text}

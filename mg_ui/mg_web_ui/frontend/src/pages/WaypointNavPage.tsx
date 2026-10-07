@@ -2,7 +2,7 @@ import { useState } from "react";
 import { FoxgloveClientHandle } from "../hooks/useFoxgloveClient";
 import { SystemManagerHandle } from "../hooks/useSystemManagerClient";
 import { useTopicSubscriber } from "../hooks/useTopicSubscriber";
-import { useServiceCaller } from "../hooks/useServiceCaller";
+import { useWaypointControl, PoseInput } from "../hooks/useWaypointControl";
 import { useNav2Status } from "../hooks/useNav2Status";
 import { useSimulation } from "../contexts/SimulationContext";
 import { useRosbagReplay } from "../contexts/RosbagReplayContext";
@@ -14,22 +14,18 @@ import {
   GOAL_STATUS,
   GOAL_STATUS_COLOR,
 } from "../types";
-import { TOPICS, SERVICES } from "../ros/interfaces";
+import { TOPICS } from "../ros/interfaces";
 import SectionCard from "../components/layout/SectionCard";
 import RobotPageLayout from "../components/layout/RobotPageLayout";
 import VelocityGauge from "../components/panels/VelocityGauge";
 import ApiLogPanel from "../components/panels/ApiLogPanel";
 import ContainerStatusCard from "../components/status/ContainerStatusCard";
 import ServiceControlCard from "../components/status/ServiceControlCard";
-import SimulationPoseSection, {
-  PoseInput,
-} from "../components/status/SimulationPoseSection";
+import SimulationPoseSection from "../components/status/SimulationPoseSection";
 import RosbagReplaySection from "../components/sections/RosbagReplaySection";
 import WaypointActionsSection from "../components/waypoint-actions/WaypointActionsSection";
 import ActionResultText from "../components/waypoint-actions/ActionResultText";
-import { useActionRunner } from "../hooks/useActionRunner";
 import {
-  describeServiceResponse,
   GOAL_BT_OPTIONS,
   GoalBtMode,
   isGoalBtMode,
@@ -46,43 +42,6 @@ const STATE_COLOR: Record<string, string> = {
   ERROR: "text-red-400",
 };
 
-function buildInitialPoseMessage(pose: PoseInput) {
-  const nowMs = Date.now();
-  const sec = Math.floor(nowMs / 1000);
-  const nanosec = Math.floor((nowMs % 1000) * 1_000_000);
-  const qz = Math.sin(pose.yaw / 2.0);
-  const qw = Math.cos(pose.yaw / 2.0);
-  const covariance = Array(36).fill(0.0);
-  covariance[0] = 0.25;
-  covariance[7] = 0.25;
-  covariance[35] = 0.06853891945200942;
-  return {
-    header: { stamp: { sec, nanosec }, frame_id: "map" },
-    pose: {
-      pose: {
-        position: { x: pose.x, y: pose.y, z: 0.0 },
-        orientation: { x: 0.0, y: 0.0, z: qz, w: qw },
-      },
-      covariance,
-    },
-  };
-}
-
-function buildNavGoalMessage(pose: PoseInput) {
-  const nowMs = Date.now();
-  const sec = Math.floor(nowMs / 1000);
-  const nanosec = Math.floor((nowMs % 1000) * 1_000_000);
-  const qz = Math.sin(pose.yaw / 2.0);
-  const qw = Math.cos(pose.yaw / 2.0);
-  return {
-    header: { stamp: { sec, nanosec }, frame_id: "map" },
-    pose: {
-      position: { x: pose.x, y: pose.y, z: 0.0 },
-      orientation: { x: 0.0, y: 0.0, z: qz, w: qw },
-    },
-  };
-}
-
 export default function WaypointNavPage({
   client,
   sysManager,
@@ -90,14 +49,29 @@ export default function WaypointNavPage({
   client: FoxgloveClientHandle;
   sysManager: SystemManagerHandle;
 }) {
-  const [countdownMs, setCountdownMs] = useState(3000);
-  const [jumpIndex, setJumpIndex] = useState(0);
-  const [interactionMode, setInteractionMode] = useState<
-    "none" | "pose_estimate" | "nav_goal"
-  >("none");
   const [goalBt, setGoalBt] = useState<GoalBtMode>("default");
-  const goalRunner = useActionRunner();
-  const { call, loading, error } = useServiceCaller(client);
+  const [sysLoading, setSysLoading] = useState(false);
+  const [sysError, setSysError] = useState<string | null>(null);
+  const {
+    countdownMs,
+    setCountdownMs,
+    jumpIndex,
+    setJumpIndex,
+    interactionMode,
+    setInteractionMode,
+    goalRunner,
+    loading,
+    error,
+    start: handleStart,
+    startImmediate: handleStartImmediate,
+    stop: handleStop,
+    pause: handlePause,
+    resume: handleResume,
+    jump: handleJump,
+    reload: handleReload,
+    publishInitialPose,
+    handleMapPoseSet,
+  } = useWaypointControl(client, goalBt, setSysError);
   const { isSimulation } = useSimulation();
   const { isRosbagReplayVisible } = useRosbagReplay();
 
@@ -130,8 +104,6 @@ export default function WaypointNavPage({
     "nav2_msgs/msg/CollisionDetectorState",
   );
 
-  const [sysLoading, setSysLoading] = useState(false);
-  const [sysError, setSysError] = useState<string | null>(null);
   const { containers, callApi } = sysManager;
   const navState = containers["navigation"] ?? "unknown";
   const scenarioState = containers["scenario-test"] ?? "unknown";
@@ -149,71 +121,9 @@ export default function WaypointNavPage({
     }
   };
 
-  const handleStart = () =>
-    call(SERVICES.WAYPOINT_START, { countdown_ms: countdownMs });
-  const handleStartImmediate = () =>
-    call(SERVICES.WAYPOINT_START, { countdown_ms: 0 });
-  const handleStop = () => call(SERVICES.WAYPOINT_STOP, {});
-  const handlePause = () =>
-    client.publish(TOPICS.WAYPOINT_PAUSE_REQUEST, "mg_msgs/msg/PauseRequest", {
-      requester_id: "web_ui",
-      active: true,
-      reason: "manual pause",
-    });
-  const handleResume = () =>
-    client.publish(TOPICS.WAYPOINT_PAUSE_REQUEST, "mg_msgs/msg/PauseRequest", {
-      requester_id: "web_ui",
-      active: false,
-      reason: "",
-    });
-  const handleJump = () =>
-    client.publish(TOPICS.WAYPOINT_SET_NEXT_INDEX, "std_msgs/msg/Int16", {
-      data: jumpIndex,
-    });
-  const handleReload = () => call(SERVICES.WAYPOINT_RELOAD, {});
-
   const handleResetRobotPose = (pose: PoseInput) =>
     callSystemManager("/simulation/reset-pose", pose);
-  const handleResetAmclPose = (pose: PoseInput) => {
-    setSysError(null);
-    try {
-      client.publish(
-        TOPICS.INITIALPOSE,
-        "geometry_msgs/msg/PoseWithCovarianceStamped",
-        buildInitialPoseMessage(pose),
-      );
-    } catch (e) {
-      setSysError(e instanceof Error ? e.message : String(e));
-    }
-  };
-
-  const handleMapPoseSet = (x: number, y: number, yaw: number) => {
-    setSysError(null);
-    try {
-      if (interactionMode === "pose_estimate") {
-        client.publish(
-          TOPICS.INITIALPOSE,
-          "geometry_msgs/msg/PoseWithCovarianceStamped",
-          buildInitialPoseMessage({ x, y, z: 0.0, yaw }),
-        );
-      } else if (interactionMode === "nav_goal") {
-        // BT を指定できるよう、/goal_pose ではなく sequencer のサービスでゴールを送る
-        const pose = buildNavGoalMessage({ x, y, z: 0.0, yaw });
-        void goalRunner.run(async () =>
-          describeServiceResponse(
-            await client.callService(SERVICES.WAYPOINT_NAVIGATE_TO_POSE, {
-              pose,
-              navigation_mode: goalBt,
-            }),
-          ),
-        );
-      }
-    } catch (e) {
-      setSysError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setInteractionMode("none");
-    }
-  };
+  const handleResetAmclPose = publishInitialPose;
 
   const stateColor = status
     ? (STATE_COLOR[status.state] ?? "text-white")
@@ -571,12 +481,14 @@ export default function WaypointNavPage({
                   ]}
                   loading={sysLoading}
                 />
-                <SimulationPoseSection
-                  onResetRobot={handleResetRobotPose}
-                  onResetAmcl={handleResetAmclPose}
-                  loading={sysLoading}
-                  error={sysError}
-                />
+                <SectionCard title="Pose Reset">
+                  <SimulationPoseSection
+                    onResetRobot={handleResetRobotPose}
+                    onResetAmcl={handleResetAmclPose}
+                    loading={sysLoading}
+                    error={sysError}
+                  />
+                </SectionCard>
               </div>
             ),
           },
@@ -588,7 +500,9 @@ export default function WaypointNavPage({
             id: "rosbag-replay",
             label: "Rosbag Replay",
             children: (
-              <RosbagReplaySection client={client} sysManager={sysManager} />
+              <SectionCard>
+                <RosbagReplaySection client={client} sysManager={sysManager} />
+              </SectionCard>
             ),
           },
         ]

@@ -78,7 +78,7 @@ base_link ─► left_wheel_link  (y=+0.25, 半径 0.15)
 ```
 
 - 車輪間隔は 0.5 m。
-- 前方 LiDAR (`front_lrf_link`) は URDF の定義がコメントアウトされている。ただし `/scan_front_lidar` は、Nav2 の設定・診断・シミュレータのブリッジから参照され続けている。
+- 前方 LiDAR (`front_lrf_link`) は URDF の定義がコメントアウトされている。ただし `/scan_front_lidar` は、Nav2 の設定・シミュレータのブリッジから参照され続けている (診断と Web UI の表示からは外した)。
 - Livox は URDF のリンクがあるだけで、ドライバは起動していない。
 
 ## センサとデバイス

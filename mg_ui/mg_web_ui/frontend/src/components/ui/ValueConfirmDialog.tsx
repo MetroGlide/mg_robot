@@ -21,30 +21,30 @@ export default function ValueConfirmDialog({
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
         onClick={onCancel}
       />
-      <div className="relative z-10 bg-gray-900 rounded-xl shadow-2xl w-full max-w-lg">
-        <div className="px-5 py-4 border-b border-gray-700">
-          <span className="text-sm font-medium text-gray-200">{title}</span>
+      <div className="relative z-10 w-full max-w-lg rounded-xl border border-line bg-surface-elevated text-content shadow-card">
+        <div className="border-b border-line px-5 py-4">
+          <span className="text-sm font-medium">{title}</span>
         </div>
         <div className="px-5 py-4 space-y-3">
           {values.map(({ label, value }) => (
             <div key={label}>
-              <p className="text-xs text-gray-400 mb-1">{label}</p>
-              <p className="text-sm text-white bg-gray-800 rounded px-3 py-2 break-all">
-                {value || <span className="text-gray-500 italic">（空）</span>}
+              <p className="mb-1 text-xs text-muted">{label}</p>
+              <p className="break-all rounded bg-surface-sunken px-3 py-2 text-sm">
+                {value || <span className="italic text-muted">（空）</span>}
               </p>
             </div>
           ))}
         </div>
-        <div className="flex justify-end gap-2 px-5 py-3 border-t border-gray-700">
+        <div className="flex justify-end gap-2 border-t border-line px-5 py-3">
           <button
             onClick={onCancel}
-            className="px-4 py-2 rounded text-sm font-medium bg-gray-700 hover:bg-gray-600 text-gray-200"
+            className="rounded bg-surface-sunken px-4 py-2 text-sm font-medium hover:bg-line"
           >
             Cancel
           </button>
           <button
             onClick={onConfirm}
-            className="px-4 py-2 rounded text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white"
+            className="rounded bg-accent px-4 py-2 text-sm font-medium text-surface-elevated hover:opacity-90"
           >
             OK
           </button>

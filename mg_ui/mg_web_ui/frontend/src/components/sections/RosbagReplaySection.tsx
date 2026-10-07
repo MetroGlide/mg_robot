@@ -5,14 +5,19 @@ import { useServiceCaller } from "../../hooks/useServiceCaller";
 import { SERVICES } from "../../ros/services";
 import { loadSettings, saveSettings } from "../../utils/settingsApi";
 import { getSysManagerUrl } from "../../utils/systemManagerConfig";
-import SectionCard from "../layout/SectionCard";
-import ContainerStatusCard from "../status/ContainerStatusCard";
+import { containerDisplay } from "../operate/ContainerControl";
+import OpsButton from "../ui/OpsButton";
+import Pill from "../ui/Pill";
 import ValueConfirmDialog from "../ui/ValueConfirmDialog";
 
 const RATE_OPTIONS = [0.5, 1.0, 1.5, 2.0] as const;
 
 const SETTINGS_KEY = "rosbagReplayInput";
 
+const INPUT_CLASS =
+  "mt-1 block w-full rounded-md border border-line bg-surface-elevated px-2 py-1 text-xs text-content";
+
+/** rosbag 再生コンテナの起動・停止と、再生の一時停止・速度の変更。枠は呼び出し側で付ける */
 export default function RosbagReplaySection({
   client,
   sysManager,
@@ -36,7 +41,9 @@ export default function RosbagReplaySection({
     error: rosError,
   } = useServiceCaller(client);
 
-  const isRunning = sysManager.containers["rosbag-replay"] === "running";
+  const containerState = sysManager.containers["rosbag-replay"];
+  const isRunning = containerState === "running";
+  const display = containerDisplay(containerState);
 
   useEffect(() => {
     loadSettings().then((data) => {
@@ -129,114 +136,95 @@ export default function RosbagReplaySection({
   };
 
   return (
-    <div className="space-y-2">
-      <ContainerStatusCard
-        title="Rosbag Replay"
-        status={sysManager.containers["rosbag-replay"] ?? "unknown"}
-      />
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-semibold">Rosbag 再生</span>
+        <Pill tone={display.tone}>{display.label}</Pill>
+      </div>
 
-      <SectionCard title="File">
-        <div className="space-y-2">
-          <div>
-            <label className="text-xs text-gray-400 block mb-1">
-              File Path (container absolute path)
-            </label>
-            <input
-              type="text"
-              value={file}
-              onChange={(e) => setFile(e.target.value)}
-              onBlur={() => persistInputs(file, topics)}
-              placeholder="/root/ros2_data/example.bag"
-              className="w-full bg-gray-700 text-sm text-white px-2 py-1 rounded border border-gray-600 focus:outline-none focus:border-blue-500"
-            />
-          </div>
-          <div>
-            <label className="text-xs text-gray-400 block mb-1">
-              Topics (comma-separated, empty = all)
-            </label>
-            <input
-              type="text"
-              value={topics}
-              onChange={(e) => setTopics(e.target.value)}
-              onBlur={() => persistInputs(file, topics)}
-              placeholder="/scan, /odom, /tf"
-              className="w-full bg-gray-700 text-sm text-white px-2 py-1 rounded border border-gray-600 focus:outline-none focus:border-blue-500"
-            />
-          </div>
-          <div className="flex flex-wrap gap-2 pt-1">
-            <button
-              onClick={handleStart}
-              disabled={sysLoading || !file}
-              className="bg-green-600 hover:bg-green-700 disabled:opacity-50 px-4 py-2 rounded font-medium text-sm"
-            >
-              Start
-            </button>
-            <button
-              onClick={handleStop}
-              disabled={sysLoading}
-              className="bg-red-600 hover:bg-red-700 disabled:opacity-50 px-4 py-2 rounded font-medium text-sm"
-            >
-              Stop
-            </button>
-            <button
-              onClick={handleLoadFromEnv}
-              disabled={sysLoading}
-              className="bg-gray-600 hover:bg-gray-500 disabled:opacity-50 px-4 py-2 rounded font-medium text-sm"
-            >
-              Load from .env
-            </button>
-          </div>
-          {sysError && <p className="text-red-400 text-xs mt-1">{sysError}</p>}
+      <div className="space-y-2">
+        <label className="block text-xs text-muted">
+          ファイル (コンテナ内の絶対パス)
+          <input
+            type="text"
+            value={file}
+            onChange={(e) => setFile(e.target.value)}
+            onBlur={() => persistInputs(file, topics)}
+            placeholder="/root/ros2_data/example.bag"
+            className={INPUT_CLASS}
+          />
+        </label>
+        <label className="block text-xs text-muted">
+          トピック (カンマ区切り、空なら全部)
+          <input
+            type="text"
+            value={topics}
+            onChange={(e) => setTopics(e.target.value)}
+            onBlur={() => persistInputs(file, topics)}
+            placeholder="/scan, /odom, /tf"
+            className={INPUT_CLASS}
+          />
+        </label>
+        <div className="flex flex-wrap gap-2">
+          <OpsButton tone="primary" disabled={sysLoading || !file} onClick={handleStart}>
+            開始
+          </OpsButton>
+          <OpsButton tone="danger" disabled={sysLoading} onClick={handleStop}>
+            停止
+          </OpsButton>
+          <OpsButton disabled={sysLoading} onClick={handleLoadFromEnv}>
+            .env から読む
+          </OpsButton>
         </div>
-      </SectionCard>
+        {sysError && <p className="text-xs text-error">{sysError}</p>}
+      </div>
 
-      <SectionCard title="Playback Control">
-        <div className="space-y-3">
-          <div className="flex gap-2">
-            <button
-              onClick={handlePause}
-              disabled={!isRunning || isPaused || rosLoading}
-              className="bg-yellow-600 hover:bg-yellow-700 disabled:opacity-50 px-4 py-2 rounded font-medium text-sm"
-            >
-              Pause
-            </button>
-            <button
-              onClick={handleResume}
-              disabled={!isRunning || !isPaused || rosLoading}
-              className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 px-4 py-2 rounded font-medium text-sm"
-            >
-              Resume
-            </button>
-          </div>
-          <div>
-            <p className="text-xs text-gray-400 mb-1">Speed</p>
-            <div className="flex gap-2">
-              {RATE_OPTIONS.map((r) => (
-                <button
-                  key={r}
-                  onClick={() => handleSetRate(r)}
-                  disabled={!isRunning || rosLoading}
-                  className={`px-3 py-1 rounded text-sm font-medium disabled:opacity-50 ${
-                    rate === r
-                      ? "bg-blue-600 hover:bg-blue-700"
-                      : "bg-gray-600 hover:bg-gray-500"
-                  }`}
-                >
-                  {r}x
-                </button>
-              ))}
-            </div>
-          </div>
-          {rosError && <p className="text-red-400 text-xs mt-1">{rosError}</p>}
+      <div className="space-y-2">
+        <div className="flex gap-2">
+          <OpsButton
+            tone="warn"
+            disabled={!isRunning || isPaused || rosLoading}
+            onClick={handlePause}
+          >
+            一時停止
+          </OpsButton>
+          <OpsButton
+            tone="primary"
+            disabled={!isRunning || !isPaused || rosLoading}
+            onClick={handleResume}
+          >
+            再開
+          </OpsButton>
         </div>
-      </SectionCard>
+        <div>
+          <p className="mb-1 text-xs text-muted">再生速度</p>
+          <div className="flex gap-1">
+            {RATE_OPTIONS.map((r) => (
+              <button
+                key={r}
+                type="button"
+                onClick={() => handleSetRate(r)}
+                disabled={!isRunning || rosLoading}
+                className={`rounded-md px-3 py-1 text-xs font-semibold disabled:opacity-40 ${
+                  rate === r
+                    ? "bg-accent text-surface-elevated"
+                    : "bg-surface-elevated text-content hover:bg-line"
+                }`}
+              >
+                {r}x
+              </button>
+            ))}
+          </div>
+        </div>
+        {rosError && <p className="text-xs text-error">{rosError}</p>}
+      </div>
 
       <ValueConfirmDialog
         open={dialogOpen}
-        title="Load from .env — 以下の値で上書きしますか？"
+        title=".env の値で上書きしますか？"
         values={[
-          { label: "File Path", value: pendingFile },
-          { label: "Topics", value: pendingTopics },
+          { label: "ファイル", value: pendingFile },
+          { label: "トピック", value: pendingTopics },
         ]}
         onConfirm={handleDialogConfirm}
         onCancel={() => setDialogOpen(false)}

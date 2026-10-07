@@ -75,7 +75,7 @@ export default function GenericTopicPublisher({
 
   return (
     <div className="space-y-2">
-      <label className="block text-xs text-gray-400">
+      <label className="block text-xs text-muted">
         Topic
         <input
           list={LIST_ID}
@@ -83,7 +83,7 @@ export default function GenericTopicPublisher({
           onChange={(e) => handleTopicChange(e.target.value)}
           onFocus={() => setTopics(client.listTopics())}
           placeholder="/topic"
-          className="mt-1 block w-full rounded bg-gray-800 px-2 py-1 text-sm text-white"
+          className="mt-1 block w-full rounded bg-surface-sunken px-2 py-1 text-sm text-content"
         />
         <datalist id={LIST_ID}>
           {topics.map((t) => (
@@ -91,28 +91,28 @@ export default function GenericTopicPublisher({
           ))}
         </datalist>
       </label>
-      <label className="block text-xs text-gray-400">
+      <label className="block text-xs text-muted">
         Type
         <input
           value={schemaName}
           onChange={(e) => setSchemaName(e.target.value)}
           placeholder="std_msgs/msg/Bool"
-          className="mt-1 block w-full rounded bg-gray-800 px-2 py-1 text-sm text-white"
+          className="mt-1 block w-full rounded bg-surface-sunken px-2 py-1 text-sm text-content"
         />
       </label>
       {schemaName.trim() !== "" && !schemaKnown && (
-        <p className="text-xs text-yellow-400">
+        <p className="text-xs text-warn">
           No topic with this type is published, so the message is sent as JSON.
         </p>
       )}
-      <label className="block text-xs text-gray-400">
+      <label className="block text-xs text-muted">
         Message (JSON)
         <textarea
           value={dataJson}
           onChange={(e) => setDataJson(e.target.value)}
           rows={4}
           spellCheck={false}
-          className="mt-1 block w-full rounded bg-gray-800 px-2 py-1 font-mono text-xs text-white"
+          className="mt-1 block w-full rounded bg-surface-sunken px-2 py-1 font-mono text-xs text-content"
         />
       </label>
       <div className="flex gap-2">
@@ -129,11 +129,11 @@ export default function GenericTopicPublisher({
           onClick={handleInsertTemplate}
         />
       </div>
-      <p className="text-xs text-gray-500">
+      <p className="text-xs text-muted">
         Messages are volatile: a subscriber that starts later does not receive
         them.
       </p>
-      {inputError && <p className="text-xs text-red-400">{inputError}</p>}
+      {inputError && <p className="text-xs text-error">{inputError}</p>}
       <ActionResultText result={result} />
     </div>
   );

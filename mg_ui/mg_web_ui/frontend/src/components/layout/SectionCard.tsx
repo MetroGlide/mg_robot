@@ -13,10 +13,10 @@ export default function SectionCard({
 }: SectionCardProps) {
   return (
     <div
-      className={`bg-gray-900 border border-gray-600/60 rounded-md p-3 ${className}`}
+      className={`rounded-md border border-line bg-surface-sunken p-3 ${className}`}
     >
       {title && (
-        <p className="text-xs font-medium text-gray-400 mb-2">{title}</p>
+        <p className="mb-2 text-xs font-medium text-muted">{title}</p>
       )}
       {children}
     </div>

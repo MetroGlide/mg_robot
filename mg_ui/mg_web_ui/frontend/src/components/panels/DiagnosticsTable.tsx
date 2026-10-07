@@ -10,7 +10,7 @@ export default function DiagnosticsTable({
   compact = false,
 }: DiagnosticsTableProps) {
   if (statuses.length === 0) {
-    return <p className="text-sm text-gray-500">waiting for /diagnostics…</p>;
+    return <p className="text-sm text-muted">waiting for /diagnostics…</p>;
   }
 
   if (compact) {
@@ -21,8 +21,8 @@ export default function DiagnosticsTable({
             <span className={`font-semibold ${DIAG_COLOR[s.level]}`}>
               {DIAG_LEVEL[s.level]}
             </span>
-            <span className="text-gray-300">{s.name}</span>
-            <span className="text-gray-500">{s.message}</span>
+            <span className="text-content">{s.name}</span>
+            <span className="text-muted">{s.message}</span>
           </li>
         ))}
       </ul>
@@ -32,7 +32,7 @@ export default function DiagnosticsTable({
   return (
     <table className="w-full text-sm">
       <thead>
-        <tr className="text-gray-400 text-left border-b border-gray-700">
+        <tr className="text-muted text-left border-b border-line">
           <th className="pb-2 w-16">Level</th>
           <th className="pb-2">Name</th>
           <th className="pb-2">Message</th>
@@ -40,12 +40,12 @@ export default function DiagnosticsTable({
       </thead>
       <tbody>
         {statuses.map((s) => (
-          <tr key={s.name} className="border-b border-gray-700/50">
+          <tr key={s.name} className="border-b border-line/50">
             <td className={`py-2 font-semibold ${DIAG_COLOR[s.level]}`}>
               {DIAG_LEVEL[s.level]}
             </td>
-            <td className="py-2 text-gray-300">{s.name}</td>
-            <td className="py-2 text-gray-500">{s.message}</td>
+            <td className="py-2 text-content">{s.name}</td>
+            <td className="py-2 text-muted">{s.message}</td>
           </tr>
         ))}
       </tbody>

@@ -22,12 +22,12 @@ interface MapSelectProps {
 
 function MapSelect({ label, value, maps, onChange }: MapSelectProps) {
   return (
-    <label className="block text-xs text-gray-400">
+    <label className="block text-xs text-muted">
       {label}
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="mt-1 block w-full rounded bg-gray-800 px-2 py-1 text-sm text-white"
+        className="mt-1 block w-full rounded bg-surface-sunken px-2 py-1 text-sm text-content"
       >
         <option value={NO_CHANGE}>(no change)</option>
         {maps.map((m) => (
@@ -81,9 +81,9 @@ export default function MapSwitchPanel({ client, maps }: MapSwitchPanelProps) {
         </div>
       </div>
 
-      {maps.error && <p className="text-xs text-red-400">{maps.error}</p>}
+      {maps.error && <p className="text-xs text-error">{maps.error}</p>}
       {maps.skipped.length > 0 && (
-        <p className="text-xs text-yellow-400">
+        <p className="text-xs text-warn">
           Ignored entries in map_list.txt: {maps.skipped.join(", ")}
         </p>
       )}
