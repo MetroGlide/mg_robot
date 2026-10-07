@@ -1,22 +1,6 @@
 import { Tone } from "../ui/Pill";
 import { Step } from "../ui/Stepper";
 
-/** sensor_msgs/NavSatStatus の status の表示名と色。-1 は測位できていない */
-export function gnssDisplay(status: number): { label: string; tone: Tone } {
-  switch (status) {
-    case -1:
-      return { label: "No Fix", tone: "error" };
-    case 0:
-      return { label: "GNSS", tone: "warn" };
-    case 1:
-      return { label: "SBAS", tone: "warn" };
-    case 2:
-      return { label: "RTK", tone: "ok" };
-    default:
-      return { label: "不明", tone: "neutral" };
-  }
-}
-
 /** クォータニオンから、地図平面での向き(yaw)を度で返す */
 export function quaternionToYawDeg(q: {
   x: number;

@@ -1,19 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
-  gnssDisplay,
   localizationTone,
   quaternionToYawDeg,
   SEQUENCER_STEPS,
   sequencerStep,
 } from "./displayState";
-
-describe("gnssDisplay", () => {
-  it("測位の種類を表示名と色にする", () => {
-    expect(gnssDisplay(-1)).toEqual({ label: "No Fix", tone: "error" });
-    expect(gnssDisplay(2)).toEqual({ label: "RTK", tone: "ok" });
-    expect(gnssDisplay(9).tone).toBe("neutral");
-  });
-});
 
 describe("quaternionToYawDeg", () => {
   it("z 軸まわりの回転を度にする", () => {

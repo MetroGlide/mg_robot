@@ -53,6 +53,7 @@ App.tsx
 | :--- | :--- | :--- |
 | `ThemeContext` | `useTheme()` | テーマ (light / dark / system) と低負荷モード。**端末ごとに** localStorage へ保存する (他の設定は system_manager 経由で全端末に共有されるが、これは共有しない) |
 | `RobotProfileContext` | `useRobotProfile()` | ロボットの名前 (既定 `MG-02`)。画面の見出しとタブのタイトルに使う。system_manager の設定 `robot.name` に保存し、全端末で共有する。設定の「全般」タブで変える |
+| `GnssSourceContext` | `useGnssSource()` | KPI の GNSS と詳細が購読するトピック(`navpvt` か `navsatfix`、既定は `navpvt`)。system_manager の設定 `gnss.source` に保存し、全端末で共有する。設定の「全般」タブで変える。GPS のミニ地図と衛星画像は、この設定によらず NavSatFix を使う |
 | `SimulationContext` | `useSimulation()` | `isSimulation` で、シミュレーションと実機の表示を切り替える |
 | `RosbagReplayContext` | (`RosbagReplayProvider`) | rosbag の再生の状態 |
 | `VisualizationContext` | `useVisualization()` | 3D ビューワーのレイヤーとオーバーレイの表示の切り替え |
@@ -188,6 +189,7 @@ client.publish(TOPICS.MY_TOPIC, 'pkg/msg/MyMessage', { value: 1, label: 'hello' 
 ### 負荷を抑えるルール (新 UI の部品)
 
 - **運用ビューでは、高頻度のトピック (scan、costmap、点群、画像) を、既定では購読しない**。そうした表示は、センサビューに置く。運用ビューが購読するのは、地図・経路・TF のほかは、低頻度の状態のトピックだけ。例外は、地図ツールバーの「センサ表示」ボタン (`useSensorsVisible`、既定はオフ。再読み込みでは残さない)。オンにしたときだけ `SensorLayers` が描かれ、そのレイヤー (LiDAR・コストマップ・点群など) の ON/OFF は、センサビューのレイヤーパネルの設定に従う。オフに戻すと購読を止める。画像は運用ビューに出さない。
+- GNSS は、設定で選んだ 1 トピック(NavPVT か NavSatFix)だけを `useGnss` で購読する(2Hz に間引く)。KPI の GNSS タイルと、押すと開く詳細カード(緯度経度、UTM、精度、PDOP、高さ)は、同じ購読の値を共有する。測位の判定と UTM 変換は `utils/gnssReading.ts`。
 - センサ・トピック・ノードの状態は、`/diagnostics` (1Hz) から `hooks/healthSummary.ts` で分類する。Hz を数えるためにトピックを購読しない。
 - 人が読むだけの値 (速度、GNSS など) は `useThrottledTopic(client, topic, schema, maxHz)` で、再描画を間引く。間引いても最後の値は必ず反映される。**E-Stop や FSM の状態のように、変化を見逃せない値は間引かず `useTopicSubscriber` を使う**。
 - 値には鮮度を付ける。`useFreshness(client, topic, maxAgeSec)` は、最後の受信 (ブラウザの時計) からの経過秒を返す。古くなった値は `StatTile` が `--` と経過秒の表示にする。Wi-Fi の瞬断で、古い値が現在値に見えないようにするため。

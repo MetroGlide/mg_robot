@@ -10,6 +10,8 @@ import {
 import { useTeleop } from "../contexts/TeleopContext";
 import { ThemeMode, useTheme } from "../contexts/ThemeContext";
 import { useRobotProfile } from "../contexts/RobotProfileContext";
+import { useGnssSource } from "../contexts/GnssSourceContext";
+import type { GnssSource } from "../utils/gnssReading";
 import {
   PRESET_DESCRIPTIONS,
   PRESET_LABELS,
@@ -112,6 +114,11 @@ const THEME_MODES: { value: ThemeMode; label: string }[] = [
   { value: "system", label: "端末に合わせる" },
 ];
 
+const GNSS_SOURCES: { value: GnssSource; label: string; hint: string }[] = [
+  { value: "navpvt", label: "NavPVT (/navpvt)", hint: "u-blox の測位結果。RTK の状態、衛星数、PDOP を含む" },
+  { value: "navsatfix", label: "NavSatFix (/gps/fix)", hint: "標準の GNSS メッセージ" },
+];
+
 const TABS = [
   { id: "general", label: "全般" },
   { id: "connection", label: "Connection" },
@@ -154,6 +161,7 @@ export default function SettingPage() {
   const { mode: themeMode, setMode: setThemeMode, lowLoad, setLowLoad } = useTheme();
 
   const { name: robotName, setName: setRobotName } = useRobotProfile();
+  const { source: gnssSource, setSource: setGnssSource } = useGnssSource();
   const [robotNameDraft, setRobotNameDraft] = useState(robotName);
   useEffect(() => setRobotNameDraft(robotName), [robotName]);
 
@@ -212,6 +220,30 @@ export default function SettingPage() {
                 }}
                 className="w-full rounded border border-line bg-surface-sunken px-2 py-1.5 text-sm text-content"
               />
+            </div>
+            <div className="border-t border-line pt-3">
+              <p className="mb-2 text-xs text-muted">
+                GNSS の購読元(全端末で共通。上部の GNSS と詳細に使う。選んだ 1 つだけを購読する)
+              </p>
+              <div className="flex gap-2">
+                {GNSS_SOURCES.map(({ value, label, hint }) => (
+                  <button
+                    key={value}
+                    onClick={() => setGnssSource(value)}
+                    title={hint}
+                    className={`flex-1 rounded border px-2 py-2 text-xs transition-colors ${
+                      gnssSource === value
+                        ? "border-accent bg-accent text-surface-elevated"
+                        : "border-line bg-surface-sunken text-content hover:bg-line"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1 text-xs text-muted">
+                NavPVT は RTK の Fixed・Float、衛星数、PDOP を表示できます。NavSatFix は RTK の Fixed・Float の区別と DOP がありません。
+              </p>
             </div>
             <div className="border-t border-line pt-3">
               <p className="mb-2 text-xs text-muted">テーマ(この端末だけの設定)</p>

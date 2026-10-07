@@ -36,6 +36,7 @@ export const TOPICS = {
   CPU_USAGE: '/cpu_usage',
   MEMORY_USAGE: '/memory_usage',
   GPS_FIX: '/gps/fix',
+  NAVPVT: '/navpvt',
   SLAM_GNSS2D_MAP: '/map',
   SLAM_GNSS2D_PATH: 'slam_gnss_2d/path',
   SLAM_GNSS2D_POSE_GRAPH: 'slam_gnss_2d/pose_graph',

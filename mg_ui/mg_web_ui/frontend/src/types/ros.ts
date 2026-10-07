@@ -322,6 +322,20 @@ export interface NavSatStatus {
   service: number
 }
 
+/** ublox_msgs/NavPVT。単位は u-blox の定義のまま(lat・lon は 1e-7 deg、距離は mm、p_dop は 0.01) */
+export interface NavPvt {
+  fix_type: number
+  flags: number
+  num_sv: number
+  lon: number
+  lat: number
+  height: number
+  h_msl: number
+  h_acc: number
+  v_acc: number
+  p_dop: number
+}
+
 export interface NavSatFix {
   header: Header
   status: NavSatStatus

@@ -12,6 +12,28 @@ interface StatTileProps {
   ageSec?: number | null;
   /** 幅(Tailwind の w-*)。値の桁が変わってもカードの大きさが変わらないよう、呼び出し側で固定する */
   widthClass: string;
+  /** 指定すると、タイルを押せるボタンにする(押すと詳細を開閉するなど) */
+  onClick?: () => void;
+  /** onClick で開いている状態のとき true */
+  active?: boolean;
+}
+
+function Wrapper({
+  className,
+  onClick,
+  children,
+}: {
+  className: string;
+  onClick?: () => void;
+  children: ReactNode;
+}) {
+  return onClick ? (
+    <button type="button" className={className} onClick={onClick}>
+      {children}
+    </button>
+  ) : (
+    <div className={className}>{children}</div>
+  );
 }
 
 export default function StatTile({
@@ -23,10 +45,17 @@ export default function StatTile({
   stale = false,
   ageSec = null,
   widthClass,
+  onClick,
+  active = false,
 }: StatTileProps) {
   const valueClass = stale ? "text-muted" : "text-content";
   return (
-    <div className={`flex shrink-0 items-center gap-3 px-3 py-2 ${widthClass}`}>
+    <Wrapper
+      className={`flex shrink-0 items-center gap-3 px-3 py-2 text-left ${widthClass} ${
+        onClick ? "cursor-pointer hover:bg-surface-sunken" : ""
+      } ${active ? "bg-surface-sunken" : ""}`}
+      onClick={onClick}
+    >
       {icon && (
         <div className={`flex-shrink-0 ${stale ? "text-muted" : TONE_TEXT[tone]}`}>
           {icon}
@@ -44,6 +73,6 @@ export default function StatTile({
           <div className="truncate text-[10px] text-warn">{Math.floor(ageSec)}秒 更新なし</div>
         )}
       </div>
-    </div>
+    </Wrapper>
   );
 }
