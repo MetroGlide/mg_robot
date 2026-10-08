@@ -23,6 +23,7 @@ from mg_waypoint_navigation.waypoint_sequencer.navigator import (
     NavigationResult,
     WaypointNavigator,
 )
+from mg_waypoint_navigation.waypoint_sequencer.progress_monitor import ProgressStatus
 from mg_waypoint_navigation.waypoint_sequencer.states import (
     ALLOWED_TRANSITIONS,
     CommandResult,
@@ -176,6 +177,10 @@ class WaypointSequencerFSM:
     @property
     def distance_remaining(self) -> float:
         return self._navigator.distance_remaining
+
+    def navigation_progress(self) -> Optional[ProgressStatus]:
+        """Nav2 のゴールを走行中なら、位置が進んでいない時間とリカバリー回数。"""
+        return self._navigator.progress_status()
 
     @property
     def map_loader(self):

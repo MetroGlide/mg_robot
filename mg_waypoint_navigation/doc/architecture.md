@@ -163,6 +163,7 @@ stateDiagram-v2
 | Pub     | `~/waypoints_markers`       | `visualization_msgs/MarkerArray` | RViz 表示                                    |
 | Pub     | `~/loaded_maps`             | `mg_msgs/LoadedMaps`             | map_server に読み込ませた地図 (読み込みに成功したものだけを記録)。transient_local latched |
 | Pub     | `~/navigation_mode`         | `std_msgs/String`                | 次のゴールで使うモードと BT の JSON (`{"mode": "normal", "behavior_tree": "<ファイル名>"}`)。変化したときだけ。transient_local latched |
+| Pub     | `/diagnostics`              | `diagnostic_msgs/DiagnosticArray` | 1Hz。`waypoint_sequencer/progress`: 走行中でなければ OK (`not navigating`)、走行中に位置が `stall_distance` 以上動かない時間が `stall_warn_sec` 以上なら WARN (`no progress for N s`)。values に `stalled_sec` と `number_of_recoveries` (NavigateToPose のフィードバック) |
 
 ### ノードパラメータ
 
@@ -178,6 +179,8 @@ stateDiagram-v2
 | `initial_localization_map` | string | `""`      | 起動時に map_server が読み込んでいる測位用地図 (`~/loaded_maps` の初期値。`mg_navigation` の bringup が渡す) |
 | `initial_planning_map`    | string | `""`       | 起動時に planning_map_server が読み込んでいる計画用地図 (同上) |
 | `plan_goal_match_tolerance` | double | `0.6`    | 経路の終点をゴールのものとみなす距離 [m]（NavFn の `tolerance` 以上にする） |
+| `stall_distance`          | double | `0.5`      | 詰まりの検知で、進んだとみなす移動距離 [m] |
+| `stall_warn_sec`          | double | `30.0`     | 位置が進まない時間がこれ以上になったら `/diagnostics` に WARN を出す [s] |
 
 > 読み込み済みの地図の記録は、`load_map` アクションと `~/load_map` を通した読み込みだけが更新する。
 > `/map_server/load_map` などを直接呼んだ場合は記録とずれる。

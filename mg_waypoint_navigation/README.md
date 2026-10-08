@@ -59,6 +59,7 @@ GUI の [waypoint-tool](https://github.com/Chu-son/waypoint-tool) でも作れ�
 | Publisher | `~/waypoints_markers` | `visualization_msgs/MarkerArray` | RViz2 用のマーカー |
 | Publisher | `~/loaded_maps` | `mg_msgs/LoadedMaps` | 読み込み済みの地図 |
 | Publisher | `~/navigation_mode` | `std_msgs/String` | 次のゴールで使うモードと BT |
+| Publisher | `/diagnostics` | `diagnostic_msgs/DiagnosticArray` | `waypoint_sequencer/progress`。走行中に位置が `stall_warn_sec` (既定 30 秒) 進まなければ WARN (1 Hz) |
 
 操作は Web UI から行う ([mg_ui](../mg_ui/README.md))。
 
