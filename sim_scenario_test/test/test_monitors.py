@@ -379,3 +379,46 @@ def test_obstacle_clearance_requires_footprint_and_known_shape():
     ctx.profile.robot.footprint = []
     with pytest.raises(ScenarioValidationError, match="footprint"):
         ObstacleClearanceMonitor(ctx, ObstacleClearanceSpec(obstacles=["ped"]))
+
+
+def test_resume_within_measures_from_the_timeline_entry():
+    from sim_scenario_test.builtin.monitors import ResumeWithinMonitor, ResumeWithinSpec
+    ctx = _scenario_ctx()
+    clock = {"t": 0.0}
+    ctx.clock.now = lambda: clock["t"]
+    monitor = ResumeWithinMonitor(
+        ctx, ResumeWithinSpec(after_timeline="wall_removed", max_sec=2.0))
+    assert monitor.result().status == ResultStatus.ERROR
+    monitor._callback(_odom(0.5))                    # 発火前の走行は数えない
+    clock["t"] = 10.0
+    ctx.events.emit("timeline_fired", entry="wall_removed")
+    monitor._callback(_odom(0.0))
+    assert monitor.result().status == ResultStatus.FAILED
+    clock["t"] = 11.5
+    monitor._callback(_odom(0.3))
+    result = monitor.result()
+    assert result.status == ResultStatus.PASSED and "1.5" in result.message
+
+
+def test_resume_within_fails_when_too_slow():
+    from sim_scenario_test.builtin.monitors import ResumeWithinMonitor, ResumeWithinSpec
+    ctx = _scenario_ctx()
+    clock = {"t": 0.0}
+    ctx.clock.now = lambda: clock["t"]
+    monitor = ResumeWithinMonitor(
+        ctx, ResumeWithinSpec(after_timeline="wall_removed", max_sec=2.0))
+    ctx.events.emit("timeline_fired", entry="wall_removed")
+    clock["t"] = 3.0
+    monitor._callback(_odom(0.3))
+    assert monitor.result().status == ResultStatus.FAILED
+
+
+def test_bt_node_trigger_fires_on_matching_status():
+    from sim_scenario_test.builtin.triggers import BtNodeTrigger, BtNodeTriggerSpec
+    ctx = MagicMock()
+    trigger = BtNodeTrigger(ctx, BtNodeTriggerSpec(node="Spin"))
+    callback = ctx.node.create_subscription.call_args[0][2]
+    callback(_bt_msg(("Spin", "IDLE"), ("BackUp", "RUNNING")))
+    assert not trigger.poll()
+    callback(_bt_msg(("Spin", "RUNNING")))
+    assert trigger.poll()

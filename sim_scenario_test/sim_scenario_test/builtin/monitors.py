@@ -452,3 +452,50 @@ class MaxStopDurationMonitor(TopicMonitor):
             "", status,
             f"longest stop {self._longest:.1f} s "
             f"(max {self._spec.max_stop_sec}, min {self._spec.min_stop_sec})")
+
+
+@dataclass
+class ResumeWithinSpec:
+    # このタイムライン項目 (timeline[].name) が発火してから、走り出すまでの時間を測る
+    after_timeline: str
+    # これ (sim 時間 [s]) を超えても走り出さなければ FAILED
+    max_sec: float
+    speed_threshold: float = 0.05
+    topic: str = "/odom"
+
+
+@register_monitor("resume_within", ResumeWithinSpec)
+class ResumeWithinMonitor(TopicMonitor):
+    """障害物の除去などのタイムライン項目から、ロボットが走り出すまでの時間を判定する。"""
+    MSG_TYPE = Odometry
+
+    def __init__(self, ctx: "ScenarioContext", spec: ResumeWithinSpec):
+        super().__init__(ctx, spec.topic)
+        self._spec = spec
+        self._delay: Optional[float] = None
+
+    def _on_msg(self, msg) -> None:
+        if self._delay is not None:
+            return
+        fired = self._ctx.events.find("timeline_fired", entry=self._spec.after_timeline)
+        if fired is None:
+            return
+        v = msg.twist.twist.linear
+        if math.hypot(v.x, v.y) >= self._spec.speed_threshold:
+            self._delay = self._ctx.clock.now() - fired.time
+
+    def _evaluate(self) -> CheckResult:
+        if self._ctx.events.find("timeline_fired", entry=self._spec.after_timeline) is None:
+            return CheckResult(
+                "", ResultStatus.ERROR,
+                f"timeline entry '{self._spec.after_timeline}' never fired")
+        if self._delay is None:
+            return CheckResult(
+                "", ResultStatus.FAILED,
+                f"did not move after '{self._spec.after_timeline}'")
+        status = (ResultStatus.PASSED if self._delay <= self._spec.max_sec
+                  else ResultStatus.FAILED)
+        return CheckResult(
+            "", status,
+            f"moved {self._delay:.1f} s after '{self._spec.after_timeline}' "
+            f"(max {self._spec.max_sec} s)")
