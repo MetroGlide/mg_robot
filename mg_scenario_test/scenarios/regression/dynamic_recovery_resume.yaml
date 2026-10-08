@@ -49,8 +49,9 @@ timeline:
 
 monitors:
   - bt_node: { node: IsPathClear, status: SUCCESS, expect: occurs }
-  # 「空いた」の判定 (コストマップの publish 2Hz + 連続 1 秒) と、計画・加速の時間を含む
-  - resume_within: { after_timeline: walls_removed, max_sec: 3.0 }
+  # 除去からコストマップ上で前方が空くまで (約 1.6 s)、「空いた」の確認 (連続 1 秒)、走行の再開を含む。
+  # 首振りで向きがずれていると RPP はその場で回ってから進むので、回転の開始も再開として数える
+  - resume_within: { after_timeline: walls_removed, max_sec: 3.0, include_turning: true }
 
 expect:
   - reached_all
