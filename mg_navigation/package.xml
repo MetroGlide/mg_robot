@@ -12,6 +12,13 @@
   <buildtool_depend>ament_cmake</buildtool_depend>
   <buildtool_depend>ament_cmake_python</buildtool_depend>
 
+  <depend>behaviortree_cpp_v3</depend>
+  <depend>nav2_behavior_tree</depend>
+  <depend>nav2_costmap_2d</depend>
+  <depend>nav2_util</depend>
+
+  <test_depend>ament_cmake_gtest</test_depend>
+
   <exec_depend>mg_msgs</exec_depend>
   <exec_depend>mg_utils</exec_depend>
   <exec_depend>mg_waypoint_navigation</exec_depend>
