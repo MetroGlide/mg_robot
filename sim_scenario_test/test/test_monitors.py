@@ -189,9 +189,9 @@ def test_call_set_bool(monkeypatch):
 # 回帰テスト用の monitor / expectation
 # ---------------------------------------------------------------------------
 
-def _odom(vx, vy=0.0):
+def _odom(vx, vy=0.0, wz=0.0):
     return SimpleNamespace(twist=SimpleNamespace(twist=SimpleNamespace(
-        linear=SimpleNamespace(x=vx, y=vy))))
+        linear=SimpleNamespace(x=vx, y=vy), angular=SimpleNamespace(z=wz))))
 
 
 def test_topic_received_counts_matching_messages():
@@ -394,7 +394,13 @@ def test_resume_within_measures_from_the_timeline_entry():
     ctx.events.emit("timeline_fired", entry="wall_removed")
     monitor._callback(_odom(0.0))
     assert monitor.result().status == ResultStatus.FAILED
+    clock["t"] = 10.2
+    monitor._callback(_odom(0.3))                    # 一瞬だけの速度は走り出しとみなさない
+    clock["t"] = 10.4
+    monitor._callback(_odom(0.0))
     clock["t"] = 11.5
+    monitor._callback(_odom(0.3))
+    clock["t"] = 12.0
     monitor._callback(_odom(0.3))
     result = monitor.result()
     assert result.status == ResultStatus.PASSED and "1.5" in result.message
@@ -409,6 +415,8 @@ def test_resume_within_fails_when_too_slow():
         ctx, ResumeWithinSpec(after_timeline="wall_removed", max_sec=2.0))
     ctx.events.emit("timeline_fired", entry="wall_removed")
     clock["t"] = 3.0
+    monitor._callback(_odom(0.3))
+    clock["t"] = 3.5
     monitor._callback(_odom(0.3))
     assert monitor.result().status == ResultStatus.FAILED
 
