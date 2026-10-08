@@ -1,11 +1,11 @@
 version: "2.0"
-name: dynamic_persistent_recovery
+name: dynamic_recovery_resume
 description: >
-  走行中のロボットの前後左右 1.2m に壁が出現して囲い込み、居座る (迂回できない配置)。待機時間
-  (failure_tolerance 5 秒) を超えると FollowPath が失敗し、BT のリカバリーの最初の段階 (Spin) が動くこと、
-  壁の除去後にゴールへ到達できることを確認する。
+  走行中のロボットの前後左右 1.2m に壁が出現して囲い込み、BT のリカバリーに入る。リカバリーの待機
+  (コストマップのクリア後の Wait) が始まった時点で壁を除去すると、待機の終了を待たずに
+  IsPathClear が「空いた」と判定してリカバリーを中断し、すぐに走行を再開することを確認する。
   壁は地図に載らず、コストマップにはセンサで見えた範囲しか載らないため、正面に長い壁を置くだけでは、
-  見えている端を回る経路が引けて迂回し、リカバリーが起きないことがある。囲い込めば全体が見え、計画は必ず失敗する。
+  見えている端を回る経路が引けて迂回してしまう。囲い込めば全体が見え、計画は必ず失敗する。
 profile: mg01
 world: warehouse
 tags: [full, dynamic_obstacle, recovery, nav2_goals]
@@ -31,21 +31,26 @@ run:
 
 timeline:
   # 置いている間もロボットは少し進むので、左右の壁を長くして角で重ねる
-  - name: walls_enclose_then_leave
+  - name: walls_enclose
     when: { robot_travelled: { distance: 2.0 } }
     do:
       - spawn: { obstacle: wall_front, pose: { frame: robot, x: 1.2, y: 0.0, z: 0.75 } }
       - spawn: { obstacle: wall_left, pose: { frame: robot, x: 0.0, y: 1.2, z: 0.75 } }
       - spawn: { obstacle: wall_right, pose: { frame: robot, x: 0.0, y: -1.2, z: 0.75 } }
       - spawn: { obstacle: wall_back, pose: { frame: robot, x: -1.2, y: 0.0, z: 0.75 } }
-      - delay: { sec: 25.0 }
+  # リカバリーの最初の Wait は、首振りの次の段階 (コストマップのクリア → Wait 3 秒)
+  - name: walls_removed
+    when: { bt_node: { node: Wait, status: RUNNING } }
+    do:
       - despawn: { obstacle: wall_front }
       - despawn: { obstacle: wall_left }
       - despawn: { obstacle: wall_right }
       - despawn: { obstacle: wall_back }
 
 monitors:
-  - bt_node: { node: Spin, status: RUNNING, expect: occurs }
+  - bt_node: { node: IsPathClear, status: SUCCESS, expect: occurs }
+  # 「空いた」の判定 (コストマップの publish 2Hz + 連続 1 秒) と、計画・加速の時間を含む
+  - resume_within: { after_timeline: walls_removed, max_sec: 3.0 }
 
 expect:
   - reached_all
