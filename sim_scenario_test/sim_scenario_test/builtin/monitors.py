@@ -34,8 +34,6 @@ if TYPE_CHECKING:
 
 # diagnostic_msgs/DiagnosticStatus.ERROR
 _DIAGNOSTIC_ERROR_LEVEL = 2
-# resume_within で、回転を始めたとみなす角速度 [rad/s] (参考の表示用)
-_RESUME_TURN_THRESHOLD = 0.1
 # ロボットの動きで距離が縮まったとみなす最小の変化量 [m] (姿勢の測定ノイズを除く)
 _CLOSING_EPSILON = 1e-4
 
@@ -466,6 +464,10 @@ class ResumeWithinSpec:
     # この時間 (sim 時間 [s]) 続けて speed_threshold 以上なら走り出したとみなす
     # (障害物の除去や首振りの直後の一瞬の速度で誤判定しない)。走り出した時刻は、続き始めた時刻
     min_moving_sec: float = 0.5
+    # true なら、その場の回転 (角速度が turn_threshold 以上) も走り出しとみなす
+    # (向きを直してから進むコントローラーで、再開を回転の開始から数える)
+    include_turning: bool = False
+    turn_threshold: float = 0.1
     topic: str = "/odom"
 
 
@@ -479,7 +481,8 @@ class ResumeWithinMonitor(TopicMonitor):
         self._spec = spec
         self._delay: Optional[float] = None
         self._moving_since: Optional[float] = None
-        # 判定には使わない参考の値: 回転を始めた時刻 (その場の回転で走り出しが遅れて見える場合の切り分け用)
+        # include_turning が false のときの参考の値: 回転を始めた時刻
+        # (その場の回転で走り出しが遅れて見える場合の切り分け用)
         self._turn_delay: Optional[float] = None
 
     def _on_msg(self, msg) -> None:
@@ -489,11 +492,13 @@ class ResumeWithinMonitor(TopicMonitor):
         if fired is None:
             return
         now = self._ctx.clock.now()
-        if (self._turn_delay is None
-                and abs(msg.twist.twist.angular.z) >= _RESUME_TURN_THRESHOLD):
+        turning = abs(msg.twist.twist.angular.z) >= self._spec.turn_threshold
+        if self._turn_delay is None and turning:
             self._turn_delay = now - fired.time
         v = msg.twist.twist.linear
-        if math.hypot(v.x, v.y) < self._spec.speed_threshold:
+        moving = math.hypot(v.x, v.y) >= self._spec.speed_threshold or (
+            self._spec.include_turning and turning)
+        if not moving:
             self._moving_since = None
             return
         if self._moving_since is None:
@@ -512,7 +517,8 @@ class ResumeWithinMonitor(TopicMonitor):
                 f"did not move after '{self._spec.after_timeline}'")
         status = (ResultStatus.PASSED if self._delay <= self._spec.max_sec
                   else ResultStatus.FAILED)
-        turn = "" if self._turn_delay is None else f", started turning {self._turn_delay:.1f} s after"
+        turn = ("" if self._turn_delay is None or self._spec.include_turning
+                else f", started turning {self._turn_delay:.1f} s after")
         return CheckResult(
             "", status,
             f"moved {self._delay:.1f} s after '{self._spec.after_timeline}' "

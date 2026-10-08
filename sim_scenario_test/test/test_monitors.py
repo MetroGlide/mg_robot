@@ -421,6 +421,27 @@ def test_resume_within_fails_when_too_slow():
     assert monitor.result().status == ResultStatus.FAILED
 
 
+def test_resume_within_can_count_turning_as_motion():
+    from sim_scenario_test.builtin.monitors import ResumeWithinMonitor, ResumeWithinSpec
+    ctx = _scenario_ctx()
+    clock = {"t": 0.0}
+    ctx.clock.now = lambda: clock["t"]
+    spec = ResumeWithinSpec(after_timeline="wall_removed", max_sec=2.0)
+    linear_only = ResumeWithinMonitor(ctx, spec)
+    with_turning = ResumeWithinMonitor(
+        ctx, ResumeWithinSpec(after_timeline="wall_removed", max_sec=2.0, include_turning=True))
+    ctx.events.emit("timeline_fired", entry="wall_removed")
+    for t, vx, wz in ((1.0, 0.0, 0.5), (1.6, 0.0, 0.5), (3.0, 0.3, 0.0), (3.6, 0.3, 0.0)):
+        clock["t"] = t
+        linear_only._callback(_odom(vx, wz=wz))
+        with_turning._callback(_odom(vx, wz=wz))
+    # その場で 1.0 s 後に回り始め、3.0 s 後に進み始めた
+    result = linear_only.result()
+    assert result.status == ResultStatus.FAILED and "started turning 1.0" in result.message
+    result = with_turning.result()
+    assert result.status == ResultStatus.PASSED and "moved 1.0" in result.message
+
+
 def test_bt_node_trigger_fires_on_matching_status():
     from sim_scenario_test.builtin.triggers import BtNodeTrigger, BtNodeTriggerSpec
     ctx = MagicMock()

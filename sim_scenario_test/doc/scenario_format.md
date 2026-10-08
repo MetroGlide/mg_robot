@@ -145,7 +145,7 @@ timeline:
 | `max_speed` | `limit` [m/s], `topic`=/odom | オドメトリの並進速度が `limit` を超えたら FAILED |
 | `max_stop_duration` | `max_stop_sec`=省略, `min_stop_sec`=0, `speed_threshold`=0.05, `from_goal_started`=0, `until_goal_reached`=0, `topic`=/odom | 区間 (指定ゴールの開始から指定ゴールの到達まで) の連続した停止時間を判定。`max_stop_sec` 超で FAILED (通過点で止まらないこと)、`min_stop_sec` 未満で FAILED (一時停止で止まること) |
 
-| `resume_within` | `after_timeline` (timeline[].name), `max_sec`, `speed_threshold`=0.05, `min_moving_sec`=0.5, `topic`=/odom | 指定したタイムライン項目が発火してから、並進速度が `speed_threshold` 以上の状態が `min_moving_sec` 続き始めるまでの時間を判定 (一瞬の速度は数えない)。`max_sec` 超、または走り出さなければ FAILED。項目が発火しなければ ERROR (障害物を除いてから走行を再開するまでの時間の確認) |
+| `resume_within` | `after_timeline` (timeline[].name), `max_sec`, `speed_threshold`=0.05, `min_moving_sec`=0.5, `include_turning`=false, `turn_threshold`=0.1, `topic`=/odom | 指定したタイムライン項目が発火してから、並進速度が `speed_threshold` 以上 (`include_turning` が true なら、角速度が `turn_threshold` [rad/s] 以上でもよい) の状態が `min_moving_sec` 続き始めるまでの時間を判定 (一瞬の速度は数えない)。`include_turning` が false のときは、回転を始めた時刻も結果に添える。`max_sec` 超、または走り出さなければ FAILED。項目が発火しなければ ERROR (障害物を除いてから走行を再開するまでの時間の確認) |
 
 ロボット固有の monitor はプラグインが提供します。
 
