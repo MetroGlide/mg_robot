@@ -95,7 +95,7 @@ YAML (v2.0)。各ウェイポイントの位置と、到達時のアクション
 
 - リカバリーの試行回数は 99999 (実質無制限)。障害物が居座ると、上の段階を「RPP の待ち 5 秒 + 段階 1 つ」の周期で際限なくくり返す (1 周約 40 秒)。詰まりは `/diagnostics` の `waypoint_sequencer/progress` で知らせる
 - `IsPathClear` で回避行動を中断すると、次のリカバリーは段階 1 (首振り) から始まる (Nav2 の `RoundRobin` が halt で位置を戻すため)
-- 首振りが再計画に効くのは、向きを考慮する Smac Lattice (`global_planner:=smac_lattice`、既定) の場合。NavFn では向きを変えても計画は変わらない
+- 首振りの効果は 2 つ。(1) RPP の円弧・その場の回転は今の向きから投影されるので、経路は引けているのに向きのせいで衝突判定に掛かる場合は、向きを変えると通れるようになる (プランナによらない。`IsPathClear` も今の向きから判定するので、通れるようになれば走行に戻る)。(2) 向きを考慮する Smac Lattice (`global_planner:=smac_lattice`) では、再計画で障害物を避ける経路が引けやすくなる。既定の NavFn では (2) は効かない
 - `CommitPath` は、経路の終点がゴールから `goal_tolerance` (0.6m。`plan_goal_match_tolerance` と同じ) 以内かで「今のゴールへの経路か」を判定する。0.6m より近いゴールが続くと区別できない
 - `collision_monitor` のポリゴン (今はすべて無効) を有効にすると、RPP が止めないのに `collision_monitor` が止める状況ができる。このとき `IsPathClear` (RPP 基準) は空いていると判定するので、「空いたら戻る」が働かない場合がある。有効にするときは見直す
 
