@@ -96,6 +96,7 @@ make scenario-test-all TIER=smoke   # シミュレータでの回帰テスト (�
 | [mg_scenario_test](./mg_scenario_test/README.md) | MG-01 用のシナリオテスト |
 | [sim_scenario_test](./sim_scenario_test/README.md) | ロボットに依存しない、Gazebo + Nav2 のシナリオテスト基盤 |
 | [nav2_pkg](./nav2_pkg/README.md) | 修正を加えた Nav2 のパッケージ |
+| [geometry2_pkg](./geometry2_pkg/README.md) | apt の版の不具合を避けるため、修正済みの上流の版を取り込んだ geometry2 のパッケージ (`tf2`) |
 | [tools](./tools/README.md) | rosbag の解析・可視化、評価のスクリプト |
 | `docker/` | Dockerfile と、ビルド補助のスクリプト ([doc/docker.md](./doc/docker.md)) |
 | `doc/` | プロジェクト全体のドキュメント |
