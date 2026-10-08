@@ -94,6 +94,9 @@ bt_navigator:
       - nav2_planner_selector_bt_node
       - nav2_controller_selector_bt_node
       - nav2_goal_checker_selector_bt_node
+      # mg_navigation の BT プラグイン (mg_waypoint_navigation の BT で使う)
+      - mg_is_path_clear_condition_bt_node
+      - mg_commit_path_action_bt_node
 
 # behavior_server: BackUp/Spin/Wait/DriveOnHeading等のリカバリー動作を実行するノード。
 # cmd_velはcollision_monitorを経由せず直接publishするため、後退・回転中の衝突回避は

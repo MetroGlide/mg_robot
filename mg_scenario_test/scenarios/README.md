@@ -25,7 +25,7 @@ scenarios/
 | `nav_unreachable_goal` | 地図の外のゴールへの走行が失敗として扱われる (異常系) | 約 40 秒 |
 | `static_avoid_cones` | 通れない隙間 (間隔 0.8m) のコーン列を避けて回り込み、到達する | 約 1 分 |
 | `static_avoid_replan` | 走行中に進路の正面へ壁が出現しても、再計画して迂回し到達する | 約 1 分 |
-| `dynamic_stop_and_resume` | 目の前に人が飛び出しても、3 秒で立ち去れば BackUp に入らず、待つだけで再開し到達する (`failure_tolerance` の回帰) | 約 40 秒 |
+| `dynamic_stop_and_resume` | 目の前に人が飛び出しても、3 秒で立ち去ればリカバリー (Spin / BackUp) に入らず、待つだけで再開し到達する (`failure_tolerance` の回帰) | 約 40 秒 |
 | `through_point_continuity` | 通過点 3 つを減速・停止せず (停止 3 秒以内) 走り抜け、停止点で止まる (通過点判定・ゴール上書きの回帰) | 約 1.5 分 |
 
 ### full 層
@@ -35,7 +35,10 @@ scenarios/
 | `waypoint_all_actions` | waypoint の到達時アクション 7 種 (`publish` / `service` / `wait` / `load_map` / `wait_trigger` / `set_navigation_mode` / `amcl_reset`) が実行され、シーケンスが最後まで進む。publish の受信と地図の再配信を確認 | 約 2 分 |
 | `sequencer_pause_resume` | 走行中の一時停止要求で 4 秒以上止まり、解除で再開して最後まで到達する | 約 1.5 分 |
 | `sequencer_stop_restart` | 走行中に停止して次の index を設定すると、止まったあと (auto_start が) 再開して最後まで到達する | 約 1.5 分 |
-| `dynamic_persistent_recovery` | 迂回できない壁が居座ると、待機時間を超えて BackUp のリカバリーが動き、除去後に到達する | 約 1.5 分 |
+| `dynamic_persistent_recovery` | 走行中のロボットを壁で囲い込んで居座らせると、待機時間を超えてリカバリー (最初の段階の Spin) が動き、除去後に到達する | 約 1.5 分 |
+| `dynamic_recovery_resume` | 壁で囲い込んでリカバリーに入れ、待機の段階で壁を除くと、`IsPathClear` が待機を中断して 3 秒以内に走り出し、到達する | 約 1.5 分 |
+
+壁を 1 枚だけ置くと、コストマップにはセンサで見えた範囲しか載らないので、見えている端を回る経路が引けて迂回し、リカバリーに入らないことがある。リカバリーを確かめるシナリオでは、ロボットを囲い込んで計画を必ず失敗させる。
 | `full_lap_sequencer` | シミュレーション用 waypoint 9 個 (通過点と wait_trigger の停止点) を 1 周する | 約 3.5 分 |
 | `localization_gnss_denied` | 走行中に GNSS の配信を止めても (ブリッジの `change_publish_state`)、AMCL とホイールオドメトリだけでゴールへ到達し、停止位置の誤差が 0.5m 以内 | 約 40 秒 |
 | `narrow_corridor_blocked` | 通れない幅 (0.5m) の狭い回廊へ経路を引かず、壁の外側を迂回して到達する。壁に接触しない (`obstacle_clearance`) | 約 1 分 |

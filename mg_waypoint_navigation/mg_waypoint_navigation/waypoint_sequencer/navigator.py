@@ -16,6 +16,8 @@ from rclpy.action.client import ClientGoalHandle
 from rclpy.callback_groups import ReentrantCallbackGroup
 
 from mg_waypoint_navigation.waypoint import Waypoint
+from mg_waypoint_navigation.waypoint_sequencer.progress_monitor import (
+    ProgressMonitor, ProgressStatus)
 
 # 経路上の最近傍点を探す範囲 [m]。前回の最近傍点から経路に沿ってこの長さだけ先まで探す。
 _PLAN_SEARCH_WINDOW_M = 2.0
@@ -94,6 +96,9 @@ class WaypointNavigator:
         self._plan_goal_match_tolerance = node.declare_parameter(
             "plan_goal_match_tolerance", 0.6).value
 
+        self._progress = ProgressMonitor(
+            node.declare_parameter("stall_distance", 0.5).value)
+
         self._plan_sub = node.create_subscription(
             Path, plan_topic, self._plan_callback, 1,
             callback_group=self._callback_group)
@@ -101,6 +106,16 @@ class WaypointNavigator:
     @property
     def distance_remaining(self) -> float:
         return self._distance_remaining
+
+    def progress_status(self) -> Optional[ProgressStatus]:
+        """論理ゴールの走行中なら、位置が進んでいない時間とリカバリー回数。走行中でなければ None。"""
+        with self._lock:
+            if not self._active:
+                return None
+            return self._progress.status(self._now_sec())
+
+    def _now_sec(self) -> float:
+        return self._node.get_clock().now().nanoseconds / 1e9
 
     def send_goal(
         self,
@@ -124,6 +139,7 @@ class WaypointNavigator:
             self._plan_points = []
             self._plan_suffix = []
             self._plan_index = 0
+            self._progress.reset(self._send_time_ns / 1e9)
 
         if not self._action_client.wait_for_server(timeout_sec=5.0):
             self._node.get_logger().error(
@@ -318,11 +334,14 @@ class WaypointNavigator:
             if not self._is_current(goal_id):
                 return
             self._distance_remaining = feedback_msg.feedback.distance_remaining
+            current = feedback_msg.feedback.current_pose.pose.position
+            self._progress.update(
+                current.x, current.y,
+                feedback_msg.feedback.number_of_recoveries, self._now_sec())
 
             tolerance = self._through_tolerance
             if tolerance is None or not self._plan_points:
                 return
-            current = feedback_msg.feedback.current_pose.pose.position
             remaining = self._remaining_plan_length(current.x, current.y)
             goal = self._waypoint.pose.pose.position
             if (remaining > tolerance

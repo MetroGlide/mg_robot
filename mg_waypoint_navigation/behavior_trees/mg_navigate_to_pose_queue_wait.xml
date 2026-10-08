@@ -4,21 +4,39 @@
     <!-- リトライ上限なし: 失敗しても永続的に再試行 -->
     <RecoveryNode number_of_retries="99999" name="QueueWaitNavigation">
 
+      <!-- 経路の計画と追従は通常モードと同じ (グローバルコストマップのセンサ層は無効なので、
+           計画は既存の地図で行われ、前の人で止まるのは RPP の衝突判定による) -->
       <PipelineSequence name="NavigateWithReplanning">
-        <!-- ゴール上書き (通過点の preemption) 直後に、新しいゴールへの経路をすぐ計画する -->
         <GoalUpdatedController>
-          <ComputePathToPose goal="{goal}" path="{path}" planner_id="GridBased"/>
+          <Sequence name="ComputePathOnGoalUpdate">
+            <ForceSuccess>
+              <ComputePathToPose goal="{goal}" path="{candidate_path}" planner_id="GridBased"/>
+            </ForceSuccess>
+            <CommitPath candidate="{candidate_path}" goal="{goal}" path="{path}"/>
+          </Sequence>
         </GoalUpdatedController>
-        <!-- グローバルパス再計画（センサー入力無効なので既存地図で計算される） -->
         <RateController hz="0.5">
-          <ComputePathToPose goal="{goal}" path="{path}" planner_id="GridBased"/>
+          <ForceSuccess>
+            <Sequence name="ReplanPath">
+              <ComputePathToPose goal="{goal}" path="{candidate_path}" planner_id="GridBased"/>
+              <CommitPath candidate="{candidate_path}" goal="{goal}" path="{path}"/>
+            </Sequence>
+          </ForceSuccess>
         </RateController>
-        <!-- FollowPath: RPP コントローラーが前方障害物を考慮して前進・停止を自律制御する -->
         <FollowPath path="{path}" controller_id="FollowPath"/>
       </PipelineSequence>
 
-      <!-- リカバリーは Wait のみ（バック・スピンなし） -->
-      <Wait wait_duration="5.0"/>
+      <!-- 回避行動はせず待つだけ。前が空いたら待ちを中断してすぐ走行へ戻る -->
+      <ReactiveFallback name="RecoveryFallback">
+        <GoalUpdated/>
+        <IsPathClear path="{path}"/>
+        <ForceSuccess>
+          <Sequence name="ClearLocalCostmapAndWait">
+            <ClearEntireCostmap name="ClearLocalCostmap" service_name="local_costmap/clear_entirely_local_costmap"/>
+            <Wait wait_duration="3"/>
+          </Sequence>
+        </ForceSuccess>
+      </ReactiveFallback>
 
     </RecoveryNode>
 

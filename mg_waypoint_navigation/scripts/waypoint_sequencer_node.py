@@ -7,6 +7,7 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, ReliabilityPolicy
 
+from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
 from std_msgs.msg import ColorRGBA, Int16
 from std_srvs.srv import Trigger
 from visualization_msgs.msg import Marker, MarkerArray
@@ -54,6 +55,9 @@ class WaypointSequencerNode(Node):
             self._status_freq = 10.0
         self._publish_list: bool = self.get_parameter(
             "publish_waypoints_list").value
+        # 走行中に位置が進まない時間がこれを超えたら、/diagnostics に WARN を出す [s]
+        self._stall_warn_sec: float = self.declare_parameter(
+            "stall_warn_sec", 30.0).value
 
     # ------------------------------------------------------------------
     # ROS 通信初期化
@@ -106,6 +110,9 @@ class WaypointSequencerNode(Node):
         self._markers_pub = self.create_publisher(
             MarkerArray, "~/waypoints_markers", latched_qos
         )
+
+        self._diag_pub = self.create_publisher(DiagnosticArray, "/diagnostics", 10)
+        self._diag_timer = self.create_timer(1.0, self._publish_diagnostics_cb)
 
     # ------------------------------------------------------------------
     # ウェイポイントロード
@@ -221,6 +228,33 @@ class WaypointSequencerNode(Node):
         msg.pause_requesters = self._fsm.pause_requesters
         msg.distance_remaining = self._fsm.distance_remaining
         self._status_pub.publish(msg)
+
+    def _publish_diagnostics_cb(self):
+        # BT はリカバリーを無制限にくり返すので、詰まっても Nav2 は失敗を返さない。
+        # 位置が進まない時間で詰まりを知らせる
+        progress = self._fsm.navigation_progress()
+        status = DiagnosticStatus()
+        status.name = "waypoint_sequencer/progress"
+        status.hardware_id = "mg01"
+        if progress is None:
+            status.level = DiagnosticStatus.OK
+            status.message = "not navigating"
+        elif progress.stalled_sec >= self._stall_warn_sec:
+            status.level = DiagnosticStatus.WARN
+            status.message = f"no progress for {progress.stalled_sec:.0f} s"
+        else:
+            status.level = DiagnosticStatus.OK
+            status.message = "navigating"
+        if progress is not None:
+            status.values = [
+                KeyValue(key="stalled_sec", value=f"{progress.stalled_sec:.1f}"),
+                KeyValue(key="number_of_recoveries",
+                         value=str(progress.number_of_recoveries)),
+            ]
+        diag = DiagnosticArray()
+        diag.header.stamp = self.get_clock().now().to_msg()
+        diag.status = [status]
+        self._diag_pub.publish(diag)
 
     def _publish_waypoints_list(self, waypoints: WaypointList):
         msg = WaypointListMsg()

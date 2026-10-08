@@ -452,3 +452,74 @@ class MaxStopDurationMonitor(TopicMonitor):
             "", status,
             f"longest stop {self._longest:.1f} s "
             f"(max {self._spec.max_stop_sec}, min {self._spec.min_stop_sec})")
+
+
+@dataclass
+class ResumeWithinSpec:
+    # このタイムライン項目 (timeline[].name) が発火してから、走り出すまでの時間を測る
+    after_timeline: str
+    # これ (sim 時間 [s]) を超えても走り出さなければ FAILED
+    max_sec: float
+    speed_threshold: float = 0.05
+    # この時間 (sim 時間 [s]) 続けて speed_threshold 以上なら走り出したとみなす
+    # (障害物の除去や首振りの直後の一瞬の速度で誤判定しない)。走り出した時刻は、続き始めた時刻
+    min_moving_sec: float = 0.5
+    # true なら、その場の回転 (角速度が turn_threshold 以上) も走り出しとみなす
+    # (向きを直してから進むコントローラーで、再開を回転の開始から数える)
+    include_turning: bool = False
+    turn_threshold: float = 0.1
+    topic: str = "/odom"
+
+
+@register_monitor("resume_within", ResumeWithinSpec)
+class ResumeWithinMonitor(TopicMonitor):
+    """障害物の除去などのタイムライン項目から、ロボットが走り出すまでの時間を判定する。"""
+    MSG_TYPE = Odometry
+
+    def __init__(self, ctx: "ScenarioContext", spec: ResumeWithinSpec):
+        super().__init__(ctx, spec.topic)
+        self._spec = spec
+        self._delay: Optional[float] = None
+        self._moving_since: Optional[float] = None
+        # include_turning が false のときの参考の値: 回転を始めた時刻
+        # (その場の回転で走り出しが遅れて見える場合の切り分け用)
+        self._turn_delay: Optional[float] = None
+
+    def _on_msg(self, msg) -> None:
+        if self._delay is not None:
+            return
+        fired = self._ctx.events.find("timeline_fired", entry=self._spec.after_timeline)
+        if fired is None:
+            return
+        now = self._ctx.clock.now()
+        turning = abs(msg.twist.twist.angular.z) >= self._spec.turn_threshold
+        if self._turn_delay is None and turning:
+            self._turn_delay = now - fired.time
+        v = msg.twist.twist.linear
+        moving = math.hypot(v.x, v.y) >= self._spec.speed_threshold or (
+            self._spec.include_turning and turning)
+        if not moving:
+            self._moving_since = None
+            return
+        if self._moving_since is None:
+            self._moving_since = now
+        if now - self._moving_since >= self._spec.min_moving_sec:
+            self._delay = self._moving_since - fired.time
+
+    def _evaluate(self) -> CheckResult:
+        if self._ctx.events.find("timeline_fired", entry=self._spec.after_timeline) is None:
+            return CheckResult(
+                "", ResultStatus.ERROR,
+                f"timeline entry '{self._spec.after_timeline}' never fired")
+        if self._delay is None:
+            return CheckResult(
+                "", ResultStatus.FAILED,
+                f"did not move after '{self._spec.after_timeline}'")
+        status = (ResultStatus.PASSED if self._delay <= self._spec.max_sec
+                  else ResultStatus.FAILED)
+        turn = ("" if self._turn_delay is None or self._spec.include_turning
+                else f", started turning {self._turn_delay:.1f} s after")
+        return CheckResult(
+            "", status,
+            f"moved {self._delay:.1f} s after '{self._spec.after_timeline}' "
+            f"(max {self._spec.max_sec} s){turn}")

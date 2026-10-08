@@ -189,9 +189,9 @@ def test_call_set_bool(monkeypatch):
 # 回帰テスト用の monitor / expectation
 # ---------------------------------------------------------------------------
 
-def _odom(vx, vy=0.0):
+def _odom(vx, vy=0.0, wz=0.0):
     return SimpleNamespace(twist=SimpleNamespace(twist=SimpleNamespace(
-        linear=SimpleNamespace(x=vx, y=vy))))
+        linear=SimpleNamespace(x=vx, y=vy), angular=SimpleNamespace(z=wz))))
 
 
 def test_topic_received_counts_matching_messages():
@@ -379,3 +379,75 @@ def test_obstacle_clearance_requires_footprint_and_known_shape():
     ctx.profile.robot.footprint = []
     with pytest.raises(ScenarioValidationError, match="footprint"):
         ObstacleClearanceMonitor(ctx, ObstacleClearanceSpec(obstacles=["ped"]))
+
+
+def test_resume_within_measures_from_the_timeline_entry():
+    from sim_scenario_test.builtin.monitors import ResumeWithinMonitor, ResumeWithinSpec
+    ctx = _scenario_ctx()
+    clock = {"t": 0.0}
+    ctx.clock.now = lambda: clock["t"]
+    monitor = ResumeWithinMonitor(
+        ctx, ResumeWithinSpec(after_timeline="wall_removed", max_sec=2.0))
+    assert monitor.result().status == ResultStatus.ERROR
+    monitor._callback(_odom(0.5))                    # 発火前の走行は数えない
+    clock["t"] = 10.0
+    ctx.events.emit("timeline_fired", entry="wall_removed")
+    monitor._callback(_odom(0.0))
+    assert monitor.result().status == ResultStatus.FAILED
+    clock["t"] = 10.2
+    monitor._callback(_odom(0.3))                    # 一瞬だけの速度は走り出しとみなさない
+    clock["t"] = 10.4
+    monitor._callback(_odom(0.0))
+    clock["t"] = 11.5
+    monitor._callback(_odom(0.3))
+    clock["t"] = 12.0
+    monitor._callback(_odom(0.3))
+    result = monitor.result()
+    assert result.status == ResultStatus.PASSED and "1.5" in result.message
+
+
+def test_resume_within_fails_when_too_slow():
+    from sim_scenario_test.builtin.monitors import ResumeWithinMonitor, ResumeWithinSpec
+    ctx = _scenario_ctx()
+    clock = {"t": 0.0}
+    ctx.clock.now = lambda: clock["t"]
+    monitor = ResumeWithinMonitor(
+        ctx, ResumeWithinSpec(after_timeline="wall_removed", max_sec=2.0))
+    ctx.events.emit("timeline_fired", entry="wall_removed")
+    clock["t"] = 3.0
+    monitor._callback(_odom(0.3))
+    clock["t"] = 3.5
+    monitor._callback(_odom(0.3))
+    assert monitor.result().status == ResultStatus.FAILED
+
+
+def test_resume_within_can_count_turning_as_motion():
+    from sim_scenario_test.builtin.monitors import ResumeWithinMonitor, ResumeWithinSpec
+    ctx = _scenario_ctx()
+    clock = {"t": 0.0}
+    ctx.clock.now = lambda: clock["t"]
+    spec = ResumeWithinSpec(after_timeline="wall_removed", max_sec=2.0)
+    linear_only = ResumeWithinMonitor(ctx, spec)
+    with_turning = ResumeWithinMonitor(
+        ctx, ResumeWithinSpec(after_timeline="wall_removed", max_sec=2.0, include_turning=True))
+    ctx.events.emit("timeline_fired", entry="wall_removed")
+    for t, vx, wz in ((1.0, 0.0, 0.5), (1.6, 0.0, 0.5), (3.0, 0.3, 0.0), (3.6, 0.3, 0.0)):
+        clock["t"] = t
+        linear_only._callback(_odom(vx, wz=wz))
+        with_turning._callback(_odom(vx, wz=wz))
+    # その場で 1.0 s 後に回り始め、3.0 s 後に進み始めた
+    result = linear_only.result()
+    assert result.status == ResultStatus.FAILED and "started turning 1.0" in result.message
+    result = with_turning.result()
+    assert result.status == ResultStatus.PASSED and "moved 1.0" in result.message
+
+
+def test_bt_node_trigger_fires_on_matching_status():
+    from sim_scenario_test.builtin.triggers import BtNodeTrigger, BtNodeTriggerSpec
+    ctx = MagicMock()
+    trigger = BtNodeTrigger(ctx, BtNodeTriggerSpec(node="Spin"))
+    callback = ctx.node.create_subscription.call_args[0][2]
+    callback(_bt_msg(("Spin", "IDLE"), ("BackUp", "RUNNING")))
+    assert not trigger.poll()
+    callback(_bt_msg(("Spin", "RUNNING")))
+    assert trigger.poll()

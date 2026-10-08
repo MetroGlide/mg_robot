@@ -308,3 +308,53 @@ def test_stop_point_does_not_use_through_judgement(env):
     env.plan(_path(_straight(0.0, 10.0)))
     env.feedback(9.9, 0.0)
     assert env.results == []
+
+
+# ---------------------------------------------------------------------------
+# 詰まりの検知
+# ---------------------------------------------------------------------------
+
+def _set_time(env, sec):
+    env.node.get_clock.return_value.now.return_value.nanoseconds = int(sec * 1e9)
+
+
+def _feedback_with_recoveries(env, x, y, recoveries):
+    msg = MagicMock()
+    msg.feedback.distance_remaining = 5.0
+    msg.feedback.current_pose.pose.position = _point(x, y)
+    msg.feedback.number_of_recoveries = recoveries
+    env.sent[-1].feedback(msg)
+
+
+def test_progress_is_none_when_not_navigating(env):
+    assert env.nav.progress_status() is None
+    env.nav.send_goal(_waypoint(), env.on_result)
+    env.nav.cancel()
+    assert env.nav.progress_status() is None
+
+
+def test_progress_measures_time_without_movement(env):
+    env.nav.send_goal(_waypoint(), env.on_result)
+    env.accept()
+    _feedback_with_recoveries(env, 0.0, 0.0, 0)
+    _set_time(env, 10.0)
+    # stall_distance (0.5m) 未満の動きは進んだとみなさない
+    _feedback_with_recoveries(env, 0.3, 0.0, 2)
+    status = env.nav.progress_status()
+    assert status.stalled_sec == pytest.approx(10.0)
+    assert status.number_of_recoveries == 2
+
+    _set_time(env, 12.0)
+    _feedback_with_recoveries(env, 0.6, 0.0, 2)
+    assert env.nav.progress_status().stalled_sec == pytest.approx(0.0)
+
+
+def test_progress_is_reset_by_a_new_goal(env):
+    env.nav.send_goal(_waypoint(0), env.on_result)
+    env.accept()
+    _feedback_with_recoveries(env, 0.0, 0.0, 3)
+    _set_time(env, 20.0)
+    env.nav.send_goal(_waypoint(1), env.on_result)
+    status = env.nav.progress_status()
+    assert status.stalled_sec == pytest.approx(0.0)
+    assert status.number_of_recoveries == 0

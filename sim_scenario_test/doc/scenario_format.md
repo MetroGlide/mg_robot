@@ -115,6 +115,7 @@ run:
 | `goal_failed` | `index` | `index` 番目のゴールへの走行が失敗 |
 | `robot_travelled` | `distance` | 走行開始からのロボットの移動距離 (経路長) が `distance` [m] に達した |
 | `robot_near` | `x`, `y`, `radius`, `frame`=map (`map`/`world`) | ロボットが指定点から `radius` [m] 以内 |
+| `bt_node` | `node`, `status`=RUNNING (`IDLE`/`RUNNING`/`SUCCESS`/`FAILURE`), `topic`=/behavior_tree_log | BT のノードが指定の状態になった (例: リカバリーの `Spin` が始まった)。トリガーを作った時点 (タイムラインの開始) より後の状態だけを見る |
 
 `robot_travelled` / `robot_near` は速度や RTF に左右されないので、`at_time` より再現性が高くなります。
 
@@ -143,6 +144,8 @@ timeline:
 | `topic_received` | `topic`, `type` (`String` / `Bool` / `OccupancyGrid`), `data`="" (String の一致), `expect`=occurs, `min_count`=1 | メッセージを `min_count` 回以上受信した／しないことを判定。action の効果の確認 (publish した、地図を再読み込みした等) に使う |
 | `max_speed` | `limit` [m/s], `topic`=/odom | オドメトリの並進速度が `limit` を超えたら FAILED |
 | `max_stop_duration` | `max_stop_sec`=省略, `min_stop_sec`=0, `speed_threshold`=0.05, `from_goal_started`=0, `until_goal_reached`=0, `topic`=/odom | 区間 (指定ゴールの開始から指定ゴールの到達まで) の連続した停止時間を判定。`max_stop_sec` 超で FAILED (通過点で止まらないこと)、`min_stop_sec` 未満で FAILED (一時停止で止まること) |
+
+| `resume_within` | `after_timeline` (timeline[].name), `max_sec`, `speed_threshold`=0.05, `min_moving_sec`=0.5, `include_turning`=false, `turn_threshold`=0.1, `topic`=/odom | 指定したタイムライン項目が発火してから、並進速度が `speed_threshold` 以上 (`include_turning` が true なら、角速度が `turn_threshold` [rad/s] 以上でもよい) の状態が `min_moving_sec` 続き始めるまでの時間を判定 (一瞬の速度は数えない)。`include_turning` が false のときは、回転を始めた時刻も結果に添える。`max_sec` 超、または走り出さなければ FAILED。項目が発火しなければ ERROR (障害物を除いてから走行を再開するまでの時間の確認) |
 
 ロボット固有の monitor はプラグインが提供します。
 

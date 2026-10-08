@@ -19,6 +19,7 @@
   <depend>nav2_msgs</depend>
   <depend>tf2_ros</depend>
   <depend>mg_msgs</depend>
+  <depend>diagnostic_msgs</depend>
 
   <test_depend>ament_cmake_pytest</test_depend>
   <test_depend>pytest</test_depend>

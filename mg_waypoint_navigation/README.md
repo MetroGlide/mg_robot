@@ -59,6 +59,7 @@ GUI の [waypoint-tool](https://github.com/Chu-son/waypoint-tool) でも作れ�
 | Publisher | `~/waypoints_markers` | `visualization_msgs/MarkerArray` | RViz2 用のマーカー |
 | Publisher | `~/loaded_maps` | `mg_msgs/LoadedMaps` | 読み込み済みの地図 |
 | Publisher | `~/navigation_mode` | `std_msgs/String` | 次のゴールで使うモードと BT |
+| Publisher | `/diagnostics` | `diagnostic_msgs/DiagnosticArray` | `waypoint_sequencer/progress`。走行中に位置が `stall_warn_sec` (既定 30 秒) 進まなければ WARN (1 Hz) |
 
 操作は Web UI から行う ([mg_ui](../mg_ui/README.md))。
 
@@ -75,10 +76,28 @@ YAML (v2.0)。各ウェイポイントの位置と、到達時のアクション
 
 | ファイル | 内容 |
 | :--- | :--- |
-| `behavior_trees/mg_navigate_to_pose.xml` | 通常。経路の追従や計画に失敗したとき、待機・後退・コストマップのクリアで回復する |
+| `behavior_trees/mg_navigate_to_pose.xml` | 通常。前方の障害物では止まって待ち、居座れば首振り・コストマップのクリア・短い後退で回復する |
 | `behavior_trees/mg_navigate_to_pose_queue_wait.xml` | `queue_wait`。回避動作をせず、待つだけ (列に詰める動作用) |
 
-`mg_navigation/params/nav2_params.yaml` の `plugin_lib_names` に、`nav2_goal_updated_controller_bt_node` が必要 (通過点の走行で、ゴールの上書き直後に経路を計画し直すため)。
+`mg_navigation/params/nav2_params.yaml` の `plugin_lib_names` に、次が必要。
+
+- `nav2_goal_updated_controller_bt_node`: 通過点の走行で、ゴールの上書き直後に経路を計画し直すため
+- `mg_is_path_clear_condition_bt_node`、`mg_commit_path_action_bt_node`: `mg_navigation` の BT プラグイン (`IsPathClear`、`CommitPath`。[mg_navigation](../mg_navigation/README.md#bt-プラグイン))
+
+### 障害物に出会ったときの動き (両 BT 共通の考え方)
+
+1. **待つ**: 前方に障害物があると、RPP (`FollowPath`) の衝突判定で止まり、`controller_server` の `failure_tolerance` (5 秒) まで待つ。この間も 1 Hz で経路を計画し直し、迂回路が引ければそれに乗って走り出す。消えればそのまま走り出す
+2. **計画が失敗しても止めない**: 定期的な計画は `{candidate_path}` に書き、`CommitPath` が今のゴールへの経路のときだけ `{path}` に反映する。計画が失敗しても直前の経路で追従を続け、止まるかどうかは RPP の判定に任せる。ゴールが変わって新しいゴールへの経路がないときだけ、経路を捨ててリカバリーに入る (古いゴールで到着と報告しないため)
+3. **回避行動** (normal のみ): 5 秒待っても空かなければ `FollowPath` が失敗し、リカバリーで次の段階を 1 つ行ってから走行に戻る。段階は順に、首振り (+0.5rad) → コストマップのクリアと 3 秒の待機 → 逆向きの首振り (-1.0rad) → 3 秒の待機 → 0.3m の後退 (0.15m/s)。首振りと後退の後は経路を計画し直す。後退は危険なので最後の手段にしている
+4. **空いたらすぐ戻る**: リカバリーの間、`IsPathClear` が「RPP が衝突判定なしで走り出せるか」を RPP と同等以上の基準で調べる。塞がっていた経路が空いた状態 (コストマップ 2 枚以上、1 秒以上) になったら、回避行動の途中でも中断して走行に戻る (除去から 1.5 秒程度)。最初から空いている失敗 (スリップなど障害物以外が原因) では中断せず、回避行動を行う
+
+注意:
+
+- リカバリーの試行回数は 99999 (実質無制限)。障害物が居座ると、上の段階を「RPP の待ち 5 秒 + 段階 1 つ」の周期で際限なくくり返す (1 周約 40 秒)。詰まりは `/diagnostics` の `waypoint_sequencer/progress` で知らせる
+- `IsPathClear` で回避行動を中断すると、次のリカバリーは段階 1 (首振り) から始まる (Nav2 の `RoundRobin` が halt で位置を戻すため)
+- 首振りが再計画に効くのは、向きを考慮する Smac Lattice (`global_planner:=smac_lattice`、既定) の場合。NavFn では向きを変えても計画は変わらない
+- `CommitPath` は、経路の終点がゴールから `goal_tolerance` (0.6m。`plan_goal_match_tolerance` と同じ) 以内かで「今のゴールへの経路か」を判定する。0.6m より近いゴールが続くと区別できない
+- `collision_monitor` のポリゴン (今はすべて無効) を有効にすると、RPP が止めないのに `collision_monitor` が止める状況ができる。このとき `IsPathClear` (RPP 基準) は空いていると判定するので、「空いたら戻る」が働かない場合がある。有効にするときは見直す
 
 ## 構成
 
@@ -97,7 +116,8 @@ doc/                           architecture.md、waypoint_format.md
 make test pkg=mg_waypoint_navigation
 ```
 
-FSM の遷移、Nav2 クライアント (`navigator`)、ウェイポイントの読み込み、地図の読み込み、コストマップの切り替えを調べる。
+FSM の遷移、Nav2 クライアント (`navigator`。詰まりの検知を含む)、ウェイポイントの読み込み、地図の読み込み、コストマップの切り替えを調べる。
+BT の動きは、シナリオテスト (`dynamic_stop_and_resume`、`dynamic_persistent_recovery`、`dynamic_recovery_resume` など。[mg_scenario_test](../mg_scenario_test/README.md)) で確かめる。
 
 ## 依存
 

@@ -38,7 +38,7 @@ mg_waypoint_navigation/
     mg_gnss_transform.wpt_template
   test/                            # pytest
   behavior_trees/
-    mg_navigate_to_pose.xml             # 通常時。FollowPath/ComputePathToPose失敗時にWait/BackUp/ClearCostmap等のリカバリーを行う
+    mg_navigate_to_pose.xml             # 通常時。FollowPath失敗時にSpin/ClearCostmap/Wait/BackUpのリカバリーを1段階ずつ行い、空けばIsPathClearで中断する
     mg_navigate_to_pose_queue_wait.xml  # queue_waitモード。回避動作なしでWaitのみ（列に詰める動作用）
   rviz/
     waypoint_editor.rviz
@@ -87,8 +87,10 @@ graph TD
 
 - **急な動的障害物への即時停止**: `mg_navigation`の`collision_monitor`（`nav2_collision_monitor`）が`cmd_vel_nav`→`cmd_vel_collision`に介入し、`PolygonStop`（速度即ゼロ）と`PolygonApproach`（時間投影による連続減速）の2段構えで低遅延に停止する。RPP（`FollowPath`）自身のコストマップベース衝突チェック（`use_collision_detection`）も併用。
 - **一定時間待つ**: `controller_server`の`progress_checker`（`movement_time_allowance`）が、ロボットが一定時間進まないことを検知すると`FollowPath`アクションを失敗させる。この値は`controller_server`単一インスタンスの共有設定のため、衝突対応専用ではなく下記`queue_wait`モードのFollowPathにも同じ値が効く点に注意。
-- **解消しなければ回避行動**: 上記の失敗をトリガーに、`mg_navigate_to_pose.xml`の`RecoveryNode`/`RoundRobin`リカバリー（`Wait→BackUp→ClearCostmap`等）が発火する。バックアップ動作自体は`behavior_server`が担当し、`collision_monitor`を経由せず`cmd_vel`に直接publishするため、後退中の安全性は`behavior_server`自身のローカルコストマップベースの衝突チェックに委ねられる。
-- **列に並ぶ区間（queue_wait）**: `set_navigation_mode`アクションで`navigation_mode`を`queue_wait`に切り替えると、`mg_navigate_to_pose_queue_wait.xml`が使われる。こちらはリトライ無制限・`Wait`のみで回避動作を行わず、列に詰める動作を再現する。
+- **計画の失敗では止めない**: 定期的な経路の計画が失敗しても、`CommitPath`（`mg_navigation`のBTプラグイン）が直前の経路を保つので、止まるかどうかはRPPの衝突判定で決まる。新しいゴールへの経路がないときだけ、経路を捨ててリカバリーに入る。
+- **解消しなければ回避行動**: 上記の失敗をトリガーに、`mg_navigate_to_pose.xml`の`RecoveryNode`/`RoundRobin`リカバリーが発火する。1回のリカバリーで1段階（首振り → コストマップのクリアと待機 → 逆向きの首振り → 待機 → 0.3mの後退）を行って走行に戻る。試行回数は実質無制限で、詰まりは`/diagnostics`の`waypoint_sequencer/progress`で知らせる。首振り・後退は`behavior_server`が担当し、`collision_monitor`を経由せず`cmd_vel`に直接publishするため、その間の安全性は`behavior_server`自身のローカルコストマップベースの衝突チェックに委ねられる。後退を最後の手段にしているのはこのため。
+- **空いたらすぐ走行へ戻る**: リカバリーの間は`IsPathClear`（`mg_navigation`のBTプラグイン）が、RPPが衝突判定なしで走り出せるかをRPPと同等以上の基準で調べ、塞がっていた経路が空いたら回避行動を中断して走行に戻る。詳細は[README](../README.md#障害物に出会ったときの動き-両-bt-共通の考え方)。
+- **列に並ぶ区間（queue_wait）**: `set_navigation_mode`アクションで`navigation_mode`を`queue_wait`に切り替えると、`mg_navigate_to_pose_queue_wait.xml`が使われる。こちらはリトライ無制限・待機のみで回避動作を行わず、列に詰める動作を再現する（前が空けば`IsPathClear`で待機を中断する）。
   同時に、global_costmapのセンサ障害物層（`top_obstacle_layer`・`obstacle_stvl_layer`）を無効にするので、グローバル経路は動的障害物を避けずに引かれる（`static_layer`と`inflation_layer`は有効のまま。local_costmapは変えない）。障害物の手前での停止は`collision_monitor`とRPPの衝突チェックが担う。`normal`に切り替えると層を有効に戻す。自動では戻さないので、列の区間の終わりに`normal`を呼ぶ。
 
 パラメータの詳細は`mg_navigation/params/nav2_params.yaml`のコメントを参照。
@@ -163,6 +165,7 @@ stateDiagram-v2
 | Pub     | `~/waypoints_markers`       | `visualization_msgs/MarkerArray` | RViz 表示                                    |
 | Pub     | `~/loaded_maps`             | `mg_msgs/LoadedMaps`             | map_server に読み込ませた地図 (読み込みに成功したものだけを記録)。transient_local latched |
 | Pub     | `~/navigation_mode`         | `std_msgs/String`                | 次のゴールで使うモードと BT の JSON (`{"mode": "normal", "behavior_tree": "<ファイル名>"}`)。変化したときだけ。transient_local latched |
+| Pub     | `/diagnostics`              | `diagnostic_msgs/DiagnosticArray` | 1Hz。`waypoint_sequencer/progress`: 走行中でなければ OK (`not navigating`)、走行中に位置が `stall_distance` 以上動かない時間が `stall_warn_sec` 以上なら WARN (`no progress for N s`)。values に `stalled_sec` と `number_of_recoveries` (NavigateToPose のフィードバック) |
 
 ### ノードパラメータ
 
@@ -178,6 +181,8 @@ stateDiagram-v2
 | `initial_localization_map` | string | `""`      | 起動時に map_server が読み込んでいる測位用地図 (`~/loaded_maps` の初期値。`mg_navigation` の bringup が渡す) |
 | `initial_planning_map`    | string | `""`       | 起動時に planning_map_server が読み込んでいる計画用地図 (同上) |
 | `plan_goal_match_tolerance` | double | `0.6`    | 経路の終点をゴールのものとみなす距離 [m]（NavFn の `tolerance` 以上にする） |
+| `stall_distance`          | double | `0.5`      | 詰まりの検知で、進んだとみなす移動距離 [m] |
+| `stall_warn_sec`          | double | `30.0`     | 位置が進まない時間がこれ以上になったら `/diagnostics` に WARN を出す [s] |
 
 > 読み込み済みの地図の記録は、`load_map` アクションと `~/load_map` を通した読み込みだけが更新する。
 > `/map_server/load_map` などを直接呼んだ場合は記録とずれる。
