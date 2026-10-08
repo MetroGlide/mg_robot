@@ -95,6 +95,7 @@ source /opt/ros/humble/setup.bash && source /root/ros2_ws/install/setup.bash
 | [`mg_utils`](./mg_utils/README.md)               | `LaunchArgumentCreator`、点群変換、rosbag収録launch            |
 | [`mg_waypoint_navigation`](./mg_waypoint_navigation/README.md) | FSMベースのウェイポイントシーケンサ(Nav2 ActionClientラッパー) |
 | [`nav2_pkg`](./nav2_pkg/README.md)               | **カスタム修正済み**のNav2（アップストリームと差分あり）       |
+| [`geometry2_pkg`](./geometry2_pkg/README.md)          | apt の `tf2` 0.25.23 のデッドロックを避けるため取り込んだ上流の `tf2` 0.25.24（apt が追いついたら削除） |
 
 ## 重要なコード規約
 
