@@ -46,6 +46,7 @@ RPP (Humble 1.1.20 の `RegulatedPurePursuitController`) の衝突判定と同�
 - SUCCESS は、そのリカバリーの間に一度ブロックを観測し、その後、空いた状態が `clear_duration` (1 秒) 以上、かつコストマップ 2 枚以上続いたとき。最初から空いている場合 (スリップなど障害物以外が原因の失敗) は SUCCESS にしない。ブロックはリカバリーに入る直前のコストマップでも記録するが、空いたことはリカバリーが始まってから届いたコストマップでだけ記録する (コストマップのクリア直後の空の地図で誤判定しない)。コストマップが 2 秒以上届かなければ、空いたとはみなさない
 - `local_costmap` の `publish_frequency` を下げると、「2 枚以上・1 秒以上」に時間がかかり、再開が遅れる
 - RPP の `use_collision_detection` が false なら、常に FAILURE
+- ログ (bt_navigator): リカバリーごとに最初の判定の結果 (`first check of this recovery: blocked=...`。コストマップの古さと経路の終点も出す)、塞がっていることを観測したとき (`path is blocked`)、空いて SUCCESS を返したとき (`path became clear, resuming`) に INFO を出す。経路がない、ロボットの姿勢や経路を変換できない、コストマップが古い、で判定できないときは WARN (5 秒に 1 回)。リカバリーで早く再開しなかった理由は、最初の判定が `blocked=0` (障害物以外が原因と判断) か、判定できなかったかで見分ける
 - Nav2 を更新するときは、RPP の判定 (`isCollisionImminent` など) の変更に合わせて見直す
 
 | ポート | 既定値 | 内容 |

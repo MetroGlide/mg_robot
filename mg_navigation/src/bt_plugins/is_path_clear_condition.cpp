@@ -139,6 +139,8 @@ void IsPathClearCondition::startEpisode(double now)
   last_eval_.reset();
   last_eval_path_ = nav_msgs::msg::Path();
   reported_clear_ = false;
+  reported_blocked_ = false;
+  reported_first_check_ = false;
   // 設定値の変更は、次のリカバリーから反映する
   parameters_requested_ = false;
   requestParameters();
@@ -321,6 +323,8 @@ void IsPathClearCondition::evaluate(double now)
 {
   nav_msgs::msg::Path path;
   if (!getInput("path", path) || path.poses.empty()) {
+    RCLCPP_WARN_THROTTLE(
+      node_->get_logger(), *node_->get_clock(), 5000, "IsPathClear: no path to check");
     tracker_.invalidate();
     return;
   }
@@ -347,6 +351,9 @@ void IsPathClearCondition::evaluate(double now)
   if (!nav2_util::getCurrentPose(
       robot_pose, *tf_, frame, robot_base_frame_, transform_tolerance_))
   {
+    RCLCPP_WARN_THROTTLE(
+      node_->get_logger(), *node_->get_clock(), 5000,
+      "IsPathClear: failed to get the robot pose in %s", frame.c_str());
     tracker_.invalidate();
     return;
   }
@@ -367,8 +374,27 @@ void IsPathClearCondition::evaluate(double now)
   // ブロックは、リカバリーに入る直前のコストマップでも記録する (直後にコストマップをクリアしたり、
   // 障害物がすぐ去ったりしても、塞がっていたことを取りこぼさない)。
   // 空いていることは、このリカバリーが始まってから届いたコストマップでだけ記録する
+  const bool was_clear_pending = tracker_.clearPending();
   if (blocked || costmap_received_ >= episode_start_) {
     tracker_.observe(blocked, costmap_seq_, now);
+  }
+  if (!was_clear_pending && tracker_.clearPending()) {
+    RCLCPP_INFO(
+      node_->get_logger(), "IsPathClear: path looks clear, confirming for %.1f s",
+      clear_duration_);
+  }
+  if (!reported_first_check_) {
+    const auto & end = path.poses.back().pose.position;
+    RCLCPP_INFO(
+      node_->get_logger(),
+      "IsPathClear: first check of this recovery: blocked=%d (costmap age %.2f s, "
+      "path %zu poses ending at (%.2f, %.2f))",
+      blocked, now - costmap_received_, path.poses.size(), end.x, end.y);
+    reported_first_check_ = true;
+  }
+  if (blocked && !reported_blocked_) {
+    RCLCPP_INFO(node_->get_logger(), "IsPathClear: path is blocked, waiting for it to clear");
+    reported_blocked_ = true;
   }
 }
 

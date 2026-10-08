@@ -106,6 +106,8 @@ private:
   std::uint64_t last_eval_seq_{0};
   nav_msgs::msg::Path last_eval_path_;
   bool reported_clear_{false};
+  bool reported_blocked_{false};
+  bool reported_first_check_{false};
 };
 
 }  // namespace bt_plugins

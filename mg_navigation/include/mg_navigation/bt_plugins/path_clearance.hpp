@@ -86,6 +86,8 @@ public:
   // 空いていれば true
   bool isClear(double now, double clear_duration, int min_clear_maps) const;
   bool seenBlocked() const {return seen_blocked_;}
+  // ブロックの後に空いた状態を観測し、続いているか確かめている最中なら true
+  bool clearPending() const {return clear_since_.has_value();}
 
 private:
   bool seen_blocked_{false};
