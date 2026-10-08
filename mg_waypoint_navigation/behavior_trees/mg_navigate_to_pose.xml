@@ -1,43 +1,77 @@
 <root main_tree_to_execute="MainTree">
   <BehaviorTree ID="MainTree">
-    <RecoveryNode number_of_retries="10" name="NavigateRecovery">
+    <!-- 詰まっても諦めずに待ち続ける (詰まりはシーケンサが /diagnostics に出す) -->
+    <RecoveryNode number_of_retries="99999" name="NavigateRecovery">
 
       <PipelineSequence name="NavigateWithReplanning">
-        <!-- ゴール上書き (通過点の preemption) 直後に、新しいゴールへの経路をすぐ計画する -->
+        <!-- 走行開始・やり直し・ゴール上書き (通過点の preemption) の直後に計画する。
+             計画が失敗しても、同じゴールへの経路があればそれで追従を続ける。
+             別のゴールへの経路しかなければ CommitPath が経路を捨てて失敗し、リカバリーに入る -->
         <GoalUpdatedController>
-          <RecoveryNode number_of_retries="1" name="ComputePathOnGoalUpdate">
-            <ComputePathToPose goal="{goal}" path="{path}" planner_id="GridBased"/>
-            <ClearEntireCostmap name="ClearGlobalCostmap-GoalUpdate" service_name="global_costmap/clear_entirely_global_costmap"/>
-          </RecoveryNode>
+          <Sequence name="ComputePathOnGoalUpdate">
+            <ForceSuccess>
+              <ComputePathToPose goal="{goal}" path="{candidate_path}" planner_id="GridBased"/>
+            </ForceSuccess>
+            <CommitPath candidate="{candidate_path}" goal="{goal}" path="{path}"/>
+          </Sequence>
         </GoalUpdatedController>
+        <!-- 定期的な再計画。失敗しても直前の経路を保ち、障害物の判定は RPP に任せる -->
         <RateController hz="1.0">
-          <RecoveryNode number_of_retries="1" name="ComputePathToPose">
-            <ComputePathToPose goal="{goal}" path="{path}" planner_id="GridBased"/>
-            <ClearEntireCostmap name="ClearGlobalCostmap-Context" service_name="global_costmap/clear_entirely_global_costmap"/>
-          </RecoveryNode>
+          <ForceSuccess>
+            <Sequence name="ReplanPath">
+              <ComputePathToPose goal="{goal}" path="{candidate_path}" planner_id="GridBased"/>
+              <CommitPath candidate="{candidate_path}" goal="{goal}" path="{path}"/>
+            </Sequence>
+          </ForceSuccess>
         </RateController>
-        <RecoveryNode number_of_retries="1" name="FollowPath">
-          <FollowPath path="{path}" controller_id="FollowPath"/>
-          <ClearEntireCostmap name="ClearLocalCostmap-Context" service_name="local_costmap/clear_entirely_local_costmap"/>
-        </RecoveryNode>
+        <!-- 前方に障害物があると RPP が止まり、failure_tolerance (5 秒) 待ってから失敗する -->
+        <FollowPath path="{path}" controller_id="FollowPath"/>
       </PipelineSequence>
 
+      <!-- 回避行動は 1 回のリカバリーで 1 段階だけ行い、終わるたびに走行へ戻る。
+           回避行動の途中でも、IsPathClear が「空いた」と判定したら中断して走行へ戻る -->
       <ReactiveFallback name="RecoveryFallback">
         <GoalUpdated/>
+        <IsPathClear path="{path}"/>
         <RoundRobin name="RecoveryActions">
 
-          <Sequence name="CollisionBackupRecovery">
-            <Wait wait_duration="2.0"/>
-            <BackUp backup_dist="2.0" backup_speed="0.25"/>
-            <ClearEntireCostmap name="ClearLocalCostmap-Collision" service_name="local_costmap/clear_entirely_local_costmap"/>
-          </Sequence>
+          <!-- 向きを変えて、障害物を避ける経路を計画し直す -->
+          <ForceSuccess>
+            <Sequence name="SpinLeftAndReplan">
+              <Spin spin_dist="0.5"/>
+              <ComputePathToPose goal="{goal}" path="{candidate_path}" planner_id="GridBased"/>
+              <CommitPath candidate="{candidate_path}" goal="{goal}" path="{path}"/>
+            </Sequence>
+          </ForceSuccess>
 
-          <Sequence name="ClearingAndSpin">
-            <ClearEntireCostmap name="ClearGlobalCostmap-Subtree" service_name="global_costmap/clear_entirely_global_costmap"/>
-            <Spin spin_dist="1.57"/>
-          </Sequence>
+          <!-- 残った障害物の痕跡を消し、コストマップが作り直されるまで待つ -->
+          <ForceSuccess>
+            <Sequence name="ClearCostmapsAndWait">
+              <ClearEntireCostmap name="ClearLocalCostmap" service_name="local_costmap/clear_entirely_local_costmap"/>
+              <ClearEntireCostmap name="ClearGlobalCostmap" service_name="global_costmap/clear_entirely_global_costmap"/>
+              <Wait wait_duration="3"/>
+            </Sequence>
+          </ForceSuccess>
 
-          <Wait wait_duration="5"/>
+          <!-- 逆向きに振る (向きの変化は合計 -0.5rad) -->
+          <ForceSuccess>
+            <Sequence name="SpinRightAndReplan">
+              <Spin spin_dist="-1.0"/>
+              <ComputePathToPose goal="{goal}" path="{candidate_path}" planner_id="GridBased"/>
+              <CommitPath candidate="{candidate_path}" goal="{goal}" path="{path}"/>
+            </Sequence>
+          </ForceSuccess>
+
+          <Wait wait_duration="3"/>
+
+          <!-- 最後の手段として、少しだけ距離を取る -->
+          <ForceSuccess>
+            <Sequence name="BackUpAndReplan">
+              <BackUp backup_dist="0.3" backup_speed="0.15"/>
+              <ComputePathToPose goal="{goal}" path="{candidate_path}" planner_id="GridBased"/>
+              <CommitPath candidate="{candidate_path}" goal="{goal}" path="{path}"/>
+            </Sequence>
+          </ForceSuccess>
 
         </RoundRobin>
       </ReactiveFallback>

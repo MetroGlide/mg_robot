@@ -66,13 +66,13 @@ controller_server ─ cmd_vel_nav ─► collision_monitor ─ cmd_vel_collision
 - `FollowPath` は Regulated Pure Pursuit。`desired_linear_vel` 1.0 m/s、`lookahead_dist` 0.6 m、衝突の検出 (`use_collision_detection`) あり、曲率とコストによる速度の調整あり。
 - `general_goal_checker`: `xy_goal_tolerance` 0.25 m、`yaw_goal_tolerance` 0.25 rad、`stateful: True`。ウェイポイントの停止点の到達の判定は、この値による ([mg_waypoint_navigation](../../mg_waypoint_navigation/doc/architecture.md))。
 - `progress_checker`: 5 秒 (`movement_time_allowance`) で 0.5 m (`required_movement_radius`) 進まなければ、詰まりとみなして `FollowPath` を失敗させる。衝突の検知のあとの待ち時間としても働く。
-- `failure_tolerance` は 5.0 秒。有効な速度が出せない間 (前方に障害物があるなど) は、速度 0 を出して待ち、この時間を超えると `FollowPath` が失敗して、BT のリカバリー (待機・後退) に入る。**-1 (無期限) にしない**。`progress_checker` の失敗まで無視され、詰まっても失敗せず、リカバリーにも入れず、永久に止まる (Gazebo で確認)。
+- `failure_tolerance` は 5.0 秒。有効な速度が出せない間 (前方に障害物があるなど) は、速度 0 を出して待ち、この時間を超えると `FollowPath` が失敗して、BT のリカバリー (首振り・待機・後退) に入る。**-1 (無期限) にしない**。`progress_checker` の失敗まで無視され、詰まっても失敗せず、リカバリーにも入れず、永久に止まる (Gazebo で確認)。
 - `speed_limit_topic` は `/speed_limit`。
 
 ## Behavior Tree
 
 `bt_navigator` の既定の BT は Nav2 の `navigate_w_replanning_and_recovery.xml`。ウェイポイントのシーケンサは、ゴールごとに `mg_waypoint_navigation/behavior_trees/` の BT を指定する ([mg_waypoint_navigation](../../mg_waypoint_navigation/README.md#behavior-tree))。
-`plugin_lib_names` に `nav2_goal_updated_controller_bt_node` が必要。
+`plugin_lib_names` に `nav2_goal_updated_controller_bt_node` と、このパッケージの BT プラグイン (`mg_is_path_clear_condition_bt_node`、`mg_commit_path_action_bt_node`。[README](../README.md#bt-プラグイン)) が必要。
 
 ## 衝突の防止 (`collision_monitor`)
 
