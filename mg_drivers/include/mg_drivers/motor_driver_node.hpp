@@ -37,10 +37,19 @@ private:
 
   void emergency_stop_sub_cb(const std_msgs::msg::Bool::SharedPtr msg);
 
+  // 送信結果を連続エラー数に反映し、閾値に達したらシリアルを開き直す
+  void handle_response(const MotorDriverResponse & res);
+  // 1 Hz: デバイスの有無と接続状態を確認し、切れていれば再接続して connected を配信する
+  void health_check();
+  void recover_connection();
+  bool is_connected() const;
+
   std::shared_ptr<mg_drivers::MotorDriver> motor_driver_;
 
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr twist_sub_;
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr emergency_stop_sub_;
+  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr connected_pub_;
+  rclcpp::TimerBase::SharedPtr health_timer_;
 
   std::string device_name_;
 
@@ -51,6 +60,9 @@ private:
   double max_speed_;    // [m/s]
 
   bool emergency_stop_;
+
+  int error_recovery_count_;
+  int consecutive_errors_ = 0;
 
   SpeedParameter create_speed_parameter(const geometry_msgs::msg::Twist::SharedPtr msg);
   MotorDriverResponse send_speed_command(const SpeedParameter param);

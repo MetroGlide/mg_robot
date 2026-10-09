@@ -44,5 +44,8 @@ public:
   std::vector<uint8_t> encode(SpeedParameter param);
 
   bool is_alive();
+  bool is_device_present() const;
+  void close_serial();
+  void reset_serial();
 };
 }  // namespace mg_drivers

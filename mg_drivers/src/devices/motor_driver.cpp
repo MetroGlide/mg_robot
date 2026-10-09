@@ -60,3 +60,9 @@ vector<uint8_t> MotorDriver::encode(SpeedParameter param)
 }
 
 bool MotorDriver::is_alive() { return serial_.is_open_serial_; }
+
+bool MotorDriver::is_device_present() const { return serial_.is_device_present(); }
+
+void MotorDriver::close_serial() { serial_.close_serial(); }
+
+void MotorDriver::reset_serial() { serial_.reset_serial(); }

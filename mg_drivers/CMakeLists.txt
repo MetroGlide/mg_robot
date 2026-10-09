@@ -134,6 +134,9 @@ if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
   ament_add_gtest(test_obstacle_detector test/test_obstacle_detector.cpp)
   target_link_libraries(test_obstacle_detector obstacle_detector)
+
+  ament_add_gtest(test_serial_communicator2 test/test_serial_communicator2.cpp)
+  target_link_libraries(test_serial_communicator2 ${PROJECT_NAME}_lib)
 endif()
 
 ################################################################################
