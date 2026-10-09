@@ -191,6 +191,11 @@ install(PROGRAMS
   DESTINATION lib/${PROJECT_NAME}
 )
 install(PROGRAMS
+  scripts/driver_watchdog_node.py
+  scripts/driver_watchdog_core.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+install(PROGRAMS
   scripts/pose_with_cov_publish_controller_node.py
   DESTINATION lib/${PROJECT_NAME}
 )

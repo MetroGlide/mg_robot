@@ -3,9 +3,12 @@
 import launch
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription
-from launch.substitutions import LaunchConfiguration, EnvironmentVariable
+from launch.substitutions import (
+    AndSubstitution, LaunchConfiguration, EnvironmentVariable, NotSubstitution)
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from ament_index_python.packages import get_package_share_directory
+from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 from mg_utils import launch_argument
 
@@ -22,6 +25,9 @@ def generate_launch_description():
 
     respawn_drivers_arg = launch_argument_creator.create(
         "respawn_drivers", default="true")
+    # ドライバの途絶を監視し、走行の一時停止と、止まったドライバの再起動をする (実機のみ)
+    use_driver_watchdog_arg = launch_argument_creator.create(
+        "use_driver_watchdog", default="true")
 
     use_odom_arg = launch_argument_creator.create(
         "use_odom", default="true")
@@ -98,9 +104,33 @@ def generate_launch_description():
         and launch.conditions.UnlessCondition(simulation_arg.launch_config)
     )
 
+    # restart_enabled は respawn_drivers に合わせる (起動し直されないのに終了させない)
+    driver_watchdog = Node(
+        package="mg_drivers",
+        executable="driver_watchdog_node.py",
+        name="driver_watchdog_node",
+        output="screen",
+        parameters=[
+            pkg_share + "/params/driver_watchdog.yaml",
+            {
+                "top_lidar.enabled": ParameterValue(
+                    use_lidar_arg.launch_config, value_type=bool),
+                "odom.enabled": ParameterValue(
+                    use_odom_arg.launch_config, value_type=bool),
+                "restart_enabled": ParameterValue(
+                    respawn_drivers_arg.launch_config, value_type=bool),
+            },
+        ],
+        condition=launch.conditions.IfCondition(
+            AndSubstitution(
+                use_driver_watchdog_arg.launch_config,
+                NotSubstitution(simulation_arg.launch_config))),
+    )
+
     return LaunchDescription(
         [
             *launch_argument_creator.get_created_declare_launch_args(),
+            driver_watchdog,
             launch_sensors,
             launch_postprocess,
             launch_common,

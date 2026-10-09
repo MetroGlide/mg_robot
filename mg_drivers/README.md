@@ -20,6 +20,7 @@
 | 実行ファイル | 内容 | 主な入出力 |
 | :--- | :--- | :--- |
 | `wheel_odom_corrector_node.py` | ホイールオドメトリのスケール・バイアスを補正し、速度の共分散を設定する ([doc](./doc/wheel_odom_corrector.md)) | 入力: `odom/raw`、出力: `odom` |
+| `driver_watchdog_node.py` | LiDAR・オドメトリ・モータドライバの途絶を監視し、シーケンサに一時停止を出す。止まった上流ドライバ (rplidar) は終了させて、respawn に起動し直させる ([doc](./doc/driver_watchdog.md)) | 入力: `scan_top_lidar`、`odom`、`/motor_driver_node/connected`、出力: `/diagnostics`、`/waypoint_sequencer_node/pause_request` |
 | `odometry_tf_broadcaster_node.py` | `odom` から TF `odom→base_footprint` を配信する | 入力: `odom` |
 | `pose_with_cov_publish_controller_node.py` | `PoseWithCovarianceStamped` の中継を入/切する | 入力: `pose_with_cov_origin`、出力: `pose_with_cov`、サービス: `~/change_publish_state` |
 | `generic_publish_controller_node.py` | 任意の型のトピックの中継を入/切する (`msg_module`・`msg_class`・`publish`・`queue_size` で指定)。AMCL の出力のゲート (`amcl_publish_controller_node`) に使う ([mg_navigation](../mg_navigation/README.md)) | 入力: `input_topic`、出力: `output_topic`、サービス: `~/change_publish_state` |
@@ -74,6 +75,7 @@ ros2 run mg_drivers odom_offset_republisher.py
 | `use_odom_corrector` | `false` | 補正ノードを起動し、ドライバの出力を `odom/raw` にする |
 | `odom_corrector_params_file` | `wheel_odom_corrector.yaml` | `params/` のファイル名または絶対パス |
 | `respawn_drivers` | `true` | ドライバのプロセスが終了したら起動し直す ([切断からの復旧](#切断からの復旧)) |
+| `use_driver_watchdog` | `true` | ドライバの監視ノードを起動する (実機のみ。[doc](./doc/driver_watchdog.md)) |
 
 ### bringup_sensors.launch.py の引数
 
@@ -105,6 +107,7 @@ ros2 run mg_drivers odom_offset_republisher.py
 | ファイル | 内容 |
 | :--- | :--- |
 | `wheel_odom_corrector.yaml` | ホイールオドメトリの補正 ([doc](./doc/wheel_odom_corrector.md)) |
+| `driver_watchdog.yaml` | ドライバの監視 ([doc](./doc/driver_watchdog.md)) |
 | `obstacle_detection.yaml` | 3D 障害物検出 ([doc](./doc/obstacle_detection_3d.md)) |
 | `ekf_global.yaml` | ナビゲーションの EKF (`ekf_global_node`)。位置はホイールオドメトリの速度、AMCL、GNSS。30 Hz。構成は [mg_navigation](../mg_navigation/README.md) |
 | `ekf_slam.yaml`、`navsat_transform.yaml` | slam_toolbox の SLAM で、`use_ekf:=true` のときに使う EKF と `navsat_transform` |
@@ -129,7 +132,7 @@ ros2 run mg_drivers odom_offset_republisher.py
 
 `wheel_odometry_node`、`top_rplidar_node`、`ublox_gps_node` (または `gps_driver`)、`motor_driver_node`
 
-走行中に `rplidar_node` が止まる (プロセスは生きたまま、スキャンだけ出なくなる) 場合は、プロセスが終了しないので respawn では直らない。トピックの途絶を監視して終了させる仕組みは、別に用意する。
+走行中に `rplidar_node` が止まる (プロセスは生きたまま、スキャンだけ出なくなる) 場合は、プロセスが終了しないので respawn では直らない。`driver_watchdog_node` がスキャンの途絶を見て、プロセスを終了させ、respawn に起動し直させる。あわせて、復旧するまでシーケンサを一時停止する ([doc](./doc/driver_watchdog.md))。
 
 ## デバイスと依存
 
