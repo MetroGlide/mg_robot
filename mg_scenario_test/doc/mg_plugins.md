@@ -73,6 +73,5 @@ sequencer が `ERROR` になったら FAILED です。
 
 ## 実機のセンサ故障の注入
 
-コアの `call_set_bool` で、`lidar_publish_controller_node` などの `~/change_publish_state` を呼べば、
-センサの配信停止・復旧を再現できます。ただしシミュレーションでは前方 LiDAR (`front_lidar_publish_controller_node`)
-が何も配信しないため、意味のあるシナリオにはなりません (確認済み)。
+コアの `call_set_bool` で、公開制御ノード (例: `amcl_publish_controller_node`) の `~/change_publish_state` を呼べば、
+配信の停止・復旧を再現できます。シミュレーションには LiDAR などセンサの公開制御ノードが無いので、センサ自体の故障は再現できません。

@@ -27,9 +27,6 @@ def generate_launch_description():
 
     use_lidar_arg = launch_argument_creator.create(
         "use_lidar", default="true")
-    front_rplidar_port_arg = launch_argument_creator.create(
-        "front_rplidar_port", default="/dev/ttyRobot-frontlidar"
-    )
     top_rplidar_port_arg = launch_argument_creator.create(
         "top_rplidar_port", default="/dev/ttyRobot-toplidar"
     )
@@ -88,25 +85,6 @@ def generate_launch_description():
                 ],
                 condition=launch.conditions.IfCondition(
                     use_odom_arg.launch_config),
-            ),
-
-            # RPLidar front
-            Node(
-                package="rplidar_ros",
-                executable="rplidar_node",
-                name="front_rplidar_node",
-                output="screen",
-                parameters=[{
-                    "serial_port": front_rplidar_port_arg.launch_config,
-                    "serial_baudrate": 115200,
-                    "frame_id": "front_lrf_link",
-                    "inverted": False,
-                    "angle_compensate": True,
-                }],
-                # remappings=[("scan", "scan_front_lidar")],
-                remappings=[("scan", "scan_front_lidar_origin")],
-                condition=launch.conditions.IfCondition(
-                    use_lidar_arg.launch_config),
             ),
 
             # RPLidar top

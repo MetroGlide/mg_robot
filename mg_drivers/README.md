@@ -21,7 +21,6 @@
 | :--- | :--- | :--- |
 | `wheel_odom_corrector_node.py` | ホイールオドメトリのスケール・バイアスを補正し、速度の共分散を設定する ([doc](./doc/wheel_odom_corrector.md)) | 入力: `odom/raw`、出力: `odom` |
 | `odometry_tf_broadcaster_node.py` | `odom` から TF `odom→base_footprint` を配信する | 入力: `odom` |
-| `lidar_publish_controller_node.py` | LiDAR のスキャンの中継を、サービスで入/切する (前方 LiDAR 用) | 入力: `scan_origin`、出力: `scan`、サービス: `~/change_publish_state` (`SetBool`) |
 | `pose_with_cov_publish_controller_node.py` | `PoseWithCovarianceStamped` の中継を入/切する | 入力: `pose_with_cov_origin`、出力: `pose_with_cov`、サービス: `~/change_publish_state` |
 | `generic_publish_controller_node.py` | 任意の型のトピックの中継を入/切する (`msg_module`・`msg_class`・`publish`・`queue_size` で指定)。AMCL の出力のゲート (`amcl_publish_controller_node`) に使う ([mg_navigation](../mg_navigation/README.md)) | 入力: `input_topic`、出力: `output_topic`、サービス: `~/change_publish_state` |
 | `depth_to_pointcloud_node.py` | 深度画像 (とカラー画像) から点群を復元する。rosbag の再生確認用 | 出力: `points` |
@@ -57,7 +56,7 @@ ros2 run mg_drivers odom_offset_republisher.py
 | :--- | :--- |
 | `bringup_realsense.launch.py` | RealSense の起動 (`use_rs_d415` 既定 `true`、`use_rs_d435i` 既定 `false`) |
 | `bringup_kissicp.launch.py` | KISS-ICP のオドメトリ。`/cloud_top_lidar` を入力に、`/kissicp/odom` を出す (`pc_topic`、`odom_topic`、`visualize`、`deskew`、`max_range`、`min_range` など) |
-| `laser_filters.launch.py` | LiDAR のスキャンのフィルタ (`front_laser_filter_yaml`、`top_laser_filter_yaml`)。`bringup_postprocess` では無効 |
+| `laser_filters.launch.py` | LiDAR のスキャンのフィルタ (`top_laser_filter_yaml`)。`bringup_postprocess` では無効 |
 | `depth_to_pointcloud.launch.py` | 深度画像からの点群の復元 (`use_color`、トピック名、`depth_scale`、`stride`) |
 | `obstacle_detection_3d.launch.py` | 障害物検出 (`use_sim_time`、`use_sensor_data_qos`、`param_file`) |
 | `obstacle_detection_replay.launch.py` | rosbag の再生確認用。点群の復元 + 障害物検出 + RViz2 ([doc](./doc/obstacle_detection_3d.md)) |
@@ -80,7 +79,7 @@ ros2 run mg_drivers odom_offset_republisher.py
 | 引数 | 既定値 | 内容 |
 | :--- | :--- | :--- |
 | `odom_port` | `/dev/ttyRobot-odom` | ホイールオドメトリのシリアルポート |
-| `front_rplidar_port` / `top_rplidar_port` | `/dev/ttyRobot-frontlidar` / `/dev/ttyRobot-toplidar` | LiDAR のポート |
+| `top_rplidar_port` | `/dev/ttyRobot-toplidar` | LiDAR のポート |
 | `gps_port` | `/dev/ttyRobot-gps` | GNSS のポート |
 | `use_ubx_protocol` | `true` | `true`: u-blox の UBX (`ublox_gps_node`)。`false`: NMEA (`nmea_navsat_driver`) |
 | `use_rs_d435i` / `use_rs_d435` | `true` / `false` | RealSense の機種 |
@@ -93,7 +92,6 @@ ros2 run mg_drivers odom_offset_republisher.py
 | :--- | :--- | :--- |
 | `/odom` (補正あり: `/odom/raw` → `/odom`) | `wheel_odometry_node`、補正ノード | ホイールオドメトリ |
 | `/scan_top_lidar` | `top_rplidar_node` | 上 LiDAR (RPLiDAR S2) |
-| `/scan_front_lidar_origin` → `/scan_front_lidar` | `front_rplidar_node` → `front_lidar_publish_controller_node` | 前方 LiDAR (RPLiDAR A1M8)。ウェイポイントのアクション (`front_lidar_off`) で止められる |
 | `/gps/fix`、`/navpvt` ほか | `ublox_gps_node` | GNSS |
 | `/camera/camera/depth/color/points` → `/camera/depth/points_postprocessed` | RealSense → `depth_postprocess_node` | 点群と、後処理した点群 |
 | `/cmd_vel` | (入力) `motor_driver_node` | 速度指令 |
@@ -110,7 +108,7 @@ ros2 run mg_drivers odom_offset_republisher.py
 | `ekf_slam.yaml`、`navsat_transform.yaml` | slam_toolbox の SLAM で、`use_ekf:=true` のときに使う EKF と `navsat_transform` |
 | `ublox_ubx_gps.yaml` | u-blox の設定 |
 | `rs_d435i.yaml`、`rs_d415.yaml` | RealSense の設定 |
-| `front_laser_filter.yaml`、`top_laser_filter.yaml` | LiDAR のフィルタ |
+| `top_laser_filter.yaml` | LiDAR のフィルタ |
 
 ホイールオドメトリ (`wheel_odometry_node`) と、モータドライバのパラメータは、launch に直接書かれている (`bringup_sensors.launch.py`、`bringup_hardware.launch.py`)。
 

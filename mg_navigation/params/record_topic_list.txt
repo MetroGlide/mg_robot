@@ -1,8 +1,6 @@
 /odom
 /odom/raw
 /scan_top_lidar
-/scan_front_lidar
-/scan_front_lidar/origin
 /nmea_sentence
 /navpvt
 
@@ -43,7 +41,6 @@
 /robot_description
 /rosout
 
-/scan_front_lidar
 /scan_top_lidar
 /speed_limit
 /tf
