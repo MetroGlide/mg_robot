@@ -20,6 +20,9 @@ def generate_launch_description():
     drive_arg = launch_argument_creator.create(
         "drive", default="false")
 
+    respawn_drivers_arg = launch_argument_creator.create(
+        "respawn_drivers", default="true")
+
     use_odom_arg = launch_argument_creator.create(
         "use_odom", default="true")
     use_odom_tf_arg = launch_argument_creator.create(
@@ -53,6 +56,7 @@ def generate_launch_description():
             "use_gps": use_gps_arg.launch_config,
             "use_rs_imu": use_rs_imu_arg.launch_config,
             "use_odom_corrector": use_odom_corrector_arg.launch_config,
+            "respawn_drivers": respawn_drivers_arg.launch_config,
         }.items(),
         condition=launch.conditions.UnlessCondition(
             simulation_arg.launch_config)
@@ -87,6 +91,9 @@ def generate_launch_description():
         PythonLaunchDescriptionSource(
             pkg_share + "/launch/bringup_hardware.launch.py"
         ),
+        launch_arguments={
+            "respawn_drivers": respawn_drivers_arg.launch_config,
+        }.items(),
         condition=launch.conditions.IfCondition(drive_arg.launch_config)
         and launch.conditions.UnlessCondition(simulation_arg.launch_config)
     )

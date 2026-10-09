@@ -17,6 +17,10 @@ def generate_launch_description():
     launch_argument_creator = LaunchArgumentCreator()
 
     # Launch arguments
+    # true のとき、ドライバのプロセスが終了したら起動し直す (機器が繋がるまで繰り返す)
+    respawn_drivers_arg = launch_argument_creator.create(
+        "respawn_drivers", default="true")
+
     use_odom_arg = launch_argument_creator.create(
         "use_odom", default="true")
     odom_port_arg = launch_argument_creator.create(
@@ -57,6 +61,8 @@ def generate_launch_description():
                 executable="wheel_odometry_node",
                 name="wheel_odometry_node",
                 output="screen",
+                respawn=respawn_drivers_arg.launch_config,
+                respawn_delay=2.0,
                 parameters=[{
                     "odometry.device_name": odom_port_arg.launch_config,
 
@@ -93,6 +99,8 @@ def generate_launch_description():
                 executable="rplidar_node",
                 name="top_rplidar_node",
                 output="screen",
+                respawn=respawn_drivers_arg.launch_config,
+                respawn_delay=2.0,
                 parameters=[{
                     "serial_port": top_rplidar_port_arg.launch_config,
                     "serial_baudrate": 1000000,
@@ -113,6 +121,8 @@ def generate_launch_description():
                 executable="nmea_topic_serial_reader",
                 name="gps_driver",
                 output="screen",
+                respawn=respawn_drivers_arg.launch_config,
+                respawn_delay=2.0,
                 parameters=[{
                     "port": gps_port_arg.launch_config,
                     "baud": 38400,
@@ -132,6 +142,8 @@ def generate_launch_description():
                 executable="ublox_gps_node",
                 name="ublox_gps_node",
                 output="screen",
+                respawn=respawn_drivers_arg.launch_config,
+                respawn_delay=2.0,
                 parameters=[{
                     "device": gps_port_arg.launch_config,
                     "frame_id": "gps_link",

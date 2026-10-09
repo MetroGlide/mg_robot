@@ -73,6 +73,7 @@ ros2 run mg_drivers odom_offset_republisher.py
 | `use_rs_imu` | `true` | RealSense の IMU (ジャイロと加速度) |
 | `use_odom_corrector` | `false` | 補正ノードを起動し、ドライバの出力を `odom/raw` にする |
 | `odom_corrector_params_file` | `wheel_odom_corrector.yaml` | `params/` のファイル名または絶対パス |
+| `respawn_drivers` | `true` | ドライバのプロセスが終了したら起動し直す ([切断からの復旧](#切断からの復旧)) |
 
 ### bringup_sensors.launch.py の引数
 
@@ -83,8 +84,9 @@ ros2 run mg_drivers odom_offset_republisher.py
 | `gps_port` | `/dev/ttyRobot-gps` | GNSS のポート |
 | `use_ubx_protocol` | `true` | `true`: u-blox の UBX (`ublox_gps_node`)。`false`: NMEA (`nmea_navsat_driver`) |
 | `use_rs_d435i` / `use_rs_d435` | `true` / `false` | RealSense の機種 |
+| `respawn_drivers` | `true` | 上と同じ |
 
-`bringup_hardware.launch.py` の引数は、`device_name` (既定 `/dev/ttyRobot-motordriver`)。
+`bringup_hardware.launch.py` の引数は、`device_name` (既定 `/dev/ttyRobot-motordriver`) と `respawn_drivers`。
 
 ## 主なトピック
 
@@ -122,6 +124,12 @@ ros2 run mg_drivers odom_offset_republisher.py
 | `motor_driver_node` | 連続 `motor_driver.error_recovery_count` (4) 回のエラーで、シリアルを開き直す。さらに 1 Hz で、デバイスファイルの有無と接続を確認する。デバイスが消えたら fd を閉じ、戻ったら開き直して、停止の指令で接続を確かめる。結果を `~/connected` に出す (`true`: 開いていて、デバイスがあり、連続エラーが閾値未満) |
 
 `error_recovery_count` は launch に直接書かれている (`bringup_hardware.launch.py` は未指定で既定の 4)。
+
+自分では直せないものは、プロセスごと起動し直す。`respawn_drivers:=true` (既定) のとき、次のノードは終了コードによらず、終了の 2 秒後に起動し直される。起動時に機器が無くて終了するもの (`rplidar_node` など) は、機器が繋がるまで繰り返す。`false` で従来どおり (起動し直さない)。
+
+`wheel_odometry_node`、`top_rplidar_node`、`ublox_gps_node` (または `gps_driver`)、`motor_driver_node`
+
+走行中に `rplidar_node` が止まる (プロセスは生きたまま、スキャンだけ出なくなる) 場合は、プロセスが終了しないので respawn では直らない。トピックの途絶を監視して終了させる仕組みは、別に用意する。
 
 ## デバイスと依存
 
