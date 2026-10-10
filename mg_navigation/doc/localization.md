@@ -89,6 +89,22 @@ AMCL の位置の共分散を監視し、大きい状態が続いたら、`gnss_
 
 この監視は、AMCL の**自己申告の共分散**しか見ない。そのため、AMCL が「自信を持って間違えている」状態は検知できない。
 
+### 出力
+
+監督ノードと同じ形で、状態を出す。UI や記録は、どちらの監視が動いていても同じに扱える。
+
+- `/localization/status` (`mg_msgs/LocalizationStatus`、1 Hz): `state` は次のとおり。`amcl_attached` は常に `true`、判定の値 (`amcl_gnss_d2` など) は `-1` (使えない)。
+
+| 状態 | 条件 |
+| :--- | :--- |
+| `NORMAL` | 異常を検知していない |
+| `SUSPECT` | 指標が `threshold` を超え始めた (`consecutive_count` 回に達する前) |
+| `RECOVERING` | 再初期化を要求している |
+| `DEGRADED` | 再初期化が `max_retries` 回とも失敗し、指標がまだ戻っていない |
+
+- 診断 `amcl_watchdog_node: localization` (NORMAL=OK、DEGRADED=ERROR、その他=WARN。集約で `/Robot/Localization/Monitor`)
+- イベント: `localization.state_changed` (`from`、`to`、`reason`)、`localization.reinit_requested` (`attempt`、`metric`、`value`、`threshold`)、`localization.reinit_result` (`success`、`message`) ([doc/monitoring.md](../../doc/monitoring.md))
+
 ## localization_supervisor_node
 
 `amcl_watchdog_node` は、AMCL の自己申告の共分散しか見ないため、AMCL が「自信を持って間違えている」状態を検知できず、検知してもずれた AMCL を EKF に入れ続け、復旧も GNSS の生の値 (進行方向から作った向き) に頼っていた。
@@ -111,7 +127,7 @@ AMCL の位置の共分散を監視し、大きい状態が続いたら、`gnss_
 
 | 値 | 動作 |
 | :--- | :--- |
-| `false` (既定) | **検知と通知だけ**。異常を確認したら `DEGRADED` になり (`/localization/status`、`/diagnostics` が ERROR)、異常が消えたら `NORMAL` に戻る。AMCL は切り離さない |
+| `false` (既定) | **検知と通知だけ**。異常を確認したら `DEGRADED` になり (`/localization/status` が `DEGRADED`、診断が ERROR)、異常が消えたら `NORMAL` に戻る。AMCL は切り離さない |
 | `true` | 下の状態遷移どおり、AMCL を切り離して姿勢を選び、再初期化して戻す (実験的) |
 
 既定を `false` にした理由: 再生評価 (kidnap) で、復旧を有効にすると、選んだ姿勢が誤っていた試行で誤差が数十 m まで広がった (監視なし p95 10.7 m に対し、最悪 143 m)。AMCL は kidnap の後に自力で戻ることも多く、検知に数秒かかる間の誤差は、復旧では防げない。
@@ -139,7 +155,8 @@ NORMAL ─ 異常の疑い ─► SUSPECT ─ 確認 ─► ISOLATED (AMCL を E
 ### 出力
 
 - `/localization/status` (`mg_msgs/LocalizationStatus`): 状態、AMCL を EKF に入れているか、判定の値、直近のできごと
-- `/diagnostics`: `localization_supervisor` (NORMAL=OK、DEGRADED=ERROR、その他=WARN)
+- 診断 `localization_supervisor_node: localization` (NORMAL=OK、DEGRADED=ERROR、その他=WARN。`values` に `amcl_attached`、`last_event` と、使えた判定の値。集約で `/Robot/Localization/Monitor`)
+- イベント: `localization.state_changed` (`from`、`to`、`reason`)、`localization.reinit_requested` (`source`、`x`、`y`、`yaw`、`scan_match`)
 
 パラメータは `params/localization_supervisor.yaml` (各値の説明は、ファイルのコメント)。
 

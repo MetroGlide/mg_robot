@@ -21,7 +21,7 @@ from typing import Deque, List, Optional, Tuple
 import numpy as np
 import rclpy
 import tf2_ros
-from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
+from diagnostic_updater import Updater
 from geometry_msgs.msg import PoseWithCovarianceStamped
 from mg_msgs.msg import LocalizationStatus
 from nav2_msgs.msg import SpeedLimit
@@ -33,6 +33,9 @@ from rclpy.time import Time
 from sensor_msgs.msg import LaserScan
 from std_srvs.srv import SetBool
 
+from mg_utils.event_log import EventLog
+
+from ..localization_task import LocalizationTask
 from .checks import Pose2, amcl_gnss_d2, compose, implied_map_odom, pose_jump
 from .scan_check import (
     LocalDistanceField, OccupancyMap, build_local_distance_field, match_gain, match_ratio,
@@ -102,7 +105,6 @@ class LocalizationSupervisorNode(Node):
 
         # 出力
         self._status_pub = self.create_publisher(LocalizationStatus, '/localization/status', 10)
-        self._diag_pub = self.create_publisher(DiagnosticArray, '/diagnostics', 10)
         self._initialpose_pub = self.create_publisher(PoseWithCovarianceStamped, '/initialpose', 1)
         self._set_pose_pub = self.create_publisher(PoseWithCovarianceStamped, '/set_pose', 1)
         self._speed_limit_pub = self.create_publisher(SpeedLimit, p['speed_limit_topic'], 1)
@@ -114,8 +116,15 @@ class LocalizationSupervisorNode(Node):
 
         self._values = dict(UNAVAILABLE_VALUES)
         self._last_event = ''
+        self._state = State.NORMAL
+        self._events = EventLog(self.get_logger())
+        self._updater = Updater(self)
+        self._updater.setHardwareID('localization')
+        self._updater.add(LocalizationTask(self._diagnostic_snapshot))
         self.create_timer(p['period_sec'], self._on_timer)
-        self.get_logger().info('localization_supervisor_node started')
+        self._events.info(
+            'node.started', name='localization_supervisor_node',
+            recovery_enabled=p['recovery_enabled'])
 
     def _declare_parameters(self) -> dict:
         defaults = {
@@ -424,6 +433,9 @@ class LocalizationSupervisorNode(Node):
         self._initialpose_pub.publish(msg)
         self._set_pose_pub.publish(msg)
         ratio_text = 'n/a' if best_ratio is None else f'{best_ratio:.2f}'
+        self._events.warn(
+            'localization.reinit_requested', source=name, x=round(pose[0], 2),
+            y=round(pose[1], 2), yaw=round(pose[2], 3), scan_match=ratio_text)
         return f'reinit from {name} (scan match {ratio_text})'
 
     def _apply_degraded(self, degraded: bool) -> None:
@@ -468,7 +480,9 @@ class LocalizationSupervisorNode(Node):
                 self._grace_until = now + self._p['grace_after_recovery_sec']
         if events:
             self._last_event = '; '.join(events)
-            self.get_logger().info(f'state={State(decision.state).name} {self._last_event}')
+        if decision.state != self._state:
+            self._log_state_change(self._state, decision.state)
+            self._state = decision.state
 
         # AMCL の出力の状態を、望ましい状態 (状態機械が決める) に合わせる。失敗したら次の周期で再試行する
         if self._applied_attach != self._machine.attached:
@@ -488,18 +502,21 @@ class LocalizationSupervisorNode(Node):
         msg.last_event = self._last_event
         self._status_pub.publish(msg)
 
-        status = DiagnosticStatus()
-        status.name = 'localization_supervisor'
-        status.hardware_id = 'mg01'
-        status.level = {State.NORMAL: DiagnosticStatus.OK, State.DEGRADED: DiagnosticStatus.ERROR}.get(
-            state, DiagnosticStatus.WARN)
-        status.message = State(state).name
-        status.values = [KeyValue(key='amcl_attached', value=str(self._applied_attach)),
-                         KeyValue(key='last_event', value=self._last_event)]
-        diag = DiagnosticArray()
-        diag.header.stamp = msg.header.stamp
-        diag.status = [status]
-        self._diag_pub.publish(diag)
+
+    def _diagnostic_snapshot(self):
+        return (int(self._state), self._applied_attach, self._last_event, {
+            'amcl_gnss_d2': self._values['d2'], 'amcl_jump_m': self._values['jump'],
+            'amcl_ekf_diff_m': self._values['diff'], 'scan_match_ratio': self._values['ratio'],
+            'scan_match_gain': self._values['gain']})
+
+    def _log_state_change(self, before: State, after: State) -> None:
+        fields = dict(from_=before.name, to=after.name, reason=self._last_event)
+        if after == State.NORMAL:
+            self._events.info('localization.state_changed', **fields)
+        elif after == State.DEGRADED:
+            self._events.error('localization.state_changed', **fields)
+        else:
+            self._events.warn('localization.state_changed', **fields)
 
 
 def main(args=None) -> None:
