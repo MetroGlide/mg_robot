@@ -261,7 +261,7 @@ services:
 
   diagnostics:
     <<: *runtime-core
-    command: ros2 launch mg_diagnostics diagnostics.launch.py
+    command: ros2 launch mg_diagnostics monitoring.launch.py
 
   waypoint-editor:
     <<: *develop-gui

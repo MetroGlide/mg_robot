@@ -10,7 +10,7 @@ install(DIRECTORY launch params
 )
 
 install(PROGRAMS
-  scripts/diagnostics_node.py
+  scripts/topic_monitor_node.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
