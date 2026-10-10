@@ -47,7 +47,6 @@ base_footprint
 | 車輪半径 | 0.15 m |
 
 - `map→odom` は EKF、`odom→base_footprint` は `mg_drivers` の `odometry_tf_broadcaster_node` が配信する ([doc/system_architecture.md](../doc/system_architecture.md#座標系-tf))。
-- 前方 LiDAR (RPLiDAR A1M8) の定義は、URDF でコメントアウトされている。ただし `/scan_front_lidar` は、Nav2 の設定・診断・シミュレータのブリッジから使われている。
 - Livox はリンクだけで、ドライバは起動していない。
 
 ## センサのシミュレーション

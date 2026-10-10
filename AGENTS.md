@@ -82,7 +82,7 @@ source /opt/ros/humble/setup.bash && source /root/ros2_ws/install/setup.bash
 | [`mg_bringup`](./mg_bringup/README.md)             | slam/navigationを束ねるトップレベルlaunch群                    |
 | [`mg_description`](./mg_description/README.md)         | URDF・RViz設定                                                 |
 | [`mg_diagnostics`](./mg_diagnostics/README.md)         | `/diagnostics`トピックへの正常性診断配信                       |
-| [`mg_drivers`](./mg_drivers/README.md)             | LiDAR/DepthCam/GPS/モータドライバ群、ホイールオドメトリの補正(`wheel_odom_corrector_node`)、3D障害物検出 |
+| [`mg_drivers`](./mg_drivers/README.md)             | LiDAR/DepthCam/GPS/モータドライバ群、ホイールオドメトリの補正(`wheel_odom_corrector_node`)、ドライバの途絶の監視と復旧(`driver_watchdog_node`)、3D障害物検出 |
 | [`mg_msgs`](./mg_msgs/README.md)                | カスタムメッセージ・サービス定義                               |
 | [`mg_navigation`](./mg_navigation/README.md)          | Nav2の起動・設定, 自己位置推定の補助ノード(GNSS初期化, AMCL watchdog, AMCL入切の調停`amcl_gate_arbiter`, 監督ノード`localization_supervisor`)。構成は [doc/localization.md](./mg_navigation/doc/localization.md) |
 | [`mg_scenario_test`](./mg_scenario_test/README.md)       | MG-01用のシナリオテスト（プロファイル・プラグイン・シナリオ） |

@@ -46,7 +46,7 @@ const std::array<std::string, 6> SerialErrorStrings = {"NO_ERROR",           "WR
 class SerialCommunicator2
 {
 private:
-  int fd1_;
+  int fd1_ = -1;
   std::string device_name_;
 
   void open_serial(std::string device_name);
@@ -58,6 +58,10 @@ public:
   SerialCommunicator2(std::string device_name);
 
   void reset_serial();
+  void close_serial();
+
+  // デバイスファイル (udev のシンボリックリンクなど) が存在するか。抜かれると消える
+  bool is_device_present() const;
 
   int serial_write(std::vector<uint8_t> buf, bool input_flush = true, bool output_flush = true);
   std::vector<uint8_t> serial_read(int sleep_usec = 5000);

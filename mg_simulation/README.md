@@ -59,14 +59,12 @@ Gazebo のトピックと ROS のトピックの対応。
 | `/odom` | `/odom` | Gazebo → ROS |
 | `/tf` | `/tf` | Gazebo → ROS |
 | `/cmd_vel` | `/cmd_vel` | ROS → Gazebo |
-| `/scan_front_lidar_origin` | `/front_lidar_scan` | Gazebo → ROS |
 | `/scan_top_lidar` | `/top_lidar_scan` | Gazebo → ROS |
 | `/gps/fix` | `/navsat` | Gazebo → ROS |
 | `/rs_d435i/depth/image_raw`、`/rs_d435i/color/image_raw` | `/rgbd_camera/depth_image`、`/rgbd_camera/image` | Gazebo → ROS |
 | `/rs_d435i/depth/camera_info`、`/rs_d435i/color/camera_info` | `/rgbd_camera/camera_info` | Gazebo → ROS |
 | `/rs_d435i/depth/color/points` | `/rgbd_camera/points` | Gazebo → ROS |
 
-- 前方 LiDAR は `/scan_front_lidar_origin` に出る。実機と同じく、`mg_drivers` の公開制御ノードが `/scan_front_lidar` に中継する。
 - 車体の動き (差動駆動と車輪のスリップ) は、URDF の Gazebo プラグインで定義している。
 
 ## シミュレータ用のナビゲーション設定 (`config/nav_bridge_sim.yaml`)

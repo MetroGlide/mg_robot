@@ -65,6 +65,11 @@ void Range::configure()
     std::bind(&Range::dataCallback, this, std::placeholders::_1));
 }
 
+bool Range::isDataStale(const rclcpp::Time & curr_time) const
+{
+  return data_ == nullptr || sourceTimedOut(data_->header.stamp, curr_time);
+}
+
 void Range::getData(
   const rclcpp::Time & curr_time,
   std::vector<Point> & data) const

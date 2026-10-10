@@ -1,0 +1,52 @@
+driver_watchdog_node:
+  ros__parameters:
+    check_period_sec: 0.5
+    # トピックがこの時間途絶えたら異常にする
+    stale_timeout_sec: 1.0
+    # 異常から戻るには、この時間のあいだ正常が続く必要がある
+    recover_hold_sec: 2.0
+    # 起動直後は、初回のメッセージが無くても異常にしない (ドライバの起動を待つ)
+    startup_grace_sec: 30.0
+    # 周期処理がこれ以上遅れたら、監視側の詰まりとみなして再起動を見送る
+    max_tick_gap_sec: 2.0
+
+    # 異常のあいだ、シーケンサに一時停止を出し続ける (戻ったら解除する)
+    pause_on_fault: true
+    pause_request_topic: /waypoint_sequencer_node/pause_request
+    pause_requester_id: driver_watchdog
+
+    # restart_node を持つソースが restart_after_sec 以上途絶えたら、そのノードのプロセスに
+    # SIGTERM を送る (launch の respawn が起動し直す)。kill_timeout_sec たっても残れば SIGKILL
+    restart_enabled: true
+    restart_after_sec: 3.0
+    restart_cooldown_sec: 10.0
+    kill_timeout_sec: 3.0
+
+    # 監視するソース。各ソースの設定は <id>.* に書く
+    #   topic / type (scan, odom, connected) / enabled
+    #   restart_node: 止まったら終了させるノード名 (空なら再起動しない)
+    #   stale_timeout_sec: ソースごとの途絶の判定時間 (省略時は上の値)
+    #   armed_on_first_message: 初回のメッセージを受け取るまで監視しない
+    monitored_sources: [top_lidar, odom, motor]
+
+    top_lidar:
+      topic: scan_top_lidar
+      type: scan
+      enabled: true
+      restart_node: top_rplidar_node
+
+    odom:
+      topic: odom
+      type: odom
+      enabled: true
+      # wheel_odometry_node は自分で再接続する
+      restart_node: ""
+
+    # motor_driver_node が 1 Hz で出す接続状態。false の間は異常
+    motor:
+      topic: /motor_driver_node/connected
+      type: connected
+      enabled: true
+      stale_timeout_sec: 3.0
+      armed_on_first_message: true
+      restart_node: ""

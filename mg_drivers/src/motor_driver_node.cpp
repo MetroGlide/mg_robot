@@ -2,12 +2,14 @@
 
 using mg_drivers::MotorDriverNode;
 
-MotorDriverNode::MotorDriverNode(rclcpp::NodeOptions options) : Node("motor_driver_node", options)
+MotorDriverNode::MotorDriverNode(rclcpp::NodeOptions options)
+: SerialDriverNode("motor_driver_node", "motor_driver", options)
 {
   init_ros_params();
   prepare_ros_communications();
 
   motor_driver_ = std::make_shared<mg_drivers::MotorDriver>(device_name_);
+  set_device(motor_driver_);
 }
 
 void MotorDriverNode::init_ros_params()
@@ -75,8 +77,9 @@ mg_drivers::MotorDriverResponse MotorDriverNode::send_speed_command(
   // TODO: print log about res
 
   if (res.error != SerialError::NO_ERROR && res.error != SerialError::CHECKSUM_ERROR) {
-    RCLCPP_ERROR(
-      this->get_logger(), "Failed to send speed command to motor driver: %s",
+    RCLCPP_ERROR_THROTTLE(
+      this->get_logger(), *this->get_clock(), 1000,
+      "Failed to send speed command to motor driver: %s",
       SerialErrorStrings[static_cast<int>(res.error)].c_str());
   }
 
@@ -92,7 +95,11 @@ void MotorDriverNode::twist_sub_cb(const geometry_msgs::msg::Twist::SharedPtr ms
 
   SpeedParameter req = create_speed_parameter(msg);
 
-  motor_driver_->send_speed_command(req);
+  MotorDriverResponse res = send_speed_command(req);
+  // チェックサムの誤りは、応答があったので、接続の判断には使わない
+  if (res.error != SerialError::CHECKSUM_ERROR) {
+    handle_serial_error(res.error);
+  }
 }
 
 void MotorDriverNode::emergency_stop_sub_cb(const std_msgs::msg::Bool::SharedPtr msg)

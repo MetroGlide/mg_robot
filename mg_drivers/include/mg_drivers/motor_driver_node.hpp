@@ -19,11 +19,12 @@
 #include <string>
 
 // mg_drivers
+#include "mg_drivers/base/serial_driver_node.hpp"
 #include "mg_drivers/devices/motor_driver.hpp"
 
 namespace mg_drivers
 {
-class MotorDriverNode : public rclcpp::Node
+class MotorDriverNode : public SerialDriverNode
 {
 public:
   explicit MotorDriverNode(rclcpp::NodeOptions options);

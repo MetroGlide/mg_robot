@@ -48,6 +48,8 @@ include_directories(
 add_library(${PROJECT_NAME}_lib
   "src/base/serial_communicator.cpp"
   "src/base/serial_communicator2.cpp"
+  "src/base/serial_device.cpp"
+  "src/base/serial_driver_node.cpp"
 
   "src/devices/motor_driver.cpp"
   "src/sensors/wheel_odometry.cpp"
@@ -134,6 +136,12 @@ if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
   ament_add_gtest(test_obstacle_detector test/test_obstacle_detector.cpp)
   target_link_libraries(test_obstacle_detector obstacle_detector)
+
+  ament_add_gtest(test_serial_communicator2 test/test_serial_communicator2.cpp)
+  target_link_libraries(test_serial_communicator2 ${PROJECT_NAME}_lib)
+
+  ament_add_gtest(test_serial_driver_node test/test_serial_driver_node.cpp)
+  target_link_libraries(test_serial_driver_node ${PROJECT_NAME}_lib)
 endif()
 
 ################################################################################
@@ -188,7 +196,8 @@ install(PROGRAMS
   DESTINATION lib/${PROJECT_NAME}
 )
 install(PROGRAMS
-  scripts/lidar_publish_controller_node.py
+  scripts/driver_watchdog_node.py
+  scripts/driver_watchdog_core.py
   DESTINATION lib/${PROJECT_NAME}
 )
 install(PROGRAMS

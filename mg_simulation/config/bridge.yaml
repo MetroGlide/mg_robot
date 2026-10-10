@@ -22,12 +22,6 @@
   gz_type_name: "ignition.msgs.Twist"
   direction: ROS_TO_GZ
 
-- ros_topic_name: "/scan_front_lidar_origin"
-  gz_topic_name: "/front_lidar_scan"
-  ros_type_name: "sensor_msgs/msg/LaserScan"
-  gz_type_name: "ignition.msgs.LaserScan"
-  direction: GZ_TO_ROS
-
 - ros_topic_name: "/scan_top_lidar"
   gz_topic_name: "/top_lidar_scan"
   ros_type_name: "sensor_msgs/msg/LaserScan"

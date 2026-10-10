@@ -214,7 +214,6 @@ local_costmap:
 
       plugins: [
           "top_obstacle_layer",
-          # "obstacle_layer",
           # "depth_voxel_layer",
           "obstacle_stvl_layer",
           # "denoise_layer",
@@ -232,16 +231,6 @@ local_costmap:
         # NavFn に戻す場合 (global_planner:=navfn) は、従来の inflation_radius: 2.5 / cost_scaling_factor: 1.0 も検討する。
         inflation_radius: 0.8
         cost_scaling_factor: 3.0
-      obstacle_layer:
-        plugin: "nav2_costmap_2d::ObstacleLayer"
-        enabled: True
-        observation_sources: scan
-        scan:
-          topic: /scan_front_lidar
-          max_obstacle_height: 2.0
-          clearing: True
-          marking: True
-          data_type: "LaserScan"
       top_obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: True
@@ -333,7 +322,6 @@ global_costmap:
       plugins: [
           "static_layer",
           "top_obstacle_layer",
-          # "obstacle_layer",
           "obstacle_stvl_layer",
           # "denoise_layer",
           "inflation_layer",
@@ -354,21 +342,6 @@ global_costmap:
           raytrace_max_range: 6.0
           raytrace_min_range: 0.0
           obstacle_max_range: 5.5
-          obstacle_min_range: 0.0
-
-      obstacle_layer:
-        plugin: "nav2_costmap_2d::ObstacleLayer"
-        enabled: True
-        observation_sources: scan
-        scan:
-          topic: /scan_front_lidar
-          max_obstacle_height: 2.0
-          clearing: True
-          marking: True
-          data_type: "LaserScan"
-          raytrace_max_range: 3.0
-          raytrace_min_range: 0.0
-          obstacle_max_range: 2.5
           obstacle_min_range: 0.0
 
       depth_voxel_layer:
@@ -506,15 +479,11 @@ collision_detector:
       visualize: True
       polygon_pub_topic: "~/polygon_rear"
 
-    observation_sources: ["scan_top", "scan_front"]
+    observation_sources: ["scan_top"]
     scan_top:
       type: "scan"
       topic: "scan_top_lidar"
       enabled: True
-    scan_front:
-      type: "scan"
-      topic: "scan_front_lidar"
-      enabled: False
 
 collision_monitor:
   ros__parameters:
@@ -581,6 +550,11 @@ collision_monitor:
       type: "scan"
       topic: "scan_top_lidar"
       enabled: True
+      # True にすると、このソースのデータが source_timeout 以上途絶えた (まだ届いていない場合を含む)
+      # とき、ポリゴンの enabled によらず速度 0 にする (state の polygon_name は
+      # "source_timeout:scan_top")。LiDAR が止まったまま走り続けるのを防ぐ。
+      # 動的パラメータ: ros2 param set /collision_monitor scan_top.stop_on_timeout true
+      stop_on_timeout: False
 
 # https://docs.nav2.org/configuration/packages/configuring-velocity-smoother.html
 # collision_monitor/PolygonStopによる急停止からの復帰時に速度が滑らかに立ち上がるよう、

@@ -12,7 +12,6 @@ MG-01 のノードとデータの流れ、座標系 (TF)、センサの取り付
 │ (ホイール)      │─────►│ wheel_odometry_node│─ /odom/raw ─► wheel_odom_corrector ─ /odom ─┼─► EKF (ekf_global_node)
 ├────────────────┤       ├───────────────────┤                                            │      ▲ ▲ ▲
 │ RPLiDAR S2 (上) │─────►│ rplidar_node       │─ /scan_top_lidar ───────────► AMCL ─ /amcl_pose ┘ │ │
-│ RPLiDAR A1 (前) │─────►│ rplidar_node       │─ /scan_front_lidar ─► (障害物回避)                 │ │
 ├────────────────┤       ├───────────────────┤                                                   │ │
 │ u-blox GNSS     │─────►│ ublox_gps_node     │─ /navpvt ─► slam_gnss_nav_bridge ─ /odom/gps ─────┘ │
 ├────────────────┤       ├───────────────────┤                                                     │
@@ -78,7 +77,6 @@ base_link ─► left_wheel_link  (y=+0.25, 半径 0.15)
 ```
 
 - 車輪間隔は 0.5 m。
-- 前方 LiDAR (`front_lrf_link`) は URDF の定義がコメントアウトされている。ただし `/scan_front_lidar` は、Nav2 の設定・シミュレータのブリッジから参照され続けている (診断と Web UI の表示からは外した)。
 - Livox は URDF のリンクがあるだけで、ドライバは起動していない。
 
 ## センサとデバイス
@@ -87,7 +85,6 @@ base_link ─► left_wheel_link  (y=+0.25, 半径 0.15)
 | :--- | :--- | :--- | :--- |
 | ホイール (モータドライバ) | 自作 `motor_driver_node` / `wheel_odometry_node` | `/cmd_vel` (入力)、`/odom/raw` または `/odom` | `/dev/ttyRobot-motordriver` / `/dev/ttyRobot-odom` |
 | 上 LiDAR RPLiDAR S2 | `rplidar_ros` | `/scan_top_lidar` | `/dev/ttyRobot-toplidar` |
-| 前 LiDAR RPLiDAR A1M8 | `rplidar_ros` | `/scan_front_lidar_origin` → (公開制御) → `/scan_front_lidar` | `/dev/ttyRobot-frontlidar` |
 | GNSS u-blox | `ublox_gps_node` (UBX) または `nmea_navsat_driver` (NMEA) | `/gps/fix`、`/navpvt` | `/dev/ttyRobot-gps` |
 | RealSense D435i | `realsense2_camera` | `/camera/camera/depth/color/points` ほか | USB |
 
