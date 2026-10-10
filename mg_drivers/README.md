@@ -9,8 +9,8 @@
 
 | 実行ファイル | 内容 | 主な入出力 |
 | :--- | :--- | :--- |
-| `wheel_odometry_node` | 車輪のエンコーダ (シリアル) からオドメトリを出す。切断されたら再接続する ([切断からの復旧](#切断からの復旧)) | 出力: `odom` (`nav_msgs/Odometry`)、`~/connected` (`Bool`、1 Hz) |
-| `motor_driver_node` | 速度指令をモータドライバ (シリアル) に送る。切断されたら再接続する ([切断からの復旧](#切断からの復旧)) | 入力: `cmd_vel` (`Twist`)、`~/emergency_stop` (`Bool`)、出力: `~/connected` (`Bool`、1 Hz) |
+| `wheel_odometry_node` | 車輪のエンコーダ (シリアル) からオドメトリを出す。切断されたら再接続する ([切断からの復旧](#切断からの復旧)) | 出力: `odom` (`nav_msgs/Odometry`)、`~/connected` (`Bool`、1 Hz)、診断 `connection`、イベント `driver.*` |
+| `motor_driver_node` | 速度指令をモータドライバ (シリアル) に送る。切断されたら再接続する ([切断からの復旧](#切断からの復旧)) | 入力: `cmd_vel` (`Twist`)、`~/emergency_stop` (`Bool`)、出力: `~/connected` (`Bool`、1 Hz)、診断 `connection`・`emergency_stop`、イベント `driver.*` |
 | `depth_postprocess_node` | 点群をボクセルグリッドで間引き、統計的な外れ値を除く | 入力: `points`、出力: `points_filtered` (`PointCloud2`) |
 | `obstacle_detection_3d_node` | 点群から立体障害物を検出する ([doc](./doc/obstacle_detection_3d.md)) | 入力: `points`、出力: `~/points_obstacle`、`~/cluster_markers` |
 | `pcl_downsampling_node` | 点群の間引き。どの launch からも起動されない | 入力: `points/raw`、出力: `points/downsampled` |
@@ -129,6 +129,10 @@ ros2 run mg_drivers odom_offset_republisher.py
 | 連続エラーでの開き直し | 連続 `<prefix>.error_recovery_count` (既定 4。`odometry.` / `motor_driver.`) 回のエラーで、シリアルを開き直す (1 回だけ) |
 | 1 Hz の確認 (`health_check`) | デバイスファイルが消えたら、ポートを閉じる。戻ったら開き直し、`probe()` で通信を確かめる。開けていない、または連続エラーが閾値以上なら、同様に開き直して確かめる。エラーが 1 回以上あれば、`probe()` で確かめる (指令が無いあいだの切断に気づくため) |
 | `~/connected` (`Bool`、1 Hz) | `true`: ポートが開いていて、デバイスがあり、連続エラーが 0 |
+| 診断 `<ノード名>: connection` (`diagnostic_updater`、1 Hz) | 接続していれば `OK`、切れていれば `ERROR` (メッセージは理由: `device missing` / `port closed` / `communication errors`)。`hardware_id` は `motor_driver` / `odometry`。`values`: `consecutive_errors`、`device_present`、`reconnect_attempts` (今回の切断のあいだに開き直した回数)、`disconnect_count` (起動してからの切断の回数) |
+| イベント (`driver.*`) | 接続の状態の変化を、`driver.connected` / `driver.disconnected` (`device`、`reason`) に出す。開き直しは `driver.reconnect_attempt` (`device`、`reason`、`count`) で、最初の 1 回と、以降は 10 回ごとに出す (1 Hz の再試行で埋めないため)。`motor_driver_node` は E-Stop の変化を `driver.estop_changed` (`active`) に出す ([doc/monitoring.md](../doc/monitoring.md)) |
+
+`motor_driver_node` は、診断 `motor_driver_node: emergency_stop` も出す (E-Stop が有効なら `WARN`)。診断は集約で `/Robot/Drivers/Motor` に入る。
 
 オドメトリは、以前は閾値に達したあと、毎周期 (20 Hz) 開き直していた。今は 1 回だけ開き直し、以降は 1 Hz で再試行する。
 

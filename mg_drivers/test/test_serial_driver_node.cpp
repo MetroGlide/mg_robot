@@ -4,6 +4,8 @@
 #include <memory>
 #include <optional>
 
+#include <diagnostic_msgs/msg/diagnostic_status.hpp>
+#include <diagnostic_updater/diagnostic_updater.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/bool.hpp>
 
@@ -58,6 +60,8 @@ public:
   using SerialDriverNode::handle_serial_error;
   using SerialDriverNode::health_check;
   using SerialDriverNode::is_connected;
+  using SerialDriverNode::disconnect_reason;
+  using SerialDriverNode::produce_connection_diagnostics;
 
   std::shared_ptr<FakeDevice> device;
 };
@@ -211,4 +215,72 @@ TEST_F(SerialDriverNodeTest, PublishesConnectedState)
   EXPECT_TRUE(wait_for(true));
   node->device->present = false;
   EXPECT_TRUE(wait_for(false));
+}
+
+namespace
+{
+using diagnostic_msgs::msg::DiagnosticStatus;
+
+DiagnosticStatus connection_status(TestNode & node)
+{
+  diagnostic_updater::DiagnosticStatusWrapper stat;
+  node.produce_connection_diagnostics(stat);
+  return stat;
+}
+
+std::string value_of(const DiagnosticStatus & status, const std::string & key)
+{
+  for (const auto & kv : status.values) {
+    if (kv.key == key) {
+      return kv.value;
+    }
+  }
+  return "";
+}
+}  // namespace
+
+TEST_F(SerialDriverNodeTest, ConnectionDiagnosticIsOkWhenConnected)
+{
+  node->health_check();
+
+  const auto status = connection_status(*node);
+  EXPECT_EQ(status.level, DiagnosticStatus::OK);
+  EXPECT_EQ(status.message, "connected");
+  EXPECT_EQ(value_of(status, "device_present"), "True");
+  EXPECT_EQ(value_of(status, "disconnect_count"), "0");
+}
+
+TEST_F(SerialDriverNodeTest, ConnectionDiagnosticIsErrorOnCommunicationErrors)
+{
+  fail(1);
+
+  const auto status = connection_status(*node);
+  EXPECT_EQ(status.level, DiagnosticStatus::ERROR);
+  EXPECT_EQ(status.message, "communication errors");
+  EXPECT_EQ(value_of(status, "consecutive_errors"), "1");
+}
+
+TEST_F(SerialDriverNodeTest, ConnectionDiagnosticReportsMissingDeviceAndCountsDisconnects)
+{
+  node->device->present = false;
+  node->health_check();
+
+  const auto status = connection_status(*node);
+  EXPECT_EQ(status.level, DiagnosticStatus::ERROR);
+  EXPECT_EQ(status.message, "device missing");
+  EXPECT_EQ(value_of(status, "device_present"), "False");
+  EXPECT_EQ(value_of(status, "disconnect_count"), "1");
+}
+
+TEST_F(SerialDriverNodeTest, ReconnectAttemptsAreCountedAndResetOnConnect)
+{
+  node->device->probe_result = SerialError::WRITE_ERROR;
+  fail(4);
+  node->health_check();
+  EXPECT_NE(value_of(connection_status(*node), "reconnect_attempts"), "0");
+
+  node->device->probe_result = SerialError::NO_ERROR;
+  node->health_check();
+  ASSERT_EQ(connection_status(*node).level, DiagnosticStatus::OK);
+  EXPECT_EQ(value_of(connection_status(*node), "reconnect_attempts"), "0");
 }
