@@ -31,25 +31,29 @@
 
 ### 集約のパス (UI との契約)
 
-aggregator は、最上位を次の区分にまとめる。
+aggregator は、`/Robot` の下を次の区分にまとめる。
 
 | 区分 | 内容 |
 | :--- | :--- |
-| `/Drivers` | センサ・モータなどの機器とドライバ |
-| `/Localization` | 自己位置推定 (AMCL、EKF、監視ノード) |
-| `/Navigation` | Nav2、waypoint_sequencer、collision_monitor |
-| `/Mapping` | SLAM |
-| `/System` | PC の資源 |
-| `/Other` | どれにも当てはまらないもの |
+| `/Robot/Drivers` | センサ・モータなどの機器とドライバ |
+| `/Robot/Localization` | 自己位置推定 (AMCL、EKF、監視ノード) |
+| `/Robot/Navigation` | Nav2、waypoint_sequencer、collision_monitor |
+| `/Robot/Mapping` | SLAM |
+| `/Robot/System` | PC の資源 |
+| `/Robot/Other` | どれにも当てはまらないもの (異常とはしない) |
+
+- 実機のドライバ (`/Robot/Drivers`) は、実機だけで集約する (`simulation:=true` では集約しない)。実機では、必ず出ているはずの診断が欠けると、集約が `STALE` ("Missing") にする。
+- 診断が一定時間 (`timeout`) 届かなくなったものも `STALE` になり、上位のグループは `ERROR` になる。
+- 常に `WARN` / `ERROR` になる第三者の診断は、`DiscardAnalyzer` で捨てる (生の `/diagnostics` と rosbag には残る)。
 
 UI が個別に参照する項目のパスは、次に固定する。変えるときは、UI の `diagnosticPaths.ts` と一緒に変える。
 
 | パス | 内容 |
 | :--- | :--- |
-| `/Drivers/GNSS` | GNSS の受信状態 |
-| `/Localization/Monitor` | 自己位置推定の監視 (watchdog か supervisor) |
-| `/Navigation/Nav2` | Nav2 の lifecycle (`Nav2 Health`) |
-| `/System/Resources` | CPU とメモリ |
+| `/Robot/Drivers/GNSS` | GNSS の受信状態 |
+| `/Robot/Localization/Monitor` | 自己位置推定の監視 (watchdog か supervisor) |
+| `/Robot/Navigation/Nav2` | Nav2 の lifecycle (`Nav2 Health`) |
+| `/Robot/System/Resources` | CPU とメモリ |
 
 ### 第三者ノードの診断
 
