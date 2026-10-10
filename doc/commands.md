@@ -67,9 +67,8 @@
 | `make web-ui` | `web-ui` | ビルド済みの Web UI を配信 (8080) |
 | `make web-ui-dev` | `web-ui-dev` | Vite 開発サーバ (5173) |
 | `make system-manager` | `system-manager` | 管理 API (8001) |
-| `make diagnostics` | `diagnostics` | `mg_diagnostics` の診断ノード |
-| `make ui-all` | `system-manager`・`web-ui`・`foxglove-bridge`・`diagnostics` | 本番用に一式を起動 |
-| `make ui-dev-all` | `system-manager`・`web-ui-dev`・`foxglove-bridge`・`diagnostics` | 開発用に一式を起動 |
+| `make ui-all` | `system-manager`・`web-ui`・`foxglove-bridge` | 本番用に一式を起動 |
+| `make ui-dev-all` | `system-manager`・`web-ui-dev`・`foxglove-bridge` | 開発用に一式を起動 |
 | `make ui-lint` | `web-ui-dev` | フロントエンドの型チェックと lint |
 | `make ui-test` | `web-ui-dev` と `develop` | フロントエンド (vitest) と system_manager (pytest) のテスト |
 

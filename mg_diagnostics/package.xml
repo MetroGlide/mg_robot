@@ -13,6 +13,7 @@
   <depend>rclpy</depend>
   <depend>std_msgs</depend>
   <depend>diagnostic_msgs</depend>
+  <depend>rcl_interfaces</depend>
   <depend>diagnostic_updater</depend>
   <depend>diagnostic_aggregator</depend>
   <depend>mg_utils</depend>

@@ -7,7 +7,7 @@
 .PHONY: slam navigation slam-gnss-2d offline-slam-gnss-2d reoptimize rosbag-replay \
         obstacle-detection-replay gazebo-simulation develop \
         rviz2 rviz2-slam rviz2-navigation \
-        foxglove-bridge diagnostics system-manager web-ui web-ui-dev ui-all ui-dev-all
+        foxglove-bridge system-manager web-ui web-ui-dev ui-all ui-dev-all
 
 # slam_toolbox の SLAM を起動する。
 #   DETACH=1 / OPTS="..."
@@ -75,9 +75,6 @@ rviz2-navigation: ## RViz2 (ナビゲーション用の設定) [DETACH]
 foxglove-bridge: ## foxglove_bridge を起動 (:8765) [DETACH]
 	$(COMPOSE) up $(_up_flags) foxglove-bridge
 
-diagnostics: ## 診断ノードを起動 [DETACH]
-	$(COMPOSE) up $(_up_flags) diagnostics
-
 system-manager: ## system_manager (管理 API :8001) を起動 [DETACH]
 	$(COMPOSE) up $(_up_flags) system-manager
 
@@ -88,8 +85,8 @@ web-ui: ## ビルド済みの Web UI を配信 (:8080) [DETACH]
 web-ui-dev: ## Web UI の開発サーバを起動 (:5173)
 	$(COMPOSE) up web-ui-dev
 
-ui-all: ## 本番用に system-manager・web-ui・foxglove-bridge・diagnostics を一式起動 [DETACH]
-	$(COMPOSE) up $(_up_flags) system-manager web-ui foxglove-bridge diagnostics
+ui-all: ## 本番用に system-manager・web-ui・foxglove-bridge を一式起動 [DETACH]
+	$(COMPOSE) up $(_up_flags) system-manager web-ui foxglove-bridge
 
-ui-dev-all: ## 開発用に system-manager・web-ui-dev・foxglove-bridge・diagnostics を一式起動 [DETACH]
-	$(COMPOSE) up $(_up_flags) system-manager web-ui-dev foxglove-bridge diagnostics
+ui-dev-all: ## 開発用に system-manager・web-ui-dev・foxglove-bridge を一式起動 [DETACH]
+	$(COMPOSE) up $(_up_flags) system-manager web-ui-dev foxglove-bridge

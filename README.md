@@ -88,7 +88,7 @@ make scenario-test-all TIER=smoke   # シミュレータでの回帰テスト (�
 | [slam_gnss_2d](./slam_gnss_2d/README.md) | GNSS 拘束付き 2D SLAM (C++)、GNSS ブリッジ |
 | [mg_slam](./mg_slam/README.md) | slam_toolbox の launch、地図プレビュー |
 | [mg_ui](./mg_ui/README.md) | Web UI と system_manager |
-| [mg_diagnostics](./mg_diagnostics/README.md) | `/diagnostics` への診断の配信 |
+| [mg_diagnostics](./mg_diagnostics/README.md) | 診断の集約 (`/diagnostics_agg`)、第三者のノードの監視、イベントの中継 (`/events`) |
 | [mg_msgs](./mg_msgs/README.md) | メッセージ・サービスの定義 |
 | [mg_utils](./mg_utils/README.md) | launch 引数の補助、点群の変換、rosbag の収録 launch |
 | [mg_simulation](./mg_simulation/README.md) | Gazebo Fortress のワールドと launch |

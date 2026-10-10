@@ -1,0 +1,4 @@
+# 地図作成 (SLAM) のスタックの集約。今は SLAM のノードが診断を出さないので、共通の設定
+# (common.yaml、実機では drivers.yaml) だけを使う。SLAM の診断を足すときは、ここに Mapping のグループを書く。
+analyzers:
+  ros__parameters: {}

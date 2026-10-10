@@ -259,10 +259,6 @@ services:
       RVIZ_CONFIG: ${RVIZ_CONFIG:-}
     command: bash -c "exec rviz2 $${RVIZ_CONFIG:+--display-config $$RVIZ_CONFIG}"
 
-  diagnostics:
-    <<: *runtime-core
-    command: ros2 launch mg_diagnostics monitoring.launch.py
-
   waypoint-editor:
     <<: *develop-gui
     command: ros2 launch mg_waypoint_navigation waypoint_editor.launch.py

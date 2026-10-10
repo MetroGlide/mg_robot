@@ -99,4 +99,4 @@ ROS が必要な `topic_source`、`diagnostic_task` は、`make test` (ROS を�
 
 ## 依存
 
-`package.xml` には、`ament_cmake`、`ament_cmake_python`、`diagnostic_msgs`、`diagnostic_updater` (`diagnostic_task` 用)、テストの `ament_cmake_gtest` が書かれている。`launch`、`launch_ros`、`ament_index_python`、`rclpy`、`numpy` は、書かれていない。
+`package.xml` には、`ament_cmake`、`ament_cmake_python`、`rclpy`・`rosidl_runtime_py` (`topic_source` 用)、`diagnostic_msgs`・`diagnostic_updater` (`diagnostic_task` 用)、テストの `ament_cmake_gtest` が書かれている。`launch`、`launch_ros`、`ament_index_python`、`numpy` は、書かれていない。

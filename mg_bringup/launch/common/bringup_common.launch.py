@@ -3,6 +3,7 @@
 import launch
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription
+from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration, EnvironmentVariable
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from ament_index_python.packages import get_package_share_directory
@@ -19,6 +20,8 @@ def generate_launch_description():
 
     description_pkg_name = "mg_description"
     description_pkg_share = get_package_share_directory(description_pkg_name)
+
+    monitoring_pkg_share = get_package_share_directory("mg_diagnostics")
 
     # Launch configurations
     launch_argument_creator = launch_argument.LaunchArgumentCreator()
@@ -43,7 +46,17 @@ def generate_launch_description():
         "use_odom_corrector", default="false")
     odom_corrector_params_file_arg = launch_argument_creator.create(
         "odom_corrector_params_file", default="wheel_odom_corrector.yaml")
-
+    use_monitoring_arg = launch_argument_creator.create(
+        "use_monitoring", default="true")
+    # 診断の集約と、第三者のノードの監視の設定。既定はナビゲーションのスタック用
+    analyzers_arg = launch_argument_creator.create(
+        "analyzers",
+        default=monitoring_pkg_share + "/params/analyzers/navigation.yaml")
+    use_topic_monitor_arg = launch_argument_creator.create(
+        "use_topic_monitor", default="true")
+    topic_monitor_params_arg = launch_argument_creator.create(
+        "topic_monitor_params",
+        default=monitoring_pkg_share + "/params/topic_monitor/navigation.yaml")
 
     # Launch drivers
     launch_drivers = IncludeLaunchDescription(
@@ -72,11 +85,25 @@ def generate_launch_description():
         }.items(),
     )
 
+    launch_monitoring = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            monitoring_pkg_share + "/launch/monitoring.launch.py"
+        ),
+        launch_arguments={
+            "simulation": simulation_arg.launch_config,
+            "analyzers": analyzers_arg.launch_config,
+            "use_topic_monitor": use_topic_monitor_arg.launch_config,
+            "topic_monitor_params": topic_monitor_params_arg.launch_config,
+        }.items(),
+        condition=IfCondition(use_monitoring_arg.launch_config),
+    )
+
     return LaunchDescription(
         [
             *launch_argument_creator.get_created_declare_launch_args(),
 
             launch_drivers,
             launch_description,
+            launch_monitoring,
         ]
     )

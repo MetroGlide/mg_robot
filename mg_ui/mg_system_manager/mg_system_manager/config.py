@@ -46,7 +46,6 @@ SERVICE_LAYERS = (
 
 SERVICES = (
     ServiceSpec("foxglove-bridge", "Foxglove Bridge", "core"),
-    ServiceSpec("diagnostics", "Diagnostics", "core"),
     ServiceSpec("navigation", "Navigation", "function", hardware=True),
     ServiceSpec("slam", "SLAM", "function", hardware=True),
     ServiceSpec("slam-gnss-2d", "SLAM GNSS 2D", hardware=True),

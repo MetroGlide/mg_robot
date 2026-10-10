@@ -1,13 +1,4 @@
 {
- "/diagnostics/restart": [
-  "POST"
- ],
- "/diagnostics/start": [
-  "POST"
- ],
- "/diagnostics/stop": [
-  "POST"
- ],
  "/foxglove-bridge/restart": [
   "POST"
  ],

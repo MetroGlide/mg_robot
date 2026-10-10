@@ -54,14 +54,14 @@ MG-01 の状態の表示と操作のための UI。ブラウザ (タブレット
 
 ### 本番
 
-前提: `make slam` または `make navigation` が起動済みであること。操作系の機能を使うには、`make diagnostics` と `make system-manager` も必要。
+前提: `make slam` または `make navigation` が起動済みであること。操作系の機能を使うには、`make system-manager` も必要。状態の表示 (診断・イベント) は、`make slam` / `make navigation` のコンテナが出す ([doc/monitoring.md](../doc/monitoring.md))。
 
 ```bash
 make build svc=web-ui    # 初回と、フロントエンドを変えたとき
-make ui-all              # system-manager・web-ui・foxglove-bridge・diagnostics を起動
+make ui-all              # system-manager・web-ui・foxglove-bridge を起動
 ```
 
-タブレットやブラウザから `http://<ロボットの IP>:8080` を開く。個別に起動するときは、`make web-ui`、`make foxglove-bridge`、`make system-manager`、`make diagnostics`。
+タブレットやブラウザから `http://<ロボットの IP>:8080` を開く。個別に起動するときは、`make web-ui`、`make foxglove-bridge`、`make system-manager`。
 
 `web_ui.launch.py` の引数: `port` (既定 8080)、`dist_dir` (空なら、インストールした `frontend/dist`)。
 

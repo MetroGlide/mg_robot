@@ -33,7 +33,6 @@ UI の System ページでの表示グループ (`layer`) は、Core、Function�
 | サービス | 表示名 | グループ | ハードウェア |
 | :--- | :--- | :--- | :--- |
 | `foxglove-bridge` | Foxglove Bridge | Core | |
-| `diagnostics` | Diagnostics | Core | |
 | `navigation` | Navigation | Function | ○ |
 | `slam` | SLAM | Function | ○ |
 | `slam-gnss-2d` | SLAM GNSS 2D | (なし) | ○ |

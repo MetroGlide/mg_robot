@@ -62,10 +62,10 @@ def test_start_failure_returns_stderr(client, compose_calls):
 
 
 def test_restart_runs_compose_restart(client, compose_calls):
-    client.post("/diagnostics/restart")
+    client.post("/foxglove-bridge/restart")
 
     assert compose_calls.calls[0]["command"] == [
-        "docker", "compose", "restart", "diagnostics"]
+        "docker", "compose", "restart", "foxglove-bridge"]
 
 
 def test_stop_stops_container(client, containers):

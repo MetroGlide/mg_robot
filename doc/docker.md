@@ -29,7 +29,7 @@ frontend-builder  node:20-slim。Web UI をビルドして dist/ だけを web-u
 
 | ステージ | 使うサービス (compose) | イメージ名 |
 | :--- | :--- | :--- |
-| `runtime` | slam / slam-gnss-2d / offline-slam-gnss-2d / reoptimize-slam / navigation / rosbag-replay / map-preview / diagnostics / foxglove-bridge / scenario-remote-stack | `mg_runtime` |
+| `runtime` | slam / slam-gnss-2d / offline-slam-gnss-2d / reoptimize-slam / navigation / rosbag-replay / map-preview / foxglove-bridge / scenario-remote-stack | `mg_runtime` |
 | `develop` | develop / rviz2 系 / obstacle-detection-replay / waypoint-editor / system-manager | `mg_develop` |
 | `simulation` | gazebo-simulation / scenario-test / scenario-env | `mg_simulation` |
 | `web-ui` | web-ui | `mg_web_ui` |
@@ -136,7 +136,7 @@ compose の設定がないコンテナ (手で `docker run` したものなど) 
 `compose.yaml` の先頭にある YAML アンカー (`x-*`) に共通の設定をまとめ、各サービスが `<<:` で取り込む。
 
 - ネットワークは `host`。
-- **権限**: センサのデバイスを使うサービス (`slam`・`navigation`・`slam-gnss-2d`・`develop`・Gazebo 系など) は、`privileged: true` と `/dev` のマウントを使う (センサのシリアルポートのため)。デバイスを使わないサービス (`diagnostics`・`foxglove-bridge`・`system-manager`・RViz2 系・`waypoint-editor`・`web-ui`) は、`privileged` も `/dev` も使わない。RViz2 系と `waypoint-editor` は、GPU 描画のために `/dev/dri` だけを渡す。新しいサービスを足すときは、デバイスが要らなければ `x-runtime-core` / `x-develop-core` を使う。
+- **権限**: センサのデバイスを使うサービス (`slam`・`navigation`・`slam-gnss-2d`・`develop`・Gazebo 系など) は、`privileged: true` と `/dev` のマウントを使う (センサのシリアルポートのため)。デバイスを使わないサービス (`foxglove-bridge`・`system-manager`・RViz2 系・`waypoint-editor`・`web-ui`) は、`privileged` も `/dev` も使わない。RViz2 系と `waypoint-editor` は、GPU 描画のために `/dev/dri` だけを渡す。新しいサービスを足すときは、デバイスが要らなければ `x-runtime-core` / `x-develop-core` を使う。
 - GUI (RViz2、Gazebo) を使うときは、先にホストで `make xhost` を実行する。
 - データの置き場として、ホストの `${HOME}/ros2_data` を `/root/ros2_data` にマウントする ([environment.md](./environment.md))。
 - DDS は `rmw_cyclonedds_cpp`。開発 PC と実機 PC をまたぐシナリオテストでは、`docker/cyclonedds/remote.xml` で通信相手とインターフェースを指定する ([mg_scenario_test の README](../mg_scenario_test/README.md))。
