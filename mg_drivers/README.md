@@ -20,7 +20,7 @@
 | 実行ファイル | 内容 | 主な入出力 |
 | :--- | :--- | :--- |
 | `wheel_odom_corrector_node.py` | ホイールオドメトリのスケール・バイアスを補正し、速度の共分散を設定する ([doc](./doc/wheel_odom_corrector.md)) | 入力: `odom/raw`、出力: `odom` |
-| `driver_watchdog_node.py` | LiDAR・オドメトリ・モータドライバの途絶を監視し、シーケンサに一時停止を出す。止まった上流ドライバ (rplidar) は終了させて、respawn に起動し直させる ([doc](./doc/driver_watchdog.md)) | 入力: `scan_top_lidar`、`odom`、`/motor_driver_node/connected`、出力: `/diagnostics`、`/waypoint_sequencer_node/pause_request` |
+| `driver_watchdog_node.py` | LiDAR・オドメトリ・モータドライバの途絶を監視し、シーケンサに一時停止を出す。止まった上流ドライバ (rplidar) は終了させて、respawn に起動し直させる ([doc](./doc/driver_watchdog.md)) | 入力: `scan_top_lidar`、`odom`、`/motor_driver_node/connected`、出力: 診断 `driver_watchdog_node: <id>`、イベント `watchdog.*`、`/waypoint_sequencer_node/pause_request` |
 | `odometry_tf_broadcaster_node.py` | `odom` から TF `odom→base_footprint` を配信する | 入力: `odom` |
 | `pose_with_cov_publish_controller_node.py` | `PoseWithCovarianceStamped` の中継を入/切する | 入力: `pose_with_cov_origin`、出力: `pose_with_cov`、サービス: `~/change_publish_state` |
 | `generic_publish_controller_node.py` | 任意の型のトピックの中継を入/切する (`msg_module`・`msg_class`・`publish`・`queue_size` で指定)。AMCL の出力のゲート (`amcl_publish_controller_node`) に使う ([mg_navigation](../mg_navigation/README.md)) | 入力: `input_topic`、出力: `output_topic`、サービス: `~/change_publish_state` |
