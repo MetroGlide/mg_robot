@@ -11,6 +11,7 @@ install(DIRECTORY launch params
 
 install(PROGRAMS
   scripts/topic_monitor_node.py
+  scripts/event_relay_node.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

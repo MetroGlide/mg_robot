@@ -47,6 +47,10 @@ def generate_launch_description():
         )
 
     common = _params("analyzers", "common.yaml")
+    use_event_relay = arg.create(
+        "use_event_relay", default="true",
+        description="イベントログを /events に中継し、診断のレベルの変化をイベントにする")
+
     return LaunchDescription([
         *arg.get_created_declare_launch_args(),
         aggregator(
@@ -60,5 +64,12 @@ def generate_launch_description():
             parameters=[topic_monitor_params.launch_config],
             output="screen",
             condition=IfCondition(use_topic_monitor.launch_config),
+        ),
+        Node(
+            package="mg_diagnostics",
+            executable="event_relay_node.py",
+            name="event_relay_node",
+            output="screen",
+            condition=IfCondition(use_event_relay.launch_config),
         ),
     ])
