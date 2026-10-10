@@ -29,6 +29,21 @@
 | `~/change_publish_state` | `std_srvs/SetBool` | `/odom/gps` の配信を止める・再開する (ウェイポイントの `gps_on` / `gps_off` が使う)。ノード名 `slam_gnss_nav_bridge` なら `/slam_gnss_nav_bridge/change_publish_state` |
 | `~/publish_state` | `std_msgs/Bool` (transient_local) | 配信の状態。起動時と、切り替えたときだけ配信する |
 
+### 診断とイベント
+
+GNSS を地図に使えているか (採用しているか) を、診断 `slam_gnss_nav_bridge_node: adoption` (`diagnostic_updater`、集約で `/Robot/Localization/GnssBridge`) に出す。ublox の受信そのものの品質は `gnss_diagnostics_node` が出す。
+
+| 状態 | レベル | メッセージ |
+| :--- | :--- | :--- |
+| 変換ファイルを読めなかった | `ERROR` | `GNSS transform not loaded` |
+| `~/change_publish_state` で配信を止めている | `OK` | `publishing disabled` (意図した状態) |
+| `adoption_timeout_sec` 以内に、使える測位があった | `OK` | `adopting GNSS` |
+| 使える測位が無い | `WARN` | `not adopting GNSS: <理由>` |
+
+理由 (`last_reject_reason`): `no fix` (Fix なし)、`low quality (not RTK or accuracy too low)` (解の種類・精度が条件を満たさない)、`heading unavailable` (ヘディングを求められない)、`no GNSS data yet` (まだ受信していない)。`min_publish_distance` で出さなかった測位は、使えているので採用とする。
+
+採用の有無が変わったときだけ、イベント `gnss.adoption_changed` (`adopting`、`reason`) を出す ([doc/monitoring.md](../../doc/monitoring.md)。このパッケージは `mg_*` に依存しないので、書式を自分で守っている)。
+
 ## `/odom/gps` の仕様
 
 `robot_localization` が、そのまま融合できるように作る。
@@ -85,6 +100,7 @@ TF が無い、または `yaw_max_age_sec` より古いときは、アンテナ�
 | `heading_smoothing_alpha` | `0.6` | - | Circular EMA の平滑化係数 |
 | `min_publish_distance` | `1.0` | `1.0` | 前の地点からこの距離以上動くまで、次の測位を出さない [m] |
 | `max_covariance_threshold` | `49.0` | `49.0` | 配信を許す最大の共分散 (2σ²) [m²] |
+| `adoption_timeout_sec` | `5.0` | - | 使える測位がこの時間なければ、診断を `WARN` にする [s] |
 | `lever_arm_compensation` | `true` | `true` | アンテナの位置を、車体の中心の位置に直す |
 | `lever_arm_x` / `lever_arm_y` | `0.26` / `-0.13` | `0.26` / `-0.13` | アンテナの車体座標での位置 [m] (URDF の `base_footprint`→`gps_link` と合わせる) |
 | `yaw_max_age_sec` | `1.0` | - | 向きに使う TF の古さの上限 [s] |

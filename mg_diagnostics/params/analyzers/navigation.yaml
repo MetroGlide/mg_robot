@@ -10,6 +10,11 @@ analyzers:
           path: Monitor
           startswith: ['localization_supervisor: ', 'amcl_watchdog_node: ']
           timeout: 5.0
+        gnss_bridge:
+          type: diagnostic_aggregator/GenericAnalyzer
+          path: GnssBridge
+          startswith: ['slam_gnss_nav_bridge_node: ']
+          timeout: 5.0
         gate:
           type: diagnostic_aggregator/GenericAnalyzer
           path: Gate
