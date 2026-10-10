@@ -79,10 +79,12 @@ ROS に依存しない numpy の関数。
 | `caller_pkg_name` | `mg_navigation` | 収録するトピックの一覧 `params/record_topic_list.txt` を持つパッケージ |
 | `record_bag_base_name` | `navigation_` | bag のディレクトリ名の接頭辞 |
 | `simulation` | `$SIMULATION` | `true` なら `--use-sim-time` を付ける |
+| `record_monitoring` | `true` | 状態監視とイベントのトピック (`params/record_topics_monitoring.txt`) も収録する |
 
 - 環境変数 `ROSBAG_PATH` が必須 (未設定ならエラーになる)。
 - 保存先は `$ROSBAG_PATH/<YYYYMMDD>_bag/<接頭辞><番号>`。番号は、同じ日のディレクトリの最大値に 1 を足す。
-- 収録するトピックは、`caller_pkg_name` のパッケージの `params/record_topic_list.txt` (1 行 1 トピック)。ファイルが無いときは、ログに出して、トピックの一覧を空にして起動する。
+- 収録するトピックは、`caller_pkg_name` のパッケージの `params/record_topic_list.txt` (1 行 1 トピック。空行と `#` の行は除く) に、`record_monitoring` が `true` のとき、状態監視とイベントのトピック (`mg_utils/params/record_topics_monitoring.txt`) を加えたもの。重複は 1 回だけ。パッケージの一覧が無いときは、ログに出して、監視用のトピックだけで起動する。
+- 一覧の読み込みと結合は `mg_utils.record_topics` (`read_topic_file`、`merge_topics`)。`tools/scripts/record.sh` は同じ監視用のファイルを bash で読む。
 
 走行ログを手動で収録するスクリプトは、`tools/scripts/record.sh` ([tools の README](../tools/README.md))。
 
@@ -94,6 +96,7 @@ make test pkg=mg_utils
 
 - `test/test_point_cloud.py`: `build_point_array`
 - `test/test_event_log.py`: イベントの書式の作成と読み取り
+- `test/test_record_topics.py`: 収録するトピックの一覧の読み込み・結合と、監視用の一覧の中身
 - `test/test_monitoring_*.py`: 途絶・受信頻度の判定、しきい値、レベルの変化の検出、設定の読み取り (ROS 不要)
 - `test/test_event_format.cpp`: C++ のイベントの書式 (`colcon test`)
 

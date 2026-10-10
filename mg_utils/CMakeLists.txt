@@ -13,7 +13,7 @@ find_package(ament_cmake_python REQUIRED)
 ################################################################################
 # Install
 ################################################################################
-install(DIRECTORY launch
+install(DIRECTORY launch params
   DESTINATION share/${PROJECT_NAME}
 )
 

@@ -49,7 +49,7 @@ tools/
     ├── calib_wheel_odom.py          # ホイールオドメトリのスケール・バイアス・遅れを走行ログから推定
     ├── run_slam_variant.sh          # パラメータ変種のオフラインSLAM実行〜評価までを一括実行
     ├── patch_params.py              # コメント付きパラメータ YAML の値を書き換え
-    ├── record.sh                    # rosbag 記録 (MCAP)
+    ├── record.sh                    # rosbag 記録 (MCAP。状態監視のトピックも加える。-n で外す)
     ├── bag_play.sh                  # rosbag 再生
     └── record_topics_{slam,all,sim}.txt, record_topics.txt  # 記録するトピックの一覧 (下記)
 ```
@@ -331,7 +331,9 @@ python3 tools/scripts/diff_bag_list.py /path/to/record_topics.txt
 | `record_topics_all.txt` | `-m all` (全センサ版) |
 | `record_topics.txt` | モードの一覧が見つからないときのフォールバック。`diff_bag_list.py` の例にも使う |
 | `record_topics_sim.txt` | シミュレータ用の一覧。`record.sh` は自動では読まない (`-f` で指定する) |
+| `mg_utils/params/record_topics_monitoring.txt` | **状態監視とイベントのトピック**。どのモードにも自動で加わる (`-n` で外す)。`/diagnostics`、`/diagnostics_agg`、`/rosout`、`/events`、`/localization/status` など。数十 KB/s 以下。`mg_utils` の `record_bag.launch.py` も同じファイルを使う |
 
+監視用のトピックを残すと、後から次のことができます。生の `/diagnostics` を `diagnostic_aggregator` にかけ直して集約を作り直す。`/rosout` と `/events` のイベントを `make log-events BAG=<bag>` で時系列にする。重複するトピックは 1 回だけ記録します。
 ### 9. `eval_slam.py` (SLAM 出力の RTK(GNSS) 比較評価)
 
 slam_gnss_2d のオフライン出力 (`pose_graph.json` / `gnss_transform.yaml` / `map.yaml`) を、rosbag の `/navpvt` と比較して評価します。
