@@ -107,7 +107,7 @@ evt=<domain>.<event> key=value key="空白を含む値" ...
 
 | ドメイン | イベント名 |
 | :--- | :--- |
-| `sequencer` | `state_changed`、`run_started`、`run_finished`、`paused`、`resumed`、`waypoint_reached` |
+| `sequencer` | `state_changed`、`run_started`、`run_finished`、`paused`、`resumed`、`waypoint_reached`、`manual_goal_finished` |
 | `action` | `started`、`succeeded`、`failed` |
 | `nav` | `goal_sent`、`goal_result` |
 | `driver` | `connected`、`disconnected`、`reconnect_attempt`、`estop_changed` |
