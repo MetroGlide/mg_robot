@@ -1,6 +1,6 @@
 import pytest
 
-from mg_navigation.amcl_gate_arbiter.arbiter import GateArbiter
+from mg_navigation.amcl_gate_arbiter.arbiter import GateArbiter, gate_health
 
 
 def test_gate_is_open_only_when_every_requester_attaches():
@@ -54,3 +54,16 @@ def test_applied_is_true_only_when_gate_matches_desired():
 def test_unknown_requester_is_rejected():
     with pytest.raises(KeyError):
         GateArbiter(['waypoint']).request('other', False)
+
+
+def test_gate_health_ok_when_applied():
+    assert gate_health(True, True, [])[:2] == ('ok', 'attached')
+    level, message, values = gate_health(False, True, ['waypoint'])
+    assert (level, message) == ('ok', 'detached (held by: waypoint)')
+    assert values == {'desired': 'False', 'applied': 'True', 'holders': 'waypoint'}
+
+
+def test_gate_health_warns_when_not_applied():
+    level, message, _ = gate_health(False, False, ['supervisor'])
+    assert level == 'warn'
+    assert message == 'not applied: detached (held by: supervisor)'

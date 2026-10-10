@@ -49,6 +49,8 @@ EKF の周期は `mg_drivers/params/ekf_global.yaml` の `frequency` (30 Hz)。
 - `amcl_off` の後に `amcl_on` を送るのは、ウェイポイントの作り手の責任 (送り忘れると AMCL は戻らない。自動解除はしない)。
 - 監視ノードの種類 (`none` / `watchdog` / `supervisor`) によらず、常に起動する。負荷はごく小さい。
 - 状態は `/amcl_gate_arbiter/state` (`mg_msgs/GateArbiterState`、transient_local) に、変化したときだけ配信する。`desired` は要求元の意図 (全員が入れてよいとき true)、`applied` はゲートへの反映済みか (ゲートのノードの再起動で不明になったときは false)、`holders` は止めている要求元。Web UI の「Actions」が表示に使う。
+- 診断 `amcl_gate_arbiter: gate`: 要求がゲートに反映できていれば `OK` (止めている要求元がいても、意図どおりなので `OK`)、反映できていないあいだは `WARN` (`not applied: ...`)。集約で `/Robot/Localization/Gate`。
+- イベント `gate.changed` (`requester`、`attached`、`holders`): 全体の意図か、止めている要求元が変わったときに出す。監督ノードが止めているときは WARN、それ以外は INFO ([doc/monitoring.md](../../doc/monitoring.md))。
 - Web UI の「Actions」の AMCL の入/切は、`waypoint` の要求元として呼ぶ。次のウェイポイントのアクションで上書きされる。
 
 ## gnss_amcl_initializer_node
@@ -162,7 +164,7 @@ NORMAL ─ 異常の疑い ─► SUSPECT ─ 確認 ─► ISOLATED (AMCL を E
 
 ### 制約
 
-- `LocalizationStatus.amcl_attached` は、監督ノード自身が要求した状態を表す。ウェイポイントが `amcl_off` で AMCL を止めていても `true` のままになる (実際にゲートが開いているかは、調停ノードのログで確認する)。
+- `LocalizationStatus.amcl_attached` は、監督ノード自身が要求した状態を表す。ウェイポイントが `amcl_off` で AMCL を止めていても `true` のままになる (実際にゲートが開いているかは、調停ノードの `/amcl_gate_arbiter/state` と診断 `gate` で確認する)。
 
 ## 従来の構成に戻す
 
