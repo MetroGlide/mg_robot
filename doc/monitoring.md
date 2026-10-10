@@ -51,6 +51,23 @@ UI が個別に参照する項目のパスは、次に固定する。変える�
 | `/Navigation/Nav2` | Nav2 の lifecycle (`Nav2 Health`) |
 | `/System/Resources` | CPU とメモリ |
 
+### 第三者ノードの診断
+
+実機の rosbag (`TC2025/20251129`、`/diagnostics` 約 4300 秒分) から確認した名前と挙動。aggregator の設定 (analyzer) は、この名前で照合する。
+
+| 状態の名前 | `hardware_id` | 実際のレベル | 扱い |
+| :--- | :--- | :--- | :--- |
+| `lifecycle_manager_navigation: Nav2 Health` | `Nav2` | 基本は `OK`。起動中は `ERROR` ("Nav2 is inactive") | `/Navigation/Nav2` に取り込む。起動直後の `ERROR` は、起動の猶予で吸収する |
+| `lifecycle_manager_localization: Nav2 Health` | `Nav2` | 同上 | `/Navigation/Nav2` に取り込む |
+| `ekf_global_node: odometry/filtered topic status` | `none` | `OK` | `/Localization/EKF` に取り込む |
+| `ekf_global_node: Filter diagnostic updater` | `none` | 常に `WARN` ("Potentially erroneous data or settings detected…") | **要調査。** EKF の設定に問題がある可能性がある。原因が分かるまで、`/Localization/EKF` に取り込んで見える状態にしておく |
+| `ublox_gps_node: fix` | `ublox` | 常に `OK` ("3D fix")。RTK の Fixed/Float を区別しない | 受信機の状態として取り込む。測位の品質は別のノードが `navpvt` から判定する |
+| `ublox_gps_node: fix topic status` | `ublox` | `WARN` と `ERROR` ("Frequency too low") が常時出る | ublox のパラメータで期待周期を合わせる。合わなければ aggregator で捨てる |
+| `ublox_gps_node: TMODE3` | `ublox` | 常に `WARN` ("Not configured") | 基準局モードを使わないので、aggregator で捨てる |
+
+- 捨てる診断も `/diagnostics` (生データ) には残り、rosbag に記録される。
+- `ublox_gps_node: fix` は、レベルが測位の品質を表さない。GNSS の測位品質 (RTK Fixed か、`h_acc` が足りているか) は、`navpvt` から判定する小さなノードを `mg_drivers` に置いて出す。
+
 ## イベントログ
 
 状態の遷移、アクションの実行、接続の変化など、離散的に起きる出来事を **イベント** として、ノードのロガーに決まった書式で出す。周期的に出る値はイベントにしない。
