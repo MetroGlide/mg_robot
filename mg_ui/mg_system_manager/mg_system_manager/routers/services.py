@@ -13,6 +13,12 @@ def get_status(runner: ComposeRunner = Depends(get_runner)):
     return runner.get_status()
 
 
+@router.get("/status/detail")
+def get_status_detail(runner: ComposeRunner = Depends(get_runner)):
+    """サービスごとの {state, health, exit_code, level}。UI は level で色を決める。"""
+    return runner.get_status_detail()
+
+
 @router.get("/services")
 def list_services():
     return {

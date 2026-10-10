@@ -48,9 +48,21 @@ UI の System ページでの表示グループ (`layer`) は、Core、Function�
 
 | メソッドとパス | 内容 |
 | :--- | :--- |
-| `GET /status` | すべてのサービスのコンテナの状態 (1 秒のキャッシュ) |
+| `GET /status` | すべてのサービスのコンテナの状態 `{サービス: State}` (1 秒のキャッシュ) |
+| `GET /status/detail` | 状態の詳細 `{サービス: {state, health, exit_code, level}}` (`/status` と同じキャッシュ)。Web UI は `level` で色を決める |
 | `GET /services` | サービスの一覧とグループ |
 | `POST /<service>/start`・`stop`・`restart` | `SERVICES` の各サービスの起動・停止・再起動 |
+
+`/status/detail` の `level` (サーバ側で決める。UI は判定しない):
+
+| level | 条件 |
+| :--- | :--- |
+| `ok` | `running` (HEALTHCHECK があれば `healthy`) |
+| `warn` | 起動中 (`health: starting`)、`restarting`、`paused` |
+| `error` | `unhealthy`、`dead`、終了コードが 0・130・137・143 以外で止まった (`exited`) |
+| `off` | 意図して止まっている (`exited` で終了コードが 0・130・137・143)、まだ作られていない (`created`) |
+
+終了コード 130・137・143 は、`docker stop` や SIGINT・SIGKILL で止めたときの値なので、異常にしない。`restart_count` は、一覧 API に無く、1 件ずつ inspect するとコストが大きいので返さない。
 
 ### ログ (`routers/logs.py`)
 

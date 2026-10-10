@@ -201,6 +201,9 @@
  "/status": [
   "GET"
  ],
+ "/status/detail": [
+  "GET"
+ ],
  "/waypoint-editor/restart": [
   "POST"
  ],
