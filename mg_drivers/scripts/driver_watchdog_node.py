@@ -25,12 +25,8 @@ from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import LaserScan
 from std_msgs.msg import Bool
 
-from driver_watchdog_core import (
-    ProcessTerminator,
-    RestartPolicy,
-    SourceMonitor,
-    TickGuard,
-)
+from driver_watchdog_core import ProcessTerminator, RestartPolicy
+from mg_utils.monitoring.activity import ActivityMonitor, TickGuard
 
 # ソースの type と、購読するメッセージ型
 SOURCE_TYPES = {
@@ -106,7 +102,7 @@ class DriverWatchdogNode(Node):
         armed_on_first = self.declare_parameter(
             f'{source_id}.armed_on_first_message', False).value
 
-        monitor = SourceMonitor(
+        monitor = ActivityMonitor(
             stale_timeout, self._recover_hold, now, self._startup_grace, armed_on_first)
         policy = RestartPolicy(self._restart_after, self._restart_cooldown)
         source = Source(source_id, topic, restart_node, monitor, policy)
