@@ -19,6 +19,7 @@ tools/
 │   ├── pose_graph.py      # slam_gnss_2d 出力 (pose_graph.json / gnss_transform.yaml) の読込・補間・アンカー間の座標移動
 │   ├── loc_metrics.py     # 自己位置推定の評価指標 (誤差・飛び・NEES・遅れ・復旧) ※numpy のみ
 │   ├── odom_calib.py      # ホイールオドメトリ校正の計算 (窓ごとの相対移動の当てはめ) ※numpy のみ
+│   ├── status_timeline.py # 診断のレベルの遷移とイベントの集計・整形 ※ROS 不要 (rosbag_summary.py が使う)
 │   ├── event_timeline.py  # イベントログ (evt=...) の解析・結合・絞り込み・整形 ※ROS 不要。書式の読み取りは mg_utils.event_log
 │   ├── faults.py          # 故障注入定義 (YAML) の読込
 │   └── fault_apply.py     # 故障注入の計算 (numpy のみ。fault_injector.py が使う)
@@ -160,6 +161,16 @@ make bag-summary TO_TOOLS=1        # tools/data/ に summary.md を保存
 make bag-summary OUT_DIR=/path/to  # 指定ディレクトリに保存
 make bag-summary BAG=/path/to/bag  # 指定 rosbag を解析
 ```
+
+**状態とイベント** (`/diagnostics_agg` または `/diagnostics`、`/rosout`、`/events` が入っているとき)。内容があれば、端末と Markdown の末尾に「Status Timeline & Events」の節を出します。
+
+| 内容 | 元 |
+| :--- | :--- |
+| OK 以外になった診断の一覧 (最後と最悪のレベル、WARN・ERROR・STALE だった秒数) | `/diagnostics_agg` があればそれ、無ければ `/diagnostics` |
+| レベルの変化 (時刻・診断・変化・メッセージ。古い順で 30 件まで) | 同上 |
+| イベント (`evt=...`) の数と、WARN 以上のイベントの一覧 | `/rosout` と `/events` (同じイベントは 1 回) |
+
+集計は `tools/common/status_timeline.py` (ROS 不要)。イベントの書式は [doc/monitoring.md](../doc/monitoring.md)。詳しく見るときは `make log-events BAG=<bag>` で時系列にできます。
 
 ---
 
@@ -432,6 +443,7 @@ make test pkg=tools
 | `test_loc_metrics.py` | 自己位置推定の評価指標 (`common/loc_metrics.py`) |
 | `test_odom_calib.py` | ホイールオドメトリの校正の計算 (`common/odom_calib.py`) |
 | `test_event_timeline.py` | イベントログの解析・結合・絞り込み・整形 (`common/event_timeline.py`) |
+| `test_status_timeline.py` | 診断のレベルの遷移とイベントの集計・整形 (`common/status_timeline.py`) |
 | `test_faults.py`、`test_fault_apply.py` | 故障注入の定義の読込と計算 |
 | `test_pose_graph.py` | `pose_graph.json` の読込・補間 |
 | `test_map_helpers.py` | 地図の読込と `map_list.txt` |
