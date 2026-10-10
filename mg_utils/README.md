@@ -50,6 +50,8 @@ ROS に依存しない numpy の関数。
 | :--- | :--- | :--- |
 | `activity` | 不要 | `ActivityMonitor` (最後の受信からの途絶、起動直後の猶予、初回のメッセージまでの待機、復帰の保持、`ok=False` の受信を異常にする、受信頻度)、`RateEstimator`、`TickGuard` (監視ノード自身の周期の遅れ)。時刻は呼び出し側が渡す |
 | `health` | 不要 | `evaluate_topic_health(monitor, now, expected_hz, hz_warn_ratio, fault_level)`: 診断に出すレベル (`ok` / `warn` / `error`)・メッセージ・values (`hz`、`expected_hz`、`stale_sec`) を作る |
+| `thresholds` | 不要 | `level_for_high(value, warn, error)` (値が大きいほど悪いものの判定)、`worst(*levels)`、`MovingAverage(window)` (瞬間的な値で診断のレベルが揺れないようにする) |
+| `level_tracker` | 不要 | `LevelChangeTracker`: 診断のレベルの変化を検出する (`event_relay_node` が使う) |
 | `topic_source_config` | 不要 | 監視するトピックの YAML (`<id>.topic` / `type` / `expected_hz` / `stale_timeout_sec` / `armed_on_first_message` / `qos` / `ok_field` / `fault_level` / `enabled`) の読み取りと検証 |
 | `topic_source` | 必要 (rclpy) | `declare_source_config(node, id, default_stale_timeout_sec)` と `TopicSource` (設定に従う購読と `ActivityMonitor` の組み立て)。`ok_field` を指定しないソースは、デシリアライズせず (`raw`) に受け取る |
 | `diagnostic_task` | 必要 (`diagnostic_updater`) | `TopicHealthTask`: `evaluate_topic_health` の結果を `diagnostic_updater` のタスクとして出す |
@@ -92,7 +94,7 @@ make test pkg=mg_utils
 
 - `test/test_point_cloud.py`: `build_point_array`
 - `test/test_event_log.py`: イベントの書式の作成と読み取り
-- `test/test_monitoring_activity.py`、`test_monitoring_health.py`、`test_monitoring_topic_source_config.py`: 途絶・受信頻度の判定と、設定の読み取り (ROS 不要)
+- `test/test_monitoring_*.py`: 途絶・受信頻度の判定、しきい値、レベルの変化の検出、設定の読み取り (ROS 不要)
 - `test/test_event_format.cpp`: C++ のイベントの書式 (`colcon test`)
 
 ROS が必要な `topic_source`、`diagnostic_task` は、`make test` (ROS を読み込まない) では調べない。`develop` コンテナで ROS を読み込んで動かして確かめる。

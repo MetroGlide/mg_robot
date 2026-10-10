@@ -25,7 +25,7 @@
 | `pose_with_cov_publish_controller_node.py` | `PoseWithCovarianceStamped` の中継を入/切する | 入力: `pose_with_cov_origin`、出力: `pose_with_cov`、サービス: `~/change_publish_state` |
 | `generic_publish_controller_node.py` | 任意の型のトピックの中継を入/切する (`msg_module`・`msg_class`・`publish`・`queue_size` で指定)。AMCL の出力のゲート (`amcl_publish_controller_node`) に使う ([mg_navigation](../mg_navigation/README.md)) | 入力: `input_topic`、出力: `output_topic`、サービス: `~/change_publish_state` |
 | `depth_to_pointcloud_node.py` | 深度画像 (とカラー画像) から点群を復元する。rosbag の再生確認用 | 出力: `points` |
-| `pc_resource_publisher_node.py` | PC の CPU 使用率とメモリ使用率を配信する | 出力: `cpu_usage`、`memory_usage` (`Float32`) |
+| `pc_resource_publisher_node.py` | PC の CPU 使用率とメモリ使用率を配信し、しきい値で診断のレベルを決める | 出力: `cpu_usage`、`memory_usage` (`Float32`)、診断 `pc_resource_publisher_node: resources` (集約で `/Robot/System/Resources`) |
 | `odom_covariance_override_node.py` | オドメトリの共分散を上書きする。どの launch からも起動されない | 入力: `odom`、出力: `odom/covariance` |
 | `odom_offset_republisher.py` | rosbag の再生で、オドメトリの原点をずらして配信し直す (下記) | |
 
@@ -116,6 +116,16 @@ ros2 run mg_drivers odom_offset_republisher.py
 | `top_laser_filter.yaml` | LiDAR のフィルタ |
 
 ホイールオドメトリ (`wheel_odometry_node`) と、モータドライバのパラメータは、launch に直接書かれている (`bringup_sensors.launch.py`、`bringup_hardware.launch.py`)。
+
+## PC の資源の診断
+
+`pc_resource_publisher_node` は、直近 `average_samples` 回の平均が、しきい値以上になると診断のレベルを上げる。Web UI は、この診断のレベルで CPU・メモリの色を決める (しきい値は UI に持たない)。
+
+| パラメータ | 既定値 | 内容 |
+| :--- | :--- | :--- |
+| `cpu_warn_percent` / `cpu_error_percent` | 85 / 95 | CPU 使用率の `WARN` / `ERROR` |
+| `memory_warn_percent` / `memory_error_percent` | 90 / 97 | メモリ使用率の `WARN` / `ERROR` |
+| `average_samples` | 5 | 判定に使う平均の回数 (配信は 1 Hz なので、既定は直近 5 秒) |
 
 ## 切断からの復旧
 
