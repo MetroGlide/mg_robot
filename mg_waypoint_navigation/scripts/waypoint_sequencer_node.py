@@ -7,7 +7,8 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, ReliabilityPolicy
 
-from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
+from diagnostic_msgs.msg import DiagnosticStatus
+from diagnostic_updater import DiagnosticStatusWrapper, DiagnosticTask, Updater
 from std_msgs.msg import ColorRGBA, Int16
 from std_srvs.srv import Trigger
 from visualization_msgs.msg import Marker, MarkerArray
@@ -17,9 +18,29 @@ from mg_msgs.msg import WaypointInfo
 from mg_msgs.msg import WaypointList as WaypointListMsg
 from mg_msgs.srv import LoadMaps, SendGoal, StartSequence
 
+from mg_utils.event_log import EventLog
 from mg_waypoint_navigation.waypoint import WaypointList, WaypointsLoader
 from mg_waypoint_navigation.waypoint_sequencer.fsm import WaypointSequencerFSM
+from mg_waypoint_navigation.waypoint_sequencer.health import progress_health
 from mg_waypoint_navigation.waypoint_sequencer.states import SequencerState
+
+_LEVELS = {'ok': DiagnosticStatus.OK, 'warn': DiagnosticStatus.WARN}
+
+
+class ProgressTask(DiagnosticTask):
+    """診断 `progress`: 走行中に位置が進んでいるか。"""
+
+    def __init__(self, node: 'WaypointSequencerNode') -> None:
+        super().__init__('progress')
+        self._node = node
+
+    def run(self, stat: DiagnosticStatusWrapper) -> DiagnosticStatusWrapper:
+        level, message, values = progress_health(
+            self._node.fsm.navigation_progress(), self._node.stall_warn_sec)
+        stat.summary(_LEVELS[level], message)
+        for key, value in values.items():
+            stat.add(key, value)
+        return stat
 
 
 class WaypointSequencerNode(Node):
@@ -111,8 +132,19 @@ class WaypointSequencerNode(Node):
             MarkerArray, "~/waypoints_markers", latched_qos
         )
 
-        self._diag_pub = self.create_publisher(DiagnosticArray, "/diagnostics", 10)
-        self._diag_timer = self.create_timer(1.0, self._publish_diagnostics_cb)
+        self._events = EventLog(self.get_logger())
+        self._updater = Updater(self)
+        self._updater.setHardwareID("waypoint_sequencer")
+        self._updater.add(ProgressTask(self))
+        self._events.info("node.started", name="waypoint_sequencer_node")
+
+    @property
+    def fsm(self) -> WaypointSequencerFSM:
+        return self._fsm
+
+    @property
+    def stall_warn_sec(self) -> float:
+        return self._stall_warn_sec
 
     # ------------------------------------------------------------------
     # ウェイポイントロード
@@ -228,33 +260,6 @@ class WaypointSequencerNode(Node):
         msg.pause_requesters = self._fsm.pause_requesters
         msg.distance_remaining = self._fsm.distance_remaining
         self._status_pub.publish(msg)
-
-    def _publish_diagnostics_cb(self):
-        # BT はリカバリーを無制限にくり返すので、詰まっても Nav2 は失敗を返さない。
-        # 位置が進まない時間で詰まりを知らせる
-        progress = self._fsm.navigation_progress()
-        status = DiagnosticStatus()
-        status.name = "waypoint_sequencer/progress"
-        status.hardware_id = "mg01"
-        if progress is None:
-            status.level = DiagnosticStatus.OK
-            status.message = "not navigating"
-        elif progress.stalled_sec >= self._stall_warn_sec:
-            status.level = DiagnosticStatus.WARN
-            status.message = f"no progress for {progress.stalled_sec:.0f} s"
-        else:
-            status.level = DiagnosticStatus.OK
-            status.message = "navigating"
-        if progress is not None:
-            status.values = [
-                KeyValue(key="stalled_sec", value=f"{progress.stalled_sec:.1f}"),
-                KeyValue(key="number_of_recoveries",
-                         value=str(progress.number_of_recoveries)),
-            ]
-        diag = DiagnosticArray()
-        diag.header.stamp = self.get_clock().now().to_msg()
-        diag.status = [status]
-        self._diag_pub.publish(diag)
 
     def _publish_waypoints_list(self, waypoints: WaypointList):
         msg = WaypointListMsg()

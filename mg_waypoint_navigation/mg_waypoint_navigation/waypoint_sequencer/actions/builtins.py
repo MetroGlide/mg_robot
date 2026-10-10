@@ -5,7 +5,10 @@ import time
 
 from std_srvs.srv import Empty
 
-from mg_waypoint_navigation.waypoint_sequencer.actions.base import BaseAction
+from mg_waypoint_navigation.waypoint_sequencer.actions.base import (
+    ActionFailed,
+    BaseAction,
+)
 
 
 class LoadMapAction(BaseAction):
@@ -15,7 +18,7 @@ class LoadMapAction(BaseAction):
         ok, message = self._map_loader.load(
             self._config.localization, self._config.planning)
         if not ok:
-            self._node.get_logger().error(f"LoadMapAction: {message}")
+            raise ActionFailed(f"load_map: {message}")
 
 
 class AmclResetAction(BaseAction):
@@ -60,5 +63,4 @@ class SetNavigationModeAction(BaseAction):
                 f"Set navigation mode to '{mode}' "
                 f"(global obstacles enabled: {enabled})")
         else:
-            self._node.get_logger().error(
-                f"Failed to set navigation mode to '{mode}'")
+            raise ActionFailed(f"failed to set navigation mode to '{mode}'")

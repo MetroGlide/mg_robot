@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import threading
+import time
 from typing import Callable, List
 
 import rclpy.node
 
+from mg_utils.event_log import EventLog
 from mg_waypoint_navigation.waypoint import ActionConfig
 from mg_waypoint_navigation.waypoint_sequencer.actions import (
     EndpointCache,
@@ -20,12 +22,13 @@ from mg_waypoint_navigation.waypoint_sequencer.map_loader import MapLoader
 class ActionExecutor:
     """アクションリストを別スレッドで順次実行し、完了時にコールバックを呼ぶ。
 
-    個々のアクションの生成・実行で例外が出てもログに残して次へ進み、
-    done_callback は必ず呼ぶ。
+    個々のアクションの生成・実行で例外が出ても (失敗は ActionFailed)、イベントに残して次へ進み、
+    done_callback は必ず呼ぶ。イベント: action.started / action.succeeded / action.failed。
     """
 
     def __init__(self, node: rclpy.node.Node):
         self._node = node
+        self._events = EventLog(node.get_logger())
         self._endpoints = EndpointCache(node)
         self._map_loader = MapLoader(node, self._endpoints)
         self._costmap_switcher = CostmapModeSwitcher(node, self._endpoints)
@@ -43,18 +46,26 @@ class ActionExecutor:
         self,
         actions: List[ActionConfig],
         done_callback: Callable[[], None],
+        waypoint_index: int = -1,
     ) -> None:
         def _run():
             for config in actions:
+                fields = dict(type=config.type, index=waypoint_index)
+                self._events.info('action.started', **fields)
+                started = time.monotonic()
                 try:
                     build_action(
                         config, self._node, self._endpoints,
                         self._map_loader, self._costmap_switcher,
                     ).execute()
                 except Exception as e:
-                    self._node.get_logger().error(
-                        f"Action {config.type} raised exception: {e}"
-                    )
+                    self._events.error(
+                        'action.failed', **fields,
+                        error=f"{type(e).__name__}: {e}")
+                else:
+                    self._events.info(
+                        'action.succeeded', **fields,
+                        duration_sec=round(time.monotonic() - started, 2))
             done_callback()
 
         self._thread = threading.Thread(target=_run, daemon=True)

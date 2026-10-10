@@ -59,7 +59,7 @@ GUI の [waypoint-tool](https://github.com/Chu-son/waypoint-tool) でも作れ�
 | Publisher | `~/waypoints_markers` | `visualization_msgs/MarkerArray` | RViz2 用のマーカー |
 | Publisher | `~/loaded_maps` | `mg_msgs/LoadedMaps` | 読み込み済みの地図 |
 | Publisher | `~/navigation_mode` | `std_msgs/String` | 次のゴールで使うモードと BT |
-| Publisher | `/diagnostics` | `diagnostic_msgs/DiagnosticArray` | `waypoint_sequencer/progress`。走行中に位置が `stall_warn_sec` (既定 30 秒) 進まなければ WARN (1 Hz) |
+| Publisher | `/diagnostics` | `diagnostic_msgs/DiagnosticArray` | `waypoint_sequencer_node: progress` (`diagnostic_updater`、1 Hz)。走行中に位置が `stall_warn_sec` (既定 30 秒) 進まなければ WARN。集約で `/Robot/Navigation/Sequencer` |
 
 操作は Web UI から行う ([mg_ui](../mg_ui/README.md))。
 
@@ -93,7 +93,7 @@ YAML (v2.0)。各ウェイポイントの位置と、到達時のアクション
 
 注意:
 
-- リカバリーの試行回数は 99999 (実質無制限)。障害物が居座ると、上の段階を「RPP の待ち 5 秒 + 段階 1 つ」の周期で際限なくくり返す (1 周約 40 秒)。詰まりは `/diagnostics` の `waypoint_sequencer/progress` で知らせる
+- リカバリーの試行回数は 99999 (実質無制限)。障害物が居座ると、上の段階を「RPP の待ち 5 秒 + 段階 1 つ」の周期で際限なくくり返す (1 周約 40 秒)。詰まりは診断 `waypoint_sequencer_node: progress` で知らせる
 - `IsPathClear` で回避行動を中断すると、次のリカバリーは段階 1 (首振り) から始まる (Nav2 の `RoundRobin` が halt で位置を戻すため)
 - 首振りの効果は 2 つ。(1) RPP の円弧・その場の回転は今の向きから投影されるので、経路は引けているのに向きのせいで衝突判定に掛かる場合は、向きを変えると通れるようになる (プランナによらない。`IsPathClear` も今の向きから判定するので、通れるようになれば走行に戻る)。(2) 向きを考慮する Smac Lattice (`global_planner:=smac_lattice`) では、再計画で障害物を避ける経路が引けやすくなる。既定の NavFn では (2) は効かない
 - `CommitPath` は、経路の終点がゴールから `goal_tolerance` (0.6m。`plan_goal_match_tolerance` と同じ) 以内かで「今のゴールへの経路か」を判定する。0.6m より近いゴールが続くと区別できない
@@ -129,3 +129,22 @@ BT の動きは、シナリオテスト (`dynamic_stop_and_resume`、`dynamic_pe
 | :--- | :--- |
 | [doc/architecture.md](./doc/architecture.md) | 構成、FSM、衝突対応、ROS インターフェース、到達判定、スレッドモデル |
 | [doc/waypoint_format.md](./doc/waypoint_format.md) | ウェイポイントの YAML 形式、アクション、waypoint-tool での作成、v1 からの変換 |
+
+## イベントログ
+
+状態の遷移、走行、アクション、Nav2 のゴールを、`evt=<domain>.<event> key=value ...` の 1 行でログに出す ([doc/monitoring.md](../doc/monitoring.md))。`mg_ui` のイベント一覧と、`make log-events` の時系列に出る。
+
+| イベント | レベル | 内容 |
+| :--- | :--- | :--- |
+| `sequencer.state_changed` | INFO / WARN (SUSPENDED) / ERROR (ERROR) | FSM の遷移 (`from`、`to`、`index`、`total`) |
+| `sequencer.run_started` | INFO | 走行の開始 (一時停止からの再開は含まない) |
+| `sequencer.run_finished` | INFO / ERROR | 走行の終了 (`result`: `goal_reached` / `error` / `stopped`) |
+| `sequencer.paused` / `sequencer.resumed` | WARN / INFO | 一時停止と再開 (`requesters`) |
+| `sequencer.waypoint_reached` | INFO | ウェイポイントに着いた (`result`: `SUCCEEDED` / `PASSED`) |
+| `sequencer.manual_goal_finished` | INFO | 手動ゴールが終わった (`result`) |
+| `nav.goal_sent` | INFO | Nav2 にゴールを送った (`index`、`x`、`y`、`mode`) |
+| `nav.goal_result` | INFO / WARN (CANCELED) / ERROR | ゴールの結果 (`result`、`duration_sec`、`recoveries`) |
+| `action.started` / `action.succeeded` / `action.failed` | INFO / INFO / ERROR | 到着時アクションの実行 (`type`、`index`、`duration_sec`、`error`) |
+| `node.started` | INFO | 起動 |
+
+アクションは、失敗したら `ActionFailed` を投げる (`actions/base.py`)。`ActionExecutor` が `action.failed` に出し、次のアクションへ進む。サービスの応答が無かったとき (`BaseAction._call_service`) も失敗になる。

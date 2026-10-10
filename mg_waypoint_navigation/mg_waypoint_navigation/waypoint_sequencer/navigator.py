@@ -15,6 +15,7 @@ from rclpy.action import ActionClient
 from rclpy.action.client import ClientGoalHandle
 from rclpy.callback_groups import ReentrantCallbackGroup
 
+from mg_utils.event_log import EventLog
 from mg_waypoint_navigation.waypoint import Waypoint
 from mg_waypoint_navigation.waypoint_sequencer.progress_monitor import (
     ProgressMonitor, ProgressStatus)
@@ -61,6 +62,7 @@ class WaypointNavigator:
             callback_group=self._callback_group)
 
         self._lock = threading.Lock()
+        self._events = EventLog(node.get_logger())
 
         # 論理ゴール
         self._goal_id: int = 0
@@ -151,6 +153,10 @@ class WaypointNavigator:
         goal.pose = waypoint.pose
         goal.behavior_tree = self.behavior_tree_for(navigation_mode)
 
+        position = waypoint.pose.pose.position
+        self._events.info(
+            'nav.goal_sent', index=waypoint.index, x=round(position.x, 2),
+            y=round(position.y, 2), mode=navigation_mode)
         self._dispatch(goal_id, goal)
 
     def behavior_tree_for(self, navigation_mode: str) -> str:
@@ -183,6 +189,17 @@ class WaypointNavigator:
                 return
             self._active = False
             callback = self._result_callback
+            index = self._waypoint.index if self._waypoint is not None else -1
+            elapsed = self._now_sec() - self._send_time_ns / 1e9
+        fields = dict(
+            index=index, result=result.value, duration_sec=round(elapsed, 1),
+            recoveries=self._progress.status(self._now_sec()).number_of_recoveries)
+        if result in (NavigationResult.SUCCEEDED, NavigationResult.PASSED):
+            self._events.info('nav.goal_result', **fields)
+        elif result == NavigationResult.CANCELED:
+            self._events.warn('nav.goal_result', **fields)
+        else:
+            self._events.error('nav.goal_result', **fields)
         if callback:
             callback(result)
 
