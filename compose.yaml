@@ -1,6 +1,7 @@
 # 全サービス共通のログ設定。Docker 既定の json-file は無制限に溜まるため、サイズと世代数で回す。
 # 1 コンテナあたり最大 LOG_MAX_SIZE x LOG_MAX_FILE (既定 10MB x 5 世代)。古い世代は gzip 圧縮する。
-# コンテナを削除 (down / run --rm) するとログも消える。残すときは make logs-export。
+# コンテナを削除 (down / run --rm) するとログも消える。常時ファイルに残すのは log-collector (make log-collector)、
+# 手動で書き出すのは make logs-export。
 x-logging: &default-logging
   driver: json-file
   options:
@@ -10,7 +11,7 @@ x-logging: &default-logging
     labels: com.docker.compose.service
 
 # 全サービス共通の環境変数。サービスごとの environment は、これを <<: で取り込んで追加する。
-#   ROS_LOG_DIR: ROS のファイルログをホストの ${HOME}/ros2_data/ros_log に残す (古いものは make logs-clean-ros)
+#   ROS_LOG_DIR: ROS のファイルログをホストの ${HOME}/ros2_data/ros_log に残す (古いものは make logs-clean)
 #   RCUTILS_CONSOLE_OUTPUT_FORMAT: コンソールログに時刻を付ける
 x-common-env: &common-env
   PYTHONUNBUFFERED: "1"

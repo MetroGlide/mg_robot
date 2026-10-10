@@ -97,8 +97,10 @@ Gazebo とナビゲーションを起動して合否を判定する。詳細は 
 | `make shell svc=<名前>` | 起動中のコンテナの bash に入る |
 | `make logs svc=<名前> [TAIL=] [SINCE=]` | ログを追う ([docker.md](./docker.md#ログ)) |
 | `make logs-all [TAIL=] [SINCE=]` | 全サービスのログをまとめて追う |
-| `make logs-export [svc=<名前>] [OUT_DIR=]` | コンテナのログを `${HOME}/ros2_data/logs/<日時>/` に書き出す (`down` の前に実行する) |
-| `make logs-clean-ros [DAYS=14]` | ROS のファイルログ (`${HOME}/ros2_data/ros_log`) のうち、古いものを削除する |
+| `make log-collector` | 全サービスのログを `${HOME}/ros2_data/logs/<サービス>/<日付>.log` に常時書き出す `log-collector` を起動する ([docker.md](./docker.md#ホストへの常時書き出し-log-collector)) |
+| `make logs-export [svc=<名前>] [OUT_DIR=]` | コンテナのログを `${HOME}/ros2_data/logs/<日時>/` に書き出す (手動。`down` の前に実行する) |
+| `make logs-clean [DAYS=14]` | 古いログ (ROS のファイルログ `${HOME}/ros2_data/ros_log` と、書き出したログ) を削除する |
+| `make log-events [LOGS= BAG= SINCE= LEVEL= DOMAIN= TZ= OUT=]` | イベントログ (`evt=`) を、コンテナのログと rosbag から集めて時刻順の表にする ([tools の README](../tools/README.md)) |
 | `make ps` | 起動中のコンテナを表示する |
 | `make restart svc=<名前>` | サービスを再起動する |
 | `make down` | すべてのサービスを止める |
