@@ -200,6 +200,12 @@ install(PROGRAMS
   DESTINATION lib/${PROJECT_NAME}
 )
 install(PROGRAMS
+  scripts/gnss_diagnostics_node.py
+  scripts/gnss_quality.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+install(PROGRAMS
   scripts/driver_watchdog_node.py
   scripts/driver_watchdog_core.py
   DESTINATION lib/${PROJECT_NAME}

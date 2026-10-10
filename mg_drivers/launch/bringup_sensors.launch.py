@@ -158,6 +158,19 @@ def generate_launch_description():
                     )
                 ),
             ),
+            # 測位の品質 (RTK が Fixed か) の診断。navpvt は UBX プロトコルのときだけ出る
+            Node(
+                package="mg_drivers",
+                executable="gnss_diagnostics_node.py",
+                name="gnss_diagnostics_node",
+                output="screen",
+                condition=launch.conditions.IfCondition(
+                    launch.substitutions.AndSubstitution(
+                        use_gps_arg.launch_config,
+                        use_ubx_protocol_arg.launch_config,
+                    )
+                ),
+            ),
 
             # RealSense D435i
             launch.actions.IncludeLaunchDescription(

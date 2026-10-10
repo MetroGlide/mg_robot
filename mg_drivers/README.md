@@ -25,6 +25,7 @@
 | `pose_with_cov_publish_controller_node.py` | `PoseWithCovarianceStamped` の中継を入/切する | 入力: `pose_with_cov_origin`、出力: `pose_with_cov`、サービス: `~/change_publish_state` |
 | `generic_publish_controller_node.py` | 任意の型のトピックの中継を入/切する (`msg_module`・`msg_class`・`publish`・`queue_size` で指定)。AMCL の出力のゲート (`amcl_publish_controller_node`) に使う ([mg_navigation](../mg_navigation/README.md)) | 入力: `input_topic`、出力: `output_topic`、サービス: `~/change_publish_state` |
 | `depth_to_pointcloud_node.py` | 深度画像 (とカラー画像) から点群を復元する。rosbag の再生確認用 | 出力: `points` |
+| `gnss_diagnostics_node.py` | GNSS の測位の品質 (RTK が Fixed か) を診断として出す。ublox の標準の診断は RTK の Fixed と Float を区別しないため、`navpvt` から判定する (判定は `scripts/gnss_quality.py`)。UBX プロトコルで GNSS を使うときだけ起動する | 入力: `/navpvt`、出力: 診断 `gnss_diagnostics_node: quality` (集約で `/Robot/Drivers/GNSS`)、イベント `gnss.fix_changed` |
 | `pc_resource_publisher_node.py` | PC の CPU 使用率とメモリ使用率を配信し、しきい値で診断のレベルを決める | 出力: `cpu_usage`、`memory_usage` (`Float32`)、診断 `pc_resource_publisher_node: resources` (集約で `/Robot/System/Resources`) |
 | `odom_covariance_override_node.py` | オドメトリの共分散を上書きする。どの launch からも起動されない | 入力: `odom`、出力: `odom/covariance` |
 | `odom_offset_republisher.py` | rosbag の再生で、オドメトリの原点をずらして配信し直す (下記) | |

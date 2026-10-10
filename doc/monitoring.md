@@ -113,6 +113,7 @@ evt=<domain>.<event> key=value key="空白を含む値" ...
 | `driver` | `connected`、`disconnected`、`reconnect_attempt`、`estop_changed` |
 | `watchdog` | `stale`、`recovered`、`restart_requested`、`restart_failed`、`pause_changed` |
 | `localization` | `state_changed`、`reinit_requested`、`reinit_result` |
+| `gnss` | `fix_changed` (測位の種類の変化。`from`、`to`、`h_acc_m`) |
 | `gate` | `changed` |
 | `health` | `level_changed` (診断のレベルの変化。中継ノードだけが出す) |
 | `node` | `started` |
