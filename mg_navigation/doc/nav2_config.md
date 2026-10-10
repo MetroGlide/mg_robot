@@ -44,7 +44,7 @@ controller_server ─ cmd_vel_nav ─► collision_monitor ─ cmd_vel_collision
 
 - `top_obstacle_layer`: 上 LiDAR (`/scan_top_lidar`) の障害物の記録と消去。
 - `obstacle_stvl_layer` (`spatio_temporal_voxel_layer`): 3D 障害物検出の出力 (`/obstacle_detection_3d_node/points_obstacle`、[mg_drivers](../../mg_drivers/doc/obstacle_detection_3d.md)) を記録する。`voxel_decay` は local が 5 秒、global が 25 秒。
-- 前方 LiDAR (`obstacle_layer`)、深度カメラの `depth_voxel_layer`、`denoise_layer` は、定義だけが残り、`plugins` からは外れている。
+- 深度カメラの `depth_voxel_layer`、`denoise_layer` は、定義だけが残り、`plugins` からは外れている。
 - `speed_filter` (`filters`) は、定義だけがあり、`filters` はコメントアウトされている。
 - **`footprint_padding: 0.1` の理由**: 膨張レイヤーの内接半径は、フットプリントの原点から最も近い辺までの距離で決まる。このフットプリントは原点が後端寄りで、そのままでは半幅 (0.3 m) より小さい 0.2 m になる。幅 0.5 m 未満の隙間 (例: 間隔 0.8 m のコーン) が致死扱いにならず、プランナが通れると誤認して経路を引き、RPP が詰まって失敗する。0.1 m の余白で、内接半径を半幅の 0.3 m にして、通れない隙間を塞ぐ。
 - Smac から NavFn に戻すときは、`inflation_radius` と `cost_scaling_factor` (従来値は 2.5 と 1.0) と、この余白も確認する (`planner_navfn.yaml` のコメント)。
@@ -84,10 +84,11 @@ controller_server ─ cmd_vel_nav ─► collision_monitor ─ cmd_vel_collision
 | `PolygonSlowdown` | 減速 (`slowdown_ratio` 0.3) | 前方 1.4 m、後方 0.3 m、両脇 0.8 m。側方から進路に入る対象 (横切る歩行者) に早く反応するため、広く取っている |
 | `PolygonApproach` | 接近 (`time_before_collision` 2.0 秒) | `local_costmap/published_footprint` を、現在の速度 (旋回を含む) で前方にシミュレートし、2 秒以内に接触するなら減速する |
 
-- `collision_detector` は、前後の箱 (`PolygonFront`、`PolygonRear`) の状態を `collision_detector_state` に出す (動作は `none`)。観測は上 LiDAR だけ (前方 LiDAR は `enabled: False`)。
+- `collision_detector` は、前後の箱 (`PolygonFront`、`PolygonRear`) の状態を `collision_detector_state` に出す (動作は `none`)。観測は上 LiDAR だけ。
 - 状態は `collision_monitor_state` に出る (観測用)。
 - **実機の注意**: `PolygonApproach` は、`footprint_padding` (0.1 m) を含む。LiDAR が車体の一部を検出する配置だと、常に接触と判定して止まる。実機では、scan に車体の点が入っていないか確認する。
 - `PolygonStop` は、`enabled` を動的パラメータ (`ros2 param set`) で切り替えられる。
+- **データの途絶での停止 (`<ソース>.stop_on_timeout`)**: 既定は `False` (`nav2_params.yaml` の `scan_top`)。`True` にすると、そのソースのデータが `source_timeout` (3 秒) 以上途絶えた、またはまだ届いていないときに、ポリゴンの `enabled` によらず速度 0 にする。`collision_monitor_state` の `polygon_name` は `source_timeout:<ソース名>`。`ros2 param set /collision_monitor scan_top.stop_on_timeout true` で切り替えられる。無効のままでは、途絶えたソースは黙って無視され、LiDAR が止まっても走り続ける。シーケンサの走行は、`driver_watchdog_node` が先に一時停止する ([mg_drivers](../../mg_drivers/doc/driver_watchdog.md))。これは、手動ゴールなどシーケンサを通らない走行の備え。
 
 ## AMCL
 

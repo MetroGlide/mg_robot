@@ -550,6 +550,11 @@ collision_monitor:
       type: "scan"
       topic: "scan_top_lidar"
       enabled: True
+      # True にすると、このソースのデータが source_timeout 以上途絶えた (まだ届いていない場合を含む)
+      # とき、ポリゴンの enabled によらず速度 0 にする (state の polygon_name は
+      # "source_timeout:scan_top")。LiDAR が止まったまま走り続けるのを防ぐ。
+      # 動的パラメータ: ros2 param set /collision_monitor scan_top.stop_on_timeout true
+      stop_on_timeout: False
 
 # https://docs.nav2.org/configuration/packages/configuring-velocity-smoother.html
 # collision_monitor/PolygonStopによる急停止からの復帰時に速度が滑らかに立ち上がるよう、

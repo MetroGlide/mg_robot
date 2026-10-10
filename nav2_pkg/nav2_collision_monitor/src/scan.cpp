@@ -64,6 +64,11 @@ void Scan::configure()
     std::bind(&Scan::dataCallback, this, std::placeholders::_1));
 }
 
+bool Scan::isDataStale(const rclcpp::Time & curr_time) const
+{
+  return data_ == nullptr || sourceTimedOut(data_->header.stamp, curr_time);
+}
+
 void Scan::getData(
   const rclcpp::Time & curr_time,
   std::vector<Point> & data) const

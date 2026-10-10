@@ -22,6 +22,7 @@
 #include <vector>
 #include <string>
 #include <limits>
+#include <thread>
 
 #include "rclcpp/rclcpp.hpp"
 #include "nav2_util/lifecycle_node.hpp"
@@ -1226,6 +1227,111 @@ TEST_F(Tester, testCollisionPointsMarkers)
   ASSERT_TRUE(waitData(0.5, 500ms, curr_time));
   ASSERT_TRUE(waitCollisionPointsMarker(500ms));
   ASSERT_NE(collision_points_marker_msg_->markers[0].points.size(), 0u);
+  // Stop Collision Monitor node
+  cm_->stop();
+}
+
+TEST_F(Tester, testStopOnSourceTimeout)
+{
+  // Set Collision Monitor parameters. The source timeout is shortened for the test.
+  // A STOP polygon is created, but the scan is far away from it
+  setCommonParameters();
+  cm_->set_parameter(rclcpp::Parameter("source_timeout", 0.3));
+  addPolygon("Stop", POLYGON, 1.0, "stop");
+  addSource(SCAN_NAME, SCAN);
+  cm_->declare_parameter(
+    std::string(SCAN_NAME) + ".stop_on_timeout", rclcpp::ParameterValue(true));
+  setVectors({"Stop"}, {SCAN_NAME});
+
+  // Start Collision Monitor node
+  cm_->start();
+
+  // Check that robot does not stop while the data is fresh
+  rclcpp::Time curr_time = cm_->now();
+  sendTransforms(curr_time);
+  publishScan(4.5, curr_time);
+  ASSERT_TRUE(waitData(4.5, 500ms, curr_time));
+  publishCmdVel(0.5, 0.2, 0.1);
+  ASSERT_TRUE(waitCmdVel(500ms));
+  ASSERT_NEAR(cmd_vel_out_->linear.x, 0.5, EPSILON);
+
+  // Check that robot stops when the data becomes stale
+  std::this_thread::sleep_for(500ms);
+  curr_time = cm_->now();
+  sendTransforms(curr_time);
+  publishCmdVel(0.5, 0.2, 0.1);
+  ASSERT_TRUE(waitCmdVel(500ms));
+  ASSERT_NEAR(cmd_vel_out_->linear.x, 0.0, EPSILON);
+  ASSERT_NEAR(cmd_vel_out_->linear.y, 0.0, EPSILON);
+  ASSERT_NEAR(cmd_vel_out_->angular.z, 0.0, EPSILON);
+  ASSERT_TRUE(waitActionState(500ms));
+  ASSERT_EQ(action_state_->action_type, STOP);
+  ASSERT_EQ(action_state_->polygon_name, std::string("source_timeout:") + SCAN_NAME);
+
+  // Check that robot resumes when the data is back
+  curr_time = cm_->now();
+  sendTransforms(curr_time);
+  publishScan(4.5, curr_time);
+  ASSERT_TRUE(waitData(4.5, 500ms, curr_time));
+  publishCmdVel(0.5, 0.2, 0.1);
+  ASSERT_TRUE(waitCmdVel(500ms));
+  ASSERT_NEAR(cmd_vel_out_->linear.x, 0.5, EPSILON);
+  ASSERT_TRUE(waitActionState(500ms));
+  ASSERT_EQ(action_state_->action_type, DO_NOTHING);
+  ASSERT_EQ(action_state_->polygon_name, "");
+
+  // Stop Collision Monitor node
+  cm_->stop();
+}
+
+TEST_F(Tester, testStopOnSourceTimeoutNeverReceived)
+{
+  setCommonParameters();
+  addPolygon("Stop", POLYGON, 1.0, "stop");
+  addSource(SCAN_NAME, SCAN);
+  cm_->declare_parameter(
+    std::string(SCAN_NAME) + ".stop_on_timeout", rclcpp::ParameterValue(true));
+  setVectors({"Stop"}, {SCAN_NAME});
+
+  // Start Collision Monitor node
+  cm_->start();
+
+  // Check that robot does not move, if the source has not published any data
+  sendTransforms(cm_->now());
+  publishCmdVel(0.5, 0.2, 0.1);
+  ASSERT_TRUE(waitCmdVel(500ms));
+  ASSERT_NEAR(cmd_vel_out_->linear.x, 0.0, EPSILON);
+  ASSERT_NEAR(cmd_vel_out_->angular.z, 0.0, EPSILON);
+  ASSERT_TRUE(waitActionState(500ms));
+  ASSERT_EQ(action_state_->action_type, STOP);
+
+  // Stop Collision Monitor node
+  cm_->stop();
+}
+
+TEST_F(Tester, testStaleSourceDoesNotStopByDefault)
+{
+  setCommonParameters();
+  cm_->set_parameter(rclcpp::Parameter("source_timeout", 0.3));
+  addPolygon("Stop", POLYGON, 1.0, "stop");
+  addSource(SCAN_NAME, SCAN);
+  setVectors({"Stop"}, {SCAN_NAME});
+
+  // Start Collision Monitor node
+  cm_->start();
+
+  rclcpp::Time curr_time = cm_->now();
+  sendTransforms(curr_time);
+  publishScan(4.5, curr_time);
+  ASSERT_TRUE(waitData(4.5, 500ms, curr_time));
+
+  // Without stop_on_timeout, a stale source is just ignored
+  std::this_thread::sleep_for(500ms);
+  sendTransforms(cm_->now());
+  publishCmdVel(0.5, 0.2, 0.1);
+  ASSERT_TRUE(waitCmdVel(500ms));
+  ASSERT_NEAR(cmd_vel_out_->linear.x, 0.5, EPSILON);
+
   // Stop Collision Monitor node
   cm_->stop();
 }

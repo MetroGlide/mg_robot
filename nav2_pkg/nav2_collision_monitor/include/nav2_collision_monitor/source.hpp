@@ -80,6 +80,26 @@ public:
    */
   bool getEnabled() const;
 
+  /**
+   * @brief Obtains source name
+   * @return Name of data source
+   */
+  const std::string & getName() const;
+
+  /**
+   * @brief Obtains whether the robot has to stop when the data of this source is stale
+   * @return True if a stale (or never received) data of this source stops the robot
+   */
+  bool getStopOnTimeout() const;
+
+  /**
+   * @brief Checks whether the latest data is missing or older than source_timeout.
+   * Unlike getData(), it does not print any warning.
+   * @param curr_time Current node time for source verification
+   * @return True if there is no data or the data is stale
+   */
+  virtual bool isDataStale(const rclcpp::Time & curr_time) const = 0;
+
 protected:
   /**
    * @brief Source configuration routine.
@@ -100,6 +120,16 @@ protected:
    * @return True if data source is valid, otherwise false
    */
   bool sourceValid(
+    const rclcpp::Time & source_time,
+    const rclcpp::Time & curr_time) const;
+
+  /**
+   * @brief Checks whether the timestamp of latest data is older than source_timeout
+   * @param source_time Timestamp of latest obtained data
+   * @param curr_time Current node time for source verification
+   * @return True if the data is stale
+   */
+  bool sourceTimedOut(
     const rclcpp::Time & source_time,
     const rclcpp::Time & curr_time) const;
 
@@ -139,6 +169,8 @@ protected:
   bool base_shift_correction_;
   /// @brief Whether source is enabled
   bool enabled_;
+  /// @brief Whether stale data of this source stops the robot
+  bool stop_on_timeout_{false};
 };  // class Source
 
 }  // namespace nav2_collision_monitor

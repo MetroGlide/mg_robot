@@ -74,6 +74,13 @@ public:
     const rclcpp::Time & curr_time,
     std::vector<Point> & data) const;
 
+  /**
+   * @brief Checks whether the latest data is missing or older than source_timeout
+   * @param curr_time Current node time for source verification
+   * @return True if there is no data or the data is stale
+   */
+  bool isDataStale(const rclcpp::Time & curr_time) const;
+
 protected:
   /**
    * @brief Laser scanner data callback
