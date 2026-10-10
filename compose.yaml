@@ -284,6 +284,23 @@ services:
     working_dir: /app/mg_ui/mg_system_manager
     command: python3 -m mg_system_manager
 
+  # 全サービスのコンテナのログを、ホストの ${HOME}/ros2_data/logs/<サービス名>/<日付>.log に
+  # 常時書き出す (doc/monitoring.md)。アプリには手を入れず、docker のログもそのまま残る。
+  # 一度起動すれば、ホストの再起動後も残る (restart: unless-stopped)。make down で止まる。
+  # 対象は、このプロジェクト (COMPOSE_PROJECT_NAME) のコンテナだけ。
+  log-collector:
+    image: timberio/vector:0.43.1-alpine
+    command: ["--config", "/etc/vector/vector.toml"]
+    restart: unless-stopped
+    environment:
+      COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-mg_robot}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./docker/log-collector/vector.toml:/etc/vector/vector.toml:ro
+      - ${HOME}/ros2_data/logs:/logs
+      - /etc/localtime:/etc/localtime:ro
+    logging: *default-logging
+
   foxglove-bridge:
     <<: *runtime-core
     command:

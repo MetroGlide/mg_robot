@@ -11,17 +11,17 @@
 
 # slam_toolbox の SLAM を起動する。
 #   DETACH=1 / OPTS="..."
-slam: ## slam_toolbox の SLAM を起動 [DETACH OPTS]
+slam: _ensure-log-collector ## slam_toolbox の SLAM を起動 [DETACH OPTS]
 	$(_compose_opts)$(COMPOSE) up $(_up_flags) slam
 
 # 自己位置推定 + Nav2 + ウェイポイントシーケンサを起動する。
 #   DETACH=1 / OPTS="..."
-navigation: ## ナビゲーションスタックを起動 [DETACH OPTS]
+navigation: _ensure-log-collector ## ナビゲーションスタックを起動 [DETACH OPTS]
 	$(_compose_opts)$(COMPOSE) up $(_up_flags) navigation
 
 # GNSS 拘束付き 2D SLAM (SLAM ノードと RViz2 のみ。センサドライバは含まない)。
 #   DETACH=1 / OPTS="..."
-slam-gnss-2d: ## GNSS 拘束付き 2D SLAM を起動 [DETACH OPTS]
+slam-gnss-2d: _ensure-log-collector ## GNSS 拘束付き 2D SLAM を起動 [DETACH OPTS]
 	$(_compose_opts)$(COMPOSE) up $(_up_flags) slam-gnss-2d
 
 # rosbag から GNSS 拘束付き 2D SLAM をオフラインで再処理する。
