@@ -19,6 +19,7 @@ tools/
 │   ├── pose_graph.py      # slam_gnss_2d 出力 (pose_graph.json / gnss_transform.yaml) の読込・補間・アンカー間の座標移動
 │   ├── loc_metrics.py     # 自己位置推定の評価指標 (誤差・飛び・NEES・遅れ・復旧) ※numpy のみ
 │   ├── odom_calib.py      # ホイールオドメトリ校正の計算 (窓ごとの相対移動の当てはめ) ※numpy のみ
+│   ├── event_timeline.py  # イベントログ (evt=...) の解析・結合・絞り込み・整形 ※ROS 不要。書式の読み取りは mg_utils.event_log
 │   ├── faults.py          # 故障注入定義 (YAML) の読込
 │   └── fault_apply.py     # 故障注入の計算 (numpy のみ。fault_injector.py が使う)
 ├── datasets/localization/ # 自己位置推定の再生評価のデータセット定義 (地図・評価走行・真値の組)
@@ -34,6 +35,7 @@ tools/
     ├── make_sim_gnss_transform.py   # シミュレータのワールド SDF から、GNSS ブリッジ用の gnss_transform.yaml を作る
     ├── rosbag_modify_base.py        # rosbag 内特定トピック修正 (共分散付与等)
     ├── bag_to_json.py               # rosbag メッセージの JSON ダンプ
+    ├── event_timeline.py            # イベントログをコンテナのログと rosbag から集めて時刻順の表にする (make log-events)
     ├── diff_bag_list.py             # 記録対象トピックと現在アクティブなトピックの比較
     ├── eval_slam.py                 # SLAM 出力の RTK(GNSS) 比較評価 (make bag-eval-slam)
     ├── eval_localization.py         # 自己位置推定 (EKF 融合) の評価 (make bag-eval-localization)
@@ -277,6 +279,27 @@ python3 tools/scripts/bag_to_json.py --bag_path /path/to/rosbag --topics /odom /
 
 ---
 
+### 6b. `event_timeline.py` (イベントログの時系列)
+
+イベントログ (`evt=<domain>.<event> key=value ...`。書式は [doc/monitoring.md](../doc/monitoring.md)) を、コンテナのログと rosbag から集めて、時刻順の表 (Markdown または CSV) にします。
+
+| 入力 | 内容 |
+| :--- | :--- |
+| `--logs <dir...>` | `make log-collector` が書き出したログ (`<サービス>/<日付>.log`) と、`make logs-export` のログ (`<日時>/<サービス>.log`)。既定は `~/ros2_data/logs` |
+| `--bag <rosbag>` | rosbag の `/events` と `/rosout` (`rcl_interfaces/Log`) |
+
+並べる時刻は、ログ本文の epoch (ノードが記録した時刻) です。同じイベントが複数の入力にあっても、1 回だけ出ます。
+
+```bash
+make log-events SINCE=2026-10-11T00:00:00+09:00 LEVEL=WARN TZ=+09:00
+make log-events DOMAIN="driver watchdog" OUT=/app/tools/data/events.md
+make log-events BAG=/root/ros2_data/rosbag/xxx LOGS=/root/ros2_data/logs FORMAT=csv OUT=/app/tools/data/events.csv
+```
+
+絞り込みは `--since` / `--until` / `--level` / `--domain` / `--service`。表示のタイムゾーンは `--tz` (`UTC`、`+09:00`、`Asia/Tokyo`)。
+
+---
+
 ### 7. `diff_bag_list.py` (トピック記録リスト比較)
 
 記録対象トピック一覧テキストファイルと、現在実行中の ROS2 システム上のトピック一覧（`ros2 topic list`）を比較し、差分をターミナルに色付き表示します。
@@ -406,6 +429,7 @@ make test pkg=tools
 | :--- | :--- |
 | `test_loc_metrics.py` | 自己位置推定の評価指標 (`common/loc_metrics.py`) |
 | `test_odom_calib.py` | ホイールオドメトリの校正の計算 (`common/odom_calib.py`) |
+| `test_event_timeline.py` | イベントログの解析・結合・絞り込み・整形 (`common/event_timeline.py`) |
 | `test_faults.py`、`test_fault_apply.py` | 故障注入の定義の読込と計算 |
 | `test_pose_graph.py` | `pose_graph.json` の読込・補間 |
 | `test_map_helpers.py` | 地図の読込と `map_list.txt` |

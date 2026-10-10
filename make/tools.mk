@@ -7,7 +7,7 @@
 #   OUT_DIR=<dir>    指定ディレクトリに出力する
 #   OUT=<file>       指定ファイルパスに出力する
 
-.PHONY: bag-summary bag-plot-gnss bag-plot-gnss-map bag-plot-scans bag-eval-slam bag-eval-localization
+.PHONY: bag-summary bag-plot-gnss bag-plot-gnss-map bag-plot-scans bag-eval-slam bag-eval-localization log-events
 
 define _resolve_bag_output_opts
 $(strip \
@@ -79,3 +79,20 @@ bag-eval-slam: ## SLAM 出力を RTK(GNSS) と比較評価 [SLAM_DIR=<dir> BAG T
 #   例: make bag-eval-localization BAG=<bag> GT_DIR=<slam_dir> MAP_GT_DIR=<map_slam_dir> FAULTS=<faults.yaml>
 bag-eval-localization: ## 自己位置推定 (EKF 融合) を評価 [BAG GT_DIR MAP_GT_DIR FAULTS TO_TOOLS]
 	$(call _bag_run,,python3 /app/tools/scripts/eval_localization.py \"\$$TARGET_BAG\" $(if $(GT_DIR),--gt-dir \"$(GT_DIR)\" )$(if $(MAP_GT_DIR),--map-gt-dir \"$(MAP_GT_DIR)\" )$(if $(FAULTS),--faults \"$(FAULTS)\" )$(_resolve_bag_output_opts) $(OPTS))
+
+# イベントログ (evt=...) を、時刻順の表にする (doc/monitoring.md)。
+#   LOGS=<dir...>   ログのディレクトリ (develop コンテナ内のパス。make log-collector のログと make logs-export のログ)。
+#                   LOGS も BAG も省略すると /root/ros2_data/logs (ホストの ~/ros2_data/logs)
+#   BAG=<bag>       rosbag の /events と /rosout も読む (LOGS を省略すると、bag だけ)
+#   SINCE / UNTIL   この時刻の範囲 (ISO 8601。タイムゾーンが無ければ UTC)
+#   LEVEL=WARN      このレベル以上
+#   DOMAIN="a b"    ドメイン (例: DOMAIN="driver watchdog")
+#   SERVICE="a b"   ソース (サービス名、bag)
+#   TZ=+09:00       表示のタイムゾーン (UTC、+09:00、Asia/Tokyo。既定: コンテナのローカル=UTC)
+#   FORMAT=md|csv   出力形式 (既定: md)
+#   OUT=<file>      出力先 (コンテナ内のパス。例: OUT=/app/tools/data/events.md)
+log-events: ## イベントログを時刻順の表にする [LOGS BAG SINCE UNTIL LEVEL DOMAIN SERVICE TZ FORMAT OUT]
+	$(COMPOSE) run --rm --no-deps develop python3 /app/tools/scripts/event_timeline.py \
+	  $(if $(LOGS),--logs $(LOGS) )$(if $(BAG),--bag "$(BAG)" )$(if $(SINCE),--since "$(SINCE)" )$(if $(UNTIL),--until "$(UNTIL)" ) \
+	  $(if $(LEVEL),--level $(LEVEL) )$(if $(DOMAIN),--domain $(DOMAIN) )$(if $(SERVICE),--service $(SERVICE) ) \
+	  $(if $(TZ),--tz "$(TZ)" )$(if $(FORMAT),--format $(FORMAT) )$(if $(OUT),-o "$(OUT)" )
