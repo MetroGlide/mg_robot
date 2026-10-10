@@ -8,8 +8,8 @@
 
 | ドライバ | 切断時の挙動 |
 | :--- | :--- |
-| `wheel_odometry_node` | 連続エラーでシリアルを開き直す (自己復旧) |
-| `motor_driver_node` | 連続エラーでシリアルを開き直し、デバイスの有無を 1 Hz で見る (自己復旧。このブランチで追加) |
+| `wheel_odometry_node` | 連続エラーでシリアルを開き直し、デバイスの有無を 1 Hz で見る (自己復旧。`SerialDriverNode` で `motor_driver_node` と共通) |
+| `motor_driver_node` | 同上 |
 | `rplidar_ros` (`rplidar_node`) | 起動時に接続できなければ終了する。**走行中に止まると、プロセスは生きたままスキャンだけが出なくなり、復旧しない** |
 
 そこで、復旧を次の 3 層に分けている。

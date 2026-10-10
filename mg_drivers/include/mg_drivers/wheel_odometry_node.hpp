@@ -18,11 +18,12 @@
 #include <string>
 
 // mg_drivers
+#include "mg_drivers/base/serial_driver_node.hpp"
 #include "mg_drivers/sensors/wheel_odometry.hpp"
 
 namespace mg_drivers
 {
-class WheelOdometryNode : public rclcpp::Node
+class WheelOdometryNode : public SerialDriverNode
 {
 public:
   explicit WheelOdometryNode(rclcpp::NodeOptions options);
@@ -43,8 +44,6 @@ private:
   void zero_reset_srv_callback(
     const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
     std::shared_ptr<std_srvs::srv::Trigger::Response> response);
-
-  void error_recovery();
 
   std::shared_ptr<mg_drivers::WheelOdometry> wheel_odometry_;
 
@@ -70,9 +69,6 @@ private:
 
   double covariance_x_, covariance_y_, covariance_yaw_;
   double covariance_vx_, covariance_vyaw_;
-
-  int error_count_ = 0;
-  int error_recovery_count_;
 };
 
 }  // namespace mg_drivers

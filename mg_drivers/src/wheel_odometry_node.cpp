@@ -3,7 +3,7 @@
 using mg_drivers::WheelOdometryNode;
 
 WheelOdometryNode::WheelOdometryNode(rclcpp::NodeOptions options)
-: Node("wheel_odometry_node", options)
+: SerialDriverNode("wheel_odometry_node", "odometry", options)
 {
   RCLCPP_INFO(this->get_logger(), "wheel_odometry_node has been created.");
 
@@ -11,6 +11,7 @@ WheelOdometryNode::WheelOdometryNode(rclcpp::NodeOptions options)
 
   // Create wheel odometry object
   wheel_odometry_ = std::make_shared<mg_drivers::WheelOdometry>(device_name_);
+  set_device(wheel_odometry_);
   zero_reset();
 
   prepare_ros_communications();
@@ -38,8 +39,6 @@ void WheelOdometryNode::init_ros_params()
   this->declare_parameter<double>("odometry.covariance_vx");
   this->declare_parameter<double>("odometry.covariance_vyaw");
 
-  this->declare_parameter<int>("odometry.error_recovery_count");
-
   // Get parameters
   this->get_parameter_or<std::string>(
     "odometry.frame_id", frame_id_of_odometry_, std::string("odom"));
@@ -61,8 +60,6 @@ void WheelOdometryNode::init_ros_params()
   this->get_parameter_or<bool>("odometry.inv_y", inv_y_, false);
 
   this->get_parameter_or<bool>("odometry.inv_th", inv_th_, false);
-
-  this->get_parameter_or<int>("odometry.error_recovery_count", error_recovery_count_, 4);
 
   this->get_parameter_or<double>("odometry.covariance_x", covariance_x_, 10.0);
 
@@ -121,17 +118,13 @@ void WheelOdometryNode::update_odometry()
     if (inv_th_) current_data_.th *= -1;
 
     last_valid_data_ = current_data_;
-    error_count_ = 0;
   } else {
     RCLCPP_ERROR(
       this->get_logger(), "Serial error: %s",
       mg_drivers::SerialErrorStrings[static_cast<int>(current_data_.error)].c_str());
-
-    error_count_++;
-    if (error_count_ >= error_recovery_count_) {
-      error_recovery();
-    }
   }
+
+  handle_serial_error(current_data_.error);
 }
 
 void WheelOdometryNode::publish_odometry()
@@ -216,12 +209,6 @@ void WheelOdometryNode::zero_reset_srv_callback(
   } else {
     response->success = false;
   }
-}
-
-void WheelOdometryNode::error_recovery()
-{
-  RCLCPP_ERROR(this->get_logger(), "Wheel odometry error recovery start");
-  wheel_odometry_->reset_serial();
 }
 
 int main(int argc, char ** argv)

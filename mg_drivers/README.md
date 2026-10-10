@@ -9,7 +9,7 @@
 
 | 実行ファイル | 内容 | 主な入出力 |
 | :--- | :--- | :--- |
-| `wheel_odometry_node` | 車輪のエンコーダ (シリアル) からオドメトリを出す | 出力: `odom` (`nav_msgs/Odometry`) |
+| `wheel_odometry_node` | 車輪のエンコーダ (シリアル) からオドメトリを出す。切断されたら再接続する ([切断からの復旧](#切断からの復旧)) | 出力: `odom` (`nav_msgs/Odometry`)、`~/connected` (`Bool`、1 Hz) |
 | `motor_driver_node` | 速度指令をモータドライバ (シリアル) に送る。切断されたら再接続する ([切断からの復旧](#切断からの復旧)) | 入力: `cmd_vel` (`Twist`)、`~/emergency_stop` (`Bool`)、出力: `~/connected` (`Bool`、1 Hz) |
 | `depth_postprocess_node` | 点群をボクセルグリッドで間引き、統計的な外れ値を除く | 入力: `points`、出力: `points_filtered` (`PointCloud2`) |
 | `obstacle_detection_3d_node` | 点群から立体障害物を検出する ([doc](./doc/obstacle_detection_3d.md)) | 入力: `points`、出力: `~/points_obstacle`、`~/cluster_markers` |
@@ -119,14 +119,20 @@ ros2 run mg_drivers odom_offset_republisher.py
 
 ## 切断からの復旧
 
-シリアル接続の機器が切れたとき、ドライバが自分で再接続する範囲。
+シリアル接続の機器 (`wheel_odometry_node`、`motor_driver_node`) は、共通の基底クラスで、切断から自分で再接続する。
 
-| ノード | 復旧の方法 |
+- `SerialDevice` (`include/mg_drivers/base/serial_device.hpp`): シリアルポートの開閉と、デバイスファイルの有無。`MotorDriver` と `WheelOdometry` が継承し、接続確認の通信 `probe()` を実装する (モータは停止の指令、オドメトリは読み出し)。
+- `SerialDriverNode` (`include/mg_drivers/base/serial_driver_node.hpp`): 2 つのノードの基底クラス。通信の結果を `handle_serial_error()` で受け取り、次のことをする。
+
+| 動作 | 内容 |
 | :--- | :--- |
-| `wheel_odometry_node` | 連続 `odometry.error_recovery_count` (4) 回のエラーで、シリアルを開き直す |
-| `motor_driver_node` | 連続 `motor_driver.error_recovery_count` (4) 回のエラーで、シリアルを開き直す。さらに 1 Hz で、デバイスファイルの有無と接続を確認する。デバイスが消えたら fd を閉じ、戻ったら開き直して、停止の指令で接続を確かめる。結果を `~/connected` に出す (`true`: 開いていて、デバイスがあり、連続エラーが閾値未満) |
+| 連続エラーでの開き直し | 連続 `<prefix>.error_recovery_count` (既定 4。`odometry.` / `motor_driver.`) 回のエラーで、シリアルを開き直す (1 回だけ) |
+| 1 Hz の確認 (`health_check`) | デバイスファイルが消えたら、ポートを閉じる。戻ったら開き直し、`probe()` で通信を確かめる。開けていない、または連続エラーが閾値以上なら、同様に開き直して確かめる。エラーが 1 回以上あれば、`probe()` で確かめる (指令が無いあいだの切断に気づくため) |
+| `~/connected` (`Bool`、1 Hz) | `true`: ポートが開いていて、デバイスがあり、連続エラーが 0 |
 
-`error_recovery_count` は launch に直接書かれている (`bringup_hardware.launch.py` は未指定で既定の 4)。
+オドメトリは、以前は閾値に達したあと、毎周期 (20 Hz) 開き直していた。今は 1 回だけ開き直し、以降は 1 Hz で再試行する。
+
+モータドライバは、チェックサムの誤りを接続の判断に使わない (応答があったため)。
 
 自分では直せないものは、プロセスごと起動し直す。`respawn_drivers:=true` (既定) のとき、次のノードは終了コードによらず、終了の 2 秒後に起動し直される。起動時に機器が無くて終了するもの (`rplidar_node` など) は、機器が繋がるまで繰り返す。`false` で従来どおり (起動し直さない)。
 

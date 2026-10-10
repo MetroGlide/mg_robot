@@ -3,12 +3,7 @@
 using namespace std;
 using namespace mg_drivers;
 
-MotorDriver::MotorDriver(string device_name) : device_name_(device_name), serial_(device_name)
-{
-  if (!serial_.is_open_serial_) {
-    printf("Serial Fail: cound not open %s", device_name.c_str());
-  }
-}
+MotorDriver::MotorDriver(string device_name) : SerialDevice(device_name) {}
 
 MotorDriverResponse MotorDriver::send_speed_command(SpeedParameter param)
 {
@@ -59,10 +54,12 @@ vector<uint8_t> MotorDriver::encode(SpeedParameter param)
   return ret;
 }
 
-bool MotorDriver::is_alive() { return serial_.is_open_serial_; }
+SerialError MotorDriver::probe()
+{
+  SpeedParameter stop;
+  stop.left_wheel_speed = 0;
+  stop.right_wheel_speed = 0;
 
-bool MotorDriver::is_device_present() const { return serial_.is_device_present(); }
-
-void MotorDriver::close_serial() { serial_.close_serial(); }
-
-void MotorDriver::reset_serial() { serial_.reset_serial(); }
+  SerialError error = send_speed_command(stop).error;
+  return error == SerialError::CHECKSUM_ERROR ? SerialError::NO_ERROR : error;
+}

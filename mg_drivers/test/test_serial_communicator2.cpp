@@ -1,9 +1,11 @@
 #include <fcntl.h>
+#include <poll.h>
 #include <gtest/gtest.h>
 #include <stdlib.h>
 #include <unistd.h>
 
 #include <string>
+#include <vector>
 
 #include "mg_drivers/base/serial_communicator2.hpp"
 
@@ -25,6 +27,7 @@ public:
   ~PseudoTerminal() { close(master_fd_); }
 
   const std::string & slave_path() const { return slave_path_; }
+  int master_fd() const { return master_fd_; }
 
 private:
   int master_fd_;
@@ -83,4 +86,23 @@ TEST(SerialCommunicator2, ResetRepeatedlyDoesNotLeakDescriptors)
   int probe_after = dup(0);
   close(probe_after);
   EXPECT_EQ(probe, probe_after);
+}
+
+TEST(SerialCommunicator2, WriteAndReadRoundTrip)
+{
+  PseudoTerminal pty;
+  SerialCommunicator2 serial(pty.slave_path());
+  ASSERT_TRUE(serial.is_open_serial_);
+
+  ASSERT_EQ(serial.serial_write({0x01, 0x02, 0x03}), 3);
+
+  // 機器の側 (マスター) が受け取って、応答する
+  struct pollfd pfd = {pty.master_fd(), POLLIN, 0};
+  ASSERT_EQ(poll(&pfd, 1, 1000), 1);
+  uint8_t received[8];
+  ASSERT_EQ(read(pty.master_fd(), received, sizeof(received)), 3);
+  const uint8_t reply[] = {0x96, 0x47, 0x00, 0xDD};
+  ASSERT_EQ(write(pty.master_fd(), reply, sizeof(reply)), 4);
+
+  EXPECT_EQ(serial.serial_read(40000), std::vector<uint8_t>(reply, reply + 4));
 }

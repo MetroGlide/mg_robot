@@ -48,6 +48,8 @@ include_directories(
 add_library(${PROJECT_NAME}_lib
   "src/base/serial_communicator.cpp"
   "src/base/serial_communicator2.cpp"
+  "src/base/serial_device.cpp"
+  "src/base/serial_driver_node.cpp"
 
   "src/devices/motor_driver.cpp"
   "src/sensors/wheel_odometry.cpp"
@@ -137,6 +139,9 @@ if(BUILD_TESTING)
 
   ament_add_gtest(test_serial_communicator2 test/test_serial_communicator2.cpp)
   target_link_libraries(test_serial_communicator2 ${PROJECT_NAME}_lib)
+
+  ament_add_gtest(test_serial_driver_node test/test_serial_driver_node.cpp)
+  target_link_libraries(test_serial_driver_node ${PROJECT_NAME}_lib)
 endif()
 
 ################################################################################

@@ -2,12 +2,14 @@
 
 using mg_drivers::MotorDriverNode;
 
-MotorDriverNode::MotorDriverNode(rclcpp::NodeOptions options) : Node("motor_driver_node", options)
+MotorDriverNode::MotorDriverNode(rclcpp::NodeOptions options)
+: SerialDriverNode("motor_driver_node", "motor_driver", options)
 {
   init_ros_params();
   prepare_ros_communications();
 
   motor_driver_ = std::make_shared<mg_drivers::MotorDriver>(device_name_);
+  set_device(motor_driver_);
 }
 
 void MotorDriverNode::init_ros_params()
@@ -16,7 +18,6 @@ void MotorDriverNode::init_ros_params()
   this->declare_parameter<std::string>("motor_driver.device_name");
   this->declare_parameter<double>("motor_driver.wheel_pitch");
   this->declare_parameter<double>("motor_driver.max_speed");
-  this->declare_parameter<int>("motor_driver.error_recovery_count");
 
   // Get parameters
   this->get_parameter_or<std::string>(
@@ -25,8 +26,6 @@ void MotorDriverNode::init_ros_params()
   this->get_parameter_or<double>("motor_driver.wheel_pitch", wheel_pitch_, 0.358);
 
   this->get_parameter_or<double>("motor_driver.max_speed", max_speed_, 0.4);
-
-  this->get_parameter_or<int>("motor_driver.error_recovery_count", error_recovery_count_, 4);
 }
 
 void MotorDriverNode::prepare_ros_communications()
@@ -39,11 +38,6 @@ void MotorDriverNode::prepare_ros_communications()
   this->emergency_stop_sub_ = this->create_subscription<std_msgs::msg::Bool>(
     "~/emergency_stop", rclcpp::QoS(1),
     std::bind(&MotorDriverNode::emergency_stop_sub_cb, this, std::placeholders::_1));
-
-  this->connected_pub_ = this->create_publisher<std_msgs::msg::Bool>("~/connected", rclcpp::QoS(1));
-
-  this->health_timer_ =
-    this->create_wall_timer(std::chrono::seconds(1), std::bind(&MotorDriverNode::health_check, this));
 }
 
 mg_drivers::SpeedParameter MotorDriverNode::create_speed_parameter(
@@ -101,66 +95,11 @@ void MotorDriverNode::twist_sub_cb(const geometry_msgs::msg::Twist::SharedPtr ms
 
   SpeedParameter req = create_speed_parameter(msg);
 
-  handle_response(send_speed_command(req));
-}
-
-void MotorDriverNode::handle_response(const MotorDriverResponse & res)
-{
-  if (res.error == SerialError::NO_ERROR) {
-    consecutive_errors_ = 0;
-    return;
+  MotorDriverResponse res = send_speed_command(req);
+  // チェックサムの誤りは、応答があったので、接続の判断には使わない
+  if (res.error != SerialError::CHECKSUM_ERROR) {
+    handle_serial_error(res.error);
   }
-  if (res.error == SerialError::CHECKSUM_ERROR) {
-    return;
-  }
-
-  consecutive_errors_++;
-  // 閾値に達した 1 回だけ開き直す。それ以降は health_check が 1 Hz で再試行する
-  if (consecutive_errors_ == error_recovery_count_) {
-    RCLCPP_ERROR(this->get_logger(), "Motor driver error recovery start");
-    motor_driver_->reset_serial();
-  }
-}
-
-bool MotorDriverNode::is_connected() const
-{
-  return motor_driver_->is_alive() && motor_driver_->is_device_present() &&
-         consecutive_errors_ < error_recovery_count_;
-}
-
-void MotorDriverNode::recover_connection()
-{
-  motor_driver_->reset_serial();
-  if (!motor_driver_->is_alive()) {
-    return;
-  }
-
-  // 再接続の確認を兼ねて、停止の指令を送る
-  SpeedParameter stop;
-  stop.left_wheel_speed = 0;
-  stop.right_wheel_speed = 0;
-  MotorDriverResponse res = send_speed_command(stop);
-  handle_response(res);
-  if (res.error == SerialError::NO_ERROR) {
-    RCLCPP_INFO(this->get_logger(), "Motor driver reconnected");
-  }
-}
-
-void MotorDriverNode::health_check()
-{
-  if (!motor_driver_->is_device_present()) {
-    // デバイスが抜かれている。開いたままの fd は使えないので閉じ、戻ったら開き直す
-    if (motor_driver_->is_alive()) {
-      RCLCPP_ERROR(this->get_logger(), "Motor driver device disappeared");
-      motor_driver_->close_serial();
-    }
-  } else if (!motor_driver_->is_alive() || consecutive_errors_ >= error_recovery_count_) {
-    recover_connection();
-  }
-
-  std_msgs::msg::Bool msg;
-  msg.data = is_connected();
-  connected_pub_->publish(msg);
 }
 
 void MotorDriverNode::emergency_stop_sub_cb(const std_msgs::msg::Bool::SharedPtr msg)
