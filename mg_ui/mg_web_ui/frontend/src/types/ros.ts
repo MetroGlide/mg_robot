@@ -345,3 +345,12 @@ export interface NavSatFix {
   position_covariance: number[]
   position_covariance_type: number
 }
+
+/** rcl_interfaces/msg/Log(/rosout と /events) */
+export interface RosLog {
+  stamp: { sec: number; nanosec: number }
+  /** 10 DEBUG / 20 INFO / 30 WARN / 40 ERROR / 50 FATAL */
+  level: number
+  name: string
+  msg: string
+}
