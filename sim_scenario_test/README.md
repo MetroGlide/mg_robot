@@ -96,7 +96,7 @@ Web UI などから監視するためのものです。
 
 | キー | 内容 |
 |---|---|
-| `started_at` / `options` | 開始時刻、実行時のオプション (`attach`・`gui`・`remote_stack`・`repeat`・`tags` など) |
+| `started_at` / `options` | 開始時刻 (タイムゾーン付きの ISO 8601。各エントリの `started_at` も同じ)、実行時のオプション (`attach`・`gui`・`remote_stack`・`repeat`・`tags` など) |
 | `entries[]` | 実行予定の走行ごとに `name`・`file`・`result_dir` (`<results-dir>` からの相対パス)・`status` (`PENDING` → `RUNNING` → `PASSED` / `FAILED` / `ERROR`)・`message`・`elapsed_sec`・`attempt` (インフラ再試行の回数) |
 | `finished` / `exit_code` | 全体が終わったか、終了コード。途中で強制終了されると `finished` は `false` のまま残る |
 
