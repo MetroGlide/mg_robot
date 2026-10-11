@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import type { ApiLog, CallApi, SystemManagerHandle } from '../types/api'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { ApiLog, CallApi, ContainerDetail, SystemManagerHandle } from '../types/api'
 import { getSysManagerUrl } from '../utils/systemManagerConfig'
 
 export type { ApiLog, CallApi, SystemManagerHandle }
@@ -8,14 +8,14 @@ const STATUS_POLL_INTERVAL_MS = 2000
 const MAX_API_LOGS = 50
 
 export function useSystemManagerClient(): SystemManagerHandle {
-  const [containers, setContainers] = useState<Record<string, string>>({})
+  const [details, setDetails] = useState<Record<string, ContainerDetail>>({})
   const [logs, setLogs] = useState<ApiLog[]>([])
   const logIdRef = useRef(0)
 
   const refresh = useCallback(async () => {
     try {
-      const r = await fetch(`${getSysManagerUrl()}/status`)
-      if (r.ok) setContainers(await r.json())
+      const r = await fetch(`${getSysManagerUrl()}/status/detail`)
+      if (r.ok) setDetails(await r.json())
     } catch {
       // system_manager が停止中でも UI は動かし続け、次の定期確認で回復を待つ
     }
@@ -68,5 +68,10 @@ export function useSystemManagerClient(): SystemManagerHandle {
     [refresh],
   )
 
-  return { containers, logs, callApi, refresh }
+  const containers = useMemo(
+    () => Object.fromEntries(Object.entries(details).map(([k, v]) => [k, v.state])),
+    [details],
+  )
+
+  return { containers, details, logs, callApi, refresh }
 }
