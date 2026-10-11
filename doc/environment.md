@@ -43,7 +43,7 @@ Docker のログのローテーション設定。compose の `${LOG_MAX_SIZE:-10
 | `LOCALIZATION_MAP_PATH`、`PLANNING_MAP_PATH` | 測位用・計画用の地図。現在の `bringup_navigation.launch.py` は使っていない ([地図の指定](#地図の指定)) | `${MAP_PATH}/localization_map.yaml`、`${MAP_PATH}/planning_map.yaml` |
 | `ROSBAG_PATH` | rosbag の保存先。`record_bag.launch.py` が使う (必須) | `${ROS2_DATA_PATH}/rosbag` |
 | `ROSBAG_FILE` | 再生・解析する bag。`rosbag-replay`、`offline-slam-gnss-2d`、`bag-*` が使う | `${ROSBAG_PATH}/my_bag` |
-| `ROSBAG_TOPICS` | `rosbag-replay` で再生するトピック (空白区切り) | 未設定 |
+| `ROSBAG_TOPICS` | `rosbag-replay` で再生するトピック (空白区切り)。未設定なら全部。録画時の `/diagnostics`・`/diagnostics_agg`・`/events`・`/rosout` は、`/replay/` 以下に出す (いまのスタックの診断・イベントに混ざらないように) | 未設定 |
 
 ### SLAM の再最適化
 

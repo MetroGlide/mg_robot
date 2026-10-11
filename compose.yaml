@@ -178,8 +178,11 @@ services:
       USE_RVIZ: "false"
       ROSBAG_FILE: ${ROSBAG_FILE}
       ROSBAG_TOPICS: ${ROSBAG_TOPICS:-}
+    # 録画時の監視のトピックは /replay/ 以下に出す。いまのスタックの診断・イベントに混ざらないようにする
+    # (Humble の ros2 bag play には除外の指定がない)
     command: >
-      bash -c "exec ros2 bag play $$ROSBAG_FILE $${ROSBAG_TOPICS:+--topics $$ROSBAG_TOPICS} --clock ${OPTS:-}"
+      bash -c "exec ros2 bag play $$ROSBAG_FILE $${ROSBAG_TOPICS:+--topics $$ROSBAG_TOPICS} --clock
+      --remap /diagnostics:=/replay/diagnostics /diagnostics_agg:=/replay/diagnostics_agg /events:=/replay/events /rosout:=/replay/rosout ${OPTS:-}"
 
   obstacle-detection-replay:
     <<: *develop-base
