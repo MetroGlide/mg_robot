@@ -84,7 +84,7 @@ controller_server ─ cmd_vel_nav ─► collision_monitor ─ cmd_vel_collision
 | `PolygonApproach` | 接近 (`time_before_collision` 2.0 秒) | `local_costmap/published_footprint` を、現在の速度 (旋回を含む) で前方にシミュレートし、2 秒以内に接触するなら減速する |
 
 - 上流の `collision_detector` (指令には介入せず、状態だけを出す) は、使っていないので起動しない。
-- 状態は `collision_monitor_state` に出る (観測用)。
+- 状態は `collision_monitor_state` に出る (観測用。`waypoint_sequencer_node` の `~/activity` の入力にもなる)。
 - **実機の注意**: `PolygonApproach` は、`footprint_padding` (0.1 m) を含む。LiDAR が車体の一部を検出する配置だと、常に接触と判定して止まる。実機では、scan に車体の点が入っていないか確認する。
 - `PolygonStop` は、`enabled` を動的パラメータ (`ros2 param set`) で切り替えられる。
 - **データの途絶での停止 (`<ソース>.stop_on_timeout`)**: 既定は `False` (`nav2_params.yaml` の `scan_top`)。`True` にすると、そのソースのデータが `source_timeout` (3 秒) 以上途絶えた、またはまだ届いていないときに、ポリゴンの `enabled` によらず速度 0 にする。`collision_monitor_state` の `polygon_name` は `source_timeout:<ソース名>`。`ros2 param set /collision_monitor scan_top.stop_on_timeout true` で切り替えられる。無効のままでは、途絶えたソースは黙って無視され、LiDAR が止まっても走り続ける。シーケンサの走行は、`driver_watchdog_node` が先に一時停止する ([mg_drivers](../../mg_drivers/doc/driver_watchdog.md))。これは、手動ゴールなどシーケンサを通らない走行の備え。

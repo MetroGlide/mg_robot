@@ -27,6 +27,7 @@
 | `initial_localization_map` | 空 | 起動時に `map_server` が読んでいる測位用の地図 (`~/loaded_maps` の初期値) |
 | `initial_planning_map` | 空 | 起動時に `planning_map_server` が読んでいる計画用の地図 |
 | `publish_waypoint_status` | `true` | `~/status` を配信するか |
+| `publish_activity` | `true` | `~/activity` (走行の「いまの活動」) を配信するか。`false` なら、その入力の購読もしない |
 
 ### waypoint_editor.launch.py
 
@@ -55,6 +56,7 @@ GUI の [waypoint-tool](https://github.com/Chu-son/waypoint-tool) でも作れ�
 | Subscriber | `~/set_next_waypoint_index` | `std_msgs/Int16` | 次に向かうウェイポイントを指定する |
 | Subscriber | `~/pause_request` | `mg_msgs/PauseRequest` | 一時停止の要求 |
 | Publisher | `~/status` | `mg_msgs/SequencerStatus` | 状態 (10 Hz) |
+| Publisher | `~/activity` | `mg_msgs/NavigationActivity` | 走行の「いまの活動」の要約 (2 Hz、transient_local)。表示用。詳細は [doc/architecture.md](./doc/architecture.md#いまの活動-activity) |
 | Publisher | `~/waypoints` | `mg_msgs/WaypointList` | 読み込んだウェイポイント |
 | Publisher | `~/waypoints_markers` | `visualization_msgs/MarkerArray` | RViz2 用のマーカー |
 | Publisher | `~/loaded_maps` | `mg_msgs/LoadedMaps` | 読み込み済みの地図 |
