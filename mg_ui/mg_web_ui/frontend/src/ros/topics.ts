@@ -2,6 +2,7 @@ import { NODE_NS, nodeNs } from './namespaces'
 
 export const TOPICS = {
   WAYPOINT_STATUS: nodeNs(NODE_NS.WAYPOINT_SEQUENCER, '/status'),
+  WAYPOINT_ACTIVITY: nodeNs(NODE_NS.WAYPOINT_SEQUENCER, '/activity'),
   WAYPOINT_PAUSE_REQUEST: nodeNs(NODE_NS.WAYPOINT_SEQUENCER, '/pause_request'),
   WAYPOINT_SET_NEXT_INDEX: nodeNs(NODE_NS.WAYPOINT_SEQUENCER, '/set_next_waypoint_index'),
   WAYPOINT_LOADED_MAPS: nodeNs(NODE_NS.WAYPOINT_SEQUENCER, '/loaded_maps'),

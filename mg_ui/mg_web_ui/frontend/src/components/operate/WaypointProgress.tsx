@@ -1,4 +1,5 @@
 import { FoxgloveClientHandle } from "../../hooks/useFoxgloveClient";
+import { useNavigationActivity } from "../../hooks/useNavigationActivity";
 import { useTopicSubscriber } from "../../hooks/useTopicSubscriber";
 import { useWaypointControl } from "../../hooks/useWaypointControl";
 import { SequencerStatus } from "../../types";
@@ -8,6 +9,7 @@ import IconButton from "../ui/IconButton";
 import { CloseIcon } from "../ui/icons";
 import OpsButton from "../ui/OpsButton";
 import Stepper from "../ui/Stepper";
+import ActivityLine from "./ActivityLine";
 import { SEQUENCER_STEPS, sequencerStep } from "./displayState";
 
 interface Props {
@@ -33,6 +35,7 @@ export default function WaypointProgress({
     TOPICS.WAYPOINT_STATUS,
     "mg_msgs/msg/SequencerStatus",
   );
+  const activity = useNavigationActivity(client);
   const { currentId, tone } = sequencerStep(status?.state ?? null);
   const busy = control.loading || !connected;
 
@@ -47,19 +50,7 @@ export default function WaypointProgress({
         <IconButton icon={<CloseIcon />} title="閉じる" onClick={onClose} />
       </div>
       <Stepper steps={SEQUENCER_STEPS} currentId={currentId} tone={tone} />
-      {status && status.countdown_ms_remaining > 0 && (
-        <p className="mt-2 text-xs text-warn">
-          出発まで {(status.countdown_ms_remaining / 1000).toFixed(1)} 秒
-        </p>
-      )}
-      {status?.is_paused && (
-        <p className="mt-2 text-xs text-warn">
-          一時停止中: {status.pause_requesters.join(", ")}
-        </p>
-      )}
-      {status?.state === "ERROR" && (
-        <p className="mt-2 text-xs text-error">シーケンサがエラー状態です</p>
-      )}
+      <ActivityLine activity={activity} className="mt-2 text-xs" />
       <div className="mt-4 flex flex-wrap items-center justify-center gap-4">
         <OpsButton tone="primary" disabled={busy} onClick={control.start}>
           START
