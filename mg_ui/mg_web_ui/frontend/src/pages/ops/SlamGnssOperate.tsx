@@ -11,7 +11,7 @@ import OperateMap from "../../components/operate/OperateMap";
 import KpiRow from "../../components/operate/KpiRow";
 import GnssDetailCard from "../../components/operate/GnssDetailCard";
 import MapToolbar from "../../components/operate/MapToolbar";
-import HealthTabsCard from "../../components/operate/HealthTabsCard";
+import DiagnosticsBoard from "../../components/operate/DiagnosticsBoard";
 import SlamGnssMapCard from "../../components/operate/SlamGnssMapCard";
 import SlamGnssViewCard, {
   DEFAULT_SATELLITE,
@@ -153,7 +153,7 @@ export default function SlamGnssOperate({
       bottomLeft={
         <SlamGnssMapCard sysManager={sysManager} maps={maps} />
       }
-      bottomRight={<HealthTabsCard client={client} />}
+      bottomRight={<DiagnosticsBoard client={client} />}
     />
   );
 }

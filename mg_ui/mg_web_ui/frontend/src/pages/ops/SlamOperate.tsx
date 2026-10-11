@@ -7,7 +7,7 @@ import OperateLayout from "../../components/operate/OperateLayout";
 import OperateMap from "../../components/operate/OperateMap";
 import KpiRow from "../../components/operate/KpiRow";
 import MapToolbar from "../../components/operate/MapToolbar";
-import HealthTabsCard from "../../components/operate/HealthTabsCard";
+import DiagnosticsBoard from "../../components/operate/DiagnosticsBoard";
 import SlamControl from "../../components/operate/SlamControl";
 import { MapCommand } from "../../components/operate/MapCameraControls";
 import GnssDetailCard from "../../components/operate/GnssDetailCard";
@@ -69,7 +69,7 @@ export default function SlamOperate({
       bottomRight={
         <div className="flex flex-col items-end gap-2">
           <JoystickCard client={client} />
-          <HealthTabsCard client={client} />
+          <DiagnosticsBoard client={client} />
         </div>
       }
     />

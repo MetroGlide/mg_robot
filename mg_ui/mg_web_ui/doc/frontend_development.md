@@ -174,7 +174,7 @@ client.publish(TOPICS.MY_TOPIC, 'pkg/msg/MyMessage', { value: 1, label: 'hello' 
 
 走行中は操作しない運用を想定し、運用ビューは状態の表示を 1 画面 (1366×768 以上) に収める。
 
-- 切り替えて見るもの (センサ・トピック・ノード) は、タブの「全て」で 3 つを並べて見られる (`HealthTabsCard`)。
+- 診断は `DiagnosticsBoard` (Waypoint・SLAM・SLAM+GNSS の右下) に、区分 (ドライバ・自己位置・ナビ・システム・その他) を並べて出す。スクロールなしで全体を見渡せる。「全表示」は全項目 (表示名はタスク名で、意味のないメッセージは出さない)、「簡易」は OK の項目を `OK 数/全体` にまとめて異常な項目だけを出す。選択は保持され、「詳細」で `DiagnosticsTreePanel` (値まで見られる木) を重ねて開く。
 - 操作のカード (`ActionsCard`) は節ごとに閉じられ、開閉は保持される。閉じておけば、状態の表示だけが残る。
 - カードは地図の上に重ね、右端のツールバーを避けて置く (`OperateLayout`)。
 
@@ -195,7 +195,7 @@ client.publish(TOPICS.MY_TOPIC, 'pkg/msg/MyMessage', { value: 1, label: 'hello' 
 規約は [doc/monitoring.md](../../../doc/monitoring.md)。
 
 - **UI は判定しない**。色は、`/diagnostics_agg` の診断のレベルと、system_manager `GET /status/detail` の `level` で決める。しきい値を UI に書かない。UI が自分で判定してよいのは、通信路が新しいかどうか (`useFreshness`、`useDiagnosticsAgg` の鮮度) だけ。
-- 診断は `hooks/useDiagnosticsAgg.ts` で `/diagnostics_agg` (1Hz) を受け、`utils/diagnosticsTree.ts` で木にする。個別に参照するパスは `ros/diagnosticPaths.ts` だけに書く (aggregator との公開契約)。区分ごとの状態は `hooks/healthSummary.ts`。Hz を数えるためにトピックを購読しない。
+- 診断は `hooks/useDiagnosticsAgg.ts` で `/diagnostics_agg` (1Hz) を受け、`utils/diagnosticsTree.ts` で木にする。個別に参照するパスは `ros/diagnosticPaths.ts` だけに書く (aggregator との公開契約)。区分・グループごとの表示内容 (表示名、メッセージの省略、簡易表示の畳み込み) は `hooks/healthSummary.ts` (React に依存しない)。Hz を数えるためにトピックを購読しない。
 - イベントは `contexts/EventStreamContext.tsx` が `/events` (`rcl_interfaces/Log`、transient_local) を 1 か所で購読し、上限つきのバッファに持つ。トップバーの未読バッジと `EventLogPanel` が同じ状態を読む。本文は `utils/logfmt.ts` で解析する。接続し直したときに履歴を受けるため、`foxglove-bridge` は `max_qos_depth:=500` で起動する。
 - 旧 UI (`LegacyLayout`) は、生の `/diagnostics` (`useDiagnosticsMap`) のままにする。`SystemPage` の `diagnosticsSlot` / `eventsSlot` を渡す新 UI だけが、診断の木とイベント一覧を出す。
 - 人が読むだけの値 (速度、GNSS など) は `useThrottledTopic(client, topic, schema, maxHz)` で、再描画を間引く。間引いても最後の値は必ず反映される。**E-Stop や FSM の状態のように、変化を見逃せない値は間引かず `useTopicSubscriber` を使う**。

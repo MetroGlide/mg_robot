@@ -10,7 +10,7 @@ import OperateLayout from "../../components/operate/OperateLayout";
 import OperateMap from "../../components/operate/OperateMap";
 import KpiRow from "../../components/operate/KpiRow";
 import MapToolbar from "../../components/operate/MapToolbar";
-import HealthTabsCard from "../../components/operate/HealthTabsCard";
+import DiagnosticsBoard from "../../components/operate/DiagnosticsBoard";
 import RobotDetailCard from "../../components/operate/RobotDetailCard";
 import WaypointProgress from "../../components/operate/WaypointProgress";
 import ActionsCard from "../../components/operate/ActionsCard";
@@ -144,7 +144,7 @@ export default function WaypointOperate({
       bottomRight={
         <div className="flex flex-col items-end gap-2">
           <JoystickCard client={client} />
-          <HealthTabsCard client={client} />
+          <DiagnosticsBoard client={client} />
         </div>
       }
     />
