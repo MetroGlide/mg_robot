@@ -61,7 +61,6 @@ const LAYER_GROUPS: LayerGroup[] = [
       { key: "planPath", label: "Planned Path" },
       { key: "actualPath", label: "Actual Path" },
       { key: "waypointMarkers", label: "Waypoint Markers" },
-      { key: "collisionPolygons", label: "Collision Polygons" },
     ],
   },
   {

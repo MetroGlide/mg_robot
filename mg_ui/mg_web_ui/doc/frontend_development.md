@@ -206,7 +206,7 @@ client.publish(TOPICS.MY_TOPIC, 'pkg/msg/MyMessage', { value: 1, label: 'hello' 
 - `OperateMap` は 10fps の描画要求、`dpr=1`。`RenderTicker` の間隔は `intervalMs` で指定できる (`RosViewer` の既定は 50ms)。
 - 上部バーの「低負荷」(`ThemeContext.lowLoad`。設定のタブにもある) で、影とトランジションを切る。
 - 地図の上に重ねる GPS のミニ地図 (`overlays.gpsMap`) は、地図タイルを読み込み、GNSS を購読するので、既定はオフ。ツールバーのボタンで、使うときだけオンにする。
-- Nav2 のライフサイクルは、定期的に呼ばず、ロボットの詳細カードの「確認」を押したときだけ調べる (`useNav2LifecycleCheck`)。衝突検知の状態は 2Hz に間引いて購読する。
+- Nav2 のライフサイクルは、定期的に呼ばず、ロボットの詳細カードの「確認」を押したときだけ調べる (`useNav2LifecycleCheck`)。
 
 ## ページを足す
 
@@ -261,7 +261,6 @@ export default function MyPage({ client, sysManager }: { client: FoxgloveClientH
 | `particleCloud` | AMCL のパーティクル |
 | `planPath` / `actualPath` | 計画した経路 (赤) / 走った経路 (紫) |
 | `waypointMarkers` | ウェイポイントのマーカー |
-| `collisionPolygons` | 衝突判定のポリゴン |
 | `pointCloud` | 3D 点群 |
 | `colorImage` / `depthImage` | カラー / 深度の画像 (ビューワーの下に表示) |
 
@@ -285,7 +284,7 @@ export default function MyLayer({ client, tfBuffer }: { client: FoxgloveClientHa
 
 - レイヤーは `@react-three/fiber` の `Canvas` の中で描画されるので、戻り値は three.js のプリミティブ (`<mesh>`、`<points>` など)。
 - `tfBuffer.lookupTransform(targetFrame, sourceFrame)` で、`THREE.Matrix4 | null` が得られる。
-- `components/ros-viewer/hooks/` に、専用のフック (`useLaserScan`、`useOccupancyGrid`、`usePath`、`usePointCloud2`、`useMarkerArray`、`useParticleCloud`、`usePolygonStamped`、`useTfBuffer`) がある。あれば使う。
+- `components/ros-viewer/hooks/` に、専用のフック (`useLaserScan`、`useOccupancyGrid`、`usePath`、`usePointCloud2`、`useMarkerArray`、`useParticleCloud`、`useTfBuffer`) がある。あれば使う。
 
 ## 定義の参照先
 

@@ -6,7 +6,6 @@ import { SceneColors } from "./sceneColors";
 import CostmapLayer from "./layers/CostmapLayer";
 import LaserScanLayer from "./layers/LaserScanLayer";
 import PathLine from "./layers/PathLine";
-import CollisionPolygons from "./layers/CollisionPolygons";
 import ParticleCloud from "./layers/ParticleCloud";
 import PointCloud2Layer from "./layers/PointCloud2Layer";
 
@@ -58,13 +57,6 @@ export default function SensorLayers({ client, tfBuffer, colors }: Props) {
           topic={TOPICS.ACTUAL_PATH}
           color={colors.actualPath}
           lineWidth={3}
-        />
-      )}
-      {layers.collisionPolygons && (
-        <CollisionPolygons
-          client={client}
-          tfBuffer={tfBuffer}
-          color={colors.collision}
         />
       )}
       {layers.pointCloud && (

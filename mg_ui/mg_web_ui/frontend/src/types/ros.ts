@@ -307,11 +307,6 @@ export interface OdomMsg {
   }
 }
 
-export interface CollisionDetectorState {
-  polygons: string[]
-  detections: boolean[]
-}
-
 export interface TwistMsg {
   linear: { x: number; y: number; z: number }
   angular: { x: number; y: number; z: number }

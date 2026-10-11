@@ -20,7 +20,6 @@ export type LayerKey =
   | "planPath"
   | "actualPath"
   | "waypointMarkers"
-  | "collisionPolygons"
   | "pointCloud"
   | "colorImage"
   | "depthImage";
@@ -46,7 +45,6 @@ const DEFAULT_LAYERS: Record<LayerKey, boolean> = {
   planPath: true,
   actualPath: true,
   waypointMarkers: true,
-  collisionPolygons: false,
   pointCloud: false,
   colorImage: false,
   depthImage: false,

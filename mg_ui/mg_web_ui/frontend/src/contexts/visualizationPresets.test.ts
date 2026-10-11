@@ -12,7 +12,6 @@ const LAYER_KEYS: LayerKey[] = [
   "planPath",
   "actualPath",
   "waypointMarkers",
-  "collisionPolygons",
   "pointCloud",
   "colorImage",
   "depthImage",
