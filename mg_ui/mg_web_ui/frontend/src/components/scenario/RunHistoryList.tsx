@@ -1,5 +1,9 @@
 import type { RunSummary } from "../../types/scenarioTest";
-import { segmentsFromCounts } from "../../utils/scenarioTest";
+import {
+  formatRunTime,
+  segmentsFromCounts,
+  summarizeScenarioNames,
+} from "../../utils/scenarioTest";
 import EntryStatusBadge from "./EntryStatusBadge";
 import RunSegmentBar from "./RunSegmentBar";
 
@@ -28,7 +32,12 @@ export default function RunHistoryList({
               selectedRunId === run.run_id ? "bg-line" : ""
             }`}
           >
-            <span className="font-mono text-content">{run.run_id}</span>
+            <span
+              className="font-mono text-content"
+              title={`run_id: ${run.run_id}(UTC)`}
+            >
+              {formatRunTime(run.run_id)}
+            </span>
             <EntryStatusBadge status={run.state} />
             {run.options.attach && (
               <span className="text-[10px] text-muted">attach</span>
@@ -43,6 +52,16 @@ export default function RunHistoryList({
               {" / "}
               <span className="text-warn">{run.counts.ERROR ?? 0}</span>
               <span className="text-muted"> ({run.total})</span>
+            </span>
+            <span
+              className="w-full truncate text-xs text-muted"
+              title={run.scenarios.join("\n")}
+            >
+              {summarizeScenarioNames(run.scenarios)}
+              {run.options.tags && ` [タグ: ${run.options.tags}]`}
+              {run.options.repeat && run.options.repeat > 1
+                ? ` ×${run.options.repeat}`
+                : ""}
             </span>
             <span className="w-full">
               <RunSegmentBar

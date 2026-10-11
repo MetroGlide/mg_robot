@@ -10,6 +10,8 @@ import {
   failedEntries,
   filterScenarios,
   formatElapsed,
+  formatRunTime,
+  summarizeScenarioNames,
   isValidRobotAddress,
   runPhase,
   segmentsFromCounts,
@@ -230,5 +232,27 @@ describe("isValidRobotAddress", () => {
     expect(isValidRobotAddress("mg-robot.local")).toBe(true);
     expect(isValidRobotAddress("1.2.3.4;id")).toBe(false);
     expect(isValidRobotAddress(" 1.2.3.4")).toBe(false);
+  });
+});
+
+describe("formatRunTime", () => {
+  it("UTC の run_id を JST にする", () => {
+    expect(formatRunTime("20261011_140234")).toBe("2026/10/11 23:02:34");
+  });
+
+  it("日をまたぐ", () => {
+    expect(formatRunTime("20261231_150000")).toBe("2027/01/01 00:00:00");
+  });
+
+  it("日時でない id はそのまま返す", () => {
+    expect(formatRunTime("exp_stock1")).toBe("exp_stock1");
+  });
+});
+
+describe("summarizeScenarioNames", () => {
+  it("本数で表現を変える", () => {
+    expect(summarizeScenarioNames([])).toBe("");
+    expect(summarizeScenarioNames(["a"])).toBe("a");
+    expect(summarizeScenarioNames(["a", "b", "c"])).toBe("a ほか 2 本");
   });
 });

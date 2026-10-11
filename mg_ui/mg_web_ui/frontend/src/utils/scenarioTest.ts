@@ -167,7 +167,38 @@ export function runPhase(status: ScenarioStatus | null): RunPhase {
   return status.run?.state === "running" ? "running" : "starting";
 }
 
-const HOST_RE = /^[a-zA-Z0-9][a-zA-Z0-9.-]*$/;
+const RUN_ID_RE = /^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})$/;
+const JST_FORMAT = new Intl.DateTimeFormat("ja-JP", {
+  timeZone: "Asia/Tokyo",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hourCycle: "h23",
+});
+
+/**
+ * run_id(system_manager が UTC で付ける YYYYMMDD_HHMMSS)を JST の「YYYY/MM/DD HH:MM:SS」にする。
+ * 日時の形でない id(手で付けた名前)はそのまま返す。
+ */
+export function formatRunTime(runId: string): string {
+  const m = RUN_ID_RE.exec(runId);
+  if (!m) return runId;
+  const [, y, mo, d, h, mi, s] = m.map(Number);
+  const ms = Date.UTC(y, mo - 1, d, h, mi, s);
+  return JST_FORMAT.format(new Date(ms)).replace(/-/g, "/");
+}
+
+/** 実行したシナリオの要約。1 本ならその名前、複数なら「先頭の名前 ほか n 本」 */
+export function summarizeScenarioNames(names: readonly string[]): string {
+  if (names.length === 0) return "";
+  if (names.length === 1) return names[0];
+  return `${names[0]} ほか ${names.length - 1} 本`;
+}
+
+const HOST_RE =/^[a-zA-Z0-9][a-zA-Z0-9.-]*$/;
 
 /** 実機PCのアドレスとして使えるか(空は「指定しない」として有効) */
 export function isValidRobotAddress(value: string): boolean {

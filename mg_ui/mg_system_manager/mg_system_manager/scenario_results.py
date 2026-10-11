@@ -128,6 +128,8 @@ def summarize(run_id: str, progress: dict[str, Any], active: bool) -> dict[str, 
         "exit_code": progress.get("exit_code"),
         "total": len(entries),
         "counts": counts,
+        "scenarios": list(dict.fromkeys(
+            str(entry.get("name", "")) for entry in entries)),
         "options": progress.get("options") or {},
     }
 

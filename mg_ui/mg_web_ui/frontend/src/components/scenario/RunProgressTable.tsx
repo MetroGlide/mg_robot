@@ -2,6 +2,7 @@ import type { RunProgress } from "../../types/scenarioTest";
 import {
   countProgress,
   formatElapsed,
+  formatRunTime,
   segmentsFromEntries,
 } from "../../utils/scenarioTest";
 import ElapsedText from "./ElapsedText";
@@ -20,6 +21,7 @@ interface RunProgressTableProps {
 function describeOptions(run: RunProgress): string {
   const { options } = run;
   const parts = [options.attach ? "attach" : "毎回起動"];
+  if (options.tags) parts.push(`タグ: ${options.tags}`);
   if (options.gui) parts.push("GUI");
   if (options.repeat && options.repeat > 1) parts.push(`×${options.repeat}`);
   if (options.remote_stack) parts.push(`実機PC ${options.remote_stack}`);
@@ -37,7 +39,12 @@ export default function RunProgressTable({
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-content">
-        <span className="font-mono text-content">{run.run_id}</span>
+        <span
+          className="font-mono text-content"
+          title={`run_id: ${run.run_id}(UTC)`}
+        >
+          {formatRunTime(run.run_id)}
+        </span>
         <EntryStatusBadge status={run.state} />
         <span>{describeOptions(run)}</span>
         <span className="ml-auto">

@@ -169,6 +169,7 @@ def test_runs_are_listed_newest_first_with_counts(client, settings):
 
     assert [r["run_id"] for r in runs] == ["20260925_100000", "20260925_090000"]
     assert runs[0]["state"] == "aborted"
+    assert runs[1]["scenarios"] == ["a", "b"]
     assert runs[1]["counts"] == {"PASSED": 1, "FAILED": 1}
     assert (runs[1]["state"], runs[1]["exit_code"], runs[1]["total"]) == (
         "finished", 1, 2)
