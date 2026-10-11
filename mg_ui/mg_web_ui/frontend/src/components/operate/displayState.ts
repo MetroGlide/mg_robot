@@ -15,13 +15,6 @@ export function quaternionToYawDeg(q: {
   return (yaw * 180) / Math.PI;
 }
 
-/** LocalizationStatus.state(0 NORMAL ... 4 DEGRADED)の色 */
-export function localizationTone(state: number): Tone {
-  if (state === 0) return "ok";
-  if (state === 4) return "error";
-  return "warn";
-}
-
 /** waypoint_sequencer の通常の流れ。SUSPENDED と ERROR は流れの外なので段にしない */
 export const SEQUENCER_STEPS: Step[] = [
   { id: "IDLE", label: "待機" },

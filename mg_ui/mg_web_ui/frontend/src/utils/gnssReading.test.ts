@@ -30,20 +30,17 @@ const fix = (overrides: Partial<NavSatFix> = {}): NavSatFix =>
 describe("fromNavPvt", () => {
   it("搬送波位相の解の状態で RTK の Fixed と Float を分ける", () => {
     expect(fromNavPvt(pvt({ flags: 1 | (2 << 6) }))).toMatchObject({
-      label: "RTK Fixed",
-      tone: "ok",
+      label: "RTK Fixed"
     });
     expect(fromNavPvt(pvt({ flags: 1 | (1 << 6) }))).toMatchObject({
-      label: "RTK Float",
-      tone: "warn",
+      label: "RTK Float"
     });
   });
 
   it("RTK でない測位は fix_type の表示名にする", () => {
-    expect(fromNavPvt(pvt())).toMatchObject({ label: "3D Fix", tone: "warn" });
+    expect(fromNavPvt(pvt())).toMatchObject({ label: "3D Fix" });
     expect(fromNavPvt(pvt({ fix_type: 0 }))).toMatchObject({
-      label: "No Fix",
-      tone: "error",
+      label: "No Fix"
     });
   });
 
@@ -67,14 +64,12 @@ describe("fromNavPvt", () => {
 });
 
 describe("fromNavSatFix", () => {
-  it("status を表示名と色にする", () => {
+  it("status を表示名にする", () => {
     expect(fromNavSatFix(fix({ status: { status: 2, service: 1 } }))).toMatchObject({
-      label: "RTK",
-      tone: "ok",
+      label: "RTK"
     });
     expect(fromNavSatFix(fix({ status: { status: -1, service: 1 } }))).toMatchObject({
-      label: "No Fix",
-      tone: "error",
+      label: "No Fix"
     });
     expect(fromNavSatFix(fix()).label).toBe("GNSS");
   });

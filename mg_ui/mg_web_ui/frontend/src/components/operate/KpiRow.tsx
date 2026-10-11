@@ -3,18 +3,21 @@ import { useTopicSubscriber } from "../../hooks/useTopicSubscriber";
 import { useGnss } from "../../hooks/useGnss";
 import { useOpsValue } from "../../hooks/useOpsValue";
 import { useFreshness } from "../../hooks/useFreshness";
+import { useDiagnosticsAgg } from "../../hooks/useDiagnosticsAgg";
 import {
   Float32Msg,
   LocalizationStatus,
   LOCALIZATION_STATE_NAME,
 } from "../../types";
 import { TOPICS } from "../../ros/interfaces";
+import { DIAG_PATHS } from "../../ros/diagnosticPaths";
+import { findNode } from "../../utils/diagnosticsTree";
 import Card from "../ui/Card";
 import StatTile from "../ui/StatTile";
 import VelocityTile from "./VelocityTile";
 import { GNSS_DETAIL_KEY } from "./GnssDetailCard";
 import { CpuIcon, SatelliteIcon } from "../ui/icons";
-import { localizationTone } from "./displayState";
+import { Tone, toneFromDiagLevel } from "../ui/Pill";
 
 // これを超えて受信がなければ値を古いものとして扱う(秒)
 const STALE_AFTER_SEC = 5;
@@ -23,6 +26,7 @@ const GNSS_HZ = 2;
 
 /**
  * CPU・メモリ・自己位置推定・GNSS・速度の指標。受信が途切れたら値を消して経過秒を出す。
+ * 値は型付きのトピックから、色(良し悪し)は ROS 側の診断(/diagnostics_agg)から決める。UI では判定しない。
  * 値の桁や文字数が変わっても大きさが変わらないよう、各タイルの幅を固定している。
  */
 export default function KpiRow({ client }: { client: FoxgloveClientHandle }) {
@@ -34,6 +38,11 @@ export default function KpiRow({ client }: { client: FoxgloveClientHandle }) {
     "mg_msgs/msg/LocalizationStatus",
   );
   const gnss = useGnss(client, GNSS_HZ);
+  const diagnostics = useDiagnosticsAgg(client);
+  const diagTone = (path: string): Tone => {
+    const node = findNode(diagnostics, path);
+    return node ? toneFromDiagLevel(node.level) : "neutral";
+  };
   const [gnssOpen, setGnssOpen] = useOpsValue<boolean>(GNSS_DETAIL_KEY, false);
 
   const cpuAge = useFreshness(client, TOPICS.CPU_USAGE, STALE_AFTER_SEC);
@@ -48,7 +57,7 @@ export default function KpiRow({ client }: { client: FoxgloveClientHandle }) {
         label="CPU"
         value={cpu ? cpu.data.toFixed(0) : "--"}
         unit="%"
-        tone={cpu && cpu.data > 85 ? "warn" : "neutral"}
+        tone={diagTone(DIAG_PATHS.CPU)}
         stale={cpuAge.stale}
         ageSec={cpuAge.ageSec}
       />
@@ -57,7 +66,7 @@ export default function KpiRow({ client }: { client: FoxgloveClientHandle }) {
         label="Memory"
         value={mem ? mem.data.toFixed(0) : "--"}
         unit="%"
-        tone={mem && mem.data > 90 ? "warn" : "neutral"}
+        tone={diagTone(DIAG_PATHS.MEMORY)}
         stale={memAge.stale}
         ageSec={memAge.ageSec}
       />
@@ -65,7 +74,7 @@ export default function KpiRow({ client }: { client: FoxgloveClientHandle }) {
         widthClass="w-36"
         label="自己位置"
         value={loc ? (LOCALIZATION_STATE_NAME[loc.state] ?? String(loc.state)) : "--"}
-        tone={loc ? localizationTone(loc.state) : "neutral"}
+        tone={diagTone(DIAG_PATHS.LOCALIZATION)}
         stale={locAge.stale}
         ageSec={locAge.ageSec}
       />
@@ -74,7 +83,7 @@ export default function KpiRow({ client }: { client: FoxgloveClientHandle }) {
         icon={<SatelliteIcon />}
         label="GNSS"
         value={gnss.reading ? gnss.reading.label : "--"}
-        tone={gnss.reading ? gnss.reading.tone : "neutral"}
+        tone={diagTone(DIAG_PATHS.GNSS)}
         stale={gnss.freshness.stale}
         ageSec={gnss.freshness.ageSec}
         onClick={() => setGnssOpen(!gnssOpen)}
