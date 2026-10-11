@@ -9,9 +9,7 @@ import {
   PlusIcon,
   PoseIcon,
   RotateIcon,
-  WheelIcon,
 } from "../ui/icons";
-import { useWheelMode } from "../../hooks/useWheelMode";
 import { MapInteractionMode } from "../../hooks/useWaypointControl";
 import { MapCommand } from "./MapCameraControls";
 import OpacityControl from "./OpacityControl";
@@ -37,7 +35,6 @@ export default function MapToolbar({
   disabled = false,
   extra,
 }: Props) {
-  const [wheelMode, setWheelMode] = useWheelMode();
   const toggleMode = (mode: Exclude<MapInteractionMode, "none">) =>
     onInteractionModeChange?.(interactionMode === mode ? "none" : mode);
 
@@ -52,16 +49,6 @@ export default function MapToolbar({
         title="ロボットを追従"
         active={follow}
         onClick={onToggleFollow}
-      />
-      <IconButton
-        icon={<WheelIcon />}
-        title={
-          wheelMode === "zoom"
-            ? "ホイール: 拡大縮小(押すと移動に切り替え)"
-            : "ホイール: 移動(押すと拡大縮小に切り替え。マウス向け)"
-        }
-        active={wheelMode === "zoom"}
-        onClick={() => setWheelMode(wheelMode === "zoom" ? "pan" : "zoom")}
       />
       {onInteractionModeChange && (
         <>

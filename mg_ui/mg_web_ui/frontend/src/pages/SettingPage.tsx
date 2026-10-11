@@ -10,6 +10,7 @@ import {
 import { useTeleop } from "../contexts/TeleopContext";
 import { ThemeMode, useTheme } from "../contexts/ThemeContext";
 import { useRobotProfile } from "../contexts/RobotProfileContext";
+import { useWheelMode } from "../hooks/useWheelMode";
 import { useGnssSource } from "../contexts/GnssSourceContext";
 import type { GnssSource } from "../utils/gnssReading";
 import {
@@ -160,6 +161,7 @@ export default function SettingPage() {
   const { mode: themeMode, setMode: setThemeMode, lowLoad, setLowLoad } = useTheme();
 
   const { name: robotName, setName: setRobotName } = useRobotProfile();
+  const [wheelMode, setWheelMode] = useWheelMode();
   const { source: gnssSource, setSource: setGnssSource } = useGnssSource();
   const [robotNameDraft, setRobotNameDraft] = useState(robotName);
   useEffect(() => setRobotNameDraft(robotName), [robotName]);
@@ -262,6 +264,23 @@ export default function SettingPage() {
                 ))}
               </div>
             </div>
+            <div className="flex items-center gap-4 border-t border-line pt-3">
+              <span className="text-sm text-content">
+                マウスのホイールで地図を拡大縮小
+              </span>
+              <Toggle
+                value={wheelMode === "zoom"}
+                onChange={() => setWheelMode(wheelMode === "zoom" ? "pan" : "zoom")}
+              />
+              <span
+                className={`text-sm font-semibold ${wheelMode === "zoom" ? "text-accent" : "text-muted"}`}
+              >
+                {wheelMode === "zoom" ? "ON" : "OFF"}
+              </span>
+            </div>
+            <p className="text-xs text-muted">
+              OFF のときホイールは地図の移動です(タッチパッドの 2 本指スクロール向け)。マウスで使う場合は ON にします(この端末だけの設定)。
+            </p>
             <div className="flex items-center gap-4 border-t border-line pt-3">
               <span className="text-sm text-content">低負荷モード</span>
               <Toggle value={lowLoad} onChange={() => setLowLoad(!lowLoad)} />

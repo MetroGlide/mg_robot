@@ -122,9 +122,3 @@ export const OpacityIcon = () => (
     <path d="M12 3v17" />
   </Icon>
 );
-export const WheelIcon = () => (
-  <Icon>
-    <rect x="6" y="3" width="12" height="18" rx="6" />
-    <path d="M12 7v4" />
-  </Icon>
-);
