@@ -317,6 +317,8 @@ services:
       - -p
       - send_buffer_limit:=10000000
       - -p
+      - max_qos_depth:=500
+      - -p
       - use_sim_time:=false
       - -p
       - "capabilities:=[clientPublish,services]"
