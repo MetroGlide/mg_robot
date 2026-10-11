@@ -57,6 +57,10 @@ def test_invalid_choice(key, value):
         parse_source_config('x', _get({**BASE, key: value}), 1.0)
 
 
+def test_fault_level_ok_is_accepted():
+    assert parse_source_config('x', _get({**BASE, 'fault_level': 'ok'}), 1.0).fault_level == 'ok'
+
+
 def test_stale_timeout_must_exceed_period():
     with pytest.raises(ValueError, match='stale_timeout_sec'):
         parse_source_config('amcl_pose', _get({**BASE, 'expected_hz': 1.0}), 1.0)

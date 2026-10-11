@@ -11,7 +11,8 @@ from mg_utils.monitoring.activity import ActivityMonitor
 OK = 'ok'
 WARN = 'warn'
 ERROR = 'error'
-FAULT_LEVELS = (WARN, ERROR)
+# ok は「観測のみ」。途絶や頻度の低下をメッセージと values には出すが、レベルは上げない
+FAULT_LEVELS = (OK, WARN, ERROR)
 
 
 @dataclass
@@ -30,7 +31,7 @@ def evaluate_topic_health(
 ) -> TopicHealth:
     """トピックの鮮度と受信頻度の診断の内容を作る。monitor の判定も更新する。
 
-    - 途絶 (または ok=False を受信) したら fault_level (既定 error)
+    - 途絶 (または ok=False を受信) したら fault_level (既定 error)。ok なら観測のみで、レベルは常に ok
     - 初回のメッセージを待っている間は ok
     - 受信頻度が expected_hz × hz_warn_ratio を下回ったら warn (expected_hz が 0 なら調べない)
 
@@ -53,6 +54,9 @@ def evaluate_topic_health(
     else:
         level = OK
         message = f'{hz:.1f} Hz' if expected_hz > 0.0 else 'ok'
+
+    if fault_level == OK:
+        level = OK
 
     values = {'hz': f'{hz:.2f}'}
     if expected_hz > 0.0:

@@ -56,6 +56,7 @@ ROS に依存しない numpy の関数。
 | `topic_source` | 必要 (rclpy) | `declare_source_config(node, id, default_stale_timeout_sec)` と `TopicSource` (設定に従う購読と `ActivityMonitor` の組み立て)。`ok_field` を指定しないソースは、デシリアライズせず (`raw`) に受け取る |
 | `diagnostic_task` | 必要 (`diagnostic_updater`) | `TopicHealthTask`: `evaluate_topic_health` の結果を `diagnostic_updater` のタスクとして出す |
 
+- `fault_level: ok` は観測のみ。途絶や頻度の低下をメッセージと values に出すが、レベルは `ok` のまま (止まっているのが正常なトピック用)。
 - 期待する周期より短い `stale_timeout_sec` は、設定の読み取りで拒否する。
 - 受信頻度は、途絶 (`stale_timeout_sec` 超え) したら 0 になる。
 

@@ -45,6 +45,7 @@ aggregator は、`/Robot` の下を次の区分にまとめる。
 - 実機のドライバ (`/Robot/Drivers`) は、実機だけで集約する (`simulation:=true` では集約しない)。実機では、必ず出ているはずの診断が欠けると、集約が `STALE` ("Missing") にする。
 - 診断が一定時間 (`timeout`) 届かなくなったものも `STALE` になり、上位のグループは `ERROR` になる。
 - 常に `WARN` / `ERROR` になる第三者の診断は、`DiscardAnalyzer` で捨てる (生の `/diagnostics` と rosbag には残る)。
+- 自作のノードが見るトピックのうち、止まっているのが正常なもの (動いたときだけ出る `amcl_pose`、走行中だけ出る `cmd_vel` など) は、`topic_monitor` の `fault_level: ok` で観測のみにする。値と途絶の時間は診断に出るが、レベルは上げない。使うときは、理由を設定の YAML のコメントに書く。UI の側で除外する仕組みは持たない (UI は判定しない)。
 
 UI が個別に参照する項目のパスは、次に固定する。変えるときは、UI の `diagnosticPaths.ts` と一緒に変える。
 
@@ -64,7 +65,7 @@ UI が個別に参照する項目のパスは、次に固定する。変える�
 | `lifecycle_manager_navigation: Nav2 Health` | `Nav2` | 基本は `OK`。起動中は `ERROR` ("Nav2 is inactive") | `/Navigation/Nav2` に取り込む。起動直後の `ERROR` は、起動の猶予で吸収する |
 | `lifecycle_manager_localization: Nav2 Health` | `Nav2` | 同上 | `/Navigation/Nav2` に取り込む |
 | `ekf_global_node: odometry/filtered topic status` | `none` | `OK` | `/Localization/EKF` に取り込む |
-| `ekf_global_node: Filter diagnostic updater` | `none` | 常に `WARN` ("Potentially erroneous data or settings detected…") | **要調査。** EKF の設定に問題がある可能性がある。原因が分かるまで、`/Localization/EKF` に取り込んで見える状態にしておく |
+| `ekf_global_node: Filter diagnostic updater` | `none` | 常に `WARN` (`X_configuration`・`Y_configuration`: 「絶対位置の入力が 2 つ」) | GNSS (`odom0`) と AMCL (`pose0`) の両方で x/y の絶対位置を入れる設計による警告で、設定の問題ではない。aggregator で捨てる。EKF の生存は `odometry/filtered topic status` (周波数) で見る |
 | `ublox_gps_node: fix` | `ublox` | 常に `OK` ("3D fix")。RTK の Fixed/Float を区別しない | 受信機の状態として取り込む。測位の品質は別のノードが `navpvt` から判定する |
 | `ublox_gps_node: fix topic status` | `ublox` | `WARN` と `ERROR` ("Frequency too low") が常時出る | ublox のパラメータで期待周期を合わせる。合わなければ aggregator で捨てる |
 | `ublox_gps_node: TMODE3` | `ublox` | 常に `WARN` ("Not configured") | 基準局モードを使わないので、aggregator で捨てる |

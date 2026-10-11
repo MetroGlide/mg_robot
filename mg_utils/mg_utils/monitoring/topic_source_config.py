@@ -12,7 +12,8 @@ watchdog と topic_monitor が同じ書き方で、監視するトピックを�
       armed_on_first_message: false      # 初回のメッセージを受け取るまで監視しない
       qos: best_effort                   # best_effort / reliable
       ok_field: ''                       # 真偽値のフィールド名。false を受信したら異常 (例: data)
-      fault_level: error                 # 異常のときの診断のレベル (error / warn)
+      fault_level: error                 # 異常のときの診断のレベル (error / warn / ok)。ok は観測のみ
+                                         # (止まっているのが正常なトピックに使う。理由を YAML のコメントに書く)
 """
 from dataclasses import dataclass
 from typing import Any, Callable

@@ -52,7 +52,7 @@
 | 種類 | 内容 | レベル |
 | :--- | :--- | :--- |
 | ノードの生存 (`node /<名前空間>/<名前>`) | ROS のグラフにいるか。名前空間を含めた形で `monitored_nodes` に書く。起動直後は `startup_grace_sec` のあいだ待つ | いなければ `node_fault_level` (既定 `error`) |
-| トピックの受信頻度 (`topic <トピック>`) | `expected_hz` × `hz_warn_ratio` を下回るか、途絶したか | 下回れば `WARN`、途絶は `fault_level` |
+| トピックの受信頻度 (`topic <トピック>`) | `expected_hz` × `hz_warn_ratio` を下回るか、途絶したか | 下回れば `WARN`、途絶は `fault_level`。`fault_level: ok` は観測のみ (止まっているのが正常なトピック用。値と途絶の時間は出すが、レベルは上げない) |
 
 トピックは `monitored_sources` に ID を並べ、ID ごとに設定を書く (書き方は `mg_utils.monitoring.topic_source_config`、[mg_utils の README](../mg_utils/README.md))。コードの変更は要らない。
 

@@ -45,6 +45,15 @@ def test_fault_level_can_be_warn():
     assert evaluate_topic_health(m, 3.0, fault_level='warn').level == 'warn'
 
 
+def test_fault_level_ok_only_observes():
+    m = _monitor()
+    m.on_message(0.0)
+    h = evaluate_topic_health(m, 3.0, expected_hz=10.0, fault_level='ok')
+    assert h.level == 'ok'
+    assert h.message == 'no data for 3.0 s'
+    assert h.values['stale_sec'] == '3.0'
+
+
 def test_invalid_fault_level():
     with pytest.raises(ValueError):
         evaluate_topic_health(_monitor(), 0.0, fault_level='fatal')
