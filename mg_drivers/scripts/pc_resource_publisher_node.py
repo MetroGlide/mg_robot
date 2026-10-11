@@ -2,7 +2,7 @@
 """PC の CPU 使用率とメモリ使用率を配信し、しきい値で診断のレベルを決める。
 
 - `cpu_usage`・`memory_usage` (`Float32`): 配信する値 (Web UI の表示用)
-- 診断 `pc_resource_publisher_node: resources`: CPU とメモリのうち悪いほうのレベル。
+- 診断 `pc_resource_publisher_node: cpu` と `pc_resource_publisher_node: memory`: それぞれのレベル。
   瞬間的な値で揺れないよう、直近 `average_samples` 回の平均で判定する。しきい値はパラメータ
 """
 import psutil
@@ -14,7 +14,7 @@ from rclpy.node import Node
 
 from std_msgs.msg import Float32
 
-from mg_utils.monitoring.thresholds import MovingAverage, level_for_high, worst
+from mg_utils.monitoring.thresholds import MovingAverage, level_for_high
 
 HARDWARE_ID = 'mg-robot'
 
@@ -25,27 +25,22 @@ _LEVELS = {
 }
 
 
-class ResourceTask(DiagnosticTask):
-    """CPU とメモリの使用率の診断。"""
+class UsageTask(DiagnosticTask):
+    """使用率 [%] の診断。直近の平均が warn 以上で WARN、error 以上で ERROR。"""
 
-    def __init__(self, node: 'PCResourcePublisherNode') -> None:
-        super().__init__('resources')
-        self._node = node
+    def __init__(self, name: str, average: MovingAverage, warn: float, error: float) -> None:
+        super().__init__(name)
+        self._average = average
+        self._warn = warn
+        self._error = error
 
     def run(self, stat: DiagnosticStatusWrapper) -> DiagnosticStatusWrapper:
-        node = self._node
-        cpu_level = level_for_high(node.cpu_average.value, node.cpu_warn, node.cpu_error)
-        mem_level = level_for_high(node.mem_average.value, node.mem_warn, node.mem_error)
-        reasons = []
-        if cpu_level != 'ok':
-            reasons.append(f'cpu {node.cpu_average.value:.0f} %')
-        if mem_level != 'ok':
-            reasons.append(f'memory {node.mem_average.value:.0f} %')
-        stat.summary(
-            _LEVELS[worst(cpu_level, mem_level)],
-            ', '.join(reasons) if reasons else 'ok')
-        stat.add('cpu_percent', f'{node.cpu_average.value:.1f}')
-        stat.add('memory_percent', f'{node.mem_average.value:.1f}')
+        value = self._average.value
+        level = level_for_high(value, self._warn, self._error)
+        stat.summary(_LEVELS[level], f'{value:.0f} %')
+        stat.add('percent', f'{value:.1f}')
+        stat.add('warn_percent', f'{self._warn:.0f}')
+        stat.add('error_percent', f'{self._error:.0f}')
         return stat
 
 
@@ -62,10 +57,10 @@ class PCResourcePublisherNode(Node):
             'cpu_interval',
             0.5).value  # [sec]
         # 診断のしきい値 [%]。warn 以上で WARN、error 以上で ERROR
-        self.cpu_warn = self.declare_parameter('cpu_warn_percent', 85.0).value
-        self.cpu_error = self.declare_parameter('cpu_error_percent', 95.0).value
-        self.mem_warn = self.declare_parameter('memory_warn_percent', 90.0).value
-        self.mem_error = self.declare_parameter('memory_error_percent', 97.0).value
+        cpu_warn = self.declare_parameter('cpu_warn_percent', 85.0).value
+        cpu_error = self.declare_parameter('cpu_error_percent', 95.0).value
+        mem_warn = self.declare_parameter('memory_warn_percent', 90.0).value
+        mem_error = self.declare_parameter('memory_error_percent', 97.0).value
         average_samples = self.declare_parameter('average_samples', 5).value
 
         if self._cpu_interval > 1/self._publish_rate:
@@ -78,7 +73,8 @@ class PCResourcePublisherNode(Node):
         self.mem_average = MovingAverage(average_samples)
         self._updater = Updater(self)
         self._updater.setHardwareID(HARDWARE_ID)
-        self._updater.add(ResourceTask(self))
+        self._updater.add(UsageTask('cpu', self.cpu_average, cpu_warn, cpu_error))
+        self._updater.add(UsageTask('memory', self.mem_average, mem_warn, mem_error))
 
         self.cpu_usage_pub = self.create_publisher(
             Float32,
