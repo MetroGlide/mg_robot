@@ -10,9 +10,12 @@ import OperateLayout from "../../components/operate/OperateLayout";
 import OperateMap from "../../components/operate/OperateMap";
 import KpiRow from "../../components/operate/KpiRow";
 import GnssDetailCard from "../../components/operate/GnssDetailCard";
-import PanelSlot from "../../components/operate/PanelSlot";
-import PanelToggleBar from "../../components/operate/PanelToggleBar";
-import MapToolbar from "../../components/operate/MapToolbar";
+import TogglePanel, {
+  DOCK_INSET_CLASS,
+  PanelBody,
+  PanelToggleButton,
+} from "../../components/operate/TogglePanel";
+import MapToolbar, { OpacityToolbar } from "../../components/operate/MapToolbar";
 import DiagnosticsBoard from "../../components/operate/DiagnosticsBoard";
 import SlamGnssMapCard from "../../components/operate/SlamGnssMapCard";
 import SlamGnssViewCard, {
@@ -113,7 +116,9 @@ export default function SlamGnssOperate({
         </div>
       }
       toolbar={
-        satellite.enabled ? undefined : (
+        satellite.enabled ? (
+          <OpacityToolbar />
+        ) : (
           <MapToolbar
             onCommand={issueCommand}
             follow={follow}
@@ -129,10 +134,12 @@ export default function SlamGnssOperate({
               state={poseGraphState}
               selectedNodeIndex={selectedNodeIndex}
               onClose={() => setSelectedNodeIndex(null)}
-              className=""
+              className={DOCK_INSET_CLASS}
             />
           )}
-          <GnssDetailCard client={client} />
+          <TogglePanel id="gnssDetail">
+            <GnssDetailCard client={client} />
+          </TogglePanel>
         </div>
       }
       notice={
@@ -156,11 +163,11 @@ export default function SlamGnssOperate({
         <SlamGnssMapCard sysManager={sysManager} maps={maps} />
       }
       bottomRight={
-        <PanelSlot id="diagnostics">
+        <PanelBody id="diagnostics">
           <DiagnosticsBoard client={client} />
-        </PanelSlot>
+        </PanelBody>
       }
-      panelBar={<PanelToggleBar ids={["gnssDetail", "diagnostics"]} />}
+      bottomRightIcon={<PanelToggleButton id="diagnostics" />}
     />
   );
 }

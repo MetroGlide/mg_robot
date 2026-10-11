@@ -16,8 +16,10 @@ import WaypointProgress from "../../components/operate/WaypointProgress";
 import ActionsCard from "../../components/operate/ActionsCard";
 import { MapCommand } from "../../components/operate/MapCameraControls";
 import GnssDetailCard from "../../components/operate/GnssDetailCard";
-import PanelSlot from "../../components/operate/PanelSlot";
-import PanelToggleBar from "../../components/operate/PanelToggleBar";
+import TogglePanel, {
+  PanelBody,
+  PanelToggleButton,
+} from "../../components/operate/TogglePanel";
 import { usePanelVisible } from "../../components/operate/operatePanels";
 import {
   JoystickCard,
@@ -112,13 +114,15 @@ export default function WaypointOperate({
       }
       topRight={
         <div className="flex flex-col items-end gap-2">
-          <PanelSlot id="robotDetail">
+          <TogglePanel id="robotDetail">
             <RobotDetailCard
               client={client}
               onClose={() => setRobotDetailVisible(false)}
             />
-          </PanelSlot>
-          <GnssDetailCard client={client} />
+          </TogglePanel>
+          <TogglePanel id="gnssDetail">
+            <GnssDetailCard client={client} />
+          </TogglePanel>
         </div>
       }
       notice={
@@ -137,16 +141,14 @@ export default function WaypointOperate({
         </div>
       }
       bottomRight={
-        <div className="flex flex-col items-end gap-2">
+        <>
           <JoystickCard client={client} />
-          <PanelSlot id="diagnostics">
+          <PanelBody id="diagnostics">
             <DiagnosticsBoard client={client} />
-          </PanelSlot>
-        </div>
+          </PanelBody>
+        </>
       }
-      panelBar={
-        <PanelToggleBar ids={["robotDetail", "gnssDetail", "diagnostics"]} />
-      }
+      bottomRightIcon={<PanelToggleButton id="diagnostics" />}
     />
   );
 }

@@ -3,7 +3,6 @@ import { FoxgloveClientHandle } from "../../hooks/useFoxgloveClient";
 import { GnssState, useGnss } from "../../hooks/useGnss";
 import { GnssReading, toUtm } from "../../utils/gnssReading";
 import Card from "../ui/Card";
-import { usePanelVisible } from "./operatePanels";
 
 const NO_VALUE = "--";
 
@@ -93,15 +92,10 @@ function GnssDetailBody({ gnss }: { gnss: GnssState }) {
 // 詳細は人が読む速さで十分なので間引く(Hz)
 const DETAIL_HZ = 2;
 
-function GnssDetailSubscribed({ client }: { client: FoxgloveClientHandle }) {
-  return <GnssDetailBody gnss={useGnss(client, DETAIL_HZ)} />;
-}
-
 /**
- * KPI の GNSS タイルと、パネルの切り替えバーで開閉する詳細カード。右側のカードの列に置く。
- * 開いている間だけ購読する(閉じると購読をやめる)。
+ * GNSS の詳細カード。右側のカードの列に、TogglePanel(id="gnssDetail")で包んで置く。
+ * 開閉は KPI の GNSS タイルとパネルのアイコンが操作し、描かれている間(開いている間)だけ購読する。
  */
 export default function GnssDetailCard({ client }: { client: FoxgloveClientHandle }) {
-  const [open] = usePanelVisible("gnssDetail");
-  return open ? <GnssDetailSubscribed client={client} /> : null;
+  return <GnssDetailBody gnss={useGnss(client, DETAIL_HZ)} />;
 }
