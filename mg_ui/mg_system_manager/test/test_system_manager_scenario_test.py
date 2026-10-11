@@ -1,4 +1,5 @@
 import json
+import os
 
 import pytest
 from sm_fakes import FakeContainer
@@ -222,3 +223,14 @@ def test_env_start_rejects_conflicts(client, containers, compose_calls):
     assert body["success"] is False
     assert "gazebo-simulation" in body["message"]
     assert compose_calls.calls == []
+
+
+def test_latest_run_is_by_update_time_not_name(client, settings):
+    _write_progress(settings, "exp_stock1", [_entry("a", "FAILED")],
+                    finished=True, exit_code=1)
+    old = settings.scenario_results_dir / "exp_stock1" / "progress.json"
+    os.utime(old, (1_000_000, 1_000_000))
+    _write_progress(settings, "20260925_100000", [_entry("a", "RUNNING")])
+
+    body = client.get("/scenario/status").json()
+    assert body["run"]["run_id"] == "20260925_100000"
