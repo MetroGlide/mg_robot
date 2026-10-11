@@ -47,13 +47,20 @@ export function useScenarioRun(sysManager: SystemManagerHandle) {
     false,
   );
   const selected = useMemo(() => new Set(selectedNames), [selectedNames]);
+  // 実行するシナリオ。一覧の並び順で、実行中は選択を変えられないので、起動中の実行予定にも使う
+  const plannedNames = useMemo(
+    () => [
+      ...new Set(
+        scenarios.filter((s) => selected.has(s.name)).map((s) => s.name),
+      ),
+    ],
+    [scenarios, selected],
+  );
   const [options, setOptions] = useState<RunOptionsValue>(DEFAULT_RUN_OPTIONS);
   // null のときは最新の run を表示し続ける
   const [viewRunId, setViewRunId] = useState<string | null>(null);
   const [pastRun, setPastRun] = useState<RunProgress | null>(null);
   const [selectedEntry, setSelectedEntry] = useState<string | null>(null);
-  // 開始を依頼したシナリオ(起動中で progress.json がまだない間、実行予定として出す)
-  const [plannedNames, setPlannedNames] = useState<string[]>(NO_SELECTION);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -139,21 +146,14 @@ export function useScenarioRun(sysManager: SystemManagerHandle) {
 
   const start = () =>
     withBusy(async () => {
-      // 一覧の並び順で実行する
-      const names = [
-        ...new Set(
-          scenarios.filter((s) => selected.has(s.name)).map((s) => s.name),
-        ),
-      ];
       const body: RunRequest = {
-        scenarios: names,
+        scenarios: plannedNames,
         repeat: options.repeat,
         gui: options.gui && !options.attach,
         attach: options.attach,
         robot: options.attach ? "" : options.robot,
       };
       await call("/scenario/run/start", body);
-      setPlannedNames(names);
       setViewRunId(null);
       setSelectedEntry(null);
     });
