@@ -10,6 +10,8 @@ export const TOPICS = {
   LOCALIZATION_STATUS: '/localization/status',
   GNSS_PUBLISH_STATE: '/slam_gnss_nav_bridge/publish_state',
   DIAGNOSTICS: nodeNs(NODE_NS.DIAGNOSTICS, '/diagnostics'),
+  DIAGNOSTICS_AGG: '/diagnostics_agg',
+  EVENTS: '/events',
   INITIALPOSE: nodeNs(NODE_NS.LOCALIZATION, '/initialpose'),
   GOAL_POSE: '/goal_pose',
   NAV_ACTION_STATUS: '/navigate_to_pose/_action/status',
