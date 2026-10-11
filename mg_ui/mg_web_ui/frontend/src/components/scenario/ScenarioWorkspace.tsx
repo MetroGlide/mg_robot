@@ -4,7 +4,6 @@ import { SystemManagerHandle } from "../../hooks/useSystemManagerClient";
 import { useDockerLogStream } from "../../hooks/useDockerLogStream";
 import { useScenarioRun } from "../../hooks/useScenarioRun";
 import ServiceLogPanel from "../panels/ServiceLogPanel";
-import RosViewer from "../ros-viewer/RosViewer";
 import ActionButton from "../ui/ActionButton";
 import Toggle from "../ui/Toggle";
 import Panel from "../work/Panel";
@@ -13,6 +12,7 @@ import RunOptionsForm from "./RunOptionsForm";
 import ScenarioEnvCard from "./ScenarioEnvCard";
 import RunProgressTable from "./RunProgressTable";
 import PlannedRunList from "./PlannedRunList";
+import ScenarioLiveView from "./ScenarioLiveView";
 import ScenarioResultDetail from "./ScenarioResultDetail";
 import RunHistoryList from "./RunHistoryList";
 import {
@@ -176,14 +176,12 @@ export default function ScenarioWorkspace({
           }
         >
           {liveView ? (
-            <div className="h-[28rem] overflow-hidden rounded-lg border border-line">
-              <RosViewer client={client} className="h-full w-full" />
-            </div>
+            <ScenarioLiveView client={client} />
           ) : (
             <p className="text-xs text-muted">
               オンにすると、接続中の foxglove_bridge
-              から地図・ロボット・経路を表示する(シミュレータと同じ PC の bridge
-              に接続しているときに使える)。
+              から地図・ロボット・経路と、ロボットの状態・診断を表示する(シミュレータと同じ
+              PC の bridge に接続しているときに使える)。
             </p>
           )}
         </Panel>
