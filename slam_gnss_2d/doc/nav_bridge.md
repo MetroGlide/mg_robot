@@ -31,7 +31,7 @@
 
 ### 診断とイベント
 
-GNSS を地図に使えているか (採用しているか) を、診断 `slam_gnss_nav_bridge_node: adoption` (`diagnostic_updater`、集約で `/Robot/Localization/GnssBridge`) に出す。ublox の受信そのものの品質は `gnss_diagnostics_node` が出す。
+GNSS を地図に使えているか (採用しているか) を、診断 `slam_gnss_nav_bridge: adoption` (`diagnostic_updater`、集約で `/Robot/Localization/GnssBridge`) に出す。ublox の受信そのものの品質は `gnss_diagnostics_node` が出す。
 
 | 状態 | レベル | メッセージ |
 | :--- | :--- | :--- |

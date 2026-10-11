@@ -90,4 +90,9 @@
 
 ## テスト
 
-このパッケージ自体のテストは無い。判定は `mg_utils` のテスト (`make test pkg=mg_utils`) で調べる。集約の設定は、`diagnostic_aggregator` を入れた環境で、サンプルの診断を流して確かめる。
+判定は `mg_utils` のテスト (`make test pkg=mg_utils`) で調べる。`make test pkg=mg_diagnostics` は設定の整合を調べる (ROS 不要)。
+
+- analyzer の `startswith` のノード名が、ソースのどこかに実在する名前か (名前の違いで診断が `Other` に入り、期待した項目が `STALE` のままになるのを防ぐ)
+- `topic_monitor` の設定の各ソースが、`mg_utils` の設定の検証を通るか
+
+集約の動作そのものは、`scenario-env` を起動して `/diagnostics_agg` を見て確かめる。

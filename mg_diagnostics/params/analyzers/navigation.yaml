@@ -8,7 +8,7 @@ analyzers:
         monitor:
           type: diagnostic_aggregator/GenericAnalyzer
           path: Monitor
-          startswith: ['localization_supervisor: ', 'amcl_watchdog_node: ']
+          startswith: ['localization_supervisor_node: ', 'amcl_watchdog_node: ']
           timeout: 5.0
         gnss_bridge:
           type: diagnostic_aggregator/GenericAnalyzer
