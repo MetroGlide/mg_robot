@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { FoxgloveClientHandle } from "../../hooks/useFoxgloveClient";
 import { SystemManagerHandle } from "../../hooks/useSystemManagerClient";
 import { useDockerLogStream } from "../../hooks/useDockerLogStream";
@@ -15,6 +15,7 @@ import RunProgressTable from "./RunProgressTable";
 import ScenarioResultDetail from "./ScenarioResultDetail";
 import RunHistoryList from "./RunHistoryList";
 import {
+  descriptionsByName,
   SCENARIO_ENV_SERVICE,
   SCENARIO_TEST_SERVICE,
 } from "../../utils/scenarioTest";
@@ -34,6 +35,10 @@ export default function ScenarioWorkspace({
   const { entries, connected, clear } = useDockerLogStream(LOG_SERVICES);
   const [liveView, setLiveView] = useState(false);
   const { run, phase } = s;
+  const descriptions = useMemo(
+    () => descriptionsByName(s.scenarios),
+    [s.scenarios],
+  );
 
   return (
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
@@ -114,6 +119,7 @@ export default function ScenarioWorkspace({
               run={run}
               selectedEntry={s.selectedEntry}
               onSelectEntry={s.setSelectedEntry}
+              descriptions={descriptions}
             />
           ) : (
             <p className="text-xs text-muted">実行結果はまだありません</p>

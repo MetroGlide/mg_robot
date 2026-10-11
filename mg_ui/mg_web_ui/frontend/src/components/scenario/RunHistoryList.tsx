@@ -1,5 +1,7 @@
 import type { RunSummary } from "../../types/scenarioTest";
+import { segmentsFromCounts } from "../../utils/scenarioTest";
 import EntryStatusBadge from "./EntryStatusBadge";
+import RunSegmentBar from "./RunSegmentBar";
 
 interface RunHistoryListProps {
   runs: readonly RunSummary[];
@@ -41,6 +43,12 @@ export default function RunHistoryList({
               {" / "}
               <span className="text-warn">{run.counts.ERROR ?? 0}</span>
               <span className="text-muted"> ({run.total})</span>
+            </span>
+            <span className="w-full">
+              <RunSegmentBar
+                segments={segmentsFromCounts(run.counts, run.total)}
+                heightClass="h-1"
+              />
             </span>
           </button>
         </li>

@@ -66,6 +66,85 @@ export function countProgress(
   };
 }
 
+/** シナリオ名 → 説明。進捗の表などに説明を添えるために引く */
+export function descriptionsByName(
+  scenarios: readonly ScenarioInfo[],
+): Map<string, string> {
+  return new Map(scenarios.map((s) => [s.name, s.description]));
+}
+
+export interface CurrentEntry {
+  entry: ProgressEntry;
+  /** 0 始まりの位置 */
+  index: number;
+}
+
+/** いま実行中のエントリ。なければ null */
+export function currentEntry(
+  entries: readonly ProgressEntry[],
+): CurrentEntry | null {
+  const index = entries.findIndex((e) => e.status === "RUNNING");
+  return index < 0 ? null : { entry: entries[index], index };
+}
+
+/** 失敗した(FAILED・ERROR の)エントリ */
+export function failedEntries(
+  entries: readonly ProgressEntry[],
+): ProgressEntry[] {
+  return entries.filter((e) => e.status === "FAILED" || e.status === "ERROR");
+}
+
+/** 進捗バーの 1 区切り(シナリオ 1 本分) */
+export interface Segment {
+  status: EntryStatus;
+  /** 区切りに添える名前(tooltip 用) */
+  label: string;
+}
+
+export function segmentsFromEntries(
+  entries: readonly ProgressEntry[],
+): Segment[] {
+  return entries.map((e) => ({ status: e.status, label: e.result_dir }));
+}
+
+const COUNT_ORDER: EntryStatus[] = [
+  "PASSED",
+  "FAILED",
+  "ERROR",
+  "RUNNING",
+  "PENDING",
+];
+
+/** 件数だけが分かる run(一覧の要約)の区切り。結果の種類ごとにまとめて並べ、残りは未実行にする */
+export function segmentsFromCounts(
+  counts: Partial<Record<EntryStatus, number>>,
+  total: number,
+): Segment[] {
+  const segments: Segment[] = [];
+  for (const status of COUNT_ORDER) {
+    const n = status === "PENDING" ? 0 : (counts[status] ?? 0);
+    for (let i = 0; i < n; i++) segments.push({ status, label: status });
+  }
+  while (segments.length < total) {
+    segments.push({ status: "PENDING", label: "PENDING" });
+  }
+  return segments;
+}
+
+/**
+ * 開始時刻(タイムゾーン付きの ISO 8601)からの経過秒。
+ * 読めない値は null。コンテナとブラウザの時計が少しずれても、負にはしない。
+ */
+export function elapsedSinceSec(
+  startedAt: string | undefined,
+  nowMs: number,
+): number | null {
+  if (!startedAt) return null;
+  const startMs = Date.parse(startedAt);
+  if (Number.isNaN(startMs)) return null;
+  return Math.max(0, (nowMs - startMs) / 1000);
+}
+
 /** 経過時間の表示。60 秒以上は分と秒にする */
 export function formatElapsed(sec: number): string {
   const total = Math.max(0, Math.round(sec));

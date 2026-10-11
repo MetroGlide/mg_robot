@@ -39,6 +39,15 @@ export default function ScenarioSelector({
     onChange(next);
   };
 
+  // 説明の全文を開いているシナリオ(名前)
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  const toggleExpanded = (name: string) => {
+    const next = new Set(expanded);
+    if (next.has(name)) next.delete(name);
+    else next.add(name);
+    setExpanded(next);
+  };
+
   const selectVisible = () => {
     onChange(new Set([...selected, ...visible.map((s) => s.name)]));
   };
@@ -119,10 +128,7 @@ export default function ScenarioSelector({
         )}
         {visible.map((s) => (
           <li key={`${s.group}/${s.name}`}>
-            <label
-              className="flex items-start gap-2 px-2 py-1.5 hover:bg-surface-sunken cursor-pointer"
-              title={s.description || s.error}
-            >
+            <label className="flex items-start gap-2 px-2 py-1.5 hover:bg-surface-sunken cursor-pointer">
               <input
                 type="checkbox"
                 className="mt-0.5"
@@ -142,18 +148,40 @@ export default function ScenarioSelector({
                     YAML を読めません: {s.error}
                   </span>
                 ) : (
-                  <span className="flex flex-wrap gap-1 mt-0.5">
-                    {s.tags.map((t) => (
+                  <>
+                    {s.description && (
                       <span
-                        key={t}
-                        className="rounded bg-surface-sunken px-1 text-[10px] text-content"
+                        className={`block whitespace-pre-line text-xs text-muted ${
+                          expanded.has(s.name) ? "" : "line-clamp-2"
+                        }`}
                       >
-                        {t}
+                        {s.description}
                       </span>
-                    ))}
-                  </span>
+                    )}
+                    <span className="flex flex-wrap gap-1 mt-0.5">
+                      {s.tags.map((t) => (
+                        <span
+                          key={t}
+                          className="rounded bg-surface-sunken px-1 text-[10px] text-content"
+                        >
+                          {t}
+                        </span>
+                      ))}
+                    </span>
+                  </>
                 )}
               </span>
+              {s.description && (
+                <button
+                  type="button"
+                  aria-expanded={expanded.has(s.name)}
+                  title={expanded.has(s.name) ? "説明を閉じる" : "説明の全文を開く"}
+                  onClick={() => toggleExpanded(s.name)}
+                  className="px-1 text-xs text-muted hover:text-content"
+                >
+                  {expanded.has(s.name) ? "▾" : "▸"}
+                </button>
+              )}
             </label>
           </li>
         ))}

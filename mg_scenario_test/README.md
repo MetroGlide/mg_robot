@@ -60,6 +60,7 @@ make scenario-test-all REPEAT=3 TIER=smoke          # 繰り返して安定性�
 ## Web UI から実行する
 
 mg_web_ui の **Scenario Test** ページから、シナリオの選択・実行・停止、進み具合とログ、結果 (checks・events・ログ) と過去の実行を確認できます。
+シナリオの一覧には YAML の `description` を 2 行まで出し (▸ で全文)、「実行状況」には、実行中は「n/N 本目・シナリオ名・説明・経過時間」、終了後は結果の要約と失敗したシナリオの一覧を出します。進み具合はシナリオ 1 本ごとに色分けした区切りのバーで見られ (履歴にも小さく出る)、押すとそのシナリオの結果を開きます。経過時間は `progress.json` の `started_at` (タイムゾーン付き) から計算します。
 操作は mg_system_manager の `/scenario/` の API が行います (中身は `make scenario-test*` と同じ `docker compose run scenario-test`)。
 
 ```bash
