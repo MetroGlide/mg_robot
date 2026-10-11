@@ -16,6 +16,8 @@ analyzers:
       startswith:
         - 'ublox_gps_node: TMODE3'
         - 'ublox_gps_node: fix topic status'
+        # GNSS (odom0) と AMCL (pose0) の両方で x/y の絶対位置を入れる設計による警告。周波数は odometry/filtered topic status で見る
+        - 'ekf_global_node: Filter diagnostic updater'
 
     system:
       type: diagnostic_aggregator/AnalyzerGroup
