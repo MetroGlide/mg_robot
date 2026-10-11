@@ -180,8 +180,8 @@ export default function ScenarioWorkspace({
           ) : (
             <p className="text-xs text-muted">
               オンにすると、接続中の foxglove_bridge
-              から地図・ロボット・経路と、ロボットの状態・診断を表示する(シミュレータと同じ
-              PC の bridge に接続しているときに使える)。
+              から地図・ロボット・経路を表示する(シミュレータと同じ PC の bridge
+              に接続しているときに使える)。ロボットの状態や診断は Waypoint などのタブで確認する。
             </p>
           )}
         </Panel>

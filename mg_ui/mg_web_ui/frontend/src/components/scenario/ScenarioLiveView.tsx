@@ -3,17 +3,14 @@ import { FoxgloveClientHandle } from "../../hooks/useFoxgloveClient";
 import { useOpsValue } from "../../hooks/useOpsValue";
 import OperateLayout from "../operate/OperateLayout";
 import OperateMap from "../operate/OperateMap";
-import KpiRow from "../operate/KpiRow";
-import DiagnosticsBoard from "../operate/DiagnosticsBoard";
-import RobotDetailCard from "../operate/RobotDetailCard";
-import TogglePanel from "../operate/TogglePanel";
+import MapToolbar from "../operate/MapToolbar";
 import { MapCommand } from "../operate/MapCameraControls";
 
 const VIEW_KEY = "scenarioLive";
 
 /**
- * シナリオテスト中のライブ表示。運用ビューと同じ地図とパネルを使い、操作のパネル
- * (ツールバー・走行の操作・ジョイスティックなど)は出さずに、状態の表示だけにする。
+ * シナリオテスト中のライブ表示。運用ビューと同じ地図と地図ツールバーだけを出す。
+ * ロボットの状態や診断などの詳細は、Waypoint などの運用ビューで確認する。
  */
 export default function ScenarioLiveView({
   client,
@@ -21,11 +18,12 @@ export default function ScenarioLiveView({
   client: FoxgloveClientHandle;
 }) {
   const [follow, setFollow] = useOpsValue<boolean>(`${VIEW_KEY}.follow`, true);
-  // 地図の操作がないので、コマンドは送らない
-  const [command] = useState<MapCommand | null>(null);
+  const [command, setCommand] = useState<MapCommand | null>(null);
+  const issueCommand = (kind: MapCommand["kind"]) =>
+    setCommand((prev) => ({ kind, n: (prev?.n ?? 0) + 1 }));
 
   return (
-    <div className="h-[36rem] overflow-hidden rounded-lg border border-line">
+    <div className="h-[30rem] overflow-hidden rounded-lg border border-line">
       <OperateLayout
         map={
           <OperateMap
@@ -38,16 +36,13 @@ export default function ScenarioLiveView({
             onPoseSet={() => {}}
           />
         }
-        topLeft={<KpiRow client={client} />}
-        topRight={
-          <TogglePanel id="robotDetail">
-            {(close) => <RobotDetailCard client={client} onClose={close} />}
-          </TogglePanel>
-        }
-        bottomRight={
-          <TogglePanel id="diagnostics">
-            {(close) => <DiagnosticsBoard client={client} onClose={close} />}
-          </TogglePanel>
+        toolbar={
+          <MapToolbar
+            onCommand={issueCommand}
+            follow={follow}
+            onToggleFollow={() => setFollow(!follow)}
+            disabled={client.status !== "connected"}
+          />
         }
       />
     </div>
