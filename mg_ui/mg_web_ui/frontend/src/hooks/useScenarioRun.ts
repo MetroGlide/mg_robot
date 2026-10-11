@@ -52,6 +52,8 @@ export function useScenarioRun(sysManager: SystemManagerHandle) {
   const [viewRunId, setViewRunId] = useState<string | null>(null);
   const [pastRun, setPastRun] = useState<RunProgress | null>(null);
   const [selectedEntry, setSelectedEntry] = useState<string | null>(null);
+  // 開始を依頼したシナリオ(起動中で progress.json がまだない間、実行予定として出す)
+  const [plannedNames, setPlannedNames] = useState<string[]>(NO_SELECTION);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -90,6 +92,14 @@ export function useScenarioRun(sysManager: SystemManagerHandle) {
   );
 
   const phase = runPhase(status);
+  // 実行が始まったら(この画面以外から始めた場合も)、履歴で選んでいた run から最新に戻す
+  const running = phase !== "idle";
+  useEffect(() => {
+    if (running) {
+      setViewRunId(null);
+      setSelectedEntry(null);
+    }
+  }, [running]);
   const envStatus = status?.services[SCENARIO_ENV_SERVICE] ?? null;
   const gazeboStatus = status?.services[GAZEBO_SERVICE] ?? null;
   const attachReady = envStatus === "running" || gazeboStatus === "running";
@@ -129,19 +139,21 @@ export function useScenarioRun(sysManager: SystemManagerHandle) {
 
   const start = () =>
     withBusy(async () => {
+      // 一覧の並び順で実行する
+      const names = [
+        ...new Set(
+          scenarios.filter((s) => selected.has(s.name)).map((s) => s.name),
+        ),
+      ];
       const body: RunRequest = {
-        // 一覧の並び順で実行する
-        scenarios: [
-          ...new Set(
-            scenarios.filter((s) => selected.has(s.name)).map((s) => s.name),
-          ),
-        ],
+        scenarios: names,
         repeat: options.repeat,
         gui: options.gui && !options.attach,
         attach: options.attach,
         robot: options.attach ? "" : options.robot,
       };
       await call("/scenario/run/start", body);
+      setPlannedNames(names);
       setViewRunId(null);
       setSelectedEntry(null);
     });
@@ -177,6 +189,7 @@ export function useScenarioRun(sysManager: SystemManagerHandle) {
     updateOptions,
     run,
     latestRun,
+    plannedNames,
     viewRunId,
     showingLatest,
     showLatest,

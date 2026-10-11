@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useOpsValue } from "../../hooks/useOpsValue";
 import type { ScenarioInfo } from "../../types/scenarioTest";
 import {
   collectGroups,
@@ -24,6 +25,10 @@ export default function ScenarioSelector({
   const [group, setGroup] = useState("");
   const [tag, setTag] = useState("");
   const [showKnownIssues, setShowKnownIssues] = useState(false);
+  const [showDescriptions, setShowDescriptions] = useOpsValue<boolean>(
+    "scenario.showDescriptions",
+    true,
+  );
 
   const groups = useMemo(() => collectGroups(scenarios), [scenarios]);
   const tags = useMemo(() => collectTags(scenarios), [scenarios]);
@@ -90,6 +95,14 @@ export default function ScenarioSelector({
           />
           known_issue も表示
         </label>
+        <label className="flex items-center gap-1 text-xs text-content select-none">
+          <input
+            type="checkbox"
+            checked={showDescriptions}
+            onChange={(e) => setShowDescriptions(e.target.checked)}
+          />
+          説明を表示
+        </label>
       </div>
 
       <div className="flex items-center gap-3 text-xs">
@@ -149,7 +162,7 @@ export default function ScenarioSelector({
                   </span>
                 ) : (
                   <>
-                    {s.description && (
+                    {showDescriptions && s.description && (
                       <span
                         className={`block whitespace-pre-line text-xs text-muted ${
                           expanded.has(s.name) ? "" : "line-clamp-2"
@@ -171,7 +184,7 @@ export default function ScenarioSelector({
                   </>
                 )}
               </span>
-              {s.description && (
+              {showDescriptions && s.description && (
                 <button
                   type="button"
                   aria-expanded={expanded.has(s.name)}

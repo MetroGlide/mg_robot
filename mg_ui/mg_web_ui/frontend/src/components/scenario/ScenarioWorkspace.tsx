@@ -12,6 +12,7 @@ import ScenarioSelector from "./ScenarioSelector";
 import RunOptionsForm from "./RunOptionsForm";
 import ScenarioEnvCard from "./ScenarioEnvCard";
 import RunProgressTable from "./RunProgressTable";
+import PlannedRunList from "./PlannedRunList";
 import ScenarioResultDetail from "./ScenarioResultDetail";
 import RunHistoryList from "./RunHistoryList";
 import {
@@ -97,8 +98,33 @@ export default function ScenarioWorkspace({
       </div>
 
       <div className="space-y-4 xl:col-span-2">
+        {phase === "running" && !s.showingLatest && s.latestRun && (
+          <Panel
+            title="実行中のテスト"
+            actions={
+              <button
+                type="button"
+                onClick={s.showLatest}
+                className="text-xs text-accent hover:opacity-80"
+              >
+                この実行を表示
+              </button>
+            }
+          >
+            <RunProgressTable
+              run={s.latestRun}
+              selectedEntry={null}
+              onSelectEntry={(dir) => {
+                s.showLatest();
+                s.setSelectedEntry(dir);
+              }}
+              descriptions={descriptions}
+            />
+          </Panel>
+        )}
+
         <Panel
-          title="実行状況"
+          title={s.showingLatest ? "実行状況" : "過去の実行"}
           actions={
             !s.showingLatest && (
               <button
@@ -111,10 +137,17 @@ export default function ScenarioWorkspace({
             )
           }
         >
-          {phase === "starting" && s.showingLatest && (
-            <p className="text-xs text-accent">テストを起動しています…</p>
-          )}
-          {run ? (
+          {phase === "starting" && s.showingLatest ? (
+            s.plannedNames.length > 0 ? (
+              <PlannedRunList
+                names={s.plannedNames}
+                repeat={s.options.repeat}
+                descriptions={descriptions}
+              />
+            ) : (
+              <p className="text-xs text-accent">テストを起動しています…</p>
+            )
+          ) : run ? (
             <RunProgressTable
               run={run}
               selectedEntry={s.selectedEntry}
