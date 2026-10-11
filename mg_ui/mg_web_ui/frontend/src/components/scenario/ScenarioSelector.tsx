@@ -7,6 +7,9 @@ import {
   filterScenarios,
 } from "../../utils/scenarioTest";
 
+/** 回帰テストの区分を表すタグ(ショートカットボタンの対象) */
+const TIER_TAGS = ["smoke", "full"];
+
 interface ScenarioSelectorProps {
   scenarios: readonly ScenarioInfo[];
   selected: ReadonlySet<string>;
@@ -51,6 +54,22 @@ export default function ScenarioSelector({
     if (next.has(name)) next.delete(name);
     else next.add(name);
     setExpanded(next);
+  };
+
+  // タグで絞り込み、known_issue を除いた該当シナリオだけを選択する(それまでの選択は置き換える)
+  const selectTier = (tierTag: string) => {
+    setGroup("");
+    setTag(tierTag);
+    setShowKnownIssues(false);
+    onChange(
+      new Set(
+        filterScenarios(scenarios, {
+          group: "",
+          tag: tierTag,
+          showKnownIssues: false,
+        }).map((s) => s.name),
+      ),
+    );
   };
 
   const selectVisible = () => {
@@ -103,6 +122,22 @@ export default function ScenarioSelector({
           />
           説明を表示
         </label>
+      </div>
+
+      <div className="flex items-center gap-2 text-xs">
+        <span className="text-muted">ショートカット:</span>
+        {TIER_TAGS.map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => selectTier(t)}
+            disabled={disabled || !tags.includes(t)}
+            title={`${t} タグで絞り込み、該当するシナリオだけを選択する(known_issue は除く)`}
+            className="rounded bg-surface-sunken px-2 py-0.5 font-semibold text-accent hover:opacity-80 disabled:opacity-50"
+          >
+            {t} を選択
+          </button>
+        ))}
       </div>
 
       <div className="flex items-center gap-3 text-xs">
