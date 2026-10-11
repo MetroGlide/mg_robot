@@ -18,11 +18,14 @@ SOURCE_SUFFIXES = ('.py', '.cpp')
 EXCLUDED_DIRS = {'node_modules', 'build', 'install', 'test', 'tools', '.git'}
 
 
+MATCH_KEYS = ('startswith', 'regex', 'expected')
+
+
 def _walk_prefixes(node):
-    """analyzer の設定から startswith の項目をすべて集める。"""
+    """analyzer の設定から、診断の名前の照合に使う項目をすべて集める。"""
     if isinstance(node, dict):
         for key, value in node.items():
-            if key in ('startswith', 'contains') and isinstance(value, list):
+            if key in MATCH_KEYS and isinstance(value, list):
                 yield from value
             else:
                 yield from _walk_prefixes(value)
@@ -47,9 +50,9 @@ def test_analyzer_node_names_exist(path, source_text):
     prefixes = list(_walk_prefixes(yaml.safe_load(path.read_text(encoding='utf-8'))))
     missing = []
     for prefix in prefixes:
-        if not prefix.endswith(': '):
+        node_name, separator, _ = prefix.lstrip('^').partition(': ')
+        if not separator:
             continue
-        node_name = prefix[:-2]
         if f"'{node_name}'" not in source_text and f'"{node_name}"' not in source_text:
             missing.append(node_name)
     assert not missing, f'{path.name}: ノード名がソースに見つからない (名前の違い?): {missing}'
