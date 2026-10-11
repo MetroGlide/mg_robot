@@ -5,7 +5,7 @@ Nav2 (ROS 2 Humble) のパッケージのうち、**リポジトリに取り込�
 
 | パッケージ | `package.xml` のバージョン | 使うもの |
 | :--- | :--- | :--- |
-| `nav2_collision_monitor` | 1.2.0 | 衝突の防止 (`collision_monitor`) と検知 (`collision_detector`)。[mg_navigation](../mg_navigation/doc/nav2_config.md#衝突の防止-collision_monitor) |
+| `nav2_collision_monitor` | 1.2.0 | 衝突の防止 (`collision_monitor`)。上流の `collision_detector` のソースも含むが、このプロジェクトでは起動しない。[mg_navigation](../mg_navigation/doc/nav2_config.md#衝突の防止-collision_monitor) |
 | `nav2_costmap_2d` | 1.1.20 | コストマップ (レイヤー、フィルタ) |
 | `nav2_msgs` | 1.1.19 | Nav2 のメッセージ・サービス・アクション |
 
@@ -27,8 +27,7 @@ Nav2 (ROS 2 Humble) のパッケージのうち、**リポジトリに取り込�
 
 | 使う側 | 使うもの |
 | :--- | :--- |
-| `mg_navigation` | `collision_monitor`・`collision_detector` (`navigation_launch.py`、`nav2_params.yaml`)、`nav2_costmap_2d` のレイヤーとフィルタ、`nav2_msgs` |
-| `mg_diagnostics` | `nav2_msgs/CollisionDetectorState` |
+| `mg_navigation` | `collision_monitor` (`navigation_launch.py`、`nav2_params.yaml`)、`nav2_costmap_2d` のレイヤーとフィルタ、`nav2_msgs` |
 | `mg_scenario_test` | `nav2_msgs/CollisionMonitorState` (`collision_monitor_action` の monitor。[mg_plugins.md](../mg_scenario_test/doc/mg_plugins.md)) |
 | `mg_waypoint_navigation`、`sim_scenario_test` | `nav2_msgs` |
 

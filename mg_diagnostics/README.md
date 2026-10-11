@@ -84,7 +84,7 @@
 
 ## 依存
 
-`diagnostic_aggregator`、`diagnostic_updater`、`diagnostic_msgs`、`rcl_interfaces`、`mg_utils` (判定エンジン・イベントログ)。監視するトピックの型 (`nav2_msgs`、`mg_msgs` など) は、設定で指定したものを実行時に読み込む。
+`diagnostic_aggregator`、`diagnostic_updater`、`diagnostic_msgs`、`rcl_interfaces`、`mg_utils` (判定エンジン・イベントログ)。監視するトピックの型 (`geometry_msgs`、`mg_msgs` など) は、設定で指定したものを実行時に読み込む。
 
 `diagnostic_aggregator` は、イメージに入っていないので、`make build` でイメージを作り直す必要がある (`package.xml` の依存から入る)。
 

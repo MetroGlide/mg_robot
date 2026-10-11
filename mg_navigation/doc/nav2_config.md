@@ -15,7 +15,6 @@ Nav2 は Humble。`collision_monitor` と `costmap_2d` などは、リポジト�
 | `bt_navigator` | `nav2_bt_navigator` | Behavior Tree による `navigate_to_pose` |
 | `velocity_smoother` | `nav2_velocity_smoother` | 速度指令の加減速の制限 |
 | `collision_monitor` | `nav2_collision_monitor` | 速度指令に対する衝突の防止 (停止・減速) |
-| `collision_detector` | `nav2_collision_monitor` | 衝突の検知 (指令には介入せず、状態だけを出す) |
 | `costmap_filter_info_server` | `nav2_map_server` | コストマップフィルタの情報。起動はするが、ライフサイクルの管理対象ではない |
 
 `lifecycle_manager_navigation` が、`costmap_filter_info_server` 以外のノードを管理する。`local_costmap` は `controller_server`、`global_costmap` は `planner_server` が持つ。
@@ -84,7 +83,7 @@ controller_server ─ cmd_vel_nav ─► collision_monitor ─ cmd_vel_collision
 | `PolygonSlowdown` | 減速 (`slowdown_ratio` 0.3) | 前方 1.4 m、後方 0.3 m、両脇 0.8 m。側方から進路に入る対象 (横切る歩行者) に早く反応するため、広く取っている |
 | `PolygonApproach` | 接近 (`time_before_collision` 2.0 秒) | `local_costmap/published_footprint` を、現在の速度 (旋回を含む) で前方にシミュレートし、2 秒以内に接触するなら減速する |
 
-- `collision_detector` は、前後の箱 (`PolygonFront`、`PolygonRear`) の状態を `collision_detector_state` に出す (動作は `none`)。観測は上 LiDAR だけ。
+- 上流の `collision_detector` (指令には介入せず、状態だけを出す) は、使っていないので起動しない。
 - 状態は `collision_monitor_state` に出る (観測用)。
 - **実機の注意**: `PolygonApproach` は、`footprint_padding` (0.1 m) を含む。LiDAR が車体の一部を検出する配置だと、常に接触と判定して止まる。実機では、scan に車体の点が入っていないか確認する。
 - `PolygonStop` は、`enabled` を動的パラメータ (`ros2 param set`) で切り替えられる。
