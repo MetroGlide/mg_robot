@@ -64,3 +64,22 @@ def test_topic_monitor_sources_are_valid(path):
     for source_id in params['monitored_sources']:
         assert source_id in params, f'{source_id} の設定がない'
         parse_source_config(source_id, lambda key, default, p=params[source_id]: p.get(key, default), 3.0)
+
+
+@pytest.mark.parametrize('path', ANALYZER_FILES, ids=lambda p: p.name)
+def test_regex_entries_are_full_match(path):
+    """regex は全体一致 (regex_match)。前方一致のつもりで末尾を空けると、何にも一致しない。"""
+    params = yaml.safe_load(path.read_text(encoding='utf-8'))
+    entries = []
+
+    def collect(node):
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key == 'regex':
+                    entries.extend(value)
+                else:
+                    collect(value)
+
+    collect(params)
+    bad = [e for e in entries if not (e.endswith('$') or e.endswith('.*'))]
+    assert not bad, f'{path.name}: regex は末尾を $ か .* にする: {bad}'

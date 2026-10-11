@@ -24,7 +24,7 @@ analyzers:
           type: diagnostic_aggregator/GenericAnalyzer
           path: EKF
           # 捨てるもの (discard_third_party の Filter diagnostic updater) には一致させない。照合の順序には頼らない
-          regex: ['^ekf_global_node: odometry']
+          regex: ['^ekf_global_node: odometry.*']
           timeout: 5.0
 
     navigation:

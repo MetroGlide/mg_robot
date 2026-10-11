@@ -28,7 +28,7 @@ analyzers:
         gnss:
           type: diagnostic_aggregator/GenericAnalyzer
           path: GNSS
-          # ublox の診断のうち、捨てるもの (discard_third_party) には一致させない。
+          # ublox の診断のうち、捨てるもの (discard_third_party) には一致させない。regex は全体一致なので、前方一致は末尾を .* にする。
           # 照合の順序には頼らない
-          regex: ['^ublox_gps_node: fix$', '^gnss_diagnostics_node: ']
+          regex: ['^ublox_gps_node: fix$', '^gnss_diagnostics_node: .*']
           timeout: 5.0
