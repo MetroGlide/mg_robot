@@ -13,7 +13,7 @@ analyzers:
         gnss_bridge:
           type: diagnostic_aggregator/GenericAnalyzer
           path: GnssBridge
-          startswith: ['slam_gnss_nav_bridge_node: ']
+          startswith: ['slam_gnss_nav_bridge: ']
           timeout: 5.0
         gate:
           type: diagnostic_aggregator/GenericAnalyzer
