@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { useFrame, useThree } from "@react-three/fiber";
+import { useWheelMode } from "../../hooks/useWheelMode";
 import { TfBuffer } from "../ros-viewer/hooks/useTfBuffer";
 
 /** 地図のカメラ操作の指示。n は同じ指示を続けて出せるようにする連番 */
@@ -16,6 +17,8 @@ export const DEFAULT_ZOOM = 20;
 const BUTTON_ZOOM_STEP = 1.25;
 // ピンチ(ctrl+wheel)の感度
 const PINCH_SENSITIVITY = 0.01;
+// マウスホイールでズームするときの感度(1 クリック = deltaY 100 前後で約 1.2 倍)
+const WHEEL_ZOOM_SENSITIVITY = 0.002;
 
 export function clampZoom(zoom: number): number {
   return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
@@ -64,7 +67,8 @@ interface Props {
 
 /**
  * ノート PC のタッチパッド向けの 2D カメラ操作。
- * 2 本指のスクロールで移動、ピンチ(ctrl+wheel)でズーム、ドラッグでも移動する。
+ * 2 本指のスクロール(ホイールの割り当てが移動のとき)で移動、ピンチ(ctrl+wheel)でズーム、ドラッグでも移動する。
+ * ホイールの割り当てを拡大縮小にすると、マウスのホイールでズームできる。
  * 回転・ズームのボタンと初期位置への復帰は command で受ける。
  */
 export function MapCameraControls({
@@ -106,6 +110,9 @@ export function MapCameraControls({
   );
   const onUserPanRef = useRef(onUserPan);
   onUserPanRef.current = onUserPan;
+  const [wheelMode] = useWheelMode();
+  const wheelModeRef = useRef(wheelMode);
+  wheelModeRef.current = wheelMode;
   const dragPanEnabledRef = useRef(dragPanEnabled);
   dragPanEnabledRef.current = dragPanEnabled;
 
@@ -120,6 +127,11 @@ export function MapCameraControls({
       e.preventDefault();
       if (e.ctrlKey) {
         cam.zoom = clampZoom(cam.zoom * Math.exp(-e.deltaY * PINCH_SENSITIVITY));
+        cam.updateProjectionMatrix();
+      } else if (wheelModeRef.current === "zoom") {
+        cam.zoom = clampZoom(
+          cam.zoom * Math.exp(-e.deltaY * WHEEL_ZOOM_SENSITIVITY),
+        );
         cam.updateProjectionMatrix();
       } else {
         panCameraByPixels(cam, -e.deltaX, -e.deltaY);

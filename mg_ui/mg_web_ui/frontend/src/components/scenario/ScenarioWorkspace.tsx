@@ -1,10 +1,9 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { FoxgloveClientHandle } from "../../hooks/useFoxgloveClient";
 import { SystemManagerHandle } from "../../hooks/useSystemManagerClient";
 import { useDockerLogStream } from "../../hooks/useDockerLogStream";
 import { useScenarioRun } from "../../hooks/useScenarioRun";
 import ServiceLogPanel from "../panels/ServiceLogPanel";
-import RosViewer from "../ros-viewer/RosViewer";
 import ActionButton from "../ui/ActionButton";
 import Toggle from "../ui/Toggle";
 import Panel from "../work/Panel";
@@ -12,9 +11,12 @@ import ScenarioSelector from "./ScenarioSelector";
 import RunOptionsForm from "./RunOptionsForm";
 import ScenarioEnvCard from "./ScenarioEnvCard";
 import RunProgressTable from "./RunProgressTable";
+import PlannedRunList from "./PlannedRunList";
+import ScenarioLiveView from "./ScenarioLiveView";
 import ScenarioResultDetail from "./ScenarioResultDetail";
 import RunHistoryList from "./RunHistoryList";
 import {
+  descriptionsByName,
   SCENARIO_ENV_SERVICE,
   SCENARIO_TEST_SERVICE,
 } from "../../utils/scenarioTest";
@@ -34,6 +36,10 @@ export default function ScenarioWorkspace({
   const { entries, connected, clear } = useDockerLogStream(LOG_SERVICES);
   const [liveView, setLiveView] = useState(false);
   const { run, phase } = s;
+  const descriptions = useMemo(
+    () => descriptionsByName(s.scenarios),
+    [s.scenarios],
+  );
 
   return (
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
@@ -92,8 +98,33 @@ export default function ScenarioWorkspace({
       </div>
 
       <div className="space-y-4 xl:col-span-2">
+        {phase === "running" && !s.showingLatest && s.latestRun && (
+          <Panel
+            title="実行中のテスト"
+            actions={
+              <button
+                type="button"
+                onClick={s.showLatest}
+                className="text-xs text-accent hover:opacity-80"
+              >
+                この実行を表示
+              </button>
+            }
+          >
+            <RunProgressTable
+              run={s.latestRun}
+              selectedEntry={null}
+              onSelectEntry={(dir) => {
+                s.showLatest();
+                s.setSelectedEntry(dir);
+              }}
+              descriptions={descriptions}
+            />
+          </Panel>
+        )}
+
         <Panel
-          title="実行状況"
+          title={s.showingLatest ? "実行状況" : "過去の実行"}
           actions={
             !s.showingLatest && (
               <button
@@ -106,14 +137,22 @@ export default function ScenarioWorkspace({
             )
           }
         >
-          {phase === "starting" && s.showingLatest && (
-            <p className="text-xs text-accent">テストを起動しています…</p>
-          )}
-          {run ? (
+          {phase === "starting" && s.showingLatest ? (
+            s.plannedNames.length > 0 ? (
+              <PlannedRunList
+                names={s.plannedNames}
+                repeat={s.options.repeat}
+                descriptions={descriptions}
+              />
+            ) : (
+              <p className="text-xs text-accent">テストを起動しています…</p>
+            )
+          ) : run ? (
             <RunProgressTable
               run={run}
               selectedEntry={s.selectedEntry}
               onSelectEntry={s.setSelectedEntry}
+              descriptions={descriptions}
             />
           ) : (
             <p className="text-xs text-muted">実行結果はまだありません</p>
@@ -137,14 +176,12 @@ export default function ScenarioWorkspace({
           }
         >
           {liveView ? (
-            <div className="h-[28rem] overflow-hidden rounded-lg border border-line">
-              <RosViewer client={client} className="h-full w-full" />
-            </div>
+            <ScenarioLiveView client={client} />
           ) : (
             <p className="text-xs text-muted">
               オンにすると、接続中の foxglove_bridge
               から地図・ロボット・経路を表示する(シミュレータと同じ PC の bridge
-              に接続しているときに使える)。
+              に接続しているときに使える)。ロボットの状態や診断は Waypoint などのタブで確認する。
             </p>
           )}
         </Panel>

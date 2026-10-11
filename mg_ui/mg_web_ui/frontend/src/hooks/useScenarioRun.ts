@@ -47,6 +47,15 @@ export function useScenarioRun(sysManager: SystemManagerHandle) {
     false,
   );
   const selected = useMemo(() => new Set(selectedNames), [selectedNames]);
+  // 実行するシナリオ。一覧の並び順で、実行中は選択を変えられないので、起動中の実行予定にも使う
+  const plannedNames = useMemo(
+    () => [
+      ...new Set(
+        scenarios.filter((s) => selected.has(s.name)).map((s) => s.name),
+      ),
+    ],
+    [scenarios, selected],
+  );
   const [options, setOptions] = useState<RunOptionsValue>(DEFAULT_RUN_OPTIONS);
   // null のときは最新の run を表示し続ける
   const [viewRunId, setViewRunId] = useState<string | null>(null);
@@ -64,9 +73,26 @@ export function useScenarioRun(sysManager: SystemManagerHandle) {
     saveSettings(SETTINGS_KEY, next);
   };
 
+  const phase = runPhase(status);
+  // 実行が始まったら(この画面以外から始めた場合も)、履歴で選んでいた run から最新に戻す
+  const running = phase !== "idle";
+  // この画面を開いてから実行を見たか。見ていなければ、履歴を選ぶまで過去の run は出さない
+  const [sawRun, setSawRun] = useState(false);
+  useEffect(() => {
+    if (running) {
+      setSawRun(true);
+      setViewRunId(null);
+      setSelectedEntry(null);
+    }
+  }, [running]);
+
   const latestRun = status?.run ?? null;
   const showingLatest = viewRunId === null || viewRunId === latestRun?.run_id;
-  const run = showingLatest ? latestRun : pastRun;
+  const run = showingLatest
+    ? viewRunId !== null || sawRun
+      ? latestRun
+      : null
+    : pastRun;
 
   useEffect(() => {
     if (viewRunId === null || viewRunId === latestRun?.run_id) return;
@@ -89,7 +115,6 @@ export function useScenarioRun(sysManager: SystemManagerHandle) {
     [run, selectedEntry],
   );
 
-  const phase = runPhase(status);
   const envStatus = status?.services[SCENARIO_ENV_SERVICE] ?? null;
   const gazeboStatus = status?.services[GAZEBO_SERVICE] ?? null;
   const attachReady = envStatus === "running" || gazeboStatus === "running";
@@ -130,12 +155,7 @@ export function useScenarioRun(sysManager: SystemManagerHandle) {
   const start = () =>
     withBusy(async () => {
       const body: RunRequest = {
-        // 一覧の並び順で実行する
-        scenarios: [
-          ...new Set(
-            scenarios.filter((s) => selected.has(s.name)).map((s) => s.name),
-          ),
-        ],
+        scenarios: plannedNames,
         repeat: options.repeat,
         gui: options.gui && !options.attach,
         attach: options.attach,
@@ -177,6 +197,7 @@ export function useScenarioRun(sysManager: SystemManagerHandle) {
     updateOptions,
     run,
     latestRun,
+    plannedNames,
     viewRunId,
     showingLatest,
     showLatest,

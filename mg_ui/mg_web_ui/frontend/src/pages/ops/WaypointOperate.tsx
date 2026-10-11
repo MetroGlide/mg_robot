@@ -16,6 +16,7 @@ import WaypointProgress from "../../components/operate/WaypointProgress";
 import ActionsCard from "../../components/operate/ActionsCard";
 import { MapCommand } from "../../components/operate/MapCameraControls";
 import GnssDetailCard from "../../components/operate/GnssDetailCard";
+import TogglePanel from "../../components/operate/TogglePanel";
 import {
   JoystickCard,
   OverlayCards,
@@ -38,10 +39,6 @@ export default function WaypointOperate({
 }) {
   const [command, setCommand] = useState<MapCommand | null>(null);
   const [follow, setFollow] = useOpsValue<boolean>(`${VIEW_KEY}.follow`, false);
-  const [detailOpen, setDetailOpen] = useOpsValue<boolean>(
-    `${VIEW_KEY}.detail`,
-    true,
-  );
   const [goalBt, setGoalBt] = useOpsValue<GoalBtMode>(
     `${VIEW_KEY}.goalBt`,
     "default",
@@ -89,14 +86,19 @@ export default function WaypointOperate({
       topLeft={
         <div className="flex flex-col items-start gap-2">
           <KpiRow client={client} />
-          <ActionsCard
-            client={client}
-            sysManager={sysManager}
-            control={control}
-            goalBt={goalBt}
-            onGoalBtChange={setGoalBt}
-            connected={connected}
-          />
+          <TogglePanel id="actions">
+            {(close) => (
+              <ActionsCard
+                client={client}
+                sysManager={sysManager}
+                control={control}
+                goalBt={goalBt}
+                onGoalBtChange={setGoalBt}
+                connected={connected}
+                onClose={close}
+              />
+            )}
+          </TogglePanel>
         </div>
       }
       toolbar={
@@ -112,23 +114,17 @@ export default function WaypointOperate({
       }
       topRight={
         <div className="flex flex-col items-end gap-2">
-          {detailOpen ? (
-            <RobotDetailCard client={client} onClose={() => setDetailOpen(false)} />
-          ) : (
-            <button
-              type="button"
-              onClick={() => setDetailOpen(true)}
-              className="rounded-lg border border-line bg-surface-elevated px-3 py-1.5 text-xs font-semibold shadow-card"
-            >
-              ロボットの詳細
-            </button>
-          )}
-          <GnssDetailCard client={client} />
+          <TogglePanel id="robotDetail">
+            {(close) => <RobotDetailCard client={client} onClose={close} />}
+          </TogglePanel>
+          <TogglePanel id="gnssDetail">
+            {(close) => <GnssDetailCard client={client} onClose={close} />}
+          </TogglePanel>
         </div>
       }
       notice={
         notice && (
-          <Card className="px-3 py-1.5">
+          <Card solid className="px-3 py-1.5">
             <p className={`text-xs ${noticeIsError ? "text-error" : "text-ok"}`}>
               {notice}
             </p>
@@ -138,13 +134,24 @@ export default function WaypointOperate({
       bottomLeft={
         <div className="flex flex-col items-start gap-2">
           <OverlayCards client={client} />
-          <WaypointProgress client={client} control={control} connected={connected} />
+          <TogglePanel id="waypointProgress">
+            {(close) => (
+              <WaypointProgress
+                client={client}
+                control={control}
+                connected={connected}
+                onClose={close}
+              />
+            )}
+          </TogglePanel>
         </div>
       }
       bottomRight={
         <div className="flex flex-col items-end gap-2">
           <JoystickCard client={client} />
-          <DiagnosticsBoard client={client} />
+          <TogglePanel id="diagnostics">
+            {(close) => <DiagnosticsBoard client={client} onClose={close} />}
+          </TogglePanel>
         </div>
       }
     />

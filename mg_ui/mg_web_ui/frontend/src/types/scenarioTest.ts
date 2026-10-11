@@ -19,6 +19,8 @@ export interface RunOptions {
   gui?: boolean;
   remote_stack?: string;
   repeat?: number;
+  /** 絞り込みに使ったタグ(カンマ区切り) */
+  tags?: string;
 }
 
 export interface ProgressEntry {
@@ -50,6 +52,8 @@ export interface RunSummary {
   exit_code: number | null;
   total: number;
   counts: Partial<Record<EntryStatus, number>>;
+  /** 実行したシナリオ名(重複なし、実行順) */
+  scenarios: string[];
   options: RunOptions;
 }
 

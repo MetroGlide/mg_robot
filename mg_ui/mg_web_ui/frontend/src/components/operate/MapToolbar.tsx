@@ -12,6 +12,7 @@ import {
 } from "../ui/icons";
 import { MapInteractionMode } from "../../hooks/useWaypointControl";
 import { MapCommand } from "./MapCameraControls";
+import OpacityControl from "./OpacityControl";
 
 interface Props {
   onCommand: (kind: MapCommand["kind"]) => void;
@@ -38,7 +39,7 @@ export default function MapToolbar({
     onInteractionModeChange?.(interactionMode === mode ? "none" : mode);
 
   return (
-    <Card className="flex flex-col gap-1 p-1">
+    <Card solid className="flex flex-col gap-1 p-1">
       <IconButton icon={<PlusIcon />} title="拡大" onClick={() => onCommand("zoomIn")} />
       <IconButton icon={<MinusIcon />} title="縮小" onClick={() => onCommand("zoomOut")} />
       <IconButton icon={<RotateIcon />} title="90度回転" onClick={() => onCommand("rotate")} />
@@ -74,6 +75,17 @@ export default function MapToolbar({
           {extra}
         </>
       )}
+      <div className="my-0.5 h-px bg-line" />
+      <OpacityControl />
+    </Card>
+  );
+}
+
+/** 地図の操作を持たないビュー(衛星画像の表示中など)で、透明度のボタンだけを出すツールバー */
+export function OpacityToolbar() {
+  return (
+    <Card solid className="p-1">
+      <OpacityControl />
     </Card>
   );
 }

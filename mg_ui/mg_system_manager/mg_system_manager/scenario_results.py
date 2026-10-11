@@ -88,15 +88,24 @@ def _read_json(path: Path) -> dict[str, Any] | None:
 
 
 def run_ids(root: Path) -> list[str]:
-    """progress.json がある run の id を新しい順に返す(id は日時なので名前の降順)。"""
+    """progress.json がある run の id を新しい順に返す。
+
+    手で付けた名前のディレクトリが混ざっても最新を取り違えないよう、名前ではなく
+    progress.json の更新時刻で並べる(更新時刻が同じなら名前の降順)。
+    """
     try:
         names = os.listdir(root)
     except OSError:
         return []
-    return sorted(
-        (n for n in names
-         if SCENARIO_NAME_RE.match(n) and (root / n / PROGRESS_FILE).is_file()),
-        reverse=True)
+    mtimes: dict[str, float] = {}
+    for n in names:
+        if not SCENARIO_NAME_RE.match(n):
+            continue
+        try:
+            mtimes[n] = (root / n / PROGRESS_FILE).stat().st_mtime
+        except OSError:
+            continue
+    return sorted(mtimes, key=lambda n: (mtimes[n], n), reverse=True)
 
 
 def run_state(progress: dict[str, Any], active: bool) -> str:
@@ -119,6 +128,8 @@ def summarize(run_id: str, progress: dict[str, Any], active: bool) -> dict[str, 
         "exit_code": progress.get("exit_code"),
         "total": len(entries),
         "counts": counts,
+        "scenarios": list(dict.fromkeys(
+            str(entry.get("name", "")) for entry in entries)),
         "options": progress.get("options") or {},
     }
 

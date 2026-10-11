@@ -1,10 +1,14 @@
 import { useMemo, useState } from "react";
+import { useOpsValue } from "../../hooks/useOpsValue";
 import type { ScenarioInfo } from "../../types/scenarioTest";
 import {
   collectGroups,
   collectTags,
   filterScenarios,
 } from "../../utils/scenarioTest";
+
+/** 回帰テストの区分を表すタグ(ショートカットボタンの対象) */
+const TIER_TAGS = ["smoke", "full"];
 
 interface ScenarioSelectorProps {
   scenarios: readonly ScenarioInfo[];
@@ -24,6 +28,10 @@ export default function ScenarioSelector({
   const [group, setGroup] = useState("");
   const [tag, setTag] = useState("");
   const [showKnownIssues, setShowKnownIssues] = useState(false);
+  const [showDescriptions, setShowDescriptions] = useOpsValue<boolean>(
+    "scenario.showDescriptions",
+    true,
+  );
 
   const groups = useMemo(() => collectGroups(scenarios), [scenarios]);
   const tags = useMemo(() => collectTags(scenarios), [scenarios]);
@@ -37,6 +45,31 @@ export default function ScenarioSelector({
     if (next.has(name)) next.delete(name);
     else next.add(name);
     onChange(next);
+  };
+
+  // 説明の全文を開いているシナリオ(名前)
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  const toggleExpanded = (name: string) => {
+    const next = new Set(expanded);
+    if (next.has(name)) next.delete(name);
+    else next.add(name);
+    setExpanded(next);
+  };
+
+  // タグで絞り込み、known_issue を除いた該当シナリオだけを選択する(それまでの選択は置き換える)
+  const selectTier = (tierTag: string) => {
+    setGroup("");
+    setTag(tierTag);
+    setShowKnownIssues(false);
+    onChange(
+      new Set(
+        filterScenarios(scenarios, {
+          group: "",
+          tag: tierTag,
+          showKnownIssues: false,
+        }).map((s) => s.name),
+      ),
+    );
   };
 
   const selectVisible = () => {
@@ -81,6 +114,30 @@ export default function ScenarioSelector({
           />
           known_issue も表示
         </label>
+        <label className="flex items-center gap-1 text-xs text-content select-none">
+          <input
+            type="checkbox"
+            checked={showDescriptions}
+            onChange={(e) => setShowDescriptions(e.target.checked)}
+          />
+          説明を表示
+        </label>
+      </div>
+
+      <div className="flex items-center gap-2 text-xs">
+        <span className="text-muted">ショートカット:</span>
+        {TIER_TAGS.map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => selectTier(t)}
+            disabled={disabled || !tags.includes(t)}
+            title={`${t} タグで絞り込み、該当するシナリオだけを選択する(known_issue は除く)`}
+            className="rounded bg-surface-sunken px-2 py-0.5 font-semibold text-accent hover:opacity-80 disabled:opacity-50"
+          >
+            {t} を選択
+          </button>
+        ))}
       </div>
 
       <div className="flex items-center gap-3 text-xs">
@@ -119,10 +176,7 @@ export default function ScenarioSelector({
         )}
         {visible.map((s) => (
           <li key={`${s.group}/${s.name}`}>
-            <label
-              className="flex items-start gap-2 px-2 py-1.5 hover:bg-surface-sunken cursor-pointer"
-              title={s.description || s.error}
-            >
+            <label className="flex items-start gap-2 px-2 py-1.5 hover:bg-surface-sunken cursor-pointer">
               <input
                 type="checkbox"
                 className="mt-0.5"
@@ -142,18 +196,40 @@ export default function ScenarioSelector({
                     YAML を読めません: {s.error}
                   </span>
                 ) : (
-                  <span className="flex flex-wrap gap-1 mt-0.5">
-                    {s.tags.map((t) => (
+                  <>
+                    {showDescriptions && s.description && (
                       <span
-                        key={t}
-                        className="rounded bg-surface-sunken px-1 text-[10px] text-content"
+                        className={`block whitespace-pre-line text-xs text-muted ${
+                          expanded.has(s.name) ? "" : "line-clamp-2"
+                        }`}
                       >
-                        {t}
+                        {s.description}
                       </span>
-                    ))}
-                  </span>
+                    )}
+                    <span className="flex flex-wrap gap-1 mt-0.5">
+                      {s.tags.map((t) => (
+                        <span
+                          key={t}
+                          className="rounded bg-surface-sunken px-1 text-[10px] text-content"
+                        >
+                          {t}
+                        </span>
+                      ))}
+                    </span>
+                  </>
                 )}
               </span>
+              {showDescriptions && s.description && (
+                <button
+                  type="button"
+                  aria-expanded={expanded.has(s.name)}
+                  title={expanded.has(s.name) ? "説明を閉じる" : "説明の全文を開く"}
+                  onClick={() => toggleExpanded(s.name)}
+                  className="px-1 text-xs text-muted hover:text-content"
+                >
+                  {expanded.has(s.name) ? "▾" : "▸"}
+                </button>
+              )}
             </label>
           </li>
         ))}

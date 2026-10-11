@@ -14,6 +14,7 @@ import threading
 import time
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
+from datetime import datetime
 from typing import IO, Callable, List, Optional, Sequence
 
 import yaml
@@ -318,6 +319,11 @@ PENDING = "PENDING"
 RUNNING = "RUNNING"
 
 
+def _now_iso() -> str:
+    """タイムゾーン付きの現在時刻 (ISO 8601)。読む側 (ブラウザ) がコンテナのタイムゾーンに依らず経過時間を出せる。"""
+    return datetime.now().astimezone().isoformat(timespec="seconds")
+
+
 @dataclass
 class PlannedRun:
     name: str
@@ -335,7 +341,7 @@ class ProgressWriter:
     def __init__(self, results_dir: str, planned: Sequence[PlannedRun], options: dict):
         self._results_dir = results_dir
         self._data = {
-            "started_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "started_at": _now_iso(),
             "options": options,
             "entries": [
                 {
@@ -359,7 +365,7 @@ class ProgressWriter:
             "status": RUNNING,
             "result_dir": os.path.relpath(out_dir, self._results_dir),
             "attempt": attempt,
-            "started_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "started_at": _now_iso(),
         })
         self._write()
 

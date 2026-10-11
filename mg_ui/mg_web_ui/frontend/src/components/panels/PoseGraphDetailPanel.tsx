@@ -29,7 +29,7 @@ export function PoseGraphDetailPanel({
   )
 
   return (
-    <div className={`${className} flex w-80 flex-col overflow-hidden rounded-lg border border-line bg-surface-elevated/95 text-content shadow-card`}>
+    <div className={`${className} flex w-80 flex-col overflow-hidden rounded-lg border border-line panel-surface text-content shadow-card`}>
       <div className="flex items-center justify-between border-b border-line bg-surface-sunken px-4 py-2">
         <h3 className="font-semibold text-sm">Node #{selectedNodeIndex} Details</h3>
         <button onClick={onClose} className="text-muted hover:text-content">✕</button>
