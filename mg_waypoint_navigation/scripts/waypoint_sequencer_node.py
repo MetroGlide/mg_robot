@@ -2,7 +2,7 @@
 import copy
 
 import rclpy
-from rclpy.callback_groups import ReentrantCallbackGroup
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, ReliabilityPolicy
@@ -13,13 +13,19 @@ from std_msgs.msg import ColorRGBA, Int16
 from std_srvs.srv import Trigger
 from visualization_msgs.msg import Marker, MarkerArray
 
-from mg_msgs.msg import PauseRequest, SequencerStatus
+from mg_msgs.msg import NavigationActivity, PauseRequest, SequencerStatus
 from mg_msgs.msg import WaypointInfo
 from mg_msgs.msg import WaypointList as WaypointListMsg
 from mg_msgs.srv import LoadMaps, SendGoal, StartSequence
 
 from mg_utils.event_log import EventLog
 from mg_waypoint_navigation.waypoint import WaypointList, WaypointsLoader
+from mg_waypoint_navigation.waypoint_sequencer.activity import (
+    ActivityInputs,
+    ActivityTracker,
+    compose_activity,
+)
+from mg_waypoint_navigation.waypoint_sequencer.activity_sources import ActivitySources
 from mg_waypoint_navigation.waypoint_sequencer.fsm import WaypointSequencerFSM
 from mg_waypoint_navigation.waypoint_sequencer.health import progress_health
 from mg_waypoint_navigation.waypoint_sequencer.states import SequencerState
@@ -79,6 +85,21 @@ class WaypointSequencerNode(Node):
         # 走行中に位置が進まない時間がこれを超えたら、/diagnostics に WARN を出す [s]
         self._stall_warn_sec: float = self.declare_parameter(
             "stall_warn_sec", 30.0).value
+        # 走行の「いまの活動」(~/activity) を配信するか。false なら購読もしない
+        self._publish_activity: bool = self.declare_parameter(
+            "publish_activity", True).value
+        self._activity_freq: float = self.declare_parameter(
+            "activity_freq_hz", 2.0).value
+        if self._activity_freq <= 0.0:
+            self.get_logger().warn(
+                f"activity_freq_hz={self._activity_freq} is invalid. Using default 2.0 Hz."
+            )
+            self._activity_freq = 2.0
+        # 空にすると、その入力は使わない
+        self._activity_collision_topic: str = self.declare_parameter(
+            "activity_collision_state_topic", "/collision_monitor_state").value
+        self._activity_bt_log_topic: str = self.declare_parameter(
+            "activity_bt_log_topic", "/behavior_tree_log").value
 
     # ------------------------------------------------------------------
     # ROS 通信初期化
@@ -122,6 +143,19 @@ class WaypointSequencerNode(Node):
             self._status_timer = self.create_timer(
                 1.0 / self._status_freq, self._publish_status_cb
             )
+
+        if self._publish_activity:
+            # 表示用の要約が他のコールバックを止めないよう、専用のグループで動かす
+            activity_group = MutuallyExclusiveCallbackGroup()
+            self._activity_sources = ActivitySources(
+                self, activity_group,
+                self._activity_collision_topic, self._activity_bt_log_topic)
+            self._activity_tracker = ActivityTracker()
+            self._activity_pub = self.create_publisher(
+                NavigationActivity, "~/activity", latched_qos)
+            self._activity_timer = self.create_timer(
+                1.0 / self._activity_freq, self._publish_activity_cb,
+                callback_group=activity_group)
 
         if self._publish_list:
             self._waypoints_list_pub = self.create_publisher(
@@ -259,7 +293,46 @@ class WaypointSequencerNode(Node):
         msg.is_paused = self._fsm.state == SequencerState.SUSPENDED
         msg.pause_requesters = self._fsm.pause_requesters
         msg.distance_remaining = self._fsm.distance_remaining
+        msg.current_action = self._fsm.current_action
+        msg.waiting_trigger = self._fsm.waiting_trigger
         self._status_pub.publish(msg)
+
+    def _publish_activity_cb(self):
+        fsm = self._fsm
+        state = fsm.state
+        driving = state == SequencerState.NAVIGATING or fsm.manual_goal_active
+        if not driving:
+            self._activity_sources.clear_recovery()
+        progress = fsm.navigation_progress()
+        inputs = ActivityInputs(
+            state=state,
+            current_index=fsm.current_index,
+            total_waypoints=fsm.total_waypoints,
+            countdown_ms_remaining=fsm.countdown_ms_remaining,
+            pause_requesters=tuple(fsm.pause_requesters),
+            distance_remaining=fsm.distance_remaining,
+            current_action=fsm.current_action,
+            waiting_trigger=fsm.waiting_trigger,
+            manual_goal_active=fsm.manual_goal_active,
+            collision=self._activity_sources.collision,
+            running_recovery_nodes=self._activity_sources.recovery_nodes,
+            stalled_sec=0.0 if progress is None else progress.stalled_sec,
+        )
+        activity = compose_activity(inputs, self._stall_warn_sec)
+        now = self.get_clock().now()
+
+        msg = NavigationActivity()
+        msg.stamp = now.to_msg()
+        msg.code = activity.code
+        msg.text = activity.text
+        msg.detail = activity.detail
+        msg.emphasis = activity.emphasis
+        msg.elapsed_sec = self._activity_tracker.elapsed_sec(
+            activity.code, now.nanoseconds / 1e9)
+        msg.index = activity.index
+        msg.total = activity.total
+        msg.remaining = activity.remaining
+        self._activity_pub.publish(msg)
 
     def _publish_waypoints_list(self, waypoints: WaypointList):
         msg = WaypointListMsg()

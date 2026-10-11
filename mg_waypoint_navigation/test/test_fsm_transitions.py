@@ -221,6 +221,38 @@ class TestWaitTrigger:
         assert env.fsm.state == SequencerState.IDLE
         assert env.fsm.current_index == 2
 
+    def test_waiting_trigger_flag(self, env):
+        env.fsm.load_waypoints(_make_wl(
+            [],
+            [ActionConfig(type="wait_trigger")],
+            [],
+        ))
+        assert env.fsm.waiting_trigger is False  # 未開始の IDLE
+        env.fsm.start(0)
+        env.fire_countdown()
+        env.fire_nav_success()
+        env.fire_nav_success()
+        env.fire_actions_done()
+        assert env.fsm.state == SequencerState.IDLE
+        assert env.fsm.waiting_trigger is True
+        env.fsm.start(0)
+        assert env.fsm.waiting_trigger is False
+
+    def test_waiting_trigger_flag_cleared_by_set_next_index(self, env):
+        env.fsm.load_waypoints(_make_wl(
+            [],
+            [ActionConfig(type="wait_trigger")],
+            [],
+        ))
+        env.fsm.start(0)
+        env.fire_countdown()
+        env.fire_nav_success()
+        env.fire_nav_success()
+        env.fire_actions_done()
+        assert env.fsm.waiting_trigger is True
+        assert env.fsm.set_next_index(0)
+        assert env.fsm.waiting_trigger is False
+
     def test_last_wp_wait_trigger_to_goal_reached(self, env):
         env.fsm.load_waypoints(
             _make_wl([], [ActionConfig(type="wait_trigger")]))

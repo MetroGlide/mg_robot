@@ -153,6 +153,8 @@ class WaypointSequencerFSM:
         self._publish_navigation_mode()
         # UI などから送った手動ゴールが実行中か (ウェイポイントの走行とは独立に扱う)
         self._manual_goal_active: bool = False
+        # wait_trigger で IDLE に止まっているか (未開始の IDLE と区別する)
+        self._waiting_trigger: bool = False
 
         self._countdown_timer = CountdownTimer(self._on_starting_done)
         self._pause_manager = PauseSlotManager()
@@ -187,6 +189,19 @@ class WaypointSequencerFSM:
     def distance_remaining(self) -> float:
         return self._navigator.distance_remaining
 
+    @property
+    def waiting_trigger(self) -> bool:
+        return self._waiting_trigger
+
+    @property
+    def current_action(self) -> str:
+        """実行中の到着後アクションの type。実行していなければ空文字。"""
+        return self._executor.current_action
+
+    @property
+    def manual_goal_active(self) -> bool:
+        return self._manual_goal_active
+
     def navigation_progress(self) -> Optional[ProgressStatus]:
         """Nav2 のゴールを走行中なら、位置が進んでいない時間とリカバリー回数。"""
         return self._navigator.progress_status()
@@ -213,6 +228,7 @@ class WaypointSequencerFSM:
         with self._lock:
             self._waypoints = waypoints
             self._current_index = 0
+            self._waiting_trigger = False
 
     def set_next_index(self, index: int) -> bool:
         """IDLE / SUSPENDED 時のみインデックスを変更できる"""
@@ -222,6 +238,7 @@ class WaypointSequencerFSM:
             if index < 0 or index >= self._waypoints.get_size():
                 return False
             self._current_index = index
+            self._waiting_trigger = False
             return True
 
     def reload_waypoints(self, waypoints: WaypointList) -> CommandResult:
@@ -232,6 +249,7 @@ class WaypointSequencerFSM:
             if self._state not in allowed:
                 return CommandResult(False, f"Cannot reload in state {self._state.value}")
             self._waypoints = waypoints
+            self._waiting_trigger = False
             size = waypoints.get_size()
             if size == 0:
                 self._current_index = 0
@@ -462,6 +480,7 @@ class WaypointSequencerFSM:
         if any(a.type == "wait_trigger" for a in waypoint.on_reached_actions):
             self._navigator.cancel()
             self._transition(SequencerState.IDLE)
+            self._waiting_trigger = self._state == SequencerState.IDLE
             return
 
         if self._pause_manager.is_active:
@@ -508,6 +527,7 @@ class WaypointSequencerFSM:
             return
         old = self._state
         self._state = new_state
+        self._waiting_trigger = False
         fields = dict(
             from_=old.value, to=new_state.value, index=self._current_index,
             total=self._waypoints.get_size())
