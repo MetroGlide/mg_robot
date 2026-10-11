@@ -106,7 +106,7 @@ export default function ActionsCard({
         <h2 className="text-sm font-bold">操作</h2>
         <IconButton icon={<CloseIcon />} title="閉じる" onClick={onClose} />
       </div>
-      <div className="mt-2 max-h-[calc(100vh-27rem)] space-y-2 overflow-y-auto">
+      <div className="mt-2 max-h-[calc(100vh-29rem)] space-y-2 overflow-y-auto">
           <Disclosure title="走行" storageKey="actions.drive">
             <DriveTools {...drive} />
           </Disclosure>

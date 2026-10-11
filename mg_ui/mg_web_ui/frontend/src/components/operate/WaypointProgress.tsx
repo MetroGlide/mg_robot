@@ -60,7 +60,7 @@ export default function WaypointProgress({
       {status?.state === "ERROR" && (
         <p className="mt-2 text-xs text-error">シーケンサがエラー状態です</p>
       )}
-      <div className="mt-3 flex flex-wrap items-center gap-2">
+      <div className="mt-4 flex flex-wrap items-center justify-center gap-4">
         <OpsButton tone="primary" disabled={busy} onClick={control.start}>
           START
         </OpsButton>
@@ -84,7 +84,9 @@ export default function WaypointProgress({
             PAUSE
           </OpsButton>
         )}
-        <label className="ml-auto flex items-center gap-1.5 text-xs text-muted">
+      </div>
+      <div className="mt-3 flex justify-center">
+        <label className="flex items-center gap-1.5 text-xs text-muted">
           出発までの待ち
           <input
             type="number"
