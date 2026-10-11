@@ -177,6 +177,8 @@ client.publish(TOPICS.MY_TOPIC, 'pkg/msg/MyMessage', { value: 1, label: 'hello' 
 - 診断は `DiagnosticsBoard` (Waypoint・SLAM・SLAM+GNSS の右下) に、区分 (ドライバ・自己位置・ナビ・システム・その他) を並べて出す。スクロールなしで全体を見渡せる。「全表示」は全項目 (表示名はタスク名で、意味のないメッセージは出さない)、「簡易」は OK の項目を `OK 数/全体` にまとめて異常な項目だけを出す。選択は保持され、「詳細」で `DiagnosticsTreePanel` (値まで見られる木) を重ねて開く。
 - 操作のカード (`ActionsCard`) は節ごとに閉じられ、開閉は保持される。閉じておけば、状態の表示だけが残る。
 - カードは地図の上に重ね、右端のツールバーを避けて置く (`OperateLayout`)。
+- 右端の列は、上に**パネルの表示切り替え** (`PanelToggleBar`)、その下の残りの高さの中央に地図ツールバーを置く (`OperateLayout` の `panelBar` / `toolbar`)。切り替えられるパネルの定義 (ロボットの詳細・GNSS の詳細・診断) は `components/operate/operatePanels.ts` の `PANELS` に集め、表示状態は `usePanelVisible(id)` で読む (ビューをまたいで共有し、端末ごとに保持する。既定は GNSS の詳細だけ非表示)。ビューは `PanelToggleBar` の `ids` に使うパネルを並べ、パネル本体を `PanelSlot` で包む。パネルを足すときは `PANELS` に 1 つ足す。KPI の GNSS タイルも同じ状態を操作する。隠したパネルは描画も購読もしない (ただし診断・GNSS は KPI や上部バーも購読するので、実機への購読は残る)。
+- **パネルの透明度**: 切り替えバーの末尾のスライダー (30〜100%、既定 95%) で、運用ビューの全パネルの背景の不透明度を変える (`usePanelOpacity`、端末ごとに保持)。`OperateLayout` が `--panel-alpha` を与え、`Card` の背景 (`.panel-surface`、`index.css`) とその中の塗り (`bg-surface-sunken` など) に効く。文字と枠線は不透明のまま。操作の部品や警告 (地図ツールバー、切り替えバー、通知) は `<Card solid>` にして透かさない。運用ビューの外の `Card` は変数が未設定で、従来の 95% のまま。
 
 ### テーマ (色のトークン)
 
@@ -189,7 +191,7 @@ client.publish(TOPICS.MY_TOPIC, 'pkg/msg/MyMessage', { value: 1, label: 'hello' 
 ### 負荷を抑えるルール (新 UI の部品)
 
 - **運用ビューでは、高頻度のトピック (scan、costmap、点群、画像) を、既定では購読しない**。そうした表示は、センサビューに置く。運用ビューが購読するのは、地図・経路・TF のほかは、低頻度の状態のトピックだけ。例外は、地図ツールバーの「センサ表示」ボタン (`useSensorsVisible`、既定はオフ。再読み込みでは残さない)。オンにしたときだけ `SensorLayers` が描かれ、そのレイヤー (LiDAR・コストマップ・点群など) の ON/OFF は、センサビューのレイヤーパネルの設定に従う。オフに戻すと購読を止める。画像は運用ビューに出さない。
-- GNSS は、設定で選んだ 1 トピック(NavPVT か NavSatFix)だけを `useGnss` で購読する(2Hz に間引く)。KPI の GNSS タイルを押すと、右側のカードの列(ロボットの詳細の下)に詳細カード(緯度経度、UTM、精度、PDOP、高さ)が開く。詳細カードは開いている間だけ購読する。UTM 変換と表示用の文言は `utils/gnssReading.ts` (測位の良し悪しは判定せず、診断のレベルに従う)。
+- GNSS は、設定で選んだ 1 トピック(NavPVT か NavSatFix)だけを `useGnss` で購読する(2Hz に間引く)。KPI の GNSS タイルか、右端のパネル切り替えバーのボタンを押すと、右側のカードの列(ロボットの詳細の下)に詳細カード(緯度経度、UTM、精度、PDOP、高さ)が開く。詳細カードは開いている間だけ購読する。UTM 変換と表示用の文言は `utils/gnssReading.ts` (測位の良し悪しは判定せず、診断のレベルに従う)。
 ### 状態とイベントの表示 (新 UI)
 
 規約は [doc/monitoring.md](../../../doc/monitoring.md)。
@@ -201,7 +203,7 @@ client.publish(TOPICS.MY_TOPIC, 'pkg/msg/MyMessage', { value: 1, label: 'hello' 
 - 人が読むだけの値 (速度、GNSS など) は `useThrottledTopic(client, topic, schema, maxHz)` で、再描画を間引く。間引いても最後の値は必ず反映される。**E-Stop や FSM の状態のように、変化を見逃せない値は間引かず `useTopicSubscriber` を使う**。
 - 値には鮮度を付ける。`useFreshness(client, topic, maxAgeSec)` は、最後の受信 (ブラウザの時計) からの経過秒を返す。古くなった値は `StatTile` が `--` と経過秒の表示にする。Wi-Fi の瞬断で、古い値が現在値に見えないようにするため。
 - 切断中は `ConnectionBanner` を出し、送信系のボタンを無効にする (`client.status !== "connected"`)。
-- WebGL のキャンバスの上のカードでは、`backdrop-filter` (ぼかし) を使わない。キャンバスが更新されるたびに再合成が走る。半透明の単色と影にする (`components/ui/Card.tsx`)。アニメーションは transform と opacity に限る。
+- WebGL のキャンバスの上のカードでは、`backdrop-filter` (ぼかし) を使わない。キャンバスが更新されるたびに再合成が走る。半透明の単色と影にする (`components/ui/Card.tsx`)。パネルの透明度の調整は、背景色の不透明度の値を変えるだけで、合成の負荷は変わらない。アニメーションは transform と opacity に限る。
 - 地図の上の色は `components/ros-viewer/sceneColors.ts` (テーマ別) にまとめる。LiDAR の点とウェイポイントのピンは画面上の px で大きさを決め、ズームしても小さくならない。縁取りの色で、地図の明暗によらず見えるようにする。
 - `OperateMap` は 10fps の描画要求、`dpr=1`。`RenderTicker` の間隔は `intervalMs` で指定できる (`RosViewer` の既定は 50ms)。
 - 上部バーの「低負荷」(`ThemeContext.lowLoad`。設定のタブにもある) で、影とトランジションを切る。

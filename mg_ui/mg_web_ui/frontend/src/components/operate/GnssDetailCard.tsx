@@ -1,12 +1,9 @@
 import { useMemo } from "react";
 import { FoxgloveClientHandle } from "../../hooks/useFoxgloveClient";
 import { GnssState, useGnss } from "../../hooks/useGnss";
-import { useOpsValue } from "../../hooks/useOpsValue";
 import { GnssReading, toUtm } from "../../utils/gnssReading";
 import Card from "../ui/Card";
-
-/** KPI の GNSS タイルと共有する、詳細カードの開閉の保存キー */
-export const GNSS_DETAIL_KEY = "kpi.gnssDetail";
+import { usePanelVisible } from "./operatePanels";
 
 const NO_VALUE = "--";
 
@@ -101,10 +98,10 @@ function GnssDetailSubscribed({ client }: { client: FoxgloveClientHandle }) {
 }
 
 /**
- * KPI の GNSS タイルで開閉する詳細カード。右側のカードの列に置く。
+ * KPI の GNSS タイルと、パネルの切り替えバーで開閉する詳細カード。右側のカードの列に置く。
  * 開いている間だけ購読する(閉じると購読をやめる)。
  */
 export default function GnssDetailCard({ client }: { client: FoxgloveClientHandle }) {
-  const [open] = useOpsValue<boolean>(GNSS_DETAIL_KEY, false);
+  const [open] = usePanelVisible("gnssDetail");
   return open ? <GnssDetailSubscribed client={client} /> : null;
 }

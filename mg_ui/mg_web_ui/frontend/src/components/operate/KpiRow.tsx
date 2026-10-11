@@ -1,7 +1,6 @@
 import { FoxgloveClientHandle } from "../../hooks/useFoxgloveClient";
 import { useTopicSubscriber } from "../../hooks/useTopicSubscriber";
 import { useGnss } from "../../hooks/useGnss";
-import { useOpsValue } from "../../hooks/useOpsValue";
 import { useFreshness } from "../../hooks/useFreshness";
 import { useDiagnosticsAgg } from "../../hooks/useDiagnosticsAgg";
 import {
@@ -15,7 +14,7 @@ import { findNode } from "../../utils/diagnosticsTree";
 import Card from "../ui/Card";
 import StatTile from "../ui/StatTile";
 import VelocityTile from "./VelocityTile";
-import { GNSS_DETAIL_KEY } from "./GnssDetailCard";
+import { usePanelVisible } from "./operatePanels";
 import { CpuIcon, SatelliteIcon } from "../ui/icons";
 import { Tone, toneFromDiagLevel } from "../ui/Pill";
 
@@ -43,7 +42,7 @@ export default function KpiRow({ client }: { client: FoxgloveClientHandle }) {
     const node = findNode(diagnostics, path);
     return node ? toneFromDiagLevel(node.level) : "neutral";
   };
-  const [gnssOpen, setGnssOpen] = useOpsValue<boolean>(GNSS_DETAIL_KEY, false);
+  const [gnssOpen, setGnssOpen] = usePanelVisible("gnssDetail");
 
   const cpuAge = useFreshness(client, TOPICS.CPU_USAGE, STALE_AFTER_SEC);
   const memAge = useFreshness(client, TOPICS.MEMORY_USAGE, STALE_AFTER_SEC);

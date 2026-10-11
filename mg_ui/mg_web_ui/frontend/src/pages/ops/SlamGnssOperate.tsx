@@ -10,6 +10,8 @@ import OperateLayout from "../../components/operate/OperateLayout";
 import OperateMap from "../../components/operate/OperateMap";
 import KpiRow from "../../components/operate/KpiRow";
 import GnssDetailCard from "../../components/operate/GnssDetailCard";
+import PanelSlot from "../../components/operate/PanelSlot";
+import PanelToggleBar from "../../components/operate/PanelToggleBar";
 import MapToolbar from "../../components/operate/MapToolbar";
 import DiagnosticsBoard from "../../components/operate/DiagnosticsBoard";
 import SlamGnssMapCard from "../../components/operate/SlamGnssMapCard";
@@ -135,7 +137,7 @@ export default function SlamGnssOperate({
       }
       notice={
         maps.notice && (
-          <Card className="flex items-center gap-2 px-3 py-1.5">
+          <Card solid className="flex items-center gap-2 px-3 py-1.5">
             <p className={`text-xs ${maps.notice.ok ? "text-ok" : "text-error"}`}>
               {maps.notice.text}
             </p>
@@ -153,7 +155,12 @@ export default function SlamGnssOperate({
       bottomLeft={
         <SlamGnssMapCard sysManager={sysManager} maps={maps} />
       }
-      bottomRight={<DiagnosticsBoard client={client} />}
+      bottomRight={
+        <PanelSlot id="diagnostics">
+          <DiagnosticsBoard client={client} />
+        </PanelSlot>
+      }
+      panelBar={<PanelToggleBar ids={["gnssDetail", "diagnostics"]} />}
     />
   );
 }

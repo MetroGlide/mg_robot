@@ -16,6 +16,9 @@ import WaypointProgress from "../../components/operate/WaypointProgress";
 import ActionsCard from "../../components/operate/ActionsCard";
 import { MapCommand } from "../../components/operate/MapCameraControls";
 import GnssDetailCard from "../../components/operate/GnssDetailCard";
+import PanelSlot from "../../components/operate/PanelSlot";
+import PanelToggleBar from "../../components/operate/PanelToggleBar";
+import { usePanelVisible } from "../../components/operate/operatePanels";
 import {
   JoystickCard,
   OverlayCards,
@@ -38,10 +41,7 @@ export default function WaypointOperate({
 }) {
   const [command, setCommand] = useState<MapCommand | null>(null);
   const [follow, setFollow] = useOpsValue<boolean>(`${VIEW_KEY}.follow`, false);
-  const [detailOpen, setDetailOpen] = useOpsValue<boolean>(
-    `${VIEW_KEY}.detail`,
-    true,
-  );
+  const [, setRobotDetailVisible] = usePanelVisible("robotDetail");
   const [goalBt, setGoalBt] = useOpsValue<GoalBtMode>(
     `${VIEW_KEY}.goalBt`,
     "default",
@@ -112,23 +112,18 @@ export default function WaypointOperate({
       }
       topRight={
         <div className="flex flex-col items-end gap-2">
-          {detailOpen ? (
-            <RobotDetailCard client={client} onClose={() => setDetailOpen(false)} />
-          ) : (
-            <button
-              type="button"
-              onClick={() => setDetailOpen(true)}
-              className="rounded-lg border border-line bg-surface-elevated px-3 py-1.5 text-xs font-semibold shadow-card"
-            >
-              ロボットの詳細
-            </button>
-          )}
+          <PanelSlot id="robotDetail">
+            <RobotDetailCard
+              client={client}
+              onClose={() => setRobotDetailVisible(false)}
+            />
+          </PanelSlot>
           <GnssDetailCard client={client} />
         </div>
       }
       notice={
         notice && (
-          <Card className="px-3 py-1.5">
+          <Card solid className="px-3 py-1.5">
             <p className={`text-xs ${noticeIsError ? "text-error" : "text-ok"}`}>
               {notice}
             </p>
@@ -144,8 +139,13 @@ export default function WaypointOperate({
       bottomRight={
         <div className="flex flex-col items-end gap-2">
           <JoystickCard client={client} />
-          <DiagnosticsBoard client={client} />
+          <PanelSlot id="diagnostics">
+            <DiagnosticsBoard client={client} />
+          </PanelSlot>
         </div>
+      }
+      panelBar={
+        <PanelToggleBar ids={["robotDetail", "gnssDetail", "diagnostics"]} />
       }
     />
   );

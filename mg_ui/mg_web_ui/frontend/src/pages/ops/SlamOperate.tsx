@@ -11,6 +11,8 @@ import DiagnosticsBoard from "../../components/operate/DiagnosticsBoard";
 import SlamControl from "../../components/operate/SlamControl";
 import { MapCommand } from "../../components/operate/MapCameraControls";
 import GnssDetailCard from "../../components/operate/GnssDetailCard";
+import PanelSlot from "../../components/operate/PanelSlot";
+import PanelToggleBar from "../../components/operate/PanelToggleBar";
 import {
   JoystickCard,
   OverlayCards,
@@ -69,9 +71,12 @@ export default function SlamOperate({
       bottomRight={
         <div className="flex flex-col items-end gap-2">
           <JoystickCard client={client} />
-          <DiagnosticsBoard client={client} />
+          <PanelSlot id="diagnostics">
+            <DiagnosticsBoard client={client} />
+          </PanelSlot>
         </div>
       }
+      panelBar={<PanelToggleBar ids={["gnssDetail", "diagnostics"]} />}
     />
   );
 }

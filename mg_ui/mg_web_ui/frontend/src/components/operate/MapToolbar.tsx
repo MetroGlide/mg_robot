@@ -38,7 +38,7 @@ export default function MapToolbar({
     onInteractionModeChange?.(interactionMode === mode ? "none" : mode);
 
   return (
-    <Card className="flex flex-col gap-1 p-1">
+    <Card solid className="flex flex-col gap-1 p-1">
       <IconButton icon={<PlusIcon />} title="拡大" onClick={() => onCommand("zoomIn")} />
       <IconButton icon={<MinusIcon />} title="縮小" onClick={() => onCommand("zoomOut")} />
       <IconButton icon={<RotateIcon />} title="90度回転" onClick={() => onCommand("rotate")} />

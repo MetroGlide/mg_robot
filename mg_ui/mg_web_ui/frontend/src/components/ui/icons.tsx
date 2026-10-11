@@ -102,3 +102,23 @@ export const LayersIcon = () => (
     <path d="M3 13l9 5 9-5" />
   </Icon>
 );
+export const RobotIcon = () => (
+  <Icon>
+    <rect x="4" y="8" width="16" height="11" rx="2" />
+    <path d="M12 4v4" />
+    <circle cx="9" cy="13" r="1" />
+    <circle cx="15" cy="13" r="1" />
+    <path d="M9 17h6" />
+  </Icon>
+);
+export const PulseIcon = () => (
+  <Icon>
+    <path d="M3 12h4l2-6 4 12 2-6h6" />
+  </Icon>
+);
+export const OpacityIcon = () => (
+  <Icon>
+    <path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z" />
+    <path d="M12 3v17" />
+  </Icon>
+);
