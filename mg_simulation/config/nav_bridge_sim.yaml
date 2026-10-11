@@ -16,3 +16,5 @@ slam_gnss_nav_bridge:
     single_floor_m: 0.05
     single_scale: 1.0
     accept_single: true
+    # sim のロボットは停止中だと、ヘディングを変位から求められず測位を採用できない。正常な状態なので、診断を WARN にしない
+    not_adopting_level: ok

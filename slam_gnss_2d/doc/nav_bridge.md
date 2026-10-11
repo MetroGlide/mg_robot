@@ -38,7 +38,7 @@ GNSS を地図に使えているか (採用しているか) を、診断 `slam_g
 | 変換ファイルを読めなかった | `ERROR` | `GNSS transform not loaded` |
 | `~/change_publish_state` で配信を止めている | `OK` | `publishing disabled` (意図した状態) |
 | `adoption_timeout_sec` 以内に、使える測位があった | `OK` | `adopting GNSS` |
-| 使える測位が無い | `WARN` | `not adopting GNSS: <理由>` |
+| 使える測位が無い | `WARN` (`not_adopting_level: ok` なら `OK`) | `not adopting GNSS: <理由>` |
 
 理由 (`last_reject_reason`): `no fix` (Fix なし)、`low quality (not RTK or accuracy too low)` (解の種類・精度が条件を満たさない)、`heading unavailable` (ヘディングを求められない)、`no GNSS data yet` (まだ受信していない)。`min_publish_distance` で出さなかった測位は、使えているので採用とする。
 
@@ -100,7 +100,8 @@ TF が無い、または `yaw_max_age_sec` より古いときは、アンテナ�
 | `heading_smoothing_alpha` | `0.6` | - | Circular EMA の平滑化係数 |
 | `min_publish_distance` | `1.0` | `1.0` | 前の地点からこの距離以上動くまで、次の測位を出さない [m] |
 | `max_covariance_threshold` | `49.0` | `49.0` | 配信を許す最大の共分散 (2σ²) [m²] |
-| `adoption_timeout_sec` | `5.0` | - | 使える測位がこの時間なければ、診断を `WARN` にする [s] |
+| `adoption_timeout_sec` | `5.0` | - | 使える測位がこの時間なければ、診断を `not_adopting_level` にする [s] |
+| `not_adopting_level` | `warn` | `ok` (sim) | 使える測位が無いときの診断のレベル (`warn` / `ok`)。停止中は方位を求められないなど、無いのが正常な環境で `ok` にする |
 | `lever_arm_compensation` | `true` | `true` | アンテナの位置を、車体の中心の位置に直す |
 | `lever_arm_x` / `lever_arm_y` | `0.26` / `-0.13` | `0.26` / `-0.13` | アンテナの車体座標での位置 [m] (URDF の `base_footprint`→`gps_link` と合わせる) |
 | `yaw_max_age_sec` | `1.0` | - | 向きに使う TF の古さの上限 [s] |

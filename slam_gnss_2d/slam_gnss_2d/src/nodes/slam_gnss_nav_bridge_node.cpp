@@ -3,6 +3,7 @@
 #include <fstream>
 #include <memory>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <yaml-cpp/yaml.h>
 
@@ -100,6 +101,15 @@ class SlamGnssNavBridgeNode : public rclcpp::Node {
     // GNSS を地図に使えているか (使えない理由つき) を、診断とイベントで知らせる。
     // 変換ファイルが読めずにノードが動かない場合も、診断に出す
     adoption_timeout_sec_ = declare_parameter("adoption_timeout_sec", 5.0);
+    // 使える測位が無いときの診断のレベル。停止中は方位を求められないなど、無いのが正常な環境では ok にする
+    const std::string not_adopting_level = declare_parameter("not_adopting_level", std::string("warn"));
+    if (not_adopting_level == "warn") {
+      not_adopting_level_ = diagnostic_msgs::msg::DiagnosticStatus::WARN;
+    } else if (not_adopting_level == "ok") {
+      not_adopting_level_ = diagnostic_msgs::msg::DiagnosticStatus::OK;
+    } else {
+      throw std::invalid_argument("not_adopting_level は warn か ok: " + not_adopting_level);
+    }
     updater_ = std::make_unique<diagnostic_updater::Updater>(this);
     updater_->setHardwareID("slam_gnss_nav_bridge");
     updater_->add("adoption", this, &SlamGnssNavBridgeNode::produce_adoption_diagnostics);
@@ -199,6 +209,7 @@ class SlamGnssNavBridgeNode : public rclcpp::Node {
 
   // GNSS の採用の状態
   double adoption_timeout_sec_{5.0};
+  unsigned char not_adopting_level_{diagnostic_msgs::msg::DiagnosticStatus::WARN};
   bool transform_loaded_{false};
   std::optional<rclcpp::Time> last_adopted_;
   std::string last_reject_reason_{"no GNSS data yet"};
@@ -241,7 +252,7 @@ class SlamGnssNavBridgeNode : public rclcpp::Node {
     } else if (is_adopting()) {
       stat.summary(DiagnosticStatus::OK, "adopting GNSS");
     } else {
-      stat.summary(DiagnosticStatus::WARN, "not adopting GNSS: " + last_reject_reason_);
+      stat.summary(not_adopting_level_, "not adopting GNSS: " + last_reject_reason_);
     }
     stat.add("publish_enabled", publish_enabled_);
     stat.add("last_reject_reason", last_reject_reason_);
