@@ -1,9 +1,13 @@
 import { ReactElement } from "react";
 import { useOpsValue } from "../../hooks/useOpsValue";
-import { PulseIcon, RobotIcon, SatelliteIcon } from "../ui/icons";
+import { FlagIcon, PulseIcon, RobotIcon, SatelliteIcon, SlidersIcon } from "../ui/icons";
 
 /** 運用ビューで、表示・非表示を切り替えられるパネル */
-export type PanelId = "robotDetail" | "gnssDetail" | "diagnostics";
+export type PanelId = "robotDetail"
+  | "gnssDetail"
+  | "diagnostics"
+  | "actions"
+  | "waypointProgress";
 
 interface PanelDef {
   title: string;
@@ -34,6 +38,18 @@ export const PANELS: Record<PanelId, PanelDef> = {
     title: "診断",
     icon: PulseIcon,
     storageKey: "panel.diagnostics",
+    defaultVisible: true,
+  },
+  actions: {
+    title: "操作",
+    icon: SlidersIcon,
+    storageKey: "panel.actions",
+    defaultVisible: true,
+  },
+  waypointProgress: {
+    title: "Waypoint 走行",
+    icon: FlagIcon,
+    storageKey: "panel.waypointProgress",
     defaultVisible: true,
   },
 };

@@ -86,14 +86,19 @@ export default function WaypointOperate({
       topLeft={
         <div className="flex flex-col items-start gap-2">
           <KpiRow client={client} />
-          <ActionsCard
-            client={client}
-            sysManager={sysManager}
-            control={control}
-            goalBt={goalBt}
-            onGoalBtChange={setGoalBt}
-            connected={connected}
-          />
+          <TogglePanel id="actions">
+            {(close) => (
+              <ActionsCard
+                client={client}
+                sysManager={sysManager}
+                control={control}
+                goalBt={goalBt}
+                onGoalBtChange={setGoalBt}
+                connected={connected}
+                onClose={close}
+              />
+            )}
+          </TogglePanel>
         </div>
       }
       toolbar={
@@ -129,7 +134,16 @@ export default function WaypointOperate({
       bottomLeft={
         <div className="flex flex-col items-start gap-2">
           <OverlayCards client={client} />
-          <WaypointProgress client={client} control={control} connected={connected} />
+          <TogglePanel id="waypointProgress">
+            {(close) => (
+              <WaypointProgress
+                client={client}
+                control={control}
+                connected={connected}
+                onClose={close}
+              />
+            )}
+          </TogglePanel>
         </div>
       }
       bottomRight={

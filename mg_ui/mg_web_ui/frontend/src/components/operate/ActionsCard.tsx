@@ -2,7 +2,6 @@ import { FoxgloveClientHandle } from "../../hooks/useFoxgloveClient";
 import { SystemManagerHandle } from "../../hooks/useSystemManagerClient";
 import { useSimulation } from "../../contexts/SimulationContext";
 import { useRosbagReplay } from "../../contexts/RosbagReplayContext";
-import { useOpsValue } from "../../hooks/useOpsValue";
 import { useWaypointControl } from "../../hooks/useWaypointControl";
 import {
   GOAL_BT_OPTIONS,
@@ -10,6 +9,8 @@ import {
   isGoalBtMode,
 } from "../../utils/waypointActions";
 import ActionButton from "../ui/ActionButton";
+import IconButton from "../ui/IconButton";
+import { CloseIcon } from "../ui/icons";
 import Card from "../ui/Card";
 import Disclosure from "../ui/Disclosure";
 import ActionResultText from "../waypoint-actions/ActionResultText";
@@ -33,6 +34,7 @@ interface Props {
   goalBt: GoalBtMode;
   onGoalBtChange: (mode: GoalBtMode) => void;
   connected: boolean;
+  onClose: () => void;
 }
 
 /** 走行の補助操作(番号の指定、再読込、手動ゴールの BT) */
@@ -41,7 +43,7 @@ function DriveTools({
   goalBt,
   onGoalBtChange,
   connected,
-}: Omit<Props, "client" | "sysManager">) {
+}: Omit<Props, "client" | "sysManager" | "onClose">) {
   const disabled = control.loading || !connected;
   return (
     <div className="space-y-3">
@@ -86,27 +88,25 @@ function DriveTools({
 
 /**
  * 走行の補助操作をまとめたカード。節ごとに開閉でき、開閉は画面を切り替えても保持する。
- * 走行中は操作しない運用なので、全部を閉じて、状態の表示だけを見られる。
+ * 走行中は操作しない運用なので、× で閉じて(アイコンになる)、状態の表示だけを見られる。
  * シミュレーションと Rosbag 再生の節は、設定でそれぞれを有効にしたときだけ出す。
  */
-export default function ActionsCard({ client, sysManager, ...drive }: Props) {
-  const [open, setOpen] = useOpsValue<boolean>("actions.card", true);
+export default function ActionsCard({
+  client,
+  sysManager,
+  onClose,
+  ...drive
+}: Props) {
   const { isSimulation } = useSimulation();
   const { isRosbagReplayVisible } = useRosbagReplay();
 
   return (
     <Card className="w-80 p-3">
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen(!open)}
-        className="flex w-full items-center justify-between text-sm font-bold"
-      >
-        操作
-        <span className="text-xs text-muted">{open ? "閉じる" : "開く"}</span>
-      </button>
-      {open && (
-        <div className="mt-2 max-h-[calc(100vh-27rem)] space-y-2 overflow-y-auto">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-bold">操作</h2>
+        <IconButton icon={<CloseIcon />} title="閉じる" onClick={onClose} />
+      </div>
+      <div className="mt-2 max-h-[calc(100vh-27rem)] space-y-2 overflow-y-auto">
           <Disclosure title="走行" storageKey="actions.drive">
             <DriveTools {...drive} />
           </Disclosure>
@@ -143,8 +143,7 @@ export default function ActionsCard({ client, sysManager, ...drive }: Props) {
               <RosbagReplaySection client={client} sysManager={sysManager} />
             </Disclosure>
           )}
-        </div>
-      )}
+      </div>
     </Card>
   );
 }
