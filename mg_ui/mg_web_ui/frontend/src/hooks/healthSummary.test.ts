@@ -58,7 +58,7 @@ describe("summarizeHealth", () => {
     ]);
   });
 
-  it("グループ内でタスク名が重なるときは、元の名前を表示名にする", () => {
+  it("グループ内でタスク名が重なるときは、ノード名を表示名にする", () => {
     const [region] = summarizeHealth(
       tree(
         status("/Robot/Navigation"),
@@ -68,9 +68,16 @@ describe("summarizeHealth", () => {
       ),
     );
     expect(region.groups[0].items.map((i) => i.label)).toEqual([
-      "lifecycle_manager_a: Nav2 Health",
-      "lifecycle_manager_b: Nav2 Health",
+      "lifecycle_manager_a",
+      "lifecycle_manager_b",
     ]);
+  });
+
+  it("全項目に共通する最初の単語(node など)は外し、OK の項目に繰り返すメッセージは出さない", () => {
+    const [region] = summarizeHealth(nodesTree([0, 0, 2]));
+    const items = region.groups[0].items;
+    expect(items.map((i) => i.label)).toEqual(["n0", "n1", "n2"]);
+    expect(items.map((i) => i.message)).toEqual(["", "", "not found"]);
   });
 
   it("区分に直接入る診断は、その診断が 1 項目のグループになる", () => {

@@ -31,18 +31,16 @@ function Row({
   title,
   summary,
   tip,
-  indent = false,
 }: {
   level: number;
   title: string;
   summary: string;
   tip?: string;
-  indent?: boolean;
 }) {
   return (
     <li
       title={tip ?? `${title} ${summary}`}
-      className={`flex items-baseline gap-1.5 text-xs leading-tight ${indent ? "ml-4" : ""}`}
+      className="flex items-baseline gap-1.5 text-xs leading-tight"
     >
       <span className="self-center">
         <HealthDot tone={toneFromDiagLevel(level)} />
@@ -58,16 +56,21 @@ function GroupRows({ group, mode }: { group: HealthGroup; mode: HealthMode }) {
   return (
     <>
       <Row level={layout.level} title={layout.title} summary={layout.summary} />
-      {layout.rows.map((item) => (
-        <Row
-          key={item.name}
-          level={item.level}
-          title={item.label}
-          summary={item.message}
-          tip={`${item.name}: ${item.message}`}
-          indent
-        />
-      ))}
+      {layout.rows.length > 0 && (
+        <li className="ml-4">
+          <ul className="flex flex-wrap gap-x-3 gap-y-0.5">
+            {layout.rows.map((item) => (
+              <Row
+                key={item.name}
+                level={item.level}
+                title={item.label}
+                summary={item.message}
+                tip={`${item.name}: ${item.message}`}
+              />
+            ))}
+          </ul>
+        </li>
+      )}
     </>
   );
 }
@@ -75,7 +78,7 @@ function GroupRows({ group, mode }: { group: HealthGroup; mode: HealthMode }) {
 function RegionColumn({ region, mode }: { region: HealthRegion; mode: HealthMode }) {
   const { ok, total } = countRegion(region);
   return (
-    <section className="min-w-[8rem] max-w-[16rem]">
+    <section className="min-w-[8rem] max-w-[14rem]">
       <h3 className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold text-muted">
         <HealthDot tone={toneFromDiagLevel(region.level)} />
         {region.label}
@@ -111,7 +114,7 @@ export default function DiagnosticsBoard({ client }: { client: FoxgloveClientHan
           <DiagnosticsTreePanel client={client} />
         </Card>
       )}
-      <Card className="max-w-[calc(100vw-6rem)] p-3">
+      <Card className="max-w-[calc(100vw-37rem)] p-3">
         <div className="mb-2 flex items-center gap-2">
           <HealthDot tone={root === null ? "neutral" : toneFromDiagLevel(root.level)} />
           <h2 className="text-xs font-bold">診断</h2>

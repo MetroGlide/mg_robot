@@ -7,7 +7,7 @@ export type HealthMode = "full" | "compact";
 export interface HealthItem {
   /** 元の診断の名前(`<ノード名>: <タスク名>`) */
   name: string;
-  /** 表示名。タスク名。グループ内で重なるときだけ、元の名前 */
+  /** 表示名。タスク名。重なるときはノード名。全項目に共通する最初の単語は外す */
   label: string;
   level: number;
   /** 表示するメッセージ。意味のない(空、OK など)ものは空にする */
@@ -50,15 +50,42 @@ function meaningfulMessage(message: string, ...names: string[]): string {
   return message;
 }
 
+/** 全項目が同じ最初の単語(`node `、`topic ` など)で始まるなら、それを外す */
+function trimCommonWord(labels: string[]): string[] {
+  const space = labels[0].indexOf(" ");
+  if (labels.length < 2 || space < 0) return labels;
+  const prefix = labels[0].slice(0, space + 1);
+  const rest = labels.map((l) => l.slice(prefix.length).trim());
+  return labels.every((l, i) => l.startsWith(prefix) && rest[i] !== "") ? rest : labels;
+}
+
 function itemsOf(group: DiagNode): HealthItem[] {
   // 診断が 1 つも届いていないグループ(STALE)は、グループそのものを項目にする
   const found = leaves(group);
   const nodes = found.length > 0 ? found : [group];
   const tasks = nodes.map((n) => taskName(n.name));
-  return nodes.map((n, i) => {
-    const label = tasks.filter((t) => t === tasks[i]).length > 1 ? n.name : tasks[i];
-    return { name: n.name, label, level: n.level, message: meaningfulMessage(n.message, label) };
-  });
+  // タスク名が重なるときは、ノード名で区別する
+  const labels = trimCommonWord(
+    nodes.map((n, i) =>
+      tasks.filter((t) => t === tasks[i]).length > 1 ? n.name.replace(/: .*$/, "") : tasks[i],
+    ),
+  );
+  const items = nodes.map((n, i) => ({
+    name: n.name,
+    label: labels[i],
+    level: n.level,
+    message: meaningfulMessage(n.message, labels[i]),
+  }));
+  // 同じグループの OK の項目に何度も出る同じメッセージ(alive、Nav2 is active など)は、色で足りるので出さない
+  const okCount = new Map<string, number>();
+  for (const item of items) {
+    if (item.level === 0) okCount.set(item.message, (okCount.get(item.message) ?? 0) + 1);
+  }
+  return items.map((item) =>
+    items.length > 1 && item.level === 0 && (okCount.get(item.message) ?? 0) > 1
+      ? { ...item, message: "" }
+      : item,
+  );
 }
 
 function groupOf(node: DiagNode): HealthGroup {
