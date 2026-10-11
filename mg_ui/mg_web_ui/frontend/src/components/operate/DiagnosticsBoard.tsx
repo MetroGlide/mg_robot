@@ -13,6 +13,8 @@ import {
 } from "../../hooks/healthSummary";
 import { TOPICS } from "../../ros/interfaces";
 import Card from "../ui/Card";
+import IconButton from "../ui/IconButton";
+import { CloseIcon } from "../ui/icons";
 import HealthDot from "../ui/HealthDot";
 import { toneFromDiagLevel } from "../ui/Pill";
 import Tabs, { TabItem } from "../ui/Tabs";
@@ -100,7 +102,13 @@ function RegionColumn({ region, mode }: { region: HealthRegion; mode: HealthMode
  * 全表示は全項目、簡易は OK の項目を件数にまとめて異常な項目だけを出す(選択は画面を切り替えても保持する)。
  * レベルは ROS 側の判定をそのまま表示する。「詳細」で、値まで見られる木を開く。
  */
-export default function DiagnosticsBoard({ client }: { client: FoxgloveClientHandle }) {
+export default function DiagnosticsBoard({
+  client,
+  onClose,
+}: {
+  client: FoxgloveClientHandle;
+  onClose: () => void;
+}) {
   const [mode, setMode] = useOpsValue<HealthMode>("health.mode", "full");
   const [detailOpen, setDetailOpen] = useState(false);
   const root = useDiagnosticsAgg(client);
@@ -133,6 +141,7 @@ export default function DiagnosticsBoard({ client }: { client: FoxgloveClientHan
           >
             詳細
           </button>
+          <IconButton icon={<CloseIcon />} title="閉じる" onClick={onClose} />
         </div>
         {root === null && <p className="text-xs text-muted">診断を待っています…</p>}
         {root !== null && freshness.stale && (

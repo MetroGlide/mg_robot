@@ -10,11 +10,7 @@ import OperateLayout from "../../components/operate/OperateLayout";
 import OperateMap from "../../components/operate/OperateMap";
 import KpiRow from "../../components/operate/KpiRow";
 import GnssDetailCard from "../../components/operate/GnssDetailCard";
-import TogglePanel, {
-  DOCK_INSET_CLASS,
-  PanelBody,
-  PanelToggleButton,
-} from "../../components/operate/TogglePanel";
+import TogglePanel from "../../components/operate/TogglePanel";
 import MapToolbar, { OpacityToolbar } from "../../components/operate/MapToolbar";
 import DiagnosticsBoard from "../../components/operate/DiagnosticsBoard";
 import SlamGnssMapCard from "../../components/operate/SlamGnssMapCard";
@@ -134,11 +130,11 @@ export default function SlamGnssOperate({
               state={poseGraphState}
               selectedNodeIndex={selectedNodeIndex}
               onClose={() => setSelectedNodeIndex(null)}
-              className={DOCK_INSET_CLASS}
+              className=""
             />
           )}
           <TogglePanel id="gnssDetail">
-            <GnssDetailCard client={client} />
+            {(close) => <GnssDetailCard client={client} onClose={close} />}
           </TogglePanel>
         </div>
       }
@@ -163,11 +159,10 @@ export default function SlamGnssOperate({
         <SlamGnssMapCard sysManager={sysManager} maps={maps} />
       }
       bottomRight={
-        <PanelBody id="diagnostics">
-          <DiagnosticsBoard client={client} />
-        </PanelBody>
+        <TogglePanel id="diagnostics">
+          {(close) => <DiagnosticsBoard client={client} onClose={close} />}
+        </TogglePanel>
       }
-      bottomRightIcon={<PanelToggleButton id="diagnostics" />}
     />
   );
 }

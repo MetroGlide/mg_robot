@@ -2,7 +2,6 @@ import { ReactNode } from "react";
 import Card from "../ui/Card";
 import IconButton from "../ui/IconButton";
 import {
-  CloseIcon,
   CrosshairIcon,
   FlagIcon,
   HomeIcon,
@@ -10,15 +9,10 @@ import {
   PlusIcon,
   PoseIcon,
   RotateIcon,
-  ToolsIcon,
 } from "../ui/icons";
-import { useOpsValue } from "../../hooks/useOpsValue";
 import { MapInteractionMode } from "../../hooks/useWaypointControl";
 import { MapCommand } from "./MapCameraControls";
 import OpacityControl from "./OpacityControl";
-
-/** ツールバーの開閉の保存キー(ビューをまたいで共有する)。閉じている間はアイコン 1 つだけにして、右端のアイコンの列と重ならないようにする */
-const TOOLBAR_OPEN_KEY = "toolbar.open";
 
 interface Props {
   onCommand: (kind: MapCommand["kind"]) => void;
@@ -44,23 +38,8 @@ export default function MapToolbar({
   const toggleMode = (mode: Exclude<MapInteractionMode, "none">) =>
     onInteractionModeChange?.(interactionMode === mode ? "none" : mode);
 
-  const [open, setOpen] = useOpsValue<boolean>(TOOLBAR_OPEN_KEY, true);
-
-  if (!open) {
-    return (
-      <Card solid className="p-1">
-        <IconButton
-          icon={<ToolsIcon />}
-          title="地図のツールを開く"
-          onClick={() => setOpen(true)}
-        />
-      </Card>
-    );
-  }
-
   return (
-    <Card solid className="grid grid-cols-2 gap-1 p-1">
-      <IconButton icon={<CloseIcon />} title="ツールを閉じる" onClick={() => setOpen(false)} />
+    <Card solid className="flex flex-col gap-1 p-1">
       <IconButton icon={<PlusIcon />} title="拡大" onClick={() => onCommand("zoomIn")} />
       <IconButton icon={<MinusIcon />} title="縮小" onClick={() => onCommand("zoomOut")} />
       <IconButton icon={<RotateIcon />} title="90度回転" onClick={() => onCommand("rotate")} />
@@ -73,6 +52,7 @@ export default function MapToolbar({
       />
       {onInteractionModeChange && (
         <>
+          <div className="my-0.5 h-px bg-line" />
           <IconButton
             icon={<PoseIcon />}
             title="初期姿勢を指定(地図をドラッグ)"
@@ -89,7 +69,13 @@ export default function MapToolbar({
           />
         </>
       )}
-      {extra}
+      {extra && (
+        <>
+          <div className="my-0.5 h-px bg-line" />
+          {extra}
+        </>
+      )}
+      <div className="my-0.5 h-px bg-line" />
       <OpacityControl />
     </Card>
   );

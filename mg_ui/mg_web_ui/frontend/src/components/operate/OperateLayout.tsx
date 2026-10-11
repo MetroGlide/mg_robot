@@ -5,17 +5,15 @@ interface Props {
   /** 全面に描く地図 */
   map: ReactNode;
   topLeft?: ReactNode;
-  /** 右下のアイコンの列の上に置くツールバー。右下のパネルは、この列の幅だけ左に寄る */
+  /** 右端の縦のツールバー(縦中央) */
   toolbar?: ReactNode;
-  /** 右上のパネルの列。パネルごとの切り替えアイコンは、パネルの右隣(右端)に TogglePanel が置く */
+  /** ツールバーの左に出す、右上のパネルの列(閉じたパネルは、アイコンになって同じ列に残る) */
   topRight?: ReactNode;
   /** 上中央に出す通知 */
   notice?: ReactNode;
   bottomLeft?: ReactNode;
-  /** 右下のパネルの列(アイコンは含めない)。下端は、アイコンの列とそろう */
+  /** ツールバーの左に出す、右下のパネルの列 */
   bottomRight?: ReactNode;
-  /** 右下のパネルの切り替えアイコン。ツールバーの下、右下の隅に置く(PanelToggleButton) */
-  bottomRightIcon?: ReactNode;
 }
 
 /**
@@ -31,7 +29,6 @@ export default function OperateLayout({
   notice,
   bottomLeft,
   bottomRight,
-  bottomRightIcon,
 }: Props) {
   const [opacity] = usePanelOpacity();
   const style = { "--panel-alpha": opacity } as CSSProperties;
@@ -40,20 +37,15 @@ export default function OperateLayout({
       <div className="absolute inset-0">{map}</div>
       <div className="pointer-events-none absolute inset-0">
         <div className="pointer-events-auto absolute left-3 top-3">{topLeft}</div>
-        <div className="pointer-events-auto absolute right-3 top-3">{topRight}</div>
+        <div className="pointer-events-auto absolute right-3 top-1/2 z-10 -translate-y-1/2">
+          {toolbar}
+        </div>
+        <div className="pointer-events-auto absolute right-16 top-3">{topRight}</div>
         <div className="pointer-events-auto absolute left-1/2 top-3 -translate-x-1/2">
           {notice}
         </div>
         <div className="pointer-events-auto absolute bottom-3 left-3">{bottomLeft}</div>
-        <div className="absolute bottom-3 right-3 flex items-end gap-2">
-          <div className="pointer-events-auto flex flex-col items-end gap-2">
-            {bottomRight}
-          </div>
-          <div className="pointer-events-auto z-10 flex flex-col items-end gap-2">
-            {toolbar}
-            {bottomRightIcon}
-          </div>
-        </div>
+        <div className="pointer-events-auto absolute bottom-3 right-16">{bottomRight}</div>
       </div>
     </div>
   );

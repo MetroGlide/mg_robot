@@ -3,52 +3,29 @@ import Card from "../ui/Card";
 import IconButton from "../ui/IconButton";
 import { PANELS, PanelId, usePanelVisible } from "./operatePanels";
 
-/**
- * アイコンの列の幅(アイコンのカード + 隙間)。アイコンのないカードを同じ列に並べるときの余白に使い、
- * パネルの右端をそろえる。
- */
-export const DOCK_INSET_CLASS = "mr-[3.375rem]";
+interface TogglePanelProps {
+  id: PanelId;
+  /** 表示中のパネル。渡される close で、パネルを閉じる(パネルの × に使う) */
+  children: (close: () => void) => ReactNode;
+}
 
-/** パネルの表示を切り替えるアイコン(小さな四角)。表示中は強調する */
-export function PanelToggleButton({ id }: { id: PanelId }) {
+/**
+ * 表示を切り替えられるパネル。閉じている間は、パネルの代わりにアイコン(小さな四角)を同じ位置に出し、
+ * 押すとパネルが開く(開いている間はアイコンを出さない)。閉じるには、パネルの × を使う。
+ * 右側の列に縦に積んで使うと、閉じたパネルは下のパネルが詰め、アイコンはそのパネルが出る位置に残る。
+ * 閉じている間は、子を描かない(描画も購読もしない)。
+ */
+export default function TogglePanel({ id, children }: TogglePanelProps) {
   const [visible, setVisible] = usePanelVisible(id);
+  if (visible) return <>{children(() => setVisible(false))}</>;
   const { title, icon: PanelIcon } = PANELS[id];
   return (
     <Card solid className="p-1">
       <IconButton
         icon={<PanelIcon />}
-        title={`${title}を${visible ? "隠す" : "表示"}`}
-        active={visible}
-        onClick={() => setVisible(!visible)}
+        title={`${title}を表示`}
+        onClick={() => setVisible(true)}
       />
     </Card>
-  );
-}
-
-/** 表示中のときだけ子を描く(隠している間は、子の描画も購読もしない) */
-export function PanelBody({ id, children }: { id: PanelId; children: ReactNode }) {
-  const [visible] = usePanelVisible(id);
-  return visible ? <>{children}</> : null;
-}
-
-interface TogglePanelProps {
-  id: PanelId;
-  /** アイコンを置く高さ。start はパネルの上端、end は下端 */
-  align?: "start" | "end";
-  children: ReactNode;
-}
-
-/**
- * パネルと、その表示を切り替えるアイコンの 1 行。アイコンはパネルの右隣に常に残り、押すとパネルを出し入れする。
- * 縦に積んだ行は、隠すと下の行が詰める。
- * アイコンを別の列に置く必要がある場合(右下のように、アイコンの上にツールバーを重ねる列)は、
- * PanelBody と PanelToggleButton を別々に置く。
- */
-export default function TogglePanel({ id, align = "start", children }: TogglePanelProps) {
-  return (
-    <div className={`flex gap-2 ${align === "end" ? "items-end" : "items-start"}`}>
-      <PanelBody id={id}>{children}</PanelBody>
-      <PanelToggleButton id={id} />
-    </div>
   );
 }

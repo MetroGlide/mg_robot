@@ -3,6 +3,8 @@ import { FoxgloveClientHandle } from "../../hooks/useFoxgloveClient";
 import { GnssState, useGnss } from "../../hooks/useGnss";
 import { GnssReading, toUtm } from "../../utils/gnssReading";
 import Card from "../ui/Card";
+import IconButton from "../ui/IconButton";
+import { CloseIcon } from "../ui/icons";
 
 const NO_VALUE = "--";
 
@@ -31,10 +33,22 @@ function missing(reading: GnssReading, value: number | null, digits: number, uni
     : { value: fixed(value, digits, unit), hint: undefined };
 }
 
+function Header({ topic, onClose }: { topic?: string; onClose: () => void }) {
+  return (
+    <div className="mb-1 flex items-center justify-between gap-2">
+      <h2 className="text-sm font-bold">GNSS の詳細</h2>
+      <div className="flex items-center gap-1">
+        {topic && <span className="text-[11px] text-muted">{topic}</span>}
+        <IconButton icon={<CloseIcon />} title="閉じる" onClick={onClose} />
+      </div>
+    </div>
+  );
+}
+
 /**
  * GNSS の詳細。測位の種類、衛星数、緯度経度、UTM 座標、精度、DOP、高さ。
  */
-function GnssDetailBody({ gnss }: { gnss: GnssState }) {
+function GnssDetailBody({ gnss, onClose }: { gnss: GnssState; onClose: () => void }) {
   const { reading, freshness, topic } = gnss;
   const utm = useMemo(
     () =>
@@ -47,7 +61,7 @@ function GnssDetailBody({ gnss }: { gnss: GnssState }) {
   if (!reading || freshness.stale) {
     return (
       <Card className="w-72 p-3">
-        <h2 className="mb-1 text-sm font-bold">GNSS の詳細</h2>
+        <Header onClose={onClose} />
         <p className="text-xs text-muted">
           {topic} を受信していません
           {freshness.ageSec !== null ? `(${Math.floor(freshness.ageSec)}秒 更新なし)` : ""}
@@ -62,10 +76,7 @@ function GnssDetailBody({ gnss }: { gnss: GnssState }) {
 
   return (
     <Card className="w-72 p-3">
-      <div className="mb-1 flex items-baseline justify-between">
-        <h2 className="text-sm font-bold">GNSS の詳細</h2>
-        <span className="text-[11px] text-muted">{topic}</span>
-      </div>
+      <Header topic={topic} onClose={onClose} />
       <Row label="測位" value={reading.label} />
       <Row label="衛星数" value={sv.value} hint={sv.hint} />
       <div className="my-1 h-px bg-line" />
@@ -94,8 +105,14 @@ const DETAIL_HZ = 2;
 
 /**
  * GNSS の詳細カード。右側のカードの列に、TogglePanel(id="gnssDetail")で包んで置く。
- * 開閉は KPI の GNSS タイルとパネルのアイコンが操作し、描かれている間(開いている間)だけ購読する。
+ * 開閉は KPI の GNSS タイル・閉じているときのアイコン・この × が操作し、描かれている間(開いている間)だけ購読する。
  */
-export default function GnssDetailCard({ client }: { client: FoxgloveClientHandle }) {
-  return <GnssDetailBody gnss={useGnss(client, DETAIL_HZ)} />;
+export default function GnssDetailCard({
+  client,
+  onClose,
+}: {
+  client: FoxgloveClientHandle;
+  onClose: () => void;
+}) {
+  return <GnssDetailBody gnss={useGnss(client, DETAIL_HZ)} onClose={onClose} />;
 }

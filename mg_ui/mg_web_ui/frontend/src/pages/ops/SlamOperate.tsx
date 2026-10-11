@@ -11,10 +11,7 @@ import DiagnosticsBoard from "../../components/operate/DiagnosticsBoard";
 import SlamControl from "../../components/operate/SlamControl";
 import { MapCommand } from "../../components/operate/MapCameraControls";
 import GnssDetailCard from "../../components/operate/GnssDetailCard";
-import TogglePanel, {
-  PanelBody,
-  PanelToggleButton,
-} from "../../components/operate/TogglePanel";
+import TogglePanel from "../../components/operate/TogglePanel";
 import {
   JoystickCard,
   OverlayCards,
@@ -71,18 +68,17 @@ export default function SlamOperate({
       }
       topRight={
         <TogglePanel id="gnssDetail">
-          <GnssDetailCard client={client} />
+          {(close) => <GnssDetailCard client={client} onClose={close} />}
         </TogglePanel>
       }
       bottomRight={
-        <>
+        <div className="flex flex-col items-end gap-2">
           <JoystickCard client={client} />
-          <PanelBody id="diagnostics">
-            <DiagnosticsBoard client={client} />
-          </PanelBody>
-        </>
+          <TogglePanel id="diagnostics">
+            {(close) => <DiagnosticsBoard client={client} onClose={close} />}
+          </TogglePanel>
+        </div>
       }
-      bottomRightIcon={<PanelToggleButton id="diagnostics" />}
     />
   );
 }

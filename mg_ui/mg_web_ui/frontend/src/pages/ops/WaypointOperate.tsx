@@ -16,11 +16,7 @@ import WaypointProgress from "../../components/operate/WaypointProgress";
 import ActionsCard from "../../components/operate/ActionsCard";
 import { MapCommand } from "../../components/operate/MapCameraControls";
 import GnssDetailCard from "../../components/operate/GnssDetailCard";
-import TogglePanel, {
-  PanelBody,
-  PanelToggleButton,
-} from "../../components/operate/TogglePanel";
-import { usePanelVisible } from "../../components/operate/operatePanels";
+import TogglePanel from "../../components/operate/TogglePanel";
 import {
   JoystickCard,
   OverlayCards,
@@ -43,7 +39,6 @@ export default function WaypointOperate({
 }) {
   const [command, setCommand] = useState<MapCommand | null>(null);
   const [follow, setFollow] = useOpsValue<boolean>(`${VIEW_KEY}.follow`, false);
-  const [, setRobotDetailVisible] = usePanelVisible("robotDetail");
   const [goalBt, setGoalBt] = useOpsValue<GoalBtMode>(
     `${VIEW_KEY}.goalBt`,
     "default",
@@ -115,13 +110,10 @@ export default function WaypointOperate({
       topRight={
         <div className="flex flex-col items-end gap-2">
           <TogglePanel id="robotDetail">
-            <RobotDetailCard
-              client={client}
-              onClose={() => setRobotDetailVisible(false)}
-            />
+            {(close) => <RobotDetailCard client={client} onClose={close} />}
           </TogglePanel>
           <TogglePanel id="gnssDetail">
-            <GnssDetailCard client={client} />
+            {(close) => <GnssDetailCard client={client} onClose={close} />}
           </TogglePanel>
         </div>
       }
@@ -141,14 +133,13 @@ export default function WaypointOperate({
         </div>
       }
       bottomRight={
-        <>
+        <div className="flex flex-col items-end gap-2">
           <JoystickCard client={client} />
-          <PanelBody id="diagnostics">
-            <DiagnosticsBoard client={client} />
-          </PanelBody>
-        </>
+          <TogglePanel id="diagnostics">
+            {(close) => <DiagnosticsBoard client={client} onClose={close} />}
+          </TogglePanel>
+        </div>
       }
-      bottomRightIcon={<PanelToggleButton id="diagnostics" />}
     />
   );
 }
