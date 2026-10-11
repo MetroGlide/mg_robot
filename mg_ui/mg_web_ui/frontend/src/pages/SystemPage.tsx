@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { ReactNode, useMemo, useState } from "react";
 import { useDiagnosticsMap } from "../hooks/useDiagnosticsMap";
 import { FoxgloveClientHandle } from "../hooks/useFoxgloveClient";
 import { SystemManagerHandle } from "../hooks/useSystemManagerClient";
@@ -31,12 +31,24 @@ function persistServiceSet(storageKey: string, value: Set<string>): void {
   localStorage.setItem(storageKey, JSON.stringify([...value]));
 }
 
+/** 生の /diagnostics の表(旧 UI 用) */
+function RawDiagnostics({ client }: { client: FoxgloveClientHandle }) {
+  const statuses = useDiagnosticsMap(client);
+  return <DiagnosticsTable statuses={statuses} />;
+}
+
 export default function SystemPage({
   client,
   sysManager,
+  diagnosticsSlot,
+  eventsSlot,
 }: {
   client: FoxgloveClientHandle;
   sysManager: SystemManagerHandle;
+  /** 渡すと、生の診断の表の代わりに表示する(運用ビュー用) */
+  diagnosticsSlot?: ReactNode;
+  /** 渡すと「Events」の折りたたみを追加する(運用ビュー用) */
+  eventsSlot?: ReactNode;
 }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,7 +60,6 @@ export default function SystemPage({
   );
   const { callApi, containers } = sysManager;
   const { layers: serviceLayers, services: allServices } = useServiceRegistry();
-  const diagStatuses = useDiagnosticsMap(client);
 
   const subscribedServices = useMemo(
     () => [...logReceiveSet].sort(),
@@ -149,7 +160,7 @@ export default function SystemPage({
     services.some(({ key }) => containers[key] === "running");
 
   const [openSections, setOpenSections] = useState<Set<string>>(
-    () => new Set(["services", "diagnostics", "service-log", "api-log"]),
+    () => new Set(["services", "diagnostics", "events", "service-log", "api-log"]),
   );
 
   const toggleSection = (id: string) => {
@@ -470,10 +481,19 @@ export default function SystemPage({
         {accordionHeader("diagnostics", "Diagnostics")}
         {openSections.has("diagnostics") && (
           <div className="px-4 pb-4 pt-1">
-            <DiagnosticsTable statuses={diagStatuses} />
+            {diagnosticsSlot ?? <RawDiagnostics client={client} />}
           </div>
         )}
       </div>
+
+      {eventsSlot && (
+        <div className="overflow-hidden rounded-xl border border-line bg-surface-elevated">
+          {accordionHeader("events", "Events")}
+          {openSections.has("events") && (
+            <div className="px-4 pb-4 pt-1">{eventsSlot}</div>
+          )}
+        </div>
+      )}
 
       <div className="overflow-hidden rounded-xl border border-line bg-surface-elevated">
         {accordionHeader("service-log", "Service Log")}

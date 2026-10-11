@@ -10,7 +10,6 @@ import {
   SequencerStatus,
   BoolMsg,
   StringMsg,
-  CollisionDetectorState,
   GOAL_STATUS,
   GOAL_STATUS_COLOR,
 } from "../types";
@@ -96,12 +95,6 @@ export default function WaypointNavPage({
     client,
     TOPICS.EMERGENCY_STOP,
     "std_msgs/msg/Bool",
-  );
-
-  const collisionState = useTopicSubscriber<CollisionDetectorState>(
-    client,
-    TOPICS.COLLISION_STATE,
-    "nav2_msgs/msg/CollisionDetectorState",
   );
 
   const { containers, callApi } = sysManager;
@@ -256,24 +249,6 @@ export default function WaypointNavPage({
               >
                 E-Stop {emergencyStop?.data ? "ACTIVE" : "OFF"}
               </span>
-              {collisionState &&
-                collisionState.polygons.map((name, i) => (
-                  <span
-                    key={name}
-                    className={`px-2 py-0.5 rounded text-xs font-medium ${
-                      collisionState.detections[i]
-                        ? "bg-orange-600 text-white"
-                        : "bg-gray-700 text-gray-500"
-                    }`}
-                  >
-                    {name}
-                  </span>
-                ))}
-              {!collisionState && (
-                <span className="text-xs text-gray-500">
-                  collision: no data
-                </span>
-              )}
             </div>
           </SectionCard>
           <SectionCard title="Velocity">

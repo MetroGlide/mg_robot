@@ -11,9 +11,10 @@
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
-  <exec_depend>mg_utils</exec_depend>
+  <depend>mg_utils</depend>
   <exec_depend>mg_msgs</exec_depend>
-  <exec_depend>diagnostic_msgs</exec_depend>
+  <depend>diagnostic_msgs</depend>
+  <depend>diagnostic_updater</depend>
 
   <depend>rclcpp</depend>
   <depend>rclpy</depend>

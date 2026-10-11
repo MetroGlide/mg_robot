@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import subprocess
 import threading
 import time
@@ -25,6 +26,43 @@ _EXCLUSIVE_GROUP = "<hardware-exclusive>"
 
 _STATUS_CACHE_TTL_S = 1.0
 
+# docker stop (SIGTERM) や SIGINT・SIGKILL で止めたときの終了コード。意図した停止として、異常にしない
+_SIGNAL_EXIT_CODES = frozenset((0, 130, 137, 143))
+_HEALTH_RE = re.compile(r"\((healthy|unhealthy|health: starting)\)")
+_EXIT_CODE_RE = re.compile(r"^Exited \((\d+)\)")
+
+
+def container_detail(item: dict) -> dict[str, Any]:
+    """コンテナの一覧 API の 1 件 (State・Status) から、状態の詳細を作る。
+
+    - state: Docker の State (running・exited・restarting・paused・dead・created)
+    - health: HEALTHCHECK の結果 (healthy・unhealthy・starting。HEALTHCHECK が無ければ空)
+    - exit_code: 止まっているときの終了コード (止まっていなければ None)
+    - level: UI が色を決めるための判定。ok (正常)・warn (起動中・再起動中・一時停止)・
+      error (unhealthy・dead・異常終了)・off (意図して止まっている、まだ作られていない)
+      意図した停止 (終了コード 0・130・137・143) は off。クラッシュと区別するため、それ以外は error
+    """
+    state = item["State"]
+    status_text = item.get("Status", "")
+    health_match = _HEALTH_RE.search(status_text)
+    health = ""
+    if health_match:
+        health = health_match.group(1).removeprefix("health: ")
+    exit_match = _EXIT_CODE_RE.match(status_text)
+    exit_code = int(exit_match.group(1)) if exit_match else None
+
+    if state == "running":
+        level = {"unhealthy": "error", "starting": "warn"}.get(health, "ok")
+    elif state in ("restarting", "paused"):
+        level = "warn"
+    elif state == "dead":
+        level = "error"
+    elif state == "exited" and exit_code is not None and exit_code not in _SIGNAL_EXIT_CODES:
+        level = "error"
+    else:
+        level = "off"
+    return {"state": state, "health": health, "exit_code": exit_code, "level": level}
+
 
 class BusyError(Exception):
     """同じサービスに対する別の操作が実行中であることを表す。"""
@@ -38,7 +76,7 @@ class ComposeRunner:
         self._client = client if client is not None else docker.from_env()
         self._locks: dict[str, threading.RLock] = {}
         self._locks_guard = threading.Lock()
-        self._status: dict[str, str] = {}
+        self._status: dict[str, dict[str, Any]] = {}
         self._status_at = -_STATUS_CACHE_TTL_S
         self._status_lock = threading.Lock()
         logger.info(
@@ -164,7 +202,11 @@ class ComposeRunner:
         return containers[0]
 
     def get_status(self, fresh: bool = False) -> dict[str, str]:
-        """サービスごとのコンテナの状態。
+        """サービスごとのコンテナの状態 (Docker の State)。"""
+        return {service: detail["state"] for service, detail in self.get_status_detail(fresh).items()}
+
+    def get_status_detail(self, fresh: bool = False) -> dict[str, dict[str, Any]]:
+        """サービスごとのコンテナの状態の詳細 (container_detail)。
 
         複数の端末が短い間隔で問い合わせても Docker への問い合わせを増やさないよう、
         結果を短時間だけ使い回す。操作の直後や fresh=True のときは必ず取得し直す。
@@ -174,9 +216,9 @@ class ComposeRunner:
             if fresh or now - self._status_at >= _STATUS_CACHE_TTL_S:
                 self._status = self._fetch_status()
                 self._status_at = now
-            return dict(self._status)
+            return {service: dict(detail) for service, detail in self._status.items()}
 
-    def _fetch_status(self) -> dict[str, str]:
+    def _fetch_status(self) -> dict[str, dict[str, Any]]:
         # containers.list() は 1 件ずつ inspect するため、一覧 API の結果(Labels・State)だけを使う
         raw = self._client.api.containers(
             all=True,
@@ -185,11 +227,12 @@ class ComposeRunner:
                 _COMPOSE_SERVICE_LABEL,
             ]},
         )
-        status: dict[str, str] = {}
+        status: dict[str, dict[str, Any]] = {}
         for item in raw:
             service = item["Labels"][_COMPOSE_SERVICE_LABEL]
-            if status.get(service) != "running":
-                status[service] = item["State"]
+            current = status.get(service)
+            if current is None or current["state"] != "running":
+                status[service] = container_detail(item)
         return status
 
     def _invalidate_status(self) -> None:

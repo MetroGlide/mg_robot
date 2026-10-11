@@ -43,7 +43,7 @@ Docker のログのローテーション設定。compose の `${LOG_MAX_SIZE:-10
 | `LOCALIZATION_MAP_PATH`、`PLANNING_MAP_PATH` | 測位用・計画用の地図。現在の `bringup_navigation.launch.py` は使っていない ([地図の指定](#地図の指定)) | `${MAP_PATH}/localization_map.yaml`、`${MAP_PATH}/planning_map.yaml` |
 | `ROSBAG_PATH` | rosbag の保存先。`record_bag.launch.py` が使う (必須) | `${ROS2_DATA_PATH}/rosbag` |
 | `ROSBAG_FILE` | 再生・解析する bag。`rosbag-replay`、`offline-slam-gnss-2d`、`bag-*` が使う | `${ROSBAG_PATH}/my_bag` |
-| `ROSBAG_TOPICS` | `rosbag-replay` で再生するトピック (空白区切り) | 未設定 |
+| `ROSBAG_TOPICS` | `rosbag-replay` で再生するトピック (空白区切り)。未設定なら全部。録画時の `/diagnostics`・`/diagnostics_agg`・`/events`・`/rosout` は、`/replay/` 以下に出す (いまのスタックの診断・イベントに混ざらないように) | 未設定 |
 
 ### SLAM の再最適化
 
@@ -103,8 +103,9 @@ Docker のログのローテーション設定。compose の `${LOG_MAX_SIZE:-10
 | `map/latest`、`map/latest_opt` | SLAM の出力 (再最適化の入力・結果の既定) | SLAM、`make reoptimize` |
 | `rosbag/` | 収録した bag と、`summary.md` などの解析結果 | `record_bag.launch.py`、`tools/scripts/record.sh`、`make bag-*` |
 | `scenario_results/<日時>/` | シナリオテストの結果 | `make scenario-test*` |
-| `ros_log/` | ROS のファイルログ (`ROS_LOG_DIR`)。古いものは `make logs-clean-ros` で削除 | 全サービス |
-| `logs/<日時>/` | `make logs-export` で書き出した Docker のログ | `make logs-export` |
+| `ros_log/` | ROS のファイルログ (`ROS_LOG_DIR`)。古いものは `make logs-clean` で削除 | 全サービス |
+| `logs/<サービス>/<日付>.log` | 全サービスのコンテナのログ (常時書き出し) | `log-collector` (`make log-collector`) |
+| `logs/<日時>/<サービス>.log` | `make logs-export` で書き出した Docker のログ | `make logs-export` |
 | `mg_ui_local/` | `system-manager` の設定の保存先 (`UI_DATA_DIR`) | `system-manager` |
 
 `tools/data/` (`TO_TOOLS=1` の出力先) は、リポジトリ内にあり、Git の追跡から外れている。

@@ -21,6 +21,8 @@ find_package(rclcpp REQUIRED)
 find_package(rclpy REQUIRED)
 
 find_package(rcutils REQUIRED)
+find_package(diagnostic_updater REQUIRED)
+find_package(mg_utils REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(geometry_msgs REQUIRED)
@@ -63,6 +65,8 @@ add_library(${PROJECT_NAME}_lib
 set(DEPENDENCIES
   "rclcpp"
   "rcutils"
+  "diagnostic_updater"
+  "mg_utils"
 
   "std_msgs"
   "std_srvs"
@@ -195,6 +199,12 @@ install(PROGRAMS
   scripts/wheel_odom_correction.py
   DESTINATION lib/${PROJECT_NAME}
 )
+install(PROGRAMS
+  scripts/gnss_diagnostics_node.py
+  scripts/gnss_quality.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 install(PROGRAMS
   scripts/driver_watchdog_node.py
   scripts/driver_watchdog_core.py

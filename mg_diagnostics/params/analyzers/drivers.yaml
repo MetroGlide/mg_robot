@@ -1,0 +1,34 @@
+# 実機のドライバの診断の集約。シミュレーションでは、実機のドライバがいないので渡さない。
+# expected は、診断が必ず出ているはずの項目 (出ていなければ「欠けている」として異常にする)。
+# 名前は、診断の名前 (`<ノード名>: <タスク名>`) と完全に一致させる。
+analyzers:
+  ros__parameters:
+    drivers:
+      type: diagnostic_aggregator/AnalyzerGroup
+      path: Drivers
+      analyzers:
+        lidar:
+          type: diagnostic_aggregator/GenericAnalyzer
+          path: LiDAR
+          startswith: ['driver_watchdog_node: top_lidar']
+          expected: ['driver_watchdog_node: top_lidar']
+          timeout: 5.0
+        motor:
+          type: diagnostic_aggregator/GenericAnalyzer
+          path: Motor
+          startswith: ['motor_driver_node: ', 'driver_watchdog_node: motor']
+          expected: ['driver_watchdog_node: motor']
+          timeout: 5.0
+        odom:
+          type: diagnostic_aggregator/GenericAnalyzer
+          path: Odometry
+          startswith: ['wheel_odometry_node: ', 'driver_watchdog_node: odom']
+          expected: ['driver_watchdog_node: odom']
+          timeout: 5.0
+        gnss:
+          type: diagnostic_aggregator/GenericAnalyzer
+          path: GNSS
+          # ublox の診断のうち、捨てるもの (discard_third_party) には一致させない。regex は全体一致なので、前方一致は末尾を .* にする。
+          # 照合の順序には頼らない
+          regex: ['^ublox_gps_node: fix$', '^gnss_diagnostics_node: .*']
+          timeout: 5.0

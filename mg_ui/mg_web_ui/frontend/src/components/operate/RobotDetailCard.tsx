@@ -7,7 +7,6 @@ import {
   useNav2LifecycleCheck,
 } from "../../hooks/useNav2LifecycleCheck";
 import {
-  CollisionDetectorState,
   GOAL_STATUS,
   GoalStatusArray,
   StringMsg,
@@ -30,8 +29,6 @@ interface AmclPose {
 }
 
 const AMCL_HZ = 1;
-// 衝突検知の状態は collision_detector の周期で届く。表示は 2Hz で足りる
-const COLLISION_HZ = 2;
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
@@ -57,32 +54,8 @@ function lifecycleText(result: Nav2LifecycleResult | null): string {
   return `nav ${activeText(result.navigation)} / loc ${activeText(result.localization)}`;
 }
 
-/** 衝突検知のポリゴンごとの検知状態。検知中のポリゴンを赤で示す */
-function CollisionRow({ state }: { state: CollisionDetectorState | null }) {
-  return (
-    <div className="flex justify-between gap-4 py-1 text-xs">
-      <span className="whitespace-nowrap text-muted">衝突検知</span>
-      <span className="flex flex-wrap justify-end gap-1">
-        {!state && <span className="font-semibold">--</span>}
-        {state?.polygons.map((name, i) => (
-          <span
-            key={name}
-            className={`rounded px-1.5 py-0.5 font-semibold ${
-              state.detections[i]
-                ? "bg-error text-surface-elevated"
-                : "bg-surface-sunken text-muted"
-            }`}
-          >
-            {name}
-          </span>
-        ))}
-      </span>
-    </div>
-  );
-}
-
 /**
- * ロボットの姿勢と、自己位置推定の入力(AMCL・GNSS)の入切、走行モード、Nav2 と衝突検知の状態。
+ * ロボットの姿勢と、自己位置推定の入力(AMCL・GNSS)の入切、走行モード、Nav2 の状態。
  * Nav2 のライフサイクルは、ボタンを押したときだけ調べる(定期的なサービス呼び出しをしない)。
  */
 export default function RobotDetailCard({
@@ -115,12 +88,6 @@ export default function RobotDetailCard({
   const statusList = actionStatusMsg?.status_list ?? [];
   const actionStatus =
     statusList.length > 0 ? statusList[statusList.length - 1].status : null;
-  const collision = useThrottledTopic<CollisionDetectorState>(
-    client,
-    TOPICS.COLLISION_STATE,
-    "nav2_msgs/msg/CollisionDetectorState",
-    COLLISION_HZ,
-  );
   const lifecycle = useNav2LifecycleCheck(client);
   const pose = amcl?.pose.pose;
 
@@ -167,7 +134,6 @@ export default function RobotDetailCard({
           確認
         </button>
       </div>
-      <CollisionRow state={collision} />
     </Card>
   );
 }

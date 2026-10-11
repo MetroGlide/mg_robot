@@ -11,6 +11,7 @@ from launch.logging import get_logger
 from ament_index_python.packages import get_package_share_directory
 
 from mg_utils.launch_argument import LaunchArgumentCreator
+from mg_utils.record_topics import merge_topics, read_topic_file
 
 
 def get_record_dir_name():
@@ -49,9 +50,14 @@ def get_topic_list(pkg_share):
         get_logger("launch").info(
             "topic_list_path not found: {}".format(topic_list_path))
         return []
-    with open(topic_list_path, "r") as f:
-        topic_list = f.read().splitlines()
-    return list(filter(lambda x: x != "", topic_list))
+    return read_topic_file(topic_list_path)
+
+
+def get_monitoring_topic_list():
+    """状態監視とイベントのトピック (doc/monitoring.md)。どの記録にも加える。"""
+    return read_topic_file(os.path.join(
+        get_package_share_directory("mg_utils"), "params",
+        "record_topics_monitoring.txt"))
 
 
 def launch_setup(context, *args, **kwargs):
@@ -66,6 +72,8 @@ def launch_setup(context, *args, **kwargs):
     record_bag_path = get_record_bag_path(
         record_dir_path, record_bag_base_name)
     topic_list = get_topic_list(pkg_share)
+    if LaunchConfiguration("record_monitoring").perform(context) == "true":
+        topic_list = merge_topics(topic_list, get_monitoring_topic_list())
 
     simulation_lc = LaunchConfiguration("simulation")
 
@@ -98,6 +106,11 @@ def generate_launch_description():
         "record_bag_base_name",
         default="navigation_",
         description="Base name for recorded bag directory",
+    )
+    launch_argument_creator.create(
+        "record_monitoring",
+        default="true",
+        description="Also record the monitoring topics (diagnostics, events, status)",
     )
     launch_argument_creator.create(
         "simulation",

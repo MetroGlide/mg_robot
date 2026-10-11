@@ -9,7 +9,6 @@ export interface SceneColors {
   actualPath: string;
   robot: string;
   particle: string;
-  collision: string;
   /** ウェイポイントのうち、止まらずに通過する点 */
   waypointThrough: string;
   /** ウェイポイントのうち、止まる点 */
@@ -25,7 +24,6 @@ export const SCENE_COLORS: Record<ResolvedTheme, SceneColors> = {
     actualPath: "#7e22ce",
     robot: "#0369a1",
     particle: "#15803d",
-    collision: "#be185d",
     waypointThrough: "#16a34a",
     waypointStop: "#dc2626",
     waypointLabel: "#ffffff",
@@ -37,7 +35,6 @@ export const SCENE_COLORS: Record<ResolvedTheme, SceneColors> = {
     actualPath: "#c084fc",
     robot: "#38bdf8",
     particle: "#4ade80",
-    collision: "#f472b6",
     waypointThrough: "#4ade80",
     waypointStop: "#f87171",
     waypointLabel: "#0b111e",

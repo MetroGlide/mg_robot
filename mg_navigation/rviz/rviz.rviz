@@ -869,44 +869,6 @@ Visualization Manager:
         Reliability Policy: Reliable
         Value: /actual_path
       Value: true
-    - Alpha: 1
-      Class: rviz_default_plugins/Polygon
-      Color: 170; 0; 127
-      Enabled: true
-      Name: CollisionFrontPolygon
-      Topic:
-        Depth: 5
-        Durability Policy: Volatile
-        Filter size: 10
-        History Policy: Keep Last
-        Reliability Policy: Reliable
-        Value: /collision_detector/polygon_front
-      Value: true
-    - Alpha: 1
-      Class: rviz_default_plugins/Polygon
-      Color: 170; 0; 127
-      Enabled: true
-      Name: CollisionRearPolygon
-      Topic:
-        Depth: 5
-        Durability Policy: Volatile
-        Filter size: 10
-        History Policy: Keep Last
-        Reliability Policy: Reliable
-        Value: /collision_detector/polygon_rear
-      Value: true
-    - Class: rviz_default_plugins/MarkerArray
-      Enabled: true
-      Name: CollisionMarkerArray
-      Namespaces:
-        {}
-      Topic:
-        Depth: 5
-        Durability Policy: Volatile
-        History Policy: Keep Last
-        Reliability Policy: Reliable
-        Value: /collision_detector/collision_points_marker
-      Value: true
     - Class: rviz_common/Group
       Displays:
         - Class: rviz_default_plugins/Image

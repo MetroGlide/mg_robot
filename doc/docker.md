@@ -29,7 +29,7 @@ frontend-builder  node:20-slim。Web UI をビルドして dist/ だけを web-u
 
 | ステージ | 使うサービス (compose) | イメージ名 |
 | :--- | :--- | :--- |
-| `runtime` | slam / slam-gnss-2d / offline-slam-gnss-2d / reoptimize-slam / navigation / rosbag-replay / map-preview / diagnostics / foxglove-bridge / scenario-remote-stack | `mg_runtime` |
+| `runtime` | slam / slam-gnss-2d / offline-slam-gnss-2d / reoptimize-slam / navigation / rosbag-replay / map-preview / foxglove-bridge / scenario-remote-stack | `mg_runtime` |
 | `develop` | develop / rviz2 系 / obstacle-detection-replay / waypoint-editor / system-manager | `mg_develop` |
 | `simulation` | gazebo-simulation / scenario-test / scenario-env | `mg_simulation` |
 | `web-ui` | web-ui | `mg_web_ui` |
@@ -82,7 +82,7 @@ docker compose -f compose.yaml -f compose.gpu.nvidia.yaml build gazebo-simulatio
 ### 仕組み
 
 - コンテナの標準出力・標準エラーは、Docker の**ログドライバ**が保存する。既定の `json-file` は `/var/lib/docker/containers/<id>/<id>-json.log` に書き、**既定ではローテーションしない** (無制限に増える)。
-- ログの寿命は**コンテナと同じ**。`docker compose down` や `run --rm` でコンテナを削除するとログも消える。残したいときは削除の前に `make logs-export` で書き出す。
+- ログの寿命は**コンテナと同じ**。`docker compose down` や `run --rm` でコンテナを削除するとログも消える。残すには、`log-collector` で常時ホストに書き出す (下記)。使っていないときは、削除の前に `make logs-export` で書き出す。
 - `docker logs`、`docker compose logs`、`make logs` はこのログを読む。Web UI のログ表示 (`mg_system_manager`) も `docker logs -f` を使うため、同じ設定が効く。
 
 ### 本プロジェクトの設定
@@ -102,17 +102,32 @@ docker compose -f compose.yaml -f compose.gpu.nvidia.yaml build gazebo-simulatio
 - **変更はコンテナの再作成で反映される**。`compose.yaml` や `.env` を変えても、起動中のコンテナのログ設定は変わらない (`make down` してから起動し直す)。
 - 確認: `docker inspect <コンテナ名> --format '{{.HostConfig.LogConfig}}'`
 
+### ホストへの常時書き出し (`log-collector`)
+
+`log-collector` サービス ([Vector](https://vector.dev)) が、**このプロジェクトの全コンテナ**のログを、ホストの `${HOME}/ros2_data/logs/<サービス名>/<日付>.log` に書き出す (1 行 = `<ローカル時刻> <ログの本文>`)。
+
+- アプリにも各サービスの起動処理にも手を入れない。Docker のログ (`json-file`) はそのまま残るので、`make logs` と Web UI のログ表示は変わらない。
+- コンテナを削除 (`make down`、`run --rm`) してもファイルは残る。調べるときは、`make log-events` で `evt=` の行を時刻順の表にできる ([doc/monitoring.md](./monitoring.md))。
+- `make log-collector` で起動する (初回はイメージの取得にネットワークが要る)。`restart: unless-stopped` なので、ホストの再起動後も残る。`make slam` / `navigation` / `slam-gnss-2d` は、イメージがあれば起動する (無ければ案内を表示して続ける)。`make down` で止まる。
+- 対象は `COMPOSE_PROJECT_NAME` (未設定ならディレクトリ名 `mg_robot`) のコンテナだけ。ディレクトリ名を変えたときは、`.env` に `COMPOSE_PROJECT_NAME` を書く。
+- コンテナを起動する**前**から動かしておく (起動したあとのログから書き出す)。
+- 設定は `docker/log-collector/vector.toml`。止めたいときは、サービスを起動しない (`make down` か `docker compose stop log-collector`)。ロボットの動作には影響しない。
+- 古いファイルは `make logs-clean [DAYS=14]` で削除する。
+
 ### 操作
 
 | コマンド | 内容 |
 | :--- | :--- |
 | `make logs svc=<名前> [TAIL=200] [SINCE=10m]` | サービスのログを追う |
 | `make logs-all [TAIL=100]` | 全サービスのログをまとめて追う |
-| `make logs-export [svc=<名前>]` | ログを `${HOME}/ros2_data/logs/<日時>/<サービス>.log` に書き出す |
+| `make log-collector` | 全サービスのログを、ホストに常時書き出す `log-collector` を起動する |
+| `make logs-export [svc=<名前>]` | ログを `${HOME}/ros2_data/logs/<日時>/<サービス>.log` に書き出す (手動) |
+| `make logs-clean [DAYS=14]` | 古いログ (ROS のファイルログと、書き出したログ) を削除する |
+| `make log-events [LOGS= BAG= SINCE= LEVEL= DOMAIN= ...]` | イベントログ (`evt=`) を時刻順の表にする |
 
 ### ベストプラクティス
 
-- アプリは標準出力に出し、ログのファイル管理は Docker に任せる。ROS 2 は標準出力のほかに `ROS_LOG_DIR` へファイルも書くため、ホストにマウントして残し、`make logs-clean-ros` で古いものを消す ([共通のコンテナ設定](#共通のコンテナ設定))。
+- アプリは標準出力に出し、ログのファイル管理は Docker に任せる。ROS 2 は標準出力のほかに `ROS_LOG_DIR` へファイルも書くため、ホストにマウントして残し、`make logs-clean` で古いものを消す ([共通のコンテナ設定](#共通のコンテナ設定))。
 - ローテーションは必ず設定する。無制限のままだと、実機 PC で長時間起動したときにディスクを圧迫する。
 - 設定は compose で管理し、ホスト全体の既定 (`/etc/docker/daemon.json`) は保険として使う。
 - ドライバ `local` は Docker 推奨で、圧縮と既定のローテーションを持つ。ただしログファイルを直接読むツールとは相性が悪いため、本プロジェクトは `json-file` にしている。
@@ -136,7 +151,7 @@ compose の設定がないコンテナ (手で `docker run` したものなど) 
 `compose.yaml` の先頭にある YAML アンカー (`x-*`) に共通の設定をまとめ、各サービスが `<<:` で取り込む。
 
 - ネットワークは `host`。
-- **権限**: センサのデバイスを使うサービス (`slam`・`navigation`・`slam-gnss-2d`・`develop`・Gazebo 系など) は、`privileged: true` と `/dev` のマウントを使う (センサのシリアルポートのため)。デバイスを使わないサービス (`diagnostics`・`foxglove-bridge`・`system-manager`・RViz2 系・`waypoint-editor`・`web-ui`) は、`privileged` も `/dev` も使わない。RViz2 系と `waypoint-editor` は、GPU 描画のために `/dev/dri` だけを渡す。新しいサービスを足すときは、デバイスが要らなければ `x-runtime-core` / `x-develop-core` を使う。
+- **権限**: センサのデバイスを使うサービス (`slam`・`navigation`・`slam-gnss-2d`・`develop`・Gazebo 系など) は、`privileged: true` と `/dev` のマウントを使う (センサのシリアルポートのため)。デバイスを使わないサービス (`foxglove-bridge`・`system-manager`・RViz2 系・`waypoint-editor`・`web-ui`) は、`privileged` も `/dev` も使わない。RViz2 系と `waypoint-editor` は、GPU 描画のために `/dev/dri` だけを渡す。新しいサービスを足すときは、デバイスが要らなければ `x-runtime-core` / `x-develop-core` を使う。
 - GUI (RViz2、Gazebo) を使うときは、先にホストで `make xhost` を実行する。
 - データの置き場として、ホストの `${HOME}/ros2_data` を `/root/ros2_data` にマウントする ([environment.md](./environment.md))。
 - DDS は `rmw_cyclonedds_cpp`。開発 PC と実機 PC をまたぐシナリオテストでは、`docker/cyclonedds/remote.xml` で通信相手とインターフェースを指定する ([mg_scenario_test の README](../mg_scenario_test/README.md))。
@@ -146,5 +161,5 @@ compose の設定がないコンテナ (手で `docker run` したものなど) 
   - `init: true` で PID 1 に tini を置き、`stop_signal: SIGINT`、`stop_grace_period: 30s` にしている。`docker stop` (system_manager の停止も同じ) が SIGINT で ROS 2 の launch を正常終了させるため、rosbag の mcap や Nav2 を安全に閉じられる。猶予内に終わらなければ SIGKILL になる。
   - `tty` は付けない。ログに色コードが混ざるのを避けるため。対話で使うときは `run -it` や `exec` が tty を確保する。
 - **環境変数**: `x-common-env` が全サービス共通 (`PYTHONUNBUFFERED`、`ROS_LOG_DIR`、`RCUTILS_CONSOLE_OUTPUT_FORMAT`)。GUI を使うサービスは `x-gui-env` (`DISPLAY` を追加)。サービスごとの `environment` は、これを `<<:` で取り込んで追加する。
-- **ROS のファイルログ**: `ROS_LOG_DIR` により、ホストの `${HOME}/ros2_data/ros_log` に保存される (launch のログと、ノードごとのログ)。コンテナを削除しても残る。古いものは `make logs-clean-ros [DAYS=14]` で削除する。コンソールの出力は、上の「ログ」の Docker のログに入る。
+- **ROS のファイルログ**: `ROS_LOG_DIR` により、ホストの `${HOME}/ros2_data/ros_log` に保存される (launch のログと、ノードごとのログ)。コンテナを削除しても残る。古いものは `make logs-clean [DAYS=14]` で削除する。コンソールの出力は、上の「ログ」の Docker のログに入る。
 - `develop` コンテナの起動コマンドは `sleep infinity`。

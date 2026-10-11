@@ -59,7 +59,7 @@ def env():
 
         mock_nav.send_goal.side_effect = lambda wp, cb, **kw: nav_cb.__setitem__(
             0, cb)
-        mock_exec.execute.side_effect = lambda actions, cb: exec_cb.__setitem__(
+        mock_exec.execute.side_effect = lambda actions, cb, **kw: exec_cb.__setitem__(
             0, cb)
 
         fsm = WaypointSequencerFSM(node)
@@ -704,3 +704,92 @@ def test_forbidden_transition(env, from_state, to_state):
         "should not change state"
     )
     env.logger.error.assert_called()
+
+
+# ---------------------------------------------------------------------------
+# イベントログ
+# ---------------------------------------------------------------------------
+
+def _events(env):
+    """FSM がロガーに出したイベント (evt=...) を、(レベル, 本文) の一覧で返す。"""
+    out = []
+    for level in ("info", "warning", "error"):
+        for call in getattr(env.logger, level).call_args_list:
+            message = call.args[0]
+            if message.startswith("evt="):
+                out.append((level, message))
+    return out
+
+
+def _names(env):
+    return [m.split(" ", 1)[0] for _, m in _events(env)]
+
+
+class TestEvents:
+    def test_full_run_events(self, env):
+        env.fsm.load_waypoints(_make_wl([]))
+        env.fsm.start(0)
+        env.fire_countdown()
+        env.fire_nav_success()
+
+        names = _names(env)
+        assert "evt=sequencer.run_started" in names
+        assert "evt=sequencer.waypoint_reached" in names
+        assert "evt=sequencer.run_finished" in names
+        finished = [m for _, m in _events(env) if m.startswith("evt=sequencer.run_finished")]
+        assert "result=goal_reached" in finished[0]
+
+    def test_state_changed_event_has_from_to_and_index(self, env):
+        env.fsm.load_waypoints(_make_wl([], []))
+        env.fsm.start(0)
+
+        assert ("info", "evt=sequencer.state_changed from=IDLE to=ON_STARTING index=0 total=2") \
+            in _events(env)
+
+    def test_failure_is_an_error_event(self, env):
+        env.fsm.load_waypoints(_make_wl([]))
+        env.fsm.start(0)
+        env.fire_countdown()
+        env.fire_nav_failed()
+
+        events = _events(env)
+        assert any(level == "error" and "to=ERROR" in m for level, m in events)
+        assert any(level == "error" and "result=error" in m for level, m in events)
+
+    def test_pause_and_resume_events(self, env):
+        env.fsm.load_waypoints(_make_wl([]))
+        env.fsm.start(0)
+        env.fire_countdown()
+        env.fsm.pause_request("driver_watchdog", True)
+        env.fsm.pause_request("driver_watchdog", False)
+
+        events = _events(env)
+        assert any(level == "warning" and m.startswith("evt=sequencer.paused")
+                   and "requesters=driver_watchdog" in m for level, m in events)
+        assert "evt=sequencer.resumed" in _names(env)
+
+    def test_stop_while_running_is_a_finished_run(self, env):
+        env.fsm.load_waypoints(_make_wl([]))
+        env.fsm.start(0)
+        env.fire_countdown()
+        env.fsm.stop()
+
+        finished = [m for _, m in _events(env) if m.startswith("evt=sequencer.run_finished")]
+        assert len(finished) == 1 and "result=stopped" in finished[0]
+
+    def test_resuming_from_suspended_is_not_a_new_run(self, env):
+        env.fsm.load_waypoints(_make_wl([]))
+        env.fsm.start(0)
+        env.fire_countdown()
+        env.fsm.pause_request("a", True)
+        env.fsm.pause_request("a", False)
+
+        assert _names(env).count("evt=sequencer.run_started") == 1
+
+    def test_actions_are_run_with_the_waypoint_index(self, env):
+        env.fsm.load_waypoints(_make_wl([ActionConfig(type="wait")]))
+        env.fsm.start(0)
+        env.fire_countdown()
+        env.fire_nav_success()
+
+        assert env.executor.execute.call_args.kwargs == {"waypoint_index": 0}

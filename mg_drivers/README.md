@@ -9,8 +9,8 @@
 
 | 実行ファイル | 内容 | 主な入出力 |
 | :--- | :--- | :--- |
-| `wheel_odometry_node` | 車輪のエンコーダ (シリアル) からオドメトリを出す。切断されたら再接続する ([切断からの復旧](#切断からの復旧)) | 出力: `odom` (`nav_msgs/Odometry`)、`~/connected` (`Bool`、1 Hz) |
-| `motor_driver_node` | 速度指令をモータドライバ (シリアル) に送る。切断されたら再接続する ([切断からの復旧](#切断からの復旧)) | 入力: `cmd_vel` (`Twist`)、`~/emergency_stop` (`Bool`)、出力: `~/connected` (`Bool`、1 Hz) |
+| `wheel_odometry_node` | 車輪のエンコーダ (シリアル) からオドメトリを出す。切断されたら再接続する ([切断からの復旧](#切断からの復旧)) | 出力: `odom` (`nav_msgs/Odometry`)、`~/connected` (`Bool`、1 Hz)、診断 `connection`、イベント `driver.*` |
+| `motor_driver_node` | 速度指令をモータドライバ (シリアル) に送る。切断されたら再接続する ([切断からの復旧](#切断からの復旧)) | 入力: `cmd_vel` (`Twist`)、`~/emergency_stop` (`Bool`)、出力: `~/connected` (`Bool`、1 Hz)、診断 `connection`・`emergency_stop`、イベント `driver.*` |
 | `depth_postprocess_node` | 点群をボクセルグリッドで間引き、統計的な外れ値を除く | 入力: `points`、出力: `points_filtered` (`PointCloud2`) |
 | `obstacle_detection_3d_node` | 点群から立体障害物を検出する ([doc](./doc/obstacle_detection_3d.md)) | 入力: `points`、出力: `~/points_obstacle`、`~/cluster_markers` |
 | `pcl_downsampling_node` | 点群の間引き。どの launch からも起動されない | 入力: `points/raw`、出力: `points/downsampled` |
@@ -20,12 +20,13 @@
 | 実行ファイル | 内容 | 主な入出力 |
 | :--- | :--- | :--- |
 | `wheel_odom_corrector_node.py` | ホイールオドメトリのスケール・バイアスを補正し、速度の共分散を設定する ([doc](./doc/wheel_odom_corrector.md)) | 入力: `odom/raw`、出力: `odom` |
-| `driver_watchdog_node.py` | LiDAR・オドメトリ・モータドライバの途絶を監視し、シーケンサに一時停止を出す。止まった上流ドライバ (rplidar) は終了させて、respawn に起動し直させる ([doc](./doc/driver_watchdog.md)) | 入力: `scan_top_lidar`、`odom`、`/motor_driver_node/connected`、出力: `/diagnostics`、`/waypoint_sequencer_node/pause_request` |
+| `driver_watchdog_node.py` | LiDAR・オドメトリ・モータドライバの途絶を監視し、シーケンサに一時停止を出す。止まった上流ドライバ (rplidar) は終了させて、respawn に起動し直させる ([doc](./doc/driver_watchdog.md)) | 入力: `scan_top_lidar`、`odom`、`/motor_driver_node/connected`、出力: 診断 `driver_watchdog_node: <id>`、イベント `watchdog.*`、`/waypoint_sequencer_node/pause_request` |
 | `odometry_tf_broadcaster_node.py` | `odom` から TF `odom→base_footprint` を配信する | 入力: `odom` |
 | `pose_with_cov_publish_controller_node.py` | `PoseWithCovarianceStamped` の中継を入/切する | 入力: `pose_with_cov_origin`、出力: `pose_with_cov`、サービス: `~/change_publish_state` |
 | `generic_publish_controller_node.py` | 任意の型のトピックの中継を入/切する (`msg_module`・`msg_class`・`publish`・`queue_size` で指定)。AMCL の出力のゲート (`amcl_publish_controller_node`) に使う ([mg_navigation](../mg_navigation/README.md)) | 入力: `input_topic`、出力: `output_topic`、サービス: `~/change_publish_state` |
 | `depth_to_pointcloud_node.py` | 深度画像 (とカラー画像) から点群を復元する。rosbag の再生確認用 | 出力: `points` |
-| `pc_resource_publisher_node.py` | PC の CPU 使用率とメモリ使用率を配信する | 出力: `cpu_usage`、`memory_usage` (`Float32`) |
+| `gnss_diagnostics_node.py` | GNSS の測位の品質 (RTK が Fixed か) を診断として出す。ublox の標準の診断は RTK の Fixed と Float を区別しないため、`navpvt` から判定する (判定は `scripts/gnss_quality.py`)。UBX プロトコルで GNSS を使うときだけ起動する | 入力: `/navpvt`、出力: 診断 `gnss_diagnostics_node: quality` (集約で `/Robot/Drivers/GNSS`)、イベント `gnss.fix_changed` |
+| `pc_resource_publisher_node.py` | PC の CPU 使用率とメモリ使用率を配信し、しきい値で診断のレベルを決める | 出力: `cpu_usage`、`memory_usage` (`Float32`)、診断 `pc_resource_publisher_node: cpu` と `memory` (集約で `/Robot/System/Resources`) |
 | `odom_covariance_override_node.py` | オドメトリの共分散を上書きする。どの launch からも起動されない | 入力: `odom`、出力: `odom/covariance` |
 | `odom_offset_republisher.py` | rosbag の再生で、オドメトリの原点をずらして配信し直す (下記) | |
 
@@ -117,6 +118,16 @@ ros2 run mg_drivers odom_offset_republisher.py
 
 ホイールオドメトリ (`wheel_odometry_node`) と、モータドライバのパラメータは、launch に直接書かれている (`bringup_sensors.launch.py`、`bringup_hardware.launch.py`)。
 
+## PC の資源の診断
+
+`pc_resource_publisher_node` は、直近 `average_samples` 回の平均が、しきい値以上になると診断のレベルを上げる。Web UI は、この診断のレベルで CPU・メモリの色を決める (しきい値は UI に持たない)。
+
+| パラメータ | 既定値 | 内容 |
+| :--- | :--- | :--- |
+| `cpu_warn_percent` / `cpu_error_percent` | 85 / 95 | CPU 使用率の `WARN` / `ERROR` |
+| `memory_warn_percent` / `memory_error_percent` | 90 / 97 | メモリ使用率の `WARN` / `ERROR` |
+| `average_samples` | 5 | 判定に使う平均の回数 (配信は 1 Hz なので、既定は直近 5 秒) |
+
 ## 切断からの復旧
 
 シリアル接続の機器 (`wheel_odometry_node`、`motor_driver_node`) は、共通の基底クラスで、切断から自分で再接続する。
@@ -129,6 +140,10 @@ ros2 run mg_drivers odom_offset_republisher.py
 | 連続エラーでの開き直し | 連続 `<prefix>.error_recovery_count` (既定 4。`odometry.` / `motor_driver.`) 回のエラーで、シリアルを開き直す (1 回だけ) |
 | 1 Hz の確認 (`health_check`) | デバイスファイルが消えたら、ポートを閉じる。戻ったら開き直し、`probe()` で通信を確かめる。開けていない、または連続エラーが閾値以上なら、同様に開き直して確かめる。エラーが 1 回以上あれば、`probe()` で確かめる (指令が無いあいだの切断に気づくため) |
 | `~/connected` (`Bool`、1 Hz) | `true`: ポートが開いていて、デバイスがあり、連続エラーが 0 |
+| 診断 `<ノード名>: connection` (`diagnostic_updater`、1 Hz) | 接続していれば `OK`、切れていれば `ERROR` (メッセージは理由: `device missing` / `port closed` / `communication errors`)。`hardware_id` は `motor_driver` / `odometry`。`values`: `consecutive_errors`、`device_present`、`reconnect_attempts` (今回の切断のあいだに開き直した回数)、`disconnect_count` (起動してからの切断の回数) |
+| イベント (`driver.*`) | 接続の状態の変化を、`driver.connected` / `driver.disconnected` (`device`、`reason`) に出す。開き直しは `driver.reconnect_attempt` (`device`、`reason`、`count`) で、最初の 1 回と、以降は 10 回ごとに出す (1 Hz の再試行で埋めないため)。`motor_driver_node` は E-Stop の変化を `driver.estop_changed` (`active`) に出す ([doc/monitoring.md](../doc/monitoring.md)) |
+
+`motor_driver_node` は、診断 `motor_driver_node: emergency_stop` も出す (E-Stop が有効なら `WARN`)。診断は集約で `/Robot/Drivers/Motor` に入る。
 
 オドメトリは、以前は閾値に達したあと、毎周期 (20 Hz) 開き直していた。今は 1 回だけ開き直し、以降は 1 Hz で再試行する。
 

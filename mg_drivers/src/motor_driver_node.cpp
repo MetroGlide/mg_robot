@@ -10,6 +10,19 @@ MotorDriverNode::MotorDriverNode(rclcpp::NodeOptions options)
 
   motor_driver_ = std::make_shared<mg_drivers::MotorDriver>(device_name_);
   set_device(motor_driver_);
+
+  updater().add("emergency_stop", this, &MotorDriverNode::produce_emergency_stop_diagnostics);
+}
+
+void MotorDriverNode::produce_emergency_stop_diagnostics(
+  diagnostic_updater::DiagnosticStatusWrapper & stat)
+{
+  using diagnostic_msgs::msg::DiagnosticStatus;
+  if (emergency_stop_) {
+    stat.summary(DiagnosticStatus::WARN, "active");
+  } else {
+    stat.summary(DiagnosticStatus::OK, "inactive");
+  }
 }
 
 void MotorDriverNode::init_ros_params()
@@ -104,18 +117,23 @@ void MotorDriverNode::twist_sub_cb(const geometry_msgs::msg::Twist::SharedPtr ms
 
 void MotorDriverNode::emergency_stop_sub_cb(const std_msgs::msg::Bool::SharedPtr msg)
 {
+  const bool changed = emergency_stop_ != msg->data;
   emergency_stop_ = msg->data;
 
-  if (emergency_stop_) {
-    RCLCPP_WARN(this->get_logger(), "Emergency stop is active. Stopping the robot.");
+  if (changed) {
+    if (emergency_stop_) {
+      events().Warn("driver.estop_changed", {{"device", "motor_driver"}, {"active", true}});
+    } else {
+      events().Info("driver.estop_changed", {{"device", "motor_driver"}, {"active", false}});
+    }
+  }
 
+  if (emergency_stop_) {
     SpeedParameter req;
     req.left_wheel_speed = 0;
     req.right_wheel_speed = 0;
 
     motor_driver_->send_speed_command(req);
-  } else {
-    RCLCPP_INFO(this->get_logger(), "Emergency stop is inactive. Resuming the robot.");
   }
 }
 

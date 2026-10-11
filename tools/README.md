@@ -19,6 +19,8 @@ tools/
 │   ├── pose_graph.py      # slam_gnss_2d 出力 (pose_graph.json / gnss_transform.yaml) の読込・補間・アンカー間の座標移動
 │   ├── loc_metrics.py     # 自己位置推定の評価指標 (誤差・飛び・NEES・遅れ・復旧) ※numpy のみ
 │   ├── odom_calib.py      # ホイールオドメトリ校正の計算 (窓ごとの相対移動の当てはめ) ※numpy のみ
+│   ├── status_timeline.py # 診断のレベルの遷移とイベントの集計・整形 ※ROS 不要 (rosbag_summary.py が使う)
+│   ├── event_timeline.py  # イベントログ (evt=...) の解析・結合・絞り込み・整形 ※ROS 不要。書式の読み取りは mg_utils.event_log
 │   ├── faults.py          # 故障注入定義 (YAML) の読込
 │   └── fault_apply.py     # 故障注入の計算 (numpy のみ。fault_injector.py が使う)
 ├── datasets/localization/ # 自己位置推定の再生評価のデータセット定義 (地図・評価走行・真値の組)
@@ -34,6 +36,7 @@ tools/
     ├── make_sim_gnss_transform.py   # シミュレータのワールド SDF から、GNSS ブリッジ用の gnss_transform.yaml を作る
     ├── rosbag_modify_base.py        # rosbag 内特定トピック修正 (共分散付与等)
     ├── bag_to_json.py               # rosbag メッセージの JSON ダンプ
+    ├── event_timeline.py            # イベントログをコンテナのログと rosbag から集めて時刻順の表にする (make log-events)
     ├── diff_bag_list.py             # 記録対象トピックと現在アクティブなトピックの比較
     ├── eval_slam.py                 # SLAM 出力の RTK(GNSS) 比較評価 (make bag-eval-slam)
     ├── eval_localization.py         # 自己位置推定 (EKF 融合) の評価 (make bag-eval-localization)
@@ -47,7 +50,7 @@ tools/
     ├── calib_wheel_odom.py          # ホイールオドメトリのスケール・バイアス・遅れを走行ログから推定
     ├── run_slam_variant.sh          # パラメータ変種のオフラインSLAM実行〜評価までを一括実行
     ├── patch_params.py              # コメント付きパラメータ YAML の値を書き換え
-    ├── record.sh                    # rosbag 記録 (MCAP)
+    ├── record.sh                    # rosbag 記録 (MCAP。状態監視のトピックも加える。-n で外す)
     ├── bag_play.sh                  # rosbag 再生
     └── record_topics_{slam,all,sim}.txt, record_topics.txt  # 記録するトピックの一覧 (下記)
 ```
@@ -158,6 +161,16 @@ make bag-summary TO_TOOLS=1        # tools/data/ に summary.md を保存
 make bag-summary OUT_DIR=/path/to  # 指定ディレクトリに保存
 make bag-summary BAG=/path/to/bag  # 指定 rosbag を解析
 ```
+
+**状態とイベント** (`/diagnostics_agg` または `/diagnostics`、`/rosout`、`/events` が入っているとき)。内容があれば、端末と Markdown の末尾に「Status Timeline & Events」の節を出します。
+
+| 内容 | 元 |
+| :--- | :--- |
+| OK 以外になった診断の一覧 (最後と最悪のレベル、WARN・ERROR・STALE だった秒数) | `/diagnostics_agg` があればそれ、無ければ `/diagnostics` |
+| レベルの変化 (時刻・診断・変化・メッセージ。古い順で 30 件まで) | 同上 |
+| イベント (`evt=...`) の数と、WARN 以上のイベントの一覧 | `/rosout` と `/events` (同じイベントは 1 回) |
+
+集計は `tools/common/status_timeline.py` (ROS 不要)。イベントの書式は [doc/monitoring.md](../doc/monitoring.md)。詳しく見るときは `make log-events BAG=<bag>` で時系列にできます。
 
 ---
 
@@ -277,6 +290,27 @@ python3 tools/scripts/bag_to_json.py --bag_path /path/to/rosbag --topics /odom /
 
 ---
 
+### 6b. `event_timeline.py` (イベントログの時系列)
+
+イベントログ (`evt=<domain>.<event> key=value ...`。書式は [doc/monitoring.md](../doc/monitoring.md)) を、コンテナのログと rosbag から集めて、時刻順の表 (Markdown または CSV) にします。
+
+| 入力 | 内容 |
+| :--- | :--- |
+| `--logs <dir...>` | `make log-collector` が書き出したログ (`<サービス>/<日付>.log`) と、`make logs-export` のログ (`<日時>/<サービス>.log`)。既定は `~/ros2_data/logs` |
+| `--bag <rosbag>` | rosbag の `/events` と `/rosout` (`rcl_interfaces/Log`) |
+
+並べる時刻は、ログ本文の epoch (ノードが記録した時刻) です。同じイベントが複数の入力にあっても、1 回だけ出ます。
+
+```bash
+make log-events SINCE=2026-10-11T00:00:00+09:00 LEVEL=WARN TZ=+09:00
+make log-events DOMAIN="driver watchdog" OUT=/app/tools/data/events.md
+make log-events BAG=/root/ros2_data/rosbag/xxx LOGS=/root/ros2_data/logs FORMAT=csv OUT=/app/tools/data/events.csv
+```
+
+絞り込みは `--since` / `--until` / `--level` / `--domain` / `--service`。表示のタイムゾーンは `--tz` (`UTC`、`+09:00`、`Asia/Tokyo`)。
+
+---
+
 ### 7. `diff_bag_list.py` (トピック記録リスト比較)
 
 記録対象トピック一覧テキストファイルと、現在実行中の ROS2 システム上のトピック一覧（`ros2 topic list`）を比較し、差分をターミナルに色付き表示します。
@@ -308,7 +342,9 @@ python3 tools/scripts/diff_bag_list.py /path/to/record_topics.txt
 | `record_topics_all.txt` | `-m all` (全センサ版) |
 | `record_topics.txt` | モードの一覧が見つからないときのフォールバック。`diff_bag_list.py` の例にも使う |
 | `record_topics_sim.txt` | シミュレータ用の一覧。`record.sh` は自動では読まない (`-f` で指定する) |
+| `mg_utils/params/record_topics_monitoring.txt` | **状態監視とイベントのトピック**。どのモードにも自動で加わる (`-n` で外す)。`/diagnostics`、`/diagnostics_agg`、`/rosout`、`/events`、`/localization/status` など。数十 KB/s 以下。`mg_utils` の `record_bag.launch.py` も同じファイルを使う |
 
+監視用のトピックを残すと、後から次のことができます。生の `/diagnostics` を `diagnostic_aggregator` にかけ直して集約を作り直す。`/rosout` と `/events` のイベントを `make log-events BAG=<bag>` で時系列にする。重複するトピックは 1 回だけ記録します。
 ### 9. `eval_slam.py` (SLAM 出力の RTK(GNSS) 比較評価)
 
 slam_gnss_2d のオフライン出力 (`pose_graph.json` / `gnss_transform.yaml` / `map.yaml`) を、rosbag の `/navpvt` と比較して評価します。
@@ -406,6 +442,8 @@ make test pkg=tools
 | :--- | :--- |
 | `test_loc_metrics.py` | 自己位置推定の評価指標 (`common/loc_metrics.py`) |
 | `test_odom_calib.py` | ホイールオドメトリの校正の計算 (`common/odom_calib.py`) |
+| `test_event_timeline.py` | イベントログの解析・結合・絞り込み・整形 (`common/event_timeline.py`) |
+| `test_status_timeline.py` | 診断のレベルの遷移とイベントの集計・整形 (`common/status_timeline.py`) |
 | `test_faults.py`、`test_fault_apply.py` | 故障注入の定義の読込と計算 |
 | `test_pose_graph.py` | `pose_graph.json` の読込・補間 |
 | `test_map_helpers.py` | 地図の読込と `map_list.txt` |

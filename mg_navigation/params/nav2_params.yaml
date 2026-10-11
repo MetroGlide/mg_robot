@@ -453,38 +453,6 @@ costmap_filter_info_server:
     base: 100.0
     multiplier: -0.6
 
-collision_detector:
-  ros__parameters:
-    use_sim_time: False
-    base_frame_id: "base_footprint"
-    odom_frame_id: "odom"
-    state_topic: "collision_detector_state"
-    transform_tolerance: 0.5
-    source_timeout: 3.0
-    base_shift_correction: True
-    polygons: ["PolygonFront", "PolygonRear"]
-
-    PolygonFront:
-      type: "polygon"
-      points: [0.6, 0.3, 0.6, -0.3, 0.3, -0.3, 0.3, 0.3]
-      action_type: "none"
-      min_points: 4
-      visualize: True
-      polygon_pub_topic: "~/polygon_front"
-    PolygonRear:
-      type: "polygon"
-      points: [-0.2, 0.3, -0.2, -0.3, -0.4, -0.3, -0.4, 0.3]
-      action_type: "none"
-      min_points: 4
-      visualize: True
-      polygon_pub_topic: "~/polygon_rear"
-
-    observation_sources: ["scan_top"]
-    scan_top:
-      type: "scan"
-      topic: "scan_top_lidar"
-      enabled: True
-
 collision_monitor:
   ros__parameters:
     use_sim_time: False

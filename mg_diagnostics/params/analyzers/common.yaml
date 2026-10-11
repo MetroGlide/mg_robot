@@ -1,0 +1,30 @@
+# 診断の集約 (diagnostic_aggregator) の設定のうち、スタックと実機・シミュレーションによらない共通の部分。
+# 集約のパスの規約は doc/monitoring.md。スタックごとの設定は navigation.yaml などに、
+# 実機のドライバの設定は drivers.yaml に書く (launch が組み合わせて渡す)。
+#
+# 照合は診断の名前 (`<ノード名>: <タスク名>`) で行う。
+analyzers:
+  ros__parameters:
+    path: Robot
+    # どれにも当てはまらない診断も /Robot/Other に出す (異常とはしない)
+    other_as_errors: false
+
+    # 第三者のノードの診断のうち、常に WARN / ERROR になるもの。生の /diagnostics と rosbag には残る
+    discard_third_party:
+      type: diagnostic_aggregator/DiscardAnalyzer
+      path: DiscardedThirdParty
+      startswith:
+        - 'ublox_gps_node: TMODE3'
+        - 'ublox_gps_node: fix topic status'
+        # GNSS (odom0) と AMCL (pose0) の両方で x/y の絶対位置を入れる設計による警告。周波数は odometry/filtered topic status で見る
+        - 'ekf_global_node: Filter diagnostic updater'
+
+    system:
+      type: diagnostic_aggregator/AnalyzerGroup
+      path: System
+      analyzers:
+        resources:
+          type: diagnostic_aggregator/GenericAnalyzer
+          path: Resources
+          startswith: ['pc_resource_publisher_node: ']
+          timeout: 5.0

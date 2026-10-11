@@ -1,15 +1,13 @@
 import proj4 from "proj4";
 import type { NavPvt, NavSatFix } from "../types";
 
-export type GnssTone = "ok" | "warn" | "error" | "neutral";
 export type GnssSource = "navpvt" | "navsatfix";
 
 /** 購読元によらず同じ形で扱う GNSS の測位結果。購読元にない値は null */
 export interface GnssReading {
   source: GnssSource;
-  /** 測位の種類の表示名(RTK Fixed、3D Fix など) */
+  /** 測位の種類の表示名(RTK Fixed、3D Fix など)。良し悪しの判定(色)は ROS 側の診断が決める */
   label: string;
-  tone: GnssTone;
   lat: number | null;
   lon: number | null;
   /** 楕円体高 [m] */
@@ -29,19 +27,18 @@ const CARRIER_PHASE_SHIFT = 6;
 const CARRIER_PHASE_MASK = 0b11;
 const CARRIER_PHASE_FLOAT = 1;
 const CARRIER_PHASE_FIXED = 2;
-const FLAGS_GNSS_FIX_OK = 1;
 
 const MM = 1e-3;
 const LAT_LON_UNIT = 1e-7;
 const P_DOP_UNIT = 0.01;
 
-const FIX_TYPE_LABEL: Record<number, { label: string; tone: GnssTone }> = {
-  0: { label: "No Fix", tone: "error" },
-  1: { label: "DR のみ", tone: "warn" },
-  2: { label: "2D Fix", tone: "warn" },
-  3: { label: "3D Fix", tone: "warn" },
-  4: { label: "GNSS+DR", tone: "warn" },
-  5: { label: "時刻のみ", tone: "error" },
+const FIX_TYPE_LABEL: Record<number, string> = {
+  0: "No Fix",
+  1: "DR のみ",
+  2: "2D Fix",
+  3: "3D Fix",
+  4: "GNSS+DR",
+  5: "時刻のみ",
 };
 
 function validPosition(lat: number, lon: number): boolean {
@@ -50,18 +47,12 @@ function validPosition(lat: number, lon: number): boolean {
   );
 }
 
-/** NavPVT の測位の種類。RTK の Fixed・Float は搬送波位相の状態で決まる */
-function navPvtFix(msg: NavPvt): { label: string; tone: GnssTone } {
+/** NavPVT の測位の種類の表示名。RTK の Fixed・Float は搬送波位相の状態で決まる */
+function navPvtLabel(msg: NavPvt): string {
   const carrier = (msg.flags >> CARRIER_PHASE_SHIFT) & CARRIER_PHASE_MASK;
-  if (carrier === CARRIER_PHASE_FIXED) return { label: "RTK Fixed", tone: "ok" };
-  if (carrier === CARRIER_PHASE_FLOAT) return { label: "RTK Float", tone: "warn" };
-  const base = FIX_TYPE_LABEL[msg.fix_type] ?? {
-    label: `fix ${msg.fix_type}`,
-    tone: "neutral" as GnssTone,
-  };
-  // DOP や精度の条件を満たしていない(FIX_OK なし)測位は、警告のままにする
-  const usable = (msg.flags & FLAGS_GNSS_FIX_OK) !== 0;
-  return !usable && base.tone === "ok" ? { ...base, tone: "warn" } : base;
+  if (carrier === CARRIER_PHASE_FIXED) return "RTK Fixed";
+  if (carrier === CARRIER_PHASE_FLOAT) return "RTK Float";
+  return FIX_TYPE_LABEL[msg.fix_type] ?? `fix ${msg.fix_type}`;
 }
 
 export function fromNavPvt(msg: NavPvt): GnssReading {
@@ -70,7 +61,7 @@ export function fromNavPvt(msg: NavPvt): GnssReading {
   const hasPosition = msg.fix_type >= 2 && validPosition(lat, lon);
   return {
     source: "navpvt",
-    ...navPvtFix(msg),
+    label: navPvtLabel(msg),
     lat: hasPosition ? lat : null,
     lon: hasPosition ? lon : null,
     heightEllipsoid: hasPosition ? msg.height * MM : null,
@@ -82,19 +73,19 @@ export function fromNavPvt(msg: NavPvt): GnssReading {
   };
 }
 
-/** sensor_msgs/NavSatStatus の status。RTK の Fixed と Float は区別できない */
-function navSatFixStatus(status: number): { label: string; tone: GnssTone } {
+/** sensor_msgs/NavSatStatus の status の表示名。RTK の Fixed と Float は区別できない */
+function navSatFixLabel(status: number): string {
   switch (status) {
     case -1:
-      return { label: "No Fix", tone: "error" };
+      return "No Fix";
     case 0:
-      return { label: "GNSS", tone: "warn" };
+      return "GNSS";
     case 1:
-      return { label: "SBAS", tone: "warn" };
+      return "SBAS";
     case 2:
-      return { label: "RTK", tone: "ok" };
+      return "RTK";
     default:
-      return { label: "不明", tone: "neutral" };
+      return "不明";
   }
 }
 
@@ -109,7 +100,7 @@ export function fromNavSatFix(msg: NavSatFix): GnssReading {
   const north = sigma(4);
   return {
     source: "navsatfix",
-    ...navSatFixStatus(msg.status.status),
+    label: navSatFixLabel(msg.status.status),
     lat: hasPosition ? msg.latitude : null,
     lon: hasPosition ? msg.longitude : null,
     heightEllipsoid: hasPosition ? msg.altitude : null,

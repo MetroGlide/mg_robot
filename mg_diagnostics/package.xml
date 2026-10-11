@@ -3,7 +3,7 @@
 <package format="3">
   <name>mg_diagnostics</name>
   <version>0.0.0</version>
-  <description>System health diagnostics for MG-01</description>
+  <description>System health monitoring: diagnostics aggregation, topic monitor, event relay</description>
   <maintainer email="chuson@todo.todo">chuson</maintainer>
   <license>Apache-2.0</license>
 
@@ -11,14 +11,16 @@
   <buildtool_depend>ament_cmake_python</buildtool_depend>
 
   <depend>rclpy</depend>
-  <depend>rosidl_runtime_py</depend>
   <depend>std_msgs</depend>
   <depend>diagnostic_msgs</depend>
+  <depend>rcl_interfaces</depend>
+  <depend>diagnostic_updater</depend>
+  <depend>diagnostic_aggregator</depend>
+  <depend>mg_utils</depend>
   <depend>geometry_msgs</depend>
   <depend>mg_msgs</depend>
   <depend>nav_msgs</depend>
   <depend>sensor_msgs</depend>
-  <depend>nav2_msgs</depend>
 
   <export>
     <build_type>ament_cmake</build_type>

@@ -1,0 +1,25 @@
+# 全サービスのコンテナのログを、ホストのファイルに常時書き出す (doc/monitoring.md)。
+#   出力: /logs/<サービス名>/<日付>.log (ホストの ${HOME}/ros2_data/logs/<サービス名>/<日付>.log)
+#   1 行 = `<ローカル時刻> <ログの本文>`。docker logs の内容と同じで、時刻は docker が記録した時刻
+# 対象は、この compose プロジェクトのコンテナだけ。アプリには手を入れず、docker のログ (json-file) も
+# そのまま残る (make logs、Web UI のログ表示は変わらない)。
+data_dir = "/var/lib/vector"
+timezone = "local"
+
+[sources.docker]
+type = "docker_logs"
+include_labels = ["com.docker.compose.project=${COMPOSE_PROJECT_NAME:-mg_robot}"]
+
+[transforms.shape]
+type = "remap"
+inputs = ["docker"]
+source = '''
+.service = string(.label."com.docker.compose.service") ?? string(.container_name) ?? "unknown"
+.message = format_timestamp!(.timestamp, format: "%Y-%m-%dT%H:%M:%S%.3f%:z", timezone: "local") + " " + string!(.message)
+'''
+
+[sinks.files]
+type = "file"
+inputs = ["shape"]
+path = "/logs/{{ service }}/%Y-%m-%d.log"
+encoding.codec = "text"

@@ -1,13 +1,4 @@
 {
- "/diagnostics/restart": [
-  "POST"
- ],
- "/diagnostics/start": [
-  "POST"
- ],
- "/diagnostics/stop": [
-  "POST"
- ],
  "/foxglove-bridge/restart": [
   "POST"
  ],
@@ -208,6 +199,9 @@
   "POST"
  ],
  "/status": [
+  "GET"
+ ],
+ "/status/detail": [
   "GET"
  ],
  "/waypoint-editor/restart": [

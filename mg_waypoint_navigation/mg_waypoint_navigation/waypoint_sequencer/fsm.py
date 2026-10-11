@@ -11,6 +11,7 @@ import rclpy.node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, ReliabilityPolicy
 from std_msgs.msg import String
 
+from mg_utils.event_log import EventLog
 from mg_waypoint_navigation.waypoint import (
     NAVIGATION_MODES,
     NavigationConfig,
@@ -33,6 +34,13 @@ from mg_waypoint_navigation.waypoint_sequencer.states import (
 
 # 手動ゴールの BT。ウェイポイントの navigation_mode に、Nav2 既定の BT を加えたもの
 MANUAL_GOAL_MODES = NAVIGATION_MODES + (DEFAULT_BT_MODE,)
+
+# 走行中ではない状態 (ここから IDLE に戻っても、走行の終了とはしない)
+_INACTIVE_STATES = frozenset({
+    SequencerState.IDLE,
+    SequencerState.GOAL_REACHED,
+    SequencerState.ERROR,
+})
 
 # 手動ゴールを受け付けるシーケンスの状態 (走行中・停止待ちなどは拒否する)
 MANUAL_GOAL_STATES = frozenset({
@@ -124,6 +132,7 @@ class WaypointSequencerFSM:
 
     def __init__(self, node: rclpy.node.Node):
         self._node = node
+        self._events = EventLog(node.get_logger())
         self._navigator = WaypointNavigator(node)
         self._executor = ActionExecutor(node)
 
@@ -384,7 +393,8 @@ class WaypointSequencerFSM:
                 self._navigation_mode = getattr(action, "mode", "normal")
                 self._publish_navigation_mode()
         self._transition(SequencerState.ON_ARRIVING)
-        self._executor.execute(actions, self._on_arriving_done)
+        self._executor.execute(
+            actions, self._on_arriving_done, waypoint_index=self._current_index)
 
     # ------------------------------------------------------------------
     # 内部完了コールバック
@@ -400,7 +410,7 @@ class WaypointSequencerFSM:
     def _on_manual_goal_result(self, result: NavigationResult) -> None:
         with self._lock:
             self._manual_goal_active = False
-        self._node.get_logger().info(f"Manual goal finished: {result.value}")
+        self._events.info('sequencer.manual_goal_finished', result=result.value)
 
     def _on_navigation_result(self, result: NavigationResult) -> None:
         with self._lock:
@@ -411,13 +421,13 @@ class WaypointSequencerFSM:
                 return
 
             if result not in (NavigationResult.SUCCEEDED, NavigationResult.PASSED):
-                self._node.get_logger().error(
-                    f"Navigation to waypoint {self._current_index} failed"
-                )
                 self._transition(SequencerState.ERROR)
                 return
 
             waypoint = self._waypoints.get(self._current_index)
+            self._events.info(
+                'sequencer.waypoint_reached', index=self._current_index,
+                total=self._waypoints.get_size(), result=result.value)
             if waypoint.on_reached_actions:
                 self._enter_on_arriving(waypoint.on_reached_actions)
             else:
@@ -498,4 +508,35 @@ class WaypointSequencerFSM:
             return
         old = self._state
         self._state = new_state
-        self._node.get_logger().info(f"FSM: {old.value} -> {new_state.value}")
+        fields = dict(
+            from_=old.value, to=new_state.value, index=self._current_index,
+            total=self._waypoints.get_size())
+        if new_state == SequencerState.ERROR:
+            self._events.error('sequencer.state_changed', **fields)
+        elif new_state == SequencerState.SUSPENDED:
+            self._events.warn('sequencer.state_changed', **fields)
+        else:
+            self._events.info('sequencer.state_changed', **fields)
+        self._log_run_events(old, new_state)
+
+    def _log_run_events(self, old: SequencerState, new_state: SequencerState) -> None:
+        """走行の開始・終了と、一時停止・再開のイベント。"""
+        if new_state == SequencerState.ON_STARTING and old != SequencerState.SUSPENDED:
+            self._events.info(
+                'sequencer.run_started', index=self._current_index,
+                total=self._waypoints.get_size())
+        elif new_state == SequencerState.GOAL_REACHED:
+            self._events.info(
+                'sequencer.run_finished', result='goal_reached', index=self._current_index)
+        elif new_state == SequencerState.ERROR:
+            self._events.error(
+                'sequencer.run_finished', result='error', index=self._current_index)
+        elif new_state == SequencerState.IDLE and old not in _INACTIVE_STATES:
+            self._events.info(
+                'sequencer.run_finished', result='stopped', index=self._current_index)
+        if new_state == SequencerState.SUSPENDED:
+            self._events.warn(
+                'sequencer.paused', index=self._current_index,
+                requesters=','.join(self._pause_manager.requesters))
+        elif old == SequencerState.SUSPENDED and new_state != SequencerState.IDLE:
+            self._events.info('sequencer.resumed', index=self._current_index)

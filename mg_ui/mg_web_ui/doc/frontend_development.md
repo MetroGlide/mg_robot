@@ -148,7 +148,7 @@ client.publish(TOPICS.MY_TOPIC, 'pkg/msg/MyMessage', { value: 1, label: 'hello' 
 | :--- | :--- | :--- |
 | `/ops/:useCase` | ユースケースごとのビュー (`waypoint`、`slam`、`slam-gnss-2d` は地図を使う運用ビュー。`scenario-test` は地図を使わない作業ビュー) | `pages/ops/OperatePage.tsx` が `pages/ops/useCases.ts` から選ぶ |
 | `/ops/sensors` | RViz ライクなセンサビュー (全レイヤー、2D/3D) | `pages/ops/SensorsPage.tsx` |
-| `/ops/system` | サービスの操作・診断・ログ (作業ビュー) | `pages/ops/SystemOpsPage.tsx` (`SystemPage` を `WorkLayout` に置く) |
+| `/ops/system` | サービスの操作・診断の木・イベント・ログ (作業ビュー) | `pages/ops/SystemOpsPage.tsx` (`SystemPage` を `WorkLayout` に置く) |
 
 `App.tsx` は、旧 UI の枠 (`LegacyLayout`) と新 UI の枠 (`AppShell`) を、別のレイアウトルートにしている。旧ページの URL は変わらない。
 
@@ -174,7 +174,7 @@ client.publish(TOPICS.MY_TOPIC, 'pkg/msg/MyMessage', { value: 1, label: 'hello' 
 
 走行中は操作しない運用を想定し、運用ビューは状態の表示を 1 画面 (1366×768 以上) に収める。
 
-- 切り替えて見るもの (センサ・トピック・ノード) は、タブの「全て」で 3 つを並べて見られる (`HealthTabsCard`)。
+- 診断は `DiagnosticsBoard` (Waypoint・SLAM・SLAM+GNSS の右下) に、区分 (ドライバ・自己位置・ナビ・システム・その他) を並べて出す。スクロールなしで全体を見渡せる。「全表示」は全項目 (表示名はタスク名で、意味のないメッセージは出さない)、「簡易」は OK の項目を `OK 数/全体` にまとめて異常な項目だけを出す。選択は保持され、「詳細」で `DiagnosticsTreePanel` (値まで見られる木) を重ねて開く。
 - 操作のカード (`ActionsCard`) は節ごとに閉じられ、開閉は保持される。閉じておけば、状態の表示だけが残る。
 - カードは地図の上に重ね、右端のツールバーを避けて置く (`OperateLayout`)。
 
@@ -189,8 +189,15 @@ client.publish(TOPICS.MY_TOPIC, 'pkg/msg/MyMessage', { value: 1, label: 'hello' 
 ### 負荷を抑えるルール (新 UI の部品)
 
 - **運用ビューでは、高頻度のトピック (scan、costmap、点群、画像) を、既定では購読しない**。そうした表示は、センサビューに置く。運用ビューが購読するのは、地図・経路・TF のほかは、低頻度の状態のトピックだけ。例外は、地図ツールバーの「センサ表示」ボタン (`useSensorsVisible`、既定はオフ。再読み込みでは残さない)。オンにしたときだけ `SensorLayers` が描かれ、そのレイヤー (LiDAR・コストマップ・点群など) の ON/OFF は、センサビューのレイヤーパネルの設定に従う。オフに戻すと購読を止める。画像は運用ビューに出さない。
-- GNSS は、設定で選んだ 1 トピック(NavPVT か NavSatFix)だけを `useGnss` で購読する(2Hz に間引く)。KPI の GNSS タイルを押すと、右側のカードの列(ロボットの詳細の下)に詳細カード(緯度経度、UTM、精度、PDOP、高さ)が開く。詳細カードは開いている間だけ購読する。測位の判定と UTM 変換は `utils/gnssReading.ts`。
-- センサ・トピック・ノードの状態は、`/diagnostics` (1Hz) から `hooks/healthSummary.ts` で分類する。Hz を数えるためにトピックを購読しない。
+- GNSS は、設定で選んだ 1 トピック(NavPVT か NavSatFix)だけを `useGnss` で購読する(2Hz に間引く)。KPI の GNSS タイルを押すと、右側のカードの列(ロボットの詳細の下)に詳細カード(緯度経度、UTM、精度、PDOP、高さ)が開く。詳細カードは開いている間だけ購読する。UTM 変換と表示用の文言は `utils/gnssReading.ts` (測位の良し悪しは判定せず、診断のレベルに従う)。
+### 状態とイベントの表示 (新 UI)
+
+規約は [doc/monitoring.md](../../../doc/monitoring.md)。
+
+- **UI は判定しない**。色は、`/diagnostics_agg` の診断のレベルと、system_manager `GET /status/detail` の `level` で決める。しきい値を UI に書かない。UI が自分で判定してよいのは、通信路が新しいかどうか (`useFreshness`、`useDiagnosticsAgg` の鮮度) だけ。
+- 診断は `hooks/useDiagnosticsAgg.ts` で `/diagnostics_agg` (1Hz) を受け、`utils/diagnosticsTree.ts` で木にする。個別に参照するパスは `ros/diagnosticPaths.ts` だけに書く (aggregator との公開契約)。区分・グループごとの表示内容 (表示名、メッセージの省略、簡易表示の畳み込み) は `hooks/healthSummary.ts` (React に依存しない)。Hz を数えるためにトピックを購読しない。
+- イベントは `contexts/EventStreamContext.tsx` が `/events` (`rcl_interfaces/Log`、transient_local) を 1 か所で購読し、上限つきのバッファに持つ。トップバーの未読バッジと `EventLogPanel` が同じ状態を読む。本文は `utils/logfmt.ts` で解析する。接続し直したときに履歴を受けるため、`foxglove-bridge` は `max_qos_depth:=500` で起動する。
+- 旧 UI (`LegacyLayout`) は、生の `/diagnostics` (`useDiagnosticsMap`) のままにする。`SystemPage` の `diagnosticsSlot` / `eventsSlot` を渡す新 UI だけが、診断の木とイベント一覧を出す。
 - 人が読むだけの値 (速度、GNSS など) は `useThrottledTopic(client, topic, schema, maxHz)` で、再描画を間引く。間引いても最後の値は必ず反映される。**E-Stop や FSM の状態のように、変化を見逃せない値は間引かず `useTopicSubscriber` を使う**。
 - 値には鮮度を付ける。`useFreshness(client, topic, maxAgeSec)` は、最後の受信 (ブラウザの時計) からの経過秒を返す。古くなった値は `StatTile` が `--` と経過秒の表示にする。Wi-Fi の瞬断で、古い値が現在値に見えないようにするため。
 - 切断中は `ConnectionBanner` を出し、送信系のボタンを無効にする (`client.status !== "connected"`)。
@@ -199,7 +206,7 @@ client.publish(TOPICS.MY_TOPIC, 'pkg/msg/MyMessage', { value: 1, label: 'hello' 
 - `OperateMap` は 10fps の描画要求、`dpr=1`。`RenderTicker` の間隔は `intervalMs` で指定できる (`RosViewer` の既定は 50ms)。
 - 上部バーの「低負荷」(`ThemeContext.lowLoad`。設定のタブにもある) で、影とトランジションを切る。
 - 地図の上に重ねる GPS のミニ地図 (`overlays.gpsMap`) は、地図タイルを読み込み、GNSS を購読するので、既定はオフ。ツールバーのボタンで、使うときだけオンにする。
-- Nav2 のライフサイクルは、定期的に呼ばず、ロボットの詳細カードの「確認」を押したときだけ調べる (`useNav2LifecycleCheck`)。衝突検知の状態は 2Hz に間引いて購読する。
+- Nav2 のライフサイクルは、定期的に呼ばず、ロボットの詳細カードの「確認」を押したときだけ調べる (`useNav2LifecycleCheck`)。
 
 ## ページを足す
 
@@ -254,7 +261,6 @@ export default function MyPage({ client, sysManager }: { client: FoxgloveClientH
 | `particleCloud` | AMCL のパーティクル |
 | `planPath` / `actualPath` | 計画した経路 (赤) / 走った経路 (紫) |
 | `waypointMarkers` | ウェイポイントのマーカー |
-| `collisionPolygons` | 衝突判定のポリゴン |
 | `pointCloud` | 3D 点群 |
 | `colorImage` / `depthImage` | カラー / 深度の画像 (ビューワーの下に表示) |
 
@@ -278,7 +284,7 @@ export default function MyLayer({ client, tfBuffer }: { client: FoxgloveClientHa
 
 - レイヤーは `@react-three/fiber` の `Canvas` の中で描画されるので、戻り値は three.js のプリミティブ (`<mesh>`、`<points>` など)。
 - `tfBuffer.lookupTransform(targetFrame, sourceFrame)` で、`THREE.Matrix4 | null` が得られる。
-- `components/ros-viewer/hooks/` に、専用のフック (`useLaserScan`、`useOccupancyGrid`、`usePath`、`usePointCloud2`、`useMarkerArray`、`useParticleCloud`、`usePolygonStamped`、`useTfBuffer`) がある。あれば使う。
+- `components/ros-viewer/hooks/` に、専用のフック (`useLaserScan`、`useOccupancyGrid`、`usePath`、`usePointCloud2`、`useMarkerArray`、`useParticleCloud`、`useTfBuffer`) がある。あれば使う。
 
 ## 定義の参照先
 

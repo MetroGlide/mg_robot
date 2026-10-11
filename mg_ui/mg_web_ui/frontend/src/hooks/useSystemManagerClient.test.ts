@@ -11,7 +11,10 @@ let fetchMock: ReturnType<typeof vi.fn>;
 beforeEach(() => {
   vi.useFakeTimers();
   fetchMock = vi.fn(async (url: string) => {
-    if (url.endsWith("/status")) return jsonResponse({ slam: "running" });
+    if (url.endsWith("/status/detail"))
+      return jsonResponse({
+        slam: { state: "running", health: null, exit_code: null, level: "ok" },
+      });
     return jsonResponse({ success: true, message: "ok" });
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -67,7 +70,7 @@ describe("useSystemManagerClient", () => {
 
     const urls = fetchMock.mock.calls.map((call) => call[0] as string);
     expect(urls.some((u) => u.endsWith("/slam/start"))).toBe(true);
-    expect(urls.some((u) => u.endsWith("/status"))).toBe(true);
+    expect(urls.some((u) => u.endsWith("/status/detail"))).toBe(true);
   });
 
   it("logs a failed HTTP response as a failure", async () => {

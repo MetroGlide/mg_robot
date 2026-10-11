@@ -1,6 +1,7 @@
 ##@ コンテナ操作 (シェル・ログ・状態)
 
-.PHONY: shell shell-develop logs logs-all logs-export logs-clean-ros ps restart down config xhost
+.PHONY: shell shell-develop logs logs-all logs-export logs-clean log-collector _ensure-log-collector \
+        ps restart down config xhost
 
 # 起動中のコンテナの bash に入る。
 #   svc=<サービス名>  必須 (例: svc=slam)
@@ -37,12 +38,30 @@ logs-export: ## コンテナのログをファイルに書き出す [svc OUT_DIR
 	  $(COMPOSE) logs --no-color --timestamps "$$s" > "$$d/$$s.log" 2>&1 && echo "$$d/$$s.log"; \
 	done
 
-# ROS のファイルログ (ROS_LOG_DIR=/root/ros2_data/ros_log。ホストの ${HOME}/ros2_data/ros_log) のうち、古いものを削除する。
-# 削除したパスを表示する。
+# 全サービスのコンテナのログを、ホストの ${HOME}/ros2_data/logs/<サービス名>/<日付>.log に常時書き出す
+# log-collector を起動する (doc/monitoring.md)。初回はイメージの取得にネットワークが要る。
+# 一度起動すれば、ホストの再起動後も残る。make slam / navigation / slam-gnss-2d も、
+# イメージがあれば起動する。make down で止まる。
+log-collector: ## ログの常時書き出し (log-collector) を起動
+	$(COMPOSE) up -d log-collector
+
+# スタックの起動前に log-collector を起動する (イメージが無ければ、案内を表示して続ける)。
+_ensure-log-collector:
+	@if docker image inspect timberio/vector:0.43.1-alpine >/dev/null 2>&1; then \
+	  $(COMPOSE) up -d log-collector; \
+	else \
+	  echo '[log-collector] イメージが無いので、ログをファイルに保存しません。ネットワークのある環境で make log-collector を一度実行してください'; \
+	fi
+
+# 古いログを削除する。削除したパスを表示する。
+#   - ROS のファイルログ (ROS_LOG_DIR=/root/ros2_data/ros_log。ホストの ${HOME}/ros2_data/ros_log)
+#   - 書き出したログ (${HOME}/ros2_data/logs/<サービス名>/<日付>.log と、make logs-export の <日時>/<サービス>.log)
 #   DAYS=<日数>  この日数より古いものを削除する (既定: 14)
-logs-clean-ros: ## 古い ROS のファイルログを削除 [DAYS=14]
-	$(COMPOSE) run --rm --no-deps develop \
-	  find /root/ros2_data/ros_log -mindepth 1 -maxdepth 1 -mtime +$(or $(DAYS),14) -print -exec rm -rf {} +
+logs-clean: ## 古いログ (ROS のファイルログ・書き出したログ) を削除 [DAYS=14]
+	$(COMPOSE) run --rm --no-deps develop bash -c \
+	  "find /root/ros2_data/ros_log -mindepth 1 -maxdepth 1 -mtime +$(or $(DAYS),14) -print -exec rm -rf {} + ; \
+	   find /root/ros2_data/logs -mindepth 2 -maxdepth 2 -type f -name '*.log' -mtime +$(or $(DAYS),14) -print -delete"
+
 
 ps: ## コンテナの状態を表示
 	$(COMPOSE) ps

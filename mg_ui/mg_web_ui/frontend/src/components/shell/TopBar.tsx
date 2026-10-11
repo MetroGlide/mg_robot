@@ -1,12 +1,15 @@
 import { NavLink } from "react-router-dom";
 import { ConnectionStatus, FoxgloveClientHandle } from "../../hooks/useFoxgloveClient";
 import { useTopicSubscriber } from "../../hooks/useTopicSubscriber";
+import { useDiagnosticsAgg } from "../../hooks/useDiagnosticsAgg";
+import { useFreshness } from "../../hooks/useFreshness";
+import { useEventStream } from "../../contexts/EventStreamContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useRobotProfile } from "../../contexts/RobotProfileContext";
-import { BoolMsg } from "../../types";
+import { BoolMsg, DIAG_LEVEL } from "../../types";
 import { TOPICS } from "../../ros/interfaces";
 import IconButton from "../ui/IconButton";
-import Pill, { Tone } from "../ui/Pill";
+import Pill, { Tone, toneFromDiagLevel } from "../ui/Pill";
 import { MoonIcon, SunIcon } from "../ui/icons";
 
 const CONNECTION: Record<ConnectionStatus, { label: string; tone: Tone }> = {
@@ -45,6 +48,14 @@ export default function TopBar({ client, links, onSettingClick }: Props) {
     TOPICS.EMERGENCY_STOP,
     "std_msgs/msg/Bool",
   );
+  // ロボット全体の健全性(集約した診断の最上位のレベル)。判定は ROS 側
+  const diagnostics = useDiagnosticsAgg(client);
+  const diagFreshness = useFreshness(client, TOPICS.DIAGNOSTICS_AGG, 5);
+  const { unreadCount } = useEventStream();
+  const health =
+    diagnostics === null || diagFreshness.stale
+      ? { label: "診断なし", tone: "neutral" as Tone }
+      : { label: `診断 ${DIAG_LEVEL[diagnostics.level]}`, tone: toneFromDiagLevel(diagnostics.level) };
   const connection = CONNECTION[client.status];
   const { name: robotName } = useRobotProfile();
 
@@ -69,6 +80,18 @@ export default function TopBar({ client, links, onSettingClick }: Props) {
         <Pill tone={estop?.data ? "error" : "neutral"}>
           E-Stop {estop?.data ? "作動中" : "OFF"}
         </Pill>
+        <NavLink
+          to="/ops/system"
+          title="診断の全項目とイベントを、システムで見る"
+          className="flex items-center gap-2"
+        >
+          <Pill tone={health.tone}>{health.label}</Pill>
+          {unreadCount > 0 && (
+            <Pill tone="warn" title="未読の WARN 以上のイベント">
+              イベント {unreadCount}
+            </Pill>
+          )}
+        </NavLink>
         <Pill tone={connection.tone}>{connection.label}</Pill>
         <button
           type="button"

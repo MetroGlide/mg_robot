@@ -7,7 +7,7 @@
 
 | 旧ページ | 新 UI | 備考 |
 | :--- | :--- | :--- |
-| `/waypoint` | `/ops/waypoint` | 走行の操作、手動のゴールと初期姿勢、状態の表示、Actions 相当の操作、Navigation コンテナ、シミュレーション・Rosbag 再生 (設定で有効にしたとき)、ジョイスティック、GPS のミニ地図、Nav2 のゴール状態・衝突検知・ライフサイクルの確認 |
+| `/waypoint` | `/ops/waypoint` | 走行の操作、手動のゴールと初期姿勢、状態の表示、Actions 相当の操作、Navigation コンテナ、シミュレーション・Rosbag 再生 (設定で有効にしたとき)、ジョイスティック、GPS のミニ地図、Nav2 のゴール状態・ライフサイクルの確認 |
 | `/slam` | `/ops/slam` | SLAM の起動・停止、地図の保存、シミュレーション・Rosbag 再生 (設定で有効にしたとき) |
 | `/slam-gnss-2d` | `/ops/slam-gnss-2d` | ポーズグラフ、最適化前後の経路、衛星画像への重ね表示、地図の保存・プレビュー・再最適化 |
 | `/scenario-test` | `/ops/scenario-test` | 作業ビュー。旧ページと同じ本体 (`ScenarioWorkspace`) を使う |

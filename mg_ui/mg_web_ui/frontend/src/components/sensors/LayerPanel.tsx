@@ -32,7 +32,6 @@ const GROUPS: LayerGroup[] = [
     layers: [
       { key: "robotPose", label: "ロボット" },
       { key: "particleCloud", label: "AMCL パーティクル" },
-      { key: "collisionPolygons", label: "衝突検知エリア" },
     ],
   },
   {

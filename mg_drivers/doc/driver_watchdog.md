@@ -27,9 +27,19 @@
 `bringup.launch.py` から、実機 (`simulation:=false`) のときだけ起動する。ドライバと同じ launch・同じコンテナで動くので、navigation と slam のどちらの bringup でも働く。
 
 1. `monitored_sources` のトピックの最終受信時刻を見る。`stale_timeout_sec` を超えたら**異常**にする。`recover_hold_sec` のあいだ正常が続いたら**復旧**とする。
-2. 異常のあいだ、`/diagnostics` に `driver_watchdog/<id>` を `ERROR` で出す。
+2. 診断 `driver_watchdog_node: <id>` を出す (`diagnostic_updater`、1 Hz)。異常のあいだは `ERROR`、受信頻度が `expected_hz` × `hz_warn_ratio` を下回るときは `WARN`。`hardware_id` は `<id>`、`values` は `hz`・`expected_hz`・`stale_sec`・`topic`・`restarts`。途絶と受信頻度の判定は `mg_utils.monitoring` の共通のもので、`topic_monitor_node` と同じ。
 3. `pause_on_fault: true` のとき、シーケンサの `pause_request` に `requester_id=driver_watchdog`、`active=true` を **1 Hz で出し続ける**。復旧したら `active=false` を出す。毎秒送るのは、`~/stop` で一時停止の要求が消えたり、シーケンサが再起動したりしても、異常のあいだは一時停止が戻るようにするため (異常のまま `~/start` もできない)。
 4. `restart_node` を持つソースが `restart_after_sec` 以上途絶えたら、その名前のノードのプロセスに SIGTERM を送る。`kill_timeout_sec` たっても残っていれば SIGKILL を送る。launch の respawn が起動し直す。
+5. 状態の変化を、イベントログに出す ([doc/monitoring.md](../../doc/monitoring.md))。
+
+| イベント | レベル | 内容 |
+| :--- | :--- | :--- |
+| `node.started` | INFO | 起動 (`sources`、`pause_on_fault`、`restart_enabled`) |
+| `watchdog.stale` | ERROR | ソースが異常になった (`source`、`topic`、`reason`、`stale_sec`) |
+| `watchdog.recovered` | INFO | ソースが復旧した |
+| `watchdog.restart_requested` | ERROR | ノードのプロセスに SIGTERM を送った (`node`、`pids`) |
+| `watchdog.restart_failed` | ERROR | 終了させるプロセスが見つからなかった |
+| `watchdog.pause_changed` | WARN / INFO | 一時停止を出す・解除した (`active`、`sources`) |
 
 ### 再起動の仕組みと制約
 
@@ -57,6 +67,7 @@
 | `restart_after_sec` | 3.0 | 途絶がこの時間続いたら終了させる |
 | `restart_cooldown_sec` | 10.0 | 続けて終了させない時間 |
 | `kill_timeout_sec` | 3.0 | SIGTERM のあと、SIGKILL を送るまでの時間 |
+| `hz_warn_ratio` | 0.5 | 受信頻度が 期待する周期 × この値 を下回ったら診断を `WARN` にする |
 | `monitored_sources` | `[top_lidar, odom, motor]` | 監視するソースの id |
 
 ソースごとの設定 (`<id>.*`)。
@@ -64,11 +75,16 @@
 | 項目 | 内容 |
 | :--- | :--- |
 | `topic` | 監視するトピック (必須) |
-| `type` | `scan` (`LaserScan`)、`odom` (`Odometry`)、`connected` (`Bool`。`false` の間は異常) |
+| `type` | メッセージの型 (必須。例: `sensor_msgs/msg/LaserScan`) |
+| `qos` | `best_effort` / `reliable` (既定 `reliable`) |
+| `expected_hz` | 期待する受信頻度。0 なら頻度は調べない |
+| `ok_field` | 真偽値のフィールド名 (例: `data`)。`false` を受信したら異常。指定しないソースは、デシリアライズせずに受け取る |
 | `enabled` | 監視するか。launch が `top_lidar` を `use_lidar`、`odom` を `use_odom` に合わせる |
-| `restart_node` | 途絶が続いたときに終了させるノード名。空なら再起動しない |
-| `stale_timeout_sec` | このソースの途絶の判定時間 |
+| `restart_node` | 途絶が続いたときに終了させるノード名。空なら再起動しない (このノード固有) |
+| `stale_timeout_sec` | このソースの途絶の判定時間。期待する周期より長くする |
 | `armed_on_first_message` | 初回のメッセージを受け取るまで監視しない |
+
+`topic` / `type` / `qos` / `expected_hz` / `ok_field` / `enabled` / `stale_timeout_sec` / `armed_on_first_message` / `fault_level` は、`topic_monitor_node` と共通の書き方 ([mg_utils](../../mg_utils/README.md))。
 
 既定のソース。
 
@@ -76,7 +92,7 @@
 | :--- | :--- | :--- | :--- |
 | `top_lidar` | `scan_top_lidar` | `top_rplidar_node` | |
 | `odom` | `odom` | なし | `wheel_odometry_node` が自分で再接続する |
-| `motor` | `/motor_driver_node/connected` | なし | 1 Hz の接続状態。`armed_on_first_message` で、モータドライバが無い構成でも異常にならない |
+| `motor` | `/motor_driver_node/connected` | なし | 1 Hz の接続状態 (`std_msgs/msg/Bool`、`ok_field: data`)。`armed_on_first_message` で、モータドライバが無い構成でも異常にならない |
 
 ## launch の引数 (`bringup.launch.py`)
 
@@ -96,14 +112,15 @@
 
 ## 制約
 
-- 診断の名前が `driver_watchdog/` のため、Web UI のセンサ欄 (`topic/` の `group: sensor`) には出ない。`/diagnostics` と `ros2 topic echo` で確認する。
+- 診断は集約で `/Robot/Drivers/...` に入る ([doc/monitoring.md](../../doc/monitoring.md))。実機では、`driver_watchdog_node: top_lidar` / `odom` / `motor` が欠けると、集約が `STALE` にする。
 - USB ハブごと落ちたときに、`/dev/ttyRobot-*` が戻るかはホスト側の問題で、このノードでは扱わない。
 - LiDAR の途絶で止まるのはシーケンサの走行。手動ゴールなど、シーケンサを通らない走行の安全は、Nav2 の `collision_monitor` 側で別に守る。
 
 ## テスト
 
 ```bash
-make test pkg=mg_drivers   # 判定ロジック (test/test_driver_watchdog_core.py)
+make test pkg=mg_drivers   # 再起動の判定 (test/test_driver_watchdog_core.py)
+make test pkg=mg_utils     # 途絶・受信頻度の判定 (mg_utils/test/test_monitoring_*.py)
 ```
 
 実機なしの通し確認は、止まる偽の LiDAR を `respawn=True` で起動して、監視ノードが異常の検知 → 一時停止 → 終了 → 起動し直し → 復旧 → 一時停止の解除まで進むことを見る。

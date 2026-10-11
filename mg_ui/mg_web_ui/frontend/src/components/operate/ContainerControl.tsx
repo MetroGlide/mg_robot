@@ -1,21 +1,36 @@
 import { SystemManagerHandle } from "../../hooks/useSystemManagerClient";
+import { ContainerDetail, ContainerLevel } from "../../types/api";
 import { useSystemManagerAction } from "../../hooks/useSystemManagerAction";
 import OpsButton from "../ui/OpsButton";
 import Pill, { Tone } from "../ui/Pill";
 
-const STATE_DISPLAY: Record<string, { label: string; tone: Tone }> = {
-  running: { label: "起動中", tone: "ok" },
-  exited: { label: "停止", tone: "neutral" },
-  dead: { label: "異常終了", tone: "error" },
+const LEVEL_TONE: Record<ContainerLevel, Tone> = {
+  ok: "ok",
+  warn: "warn",
+  error: "error",
+  off: "neutral",
 };
 
-/** system_manager が返すコンテナの状態を、表示の文言と色にする */
-export function containerDisplay(state: string | undefined): {
+const STATE_LABEL: Record<string, string> = {
+  running: "起動中",
+  exited: "停止",
+  dead: "異常終了",
+  restarting: "再起動中",
+  paused: "一時停止",
+  created: "未起動",
+};
+
+/** system_manager が判定した深刻度 `level` を、表示の文言と色にする。UI は判定しない */
+export function containerDisplay(detail: ContainerDetail | undefined): {
   label: string;
   tone: Tone;
 } {
-  if (!state) return { label: "不明(system_manager に届いていません)", tone: "warn" };
-  return STATE_DISPLAY[state] ?? { label: state, tone: "neutral" };
+  if (!detail) return { label: "不明(system_manager に届いていません)", tone: "warn" };
+  const label = STATE_LABEL[detail.state] ?? detail.state;
+  return {
+    label: detail.health ? `${label} (${detail.health})` : label,
+    tone: LEVEL_TONE[detail.level] ?? "neutral",
+  };
 }
 
 interface Props {
@@ -36,7 +51,7 @@ export default function ContainerControl({
 }: Props) {
   const { call, loading, error } = useSystemManagerAction(sysManager);
   const state = sysManager.containers[container];
-  const display = containerDisplay(state);
+  const display = containerDisplay(sysManager.details[container]);
   const running = state === "running";
 
   return (

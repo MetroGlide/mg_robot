@@ -25,6 +25,7 @@ endif()
 # Find ROS2 dependencies
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(diagnostic_updater REQUIRED)
 find_package(slam_gnss_2d_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
@@ -53,6 +54,7 @@ find_path(NANOFLANN_INCLUDE_DIRS "nanoflann.hpp")
 
 set(DEPENDENCIES
   rclcpp
+  diagnostic_updater
   slam_gnss_2d_msgs
   sensor_msgs
   nav_msgs

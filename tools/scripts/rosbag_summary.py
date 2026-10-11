@@ -27,14 +27,18 @@ from sensor_msgs.msg import Imu, LaserScan, NavSatFix
 from tf2_msgs.msg import TFMessage
 from ublox_msgs.msg import NavPVT
 
-# tools パッケージルートの解決
+# tools パッケージルートと、mg_utils (イベントの書式を読む) の解決
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-if REPO_ROOT not in sys.path:
-    sys.path.insert(0, REPO_ROOT)
+for _path in (REPO_ROOT, os.path.join(REPO_ROOT, "mg_utils")):
+    if _path not in sys.path:
+        sys.path.insert(0, _path)
 
+from mg_utils.event_log import parse_event  # noqa: E402
 from tools.common.bag import detect_storage_id, load_metadata, open_reader  # noqa: E402
 from tools.common.cli import resolve_output_path  # noqa: E402
 from tools.common.geo import haversine_distance  # noqa: E402
+from tools.common.status_timeline import (  # noqa: E402
+    EventSummary, LevelTimeline, has_status_section, level_value, pick_timeline, status_section_lines)
 
 
 def calculate_stats(values: List[float]) -> Dict[str, float]:
@@ -481,20 +485,32 @@ class TfCollector:
 
 
 class DiagnosticsCollector:
-    """ログ (/rosout) & 診断 (/diagnostics) エラー収集コレクター。"""
+    """ログ (/rosout, /events) & 診断 (/diagnostics, /diagnostics_agg) の収集コレクター。
+
+    エラーの一覧に加えて、診断のレベルの遷移と、イベントログ (evt=...) の集計を作る。
+    集約した診断 (/diagnostics_agg) があれば、遷移はそちらで数える。
+    """
 
     def __init__(self):
         self.has_data = False
         self.log_level_counts: Counter = Counter()
         self.error_messages: List[Dict[str, str]] = []
+        self.timelines = {"/diagnostics_agg": LevelTimeline(), "/diagnostics": LevelTimeline()}
+        self.events = EventSummary()
 
-    def process_log(self, msg: Log):
+    def process_log(self, msg: Log, topic: str = "/rosout", stamp_ns: int = 0):
         self.has_data = True
         level_map = {10: "DEBUG", 20: "INFO", 30: "WARN", 40: "ERROR", 50: "FATAL"}
         level_str = level_map.get(msg.level, f"LEVEL_{msg.level}")
-        self.log_level_counts[level_str] += 1
+        # /events は /rosout のイベントの写しなので、ログのレベル別の数には数えない
+        if topic != "/events":
+            self.log_level_counts[level_str] += 1
+        parsed = parse_event(msg.msg)
+        if parsed is not None:
+            name, fields = parsed
+            self.events.add(stamp_ns, level_str, msg.name, name, fields)
 
-        if msg.level >= 40:  # ERROR or FATAL
+        if topic != "/events" and msg.level >= 40:  # ERROR or FATAL
             if len(self.error_messages) < 10:
                 self.error_messages.append({
                     "name": msg.name,
@@ -502,24 +518,35 @@ class DiagnosticsCollector:
                     "msg": msg.msg.strip(),
                 })
 
-    def process_diagnostics(self, msg: DiagnosticArray):
+    def process_diagnostics(self, msg: DiagnosticArray, topic: str = "/diagnostics", stamp_ns: int = 0):
         self.has_data = True
+        timeline = self.timelines.get(topic)
         for status in msg.status:
-            if status.level >= 2:  # WARN or ERROR
+            level = level_value(status.level)  # Python では長さ 1 の bytes
+            if timeline is not None:
+                timeline.update(stamp_ns, status.name, level, status.message)
+            # エラーの一覧には、生の診断の ERROR 以上だけを入れる (集約の写しを二重に入れない)
+            if topic == "/diagnostics" and level >= 2:
                 if len(self.error_messages) < 10:
                     self.error_messages.append({
                         "name": f"diag:{status.name}",
-                        "level": "ERROR" if status.level >= 2 else "WARN",
+                        "level": "ERROR",
                         "msg": status.message,
                     })
 
     def finalize(self) -> Dict[str, Any]:
         if not self.has_data:
             return {"has_data": False}
+        agg, raw = self.timelines["/diagnostics_agg"], self.timelines["/diagnostics"]
+        picked = pick_timeline(agg, raw)
         return {
             "has_data": True,
             "log_levels": dict(self.log_level_counts),
             "errors": self.error_messages,
+            "timeline_source": None if picked is None else (
+                "/diagnostics_agg" if picked is agg else "/diagnostics"),
+            "timeline": None if picked is None else picked.summary(),
+            "events": self.events.summary(),
         }
 
 
@@ -745,6 +772,13 @@ class ReportFormatter:
                         lines.append(f"    - [{err['level']}] {err['name']}: {err['msg']}")
                 lines.append("")
 
+        # 8. Status timeline & events
+        if diag.get("has_data") and has_status_section(diag):
+            lines.append(f"{B}{'-' * 80}{RESET}")
+            lines.append(f"{B}8. STATUS TIMELINE & EVENTS (/diagnostics_agg, /rosout, /events){RESET}")
+            lines.append(f"{B}{'-' * 80}{RESET}")
+            lines.extend(status_section_lines(diag, markdown=False))
+
         lines.append(f"{B}{'=' * 80}{RESET}")
         return "\n".join(lines)
 
@@ -824,6 +858,13 @@ class ReportFormatter:
             md.append(f"- **Stopped Time**: {odom['stopped_rate']:.1f}%")
             md.append(f"- **Covariance Valid**: {'YES' if odom['covariance_valid'] else 'NO (Zero Detected)'}")
             md.append("")
+
+        # Status timeline & events
+        diag = data.get("diagnostics", {})
+        if diag.get("has_data") and has_status_section(diag):
+            md.append("## 8. Status Timeline & Events")
+            md.append("")
+            md.extend(status_section_lines(diag, markdown=True))
 
         return "\n".join(md)
 
@@ -979,10 +1020,10 @@ def main():
                 tf_collector.process(msg, is_static=(topic == "/tf_static"))
             elif type_name == "rcl_interfaces/msg/Log":
                 msg = deserialize_message(data, msg_class)
-                diag_collector.process_log(msg)
+                diag_collector.process_log(msg, topic, timestamp)
             elif type_name == "diagnostic_msgs/msg/DiagnosticArray":
                 msg = deserialize_message(data, msg_class)
-                diag_collector.process_diagnostics(msg)
+                diag_collector.process_diagnostics(msg, topic, timestamp)
 
         if first_bag_ts is not None and last_bag_ts is not None:
             start_dt = datetime.datetime.fromtimestamp(first_bag_ts / 1e9)

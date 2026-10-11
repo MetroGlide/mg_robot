@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  localizationTone,
   quaternionToYawDeg,
   SEQUENCER_STEPS,
   sequencerStep,
@@ -13,15 +12,6 @@ describe("quaternionToYawDeg", () => {
     expect(
       quaternionToYawDeg({ x: 0, y: 0, z: Math.sin(half), w: Math.cos(half) }),
     ).toBeCloseTo(90);
-  });
-});
-
-describe("localizationTone", () => {
-  it("NORMAL は ok、DEGRADED は error、途中の状態は warn", () => {
-    expect(localizationTone(0)).toBe("ok");
-    expect(localizationTone(1)).toBe("warn");
-    expect(localizationTone(3)).toBe("warn");
-    expect(localizationTone(4)).toBe("error");
   });
 });
 

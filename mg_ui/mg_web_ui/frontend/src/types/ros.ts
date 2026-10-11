@@ -307,11 +307,6 @@ export interface OdomMsg {
   }
 }
 
-export interface CollisionDetectorState {
-  polygons: string[]
-  detections: boolean[]
-}
-
 export interface TwistMsg {
   linear: { x: number; y: number; z: number }
   angular: { x: number; y: number; z: number }
@@ -344,4 +339,13 @@ export interface NavSatFix {
   altitude: number
   position_covariance: number[]
   position_covariance_type: number
+}
+
+/** rcl_interfaces/msg/Log(/rosout と /events) */
+export interface RosLog {
+  stamp: { sec: number; nanosec: number }
+  /** 10 DEBUG / 20 INFO / 30 WARN / 40 ERROR / 50 FATAL */
+  level: number
+  name: string
+  msg: string
 }

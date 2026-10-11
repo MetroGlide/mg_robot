@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Outlet } from "react-router-dom";
+import { EventStreamProvider } from "../../contexts/EventStreamContext";
 import { FoxgloveClientHandle } from "../../hooks/useFoxgloveClient";
 import SettingModal from "../SettingModal";
 import ConnectionBanner from "./ConnectionBanner";
@@ -15,6 +16,7 @@ export default function AppShell({ client, links }: Props) {
   const [settingOpen, setSettingOpen] = useState(false);
 
   return (
+    <EventStreamProvider client={client}>
     <div className="flex h-screen flex-col bg-surface text-content">
       <TopBar
         client={client}
@@ -27,5 +29,6 @@ export default function AppShell({ client, links }: Props) {
       </main>
       <SettingModal open={settingOpen} onClose={() => setSettingOpen(false)} />
     </div>
+    </EventStreamProvider>
   );
 }

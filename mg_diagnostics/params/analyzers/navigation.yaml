@@ -1,0 +1,53 @@
+# ナビゲーションのスタックの、自己位置推定とナビゲーションの項目 (common.yaml と一緒に渡す)
+analyzers:
+  ros__parameters:
+    localization:
+      type: diagnostic_aggregator/AnalyzerGroup
+      path: Localization
+      analyzers:
+        monitor:
+          type: diagnostic_aggregator/GenericAnalyzer
+          path: Monitor
+          startswith: ['localization_supervisor_node: ', 'amcl_watchdog_node: ']
+          timeout: 5.0
+        gnss_bridge:
+          type: diagnostic_aggregator/GenericAnalyzer
+          path: GnssBridge
+          startswith: ['slam_gnss_nav_bridge: ']
+          timeout: 5.0
+        gate:
+          type: diagnostic_aggregator/GenericAnalyzer
+          path: Gate
+          startswith: ['amcl_gate_arbiter: ']
+          timeout: 5.0
+        ekf:
+          type: diagnostic_aggregator/GenericAnalyzer
+          path: EKF
+          # 捨てるもの (discard_third_party の Filter diagnostic updater) には一致させない。照合の順序には頼らない
+          regex: ['^ekf_global_node: odometry.*']
+          timeout: 5.0
+
+    navigation:
+      type: diagnostic_aggregator/AnalyzerGroup
+      path: Navigation
+      analyzers:
+        nav2:
+          type: diagnostic_aggregator/GenericAnalyzer
+          path: Nav2
+          startswith: ['lifecycle_manager_']
+          timeout: 10.0
+        sequencer:
+          type: diagnostic_aggregator/GenericAnalyzer
+          path: Sequencer
+          startswith: ['waypoint_sequencer_node: ']
+          timeout: 5.0
+        nodes:
+          type: diagnostic_aggregator/GenericAnalyzer
+          path: Nodes
+          startswith: ['topic_monitor_node: node ']
+          timeout: 5.0
+        topics:
+          type: diagnostic_aggregator/GenericAnalyzer
+          path: Topics
+          startswith: ['topic_monitor_node: topic ']
+          timeout: 5.0

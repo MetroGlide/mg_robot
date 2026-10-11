@@ -43,7 +43,7 @@ export default function RosbagReplaySection({
 
   const containerState = sysManager.containers["rosbag-replay"];
   const isRunning = containerState === "running";
-  const display = containerDisplay(containerState);
+  const display = containerDisplay(sysManager.details["rosbag-replay"]);
 
   useEffect(() => {
     loadSettings().then((data) => {

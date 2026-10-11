@@ -81,7 +81,7 @@ source /opt/ros/humble/setup.bash && source /root/ros2_ws/install/setup.bash
 | ------------------------ | -------------------------------------------------------------- |
 | [`mg_bringup`](./mg_bringup/README.md)             | slam/navigationを束ねるトップレベルlaunch群                    |
 | [`mg_description`](./mg_description/README.md)         | URDF・RViz設定                                                 |
-| [`mg_diagnostics`](./mg_diagnostics/README.md)         | `/diagnostics`トピックへの正常性診断配信                       |
+| [`mg_diagnostics`](./mg_diagnostics/README.md)         | 診断の集約`/diagnostics_agg`・第三者ノードの監視・イベント中継`/events` |
 | [`mg_drivers`](./mg_drivers/README.md)             | LiDAR/DepthCam/GPS/モータドライバ群、ホイールオドメトリの補正(`wheel_odom_corrector_node`)、ドライバの途絶の監視と復旧(`driver_watchdog_node`)、3D障害物検出 |
 | [`mg_msgs`](./mg_msgs/README.md)                | カスタムメッセージ・サービス定義                               |
 | [`mg_navigation`](./mg_navigation/README.md)          | Nav2の起動・設定, 自己位置推定の補助ノード(GNSS初期化, AMCL watchdog, AMCL入切の調停`amcl_gate_arbiter`, 監督ノード`localization_supervisor`)。構成は [doc/localization.md](./mg_navigation/doc/localization.md) |
@@ -143,6 +143,7 @@ node_name:
 ## ドキュメントの構成
 
 - プロジェクト全体: [README.md](./README.md)（入口）と [doc/](./doc/)（システム構成・Docker・コマンド・環境変数・運用手順）
+- 状態監視（diagnostics）とイベントログの規約: [doc/monitoring.md](./doc/monitoring.md)。診断は `diagnostic_updater` で出し、判定は発信元のノードが1回だけ行う。イベントは `evt=<domain>.<event> key=value` の書式で出す。ソースにロボットのバージョン名（`mg01` など）を書かない
 - パッケージごと: パッケージルートの `README.md`（役割・ノード・launch・使い方の入口）と、詳細を書く `doc/`（ディレクトリ名は `doc/` に統一）
 - パッケージ固有の開発ルールは、そのパッケージの `README.md` または `doc/` に書き、パッケージ内に `AGENTS.md` を新設しない。本ファイルには要点とリンクだけを載せる
 - コードを変更したときは、対応する README・doc（launch引数、パラメータの既定値、トピック名など）も実装に合わせて更新する

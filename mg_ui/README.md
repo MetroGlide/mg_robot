@@ -16,7 +16,7 @@ MG-01 の状態の表示と操作のための UI。ブラウザ (タブレット
    └── HTTP/WebSocket :8001 ──► system_manager ──► docker compose (サービスの起動・停止、ログ)
 ```
 
-正常性の診断は [mg_diagnostics](../mg_diagnostics/README.md) が配信する (UI のトップと System ページが表示する)。
+正常性の診断 (`/diagnostics_agg`) とイベント (`/events`) は [mg_diagnostics](../mg_diagnostics/README.md) が配信する。新 UI (`/ops`) が表示し、色は診断のレベルで決める。
 
 ## 画面
 
@@ -27,14 +27,14 @@ MG-01 の状態の表示と操作のための UI。ブラウザ (タブレット
 
 | パス | 内容 |
 | :--- | :--- |
-| `/ops/waypoint` | ウェイポイントの走行。CPU・自己位置・GNSS (NavPVT か NavSatFix。押すと緯度経度・UTM・精度・PDOP の詳細)・速度、走行の進捗 (開始・停止・一時停止)、センサ・トピック・ノードの状態、手動のゴールと初期姿勢の指定、Nav2 のゴール状態・衝突検知・ライフサイクルの確認、旧 Actions 相当の操作 (番号の指定、AMCL・GNSS の入/切、地図の切り替え、任意のサービス・トピック、Navigation コンテナ、シミュレーション・Rosbag 再生 (設定で有効にしたとき))、ジョイスティックと GPS のミニ地図 |
+| `/ops/waypoint` | ウェイポイントの走行。CPU・自己位置・GNSS (NavPVT か NavSatFix。押すと緯度経度・UTM・精度・PDOP の詳細)・速度、走行の進捗 (開始・停止・一時停止)、センサ・トピック・ノードの状態、手動のゴールと初期姿勢の指定、Nav2 のゴール状態・ライフサイクルの確認、旧 Actions 相当の操作 (番号の指定、AMCL・GNSS の入/切、地図の切り替え、任意のサービス・トピック、Navigation コンテナ、シミュレーション・Rosbag 再生 (設定で有効にしたとき))、ジョイスティックと GPS のミニ地図 |
 | `/ops/slam` | slam_toolbox の SLAM の起動・停止、地図の保存、シミュレーション・Rosbag 再生 (設定で有効にしたとき) |
 | `/ops/slam-gnss-2d` | SLAM-GNSS-2D のポーズグラフと最適化前後の経路、衛星画像への重ね表示、地図の保存・プレビュー・再最適化 |
 | `/ops/scenario-test` | シナリオテストの選択・実行・進捗・結果・ログ・履歴 (地図を使わない作業ビュー) |
 | `/ops/sensors` | RViz ライクなセンサビュー (全レイヤー、2D/3D、カメラ・深度画像) |
-| `/ops/system` | サービスの起動・停止、診断、ログ (作業ビュー) |
+| `/ops/system` | サービスの起動・停止、診断の木、イベント一覧、ログ (作業ビュー) |
 
-運用ビューは、走行中に操作しない運用を想定して、状態の表示を 1 画面に収める (センサ・トピック・ノードは「全て」で並べて表示。操作のカードは節ごとに閉じられる)。追従・カードの開閉・タブの選択・入力値は、他の画面に移って戻っても保持する。
+運用ビューは、走行中に操作しない運用を想定して、状態の表示を 1 画面に収める (診断は右下の `DiagnosticsBoard` に区分ごとに並べ、「全表示」と、OK を件数にまとめる「簡易」を切り替える。「詳細」で値まで見られる木を開く。操作のカードは節ごとに閉じられる)。追従・カードの開閉・タブの選択・入力値は、他の画面に移って戻っても保持する。
 
 地図はタッチパッドで操作する (2 本指のスクロールで移動、ピンチでズーム)。受信が途切れた値は `--` と経過秒の表示になり、ロボットと切断中は画面の上に帯が出て、操作が無効になる。
 
@@ -54,14 +54,14 @@ MG-01 の状態の表示と操作のための UI。ブラウザ (タブレット
 
 ### 本番
 
-前提: `make slam` または `make navigation` が起動済みであること。操作系の機能を使うには、`make diagnostics` と `make system-manager` も必要。
+前提: `make slam` または `make navigation` が起動済みであること。操作系の機能を使うには、`make system-manager` も必要。状態の表示 (診断・イベント) は、`make slam` / `make navigation` のコンテナが出す ([doc/monitoring.md](../doc/monitoring.md))。
 
 ```bash
 make build svc=web-ui    # 初回と、フロントエンドを変えたとき
-make ui-all              # system-manager・web-ui・foxglove-bridge・diagnostics を起動
+make ui-all              # system-manager・web-ui・foxglove-bridge を起動
 ```
 
-タブレットやブラウザから `http://<ロボットの IP>:8080` を開く。個別に起動するときは、`make web-ui`、`make foxglove-bridge`、`make system-manager`、`make diagnostics`。
+タブレットやブラウザから `http://<ロボットの IP>:8080` を開く。個別に起動するときは、`make web-ui`、`make foxglove-bridge`、`make system-manager`。
 
 `web_ui.launch.py` の引数: `port` (既定 8080)、`dist_dir` (空なら、インストールした `frontend/dist`)。
 

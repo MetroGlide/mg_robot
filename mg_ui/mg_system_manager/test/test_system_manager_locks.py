@@ -35,7 +35,7 @@ def test_lock_is_released_when_command_fails(client, compose_calls):
 def test_different_services_do_not_block_each_other(
         client, runner, compose_calls):
     with runner.operation("rviz2"):
-        body = _run_in_other_thread(client, "/diagnostics/start")
+        body = _run_in_other_thread(client, "/foxglove-bridge/start")
 
     assert body["success"] is True
 
