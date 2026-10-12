@@ -16,6 +16,7 @@ topic_monitor_node:
       - /controller_server
       - /planner_server
       - /collision_monitor
+      - /top_laser_filter
 
     # 受信頻度を調べるトピック。ここに ID を足し、下に同じ ID の設定を書く。
     # 設定のキーは mg_utils.monitoring.topic_source_config の docstring を参照
