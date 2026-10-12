@@ -226,6 +226,7 @@ export const ACTIVITY_CODE = {
   DEPARTURE_WAIT: 'departure_wait',
   NAVIGATING: 'navigating',
   MANUAL_GOAL: 'manual_goal',
+  EXTERNAL_GOAL: 'external_goal',
   OBSTACLE_SLOWDOWN: 'obstacle_slowdown',
   OBSTACLE_STOP: 'obstacle_stop',
   SENSOR_TIMEOUT_STOP: 'sensor_timeout_stop',

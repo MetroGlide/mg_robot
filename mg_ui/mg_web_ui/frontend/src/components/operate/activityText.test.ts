@@ -36,6 +36,14 @@ describe("formatActivity", () => {
     ).toBe("地点へ走行中 ・ 地点 4 / 10 ・ 残り 12.3 m");
   });
 
+  it("外部指定のゴールは text だけを並べる", () => {
+    expect(
+      formatActivity(
+        activity({ code: "external_goal", text: "外部指定のゴールへ走行中" }),
+      ),
+    ).toBe("外部指定のゴールへ走行中");
+  });
+
   it("出発待ちの残りは秒で並べる", () => {
     expect(
       formatActivity(
