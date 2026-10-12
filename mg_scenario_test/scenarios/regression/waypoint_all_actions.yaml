@@ -31,6 +31,9 @@ monitors:
   - topic_received: { topic: /planning_map, type: OccupancyGrid }
   # queue_wait モードの BT (Wait のみ) と normal モードのリカバリー (BackUp) が、平時に動かないこと
   - bt_node: { node: BackUp, status: RUNNING, expect: never }
+  # 到着後のアクションの実行中と、wait_trigger での待ちが、「いまの活動」に出ること
+  - navigation_activity: { code: action }
+  - navigation_activity: { code: trigger_wait }
 
 expect:
   - reached_all

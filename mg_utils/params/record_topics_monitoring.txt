@@ -15,6 +15,7 @@
 /amcl_gate_arbiter/state
 /slam_gnss_nav_bridge/publish_state
 /waypoint_sequencer_node/status
+/waypoint_sequencer_node/activity
 /waypoint_sequencer_node/pause_request
 /motor_driver_node/connected
 /wheel_odometry_node/connected

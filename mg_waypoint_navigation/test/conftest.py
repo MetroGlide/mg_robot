@@ -15,6 +15,7 @@ _ROS2_MODULES = [
     "rcl_interfaces.srv",
     "nav2_msgs",
     "nav2_msgs.action",
+    "nav2_msgs.msg",
     "nav2_msgs.srv",
     "action_msgs",
     "action_msgs.msg",

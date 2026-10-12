@@ -1,5 +1,6 @@
 import { FoxgloveClientHandle } from "../../hooks/useFoxgloveClient";
 import { useLocalizationGates } from "../../hooks/useLocalizationGates";
+import { useNavigationActivity } from "../../hooks/useNavigationActivity";
 import { useThrottledTopic } from "../../hooks/useThrottledTopic";
 import { useTopicSubscriber } from "../../hooks/useTopicSubscriber";
 import {
@@ -17,6 +18,7 @@ import Card from "../ui/Card";
 import { useRobotProfile } from "../../contexts/RobotProfileContext";
 import IconButton from "../ui/IconButton";
 import { CloseIcon } from "../ui/icons";
+import { formatActivity } from "./activityText";
 import { quaternionToYawDeg } from "./displayState";
 
 interface AmclPose {
@@ -73,6 +75,7 @@ export default function RobotDetailCard({
     AMCL_HZ,
   );
   const gates = useLocalizationGates(client);
+  const activity = useNavigationActivity(client);
   const modeMsg = useTopicSubscriber<StringMsg>(
     client,
     TOPICS.WAYPOINT_NAVIGATION_MODE,
@@ -110,6 +113,7 @@ export default function RobotDetailCard({
         label="走行モード"
         value={mode ? `${mode.mode} (${mode.behavior_tree})` : "--"}
       />
+      <Row label="走行" value={activity ? formatActivity(activity) : "--"} />
       <div className="my-1 h-px bg-line" />
       <Row
         label="Nav2 のゴール"

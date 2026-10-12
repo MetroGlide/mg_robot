@@ -27,6 +27,7 @@ timeline:
       - sequencer_pause: { active: false }
 
 monitors:
+  - navigation_activity: { code: paused }
   - max_stop_duration: { min_stop_sec: 4.0, from_goal_started: 0, until_goal_reached: 2 }
 
 expect:

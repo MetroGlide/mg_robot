@@ -33,6 +33,12 @@ class ActionExecutor:
         self._map_loader = MapLoader(node, self._endpoints)
         self._costmap_switcher = CostmapModeSwitcher(node, self._endpoints)
         self._thread: threading.Thread | None = None
+        self._current_action: str = ""
+
+    @property
+    def current_action(self) -> str:
+        """実行中のアクションの type。実行していなければ空文字。"""
+        return self._current_action
 
     @property
     def map_loader(self) -> MapLoader:
@@ -52,6 +58,7 @@ class ActionExecutor:
             for config in actions:
                 fields = dict(type=config.type, index=waypoint_index)
                 self._events.info('action.started', **fields)
+                self._current_action = config.type
                 started = time.monotonic()
                 try:
                     build_action(
@@ -66,6 +73,7 @@ class ActionExecutor:
                     self._events.info(
                         'action.succeeded', **fields,
                         duration_sec=round(time.monotonic() - started, 2))
+            self._current_action = ""
             done_callback()
 
         self._thread = threading.Thread(target=_run, daemon=True)

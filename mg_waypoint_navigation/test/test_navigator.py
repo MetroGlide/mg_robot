@@ -159,6 +159,25 @@ def test_success(env):
     assert env.results == [NavigationResult.SUCCEEDED]
 
 
+def test_has_live_goal_until_the_result_returns(env):
+    assert not env.nav.has_live_goal
+    env.nav.send_goal(_waypoint(), env.on_result)
+    assert env.nav.has_live_goal
+    _, result_future = env.accept()
+    assert env.nav.has_live_goal
+    _finish(result_future, STATUS_SUCCEEDED)
+    assert not env.nav.has_live_goal
+
+
+def test_has_live_goal_while_canceling(env):
+    env.nav.send_goal(_waypoint(), env.on_result)
+    _, result_future = env.accept()
+    env.nav.cancel()
+    assert env.nav.has_live_goal
+    _finish(result_future, STATUS_CANCELED)
+    assert not env.nav.has_live_goal
+
+
 def test_abort_is_failed(env):
     env.nav.send_goal(_waypoint(), env.on_result)
     _, result_future = env.accept()

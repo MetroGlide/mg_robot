@@ -1,9 +1,10 @@
-"""MG-01 固有の monitor (カスタム nav2_msgs/CollisionMonitorState を使うもの)。"""
+"""MG-01 固有の monitor (カスタム nav2_msgs/CollisionMonitorState と mg_msgs/NavigationActivity を使うもの)。"""
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
+from mg_msgs.msg import NavigationActivity
 from nav2_msgs.msg import CollisionMonitorState
 from sim_scenario_test.builtin.monitors import TopicMonitor, occurrence_result
 from sim_scenario_test.engine.result import CheckResult
@@ -39,4 +40,31 @@ class CollisionMonitorActionMonitor(TopicMonitor):
 
     def _evaluate(self) -> CheckResult:
         what = f"collision_monitor {self._spec.action}"
+        return occurrence_result(self._count, self._spec.expect, what)
+
+
+@dataclass
+class NavigationActivitySpec:
+    # NavigationActivity.code (mg_msgs/msg/NavigationActivity.msg の定数)
+    code: str
+    expect: Literal["occurs", "never"] = "occurs"
+    topic: str = "/waypoint_sequencer_node/activity"
+
+
+@register_monitor("navigation_activity", NavigationActivitySpec)
+class NavigationActivityMonitor(TopicMonitor):
+    """シーケンサの「いまの活動」が code になった回数を数え、発生する／しないことを判定する。"""
+    MSG_TYPE = NavigationActivity
+
+    def __init__(self, ctx: "ScenarioContext", spec: NavigationActivitySpec):
+        super().__init__(ctx, spec.topic)
+        self._spec = spec
+        self._count = 0
+
+    def _on_msg(self, msg) -> None:
+        if msg.code == self._spec.code:
+            self._count += 1
+
+    def _evaluate(self) -> CheckResult:
+        what = f"navigation activity '{self._spec.code}'"
         return occurrence_result(self._count, self._spec.expect, what)
