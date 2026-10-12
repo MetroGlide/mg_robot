@@ -131,7 +131,9 @@ behavior_server:
     simulate_ahead_time: 2.0
     max_rotational_vel: 1.0
     min_rotational_vel: 0.4
-    rotational_acc_lim: 3.2
+    # 旋回の加速度 [rad/s²]。RPP の max_angular_accel と velocity_smoother の旋回の max_accel / max_decel も同じ値にする。
+    # アンカー (&名前 / *名前) はスカラー専用。リストや辞書に置くと Nav2 が起動しない (test_nav2_params_consistency.py が検査する)
+    rotational_acc_lim: &w_acc 1.5
 
 controller_server:
   ros__parameters:
@@ -171,18 +173,22 @@ controller_server:
     # RPP parameters
     FollowPath:
       plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
-      desired_linear_vel: 1.0
+      # 巡航速度 [m/s]。velocity_smoother の max_velocity (x) も同じ値にする
+      desired_linear_vel: &v_max 0.8
       lookahead_dist: 1.6
       min_lookahead_dist: 1.3
       max_lookahead_dist: 1.9
       lookahead_time: 1.5
       rotate_to_heading_angular_vel: 0.8
+      max_angular_accel: *w_acc
       transform_tolerance: 0.1
       use_velocity_scaled_lookahead_dist: true
       min_approach_linear_velocity: 0.05
       approach_velocity_scaling_dist: 1.0
       use_collision_detection: true
-      max_allowed_time_to_collision_up_to_carrot: 1.0
+      # 経路上の carrot までの衝突の確認の時間。collision_monitor の PolygonApproach の time_before_collision より長くして、
+      # RPP が先に減速・停止する (collision_monitor は通常の走行では発動しない後ろ盾)
+      max_allowed_time_to_collision_up_to_carrot: 1.5
       use_regulated_linear_velocity_scaling: true
       use_cost_regulated_linear_velocity_scaling: true
       regulated_linear_scaling_min_radius: 0.9
@@ -204,13 +210,14 @@ local_costmap:
       height: 8
       resolution: 0.05
 
-      footprint: "[[0.4, 0.3], [0.4, -0.3], [-0.2, -0.3], [-0.2, 0.3]]"
+      # footprint と footprint_padding は global_costmap と同じ値 (アンカーで共有する。スカラー専用)
+      footprint: &robot_footprint "[[0.4, 0.3], [0.4, -0.3], [-0.2, -0.3], [-0.2, 0.3]]"
       # 膨張レイヤーの内接半径は「フットプリントの原点から最も近い辺までの距離」で決まる。
       # このフットプリントは原点が後端寄り (後端 0.2m) なので、半幅 (0.3m) より小さい 0.2m になり、
       # 幅 0.5m 未満の隙間 (例: 間隔 0.8m のコーン) が致死扱いにならず、プランナ (NavFn) が
       # 通れると誤認してその隙間へ経路を引く。RPP は実フットプリントで衝突と判定して進めず、
       # 詰まって失敗する。0.1 の余白で内接半径を 0.3m (= 半幅) にして、通れない隙間を塞ぐ。
-      footprint_padding: 0.1
+      footprint_padding: &footprint_padding 0.1
 
       plugins: [
           "top_obstacle_layer",
@@ -313,13 +320,13 @@ global_costmap:
       robot_base_frame: base_footprint
       use_sim_time: False
 
-      footprint: "[[0.4, 0.3], [0.4, -0.3], [-0.2, -0.3], [-0.2, 0.3]]"
+      footprint: *robot_footprint
       # 膨張レイヤーの内接半径は「フットプリントの原点から最も近い辺までの距離」で決まる。
       # このフットプリントは原点が後端寄り (後端 0.2m) なので、半幅 (0.3m) より小さい 0.2m になり、
       # 幅 0.5m 未満の隙間 (例: 間隔 0.8m のコーン) が致死扱いにならず、プランナ (NavFn) が
       # 通れると誤認してその隙間へ経路を引く。RPP は実フットプリントで衝突と判定して進めず、
       # 詰まって失敗する。0.1 の余白で内接半径を 0.3m (= 半幅) にして、通れない隙間を塞ぐ。
-      footprint_padding: 0.1
+      footprint_padding: *footprint_padding
 
       resolution: 0.05
       track_unknown_space: true
@@ -530,24 +537,25 @@ collision_monitor:
       stop_on_timeout: False
 
 # https://docs.nav2.org/configuration/packages/configuring-velocity-smoother.html
-# collision_monitor/PolygonStopによる急停止からの復帰時に速度が滑らかに立ち上がるよう、
-# 加減速リミットを明示的に設定する（以前はパッケージデフォルト依存だった）。
-# 値はNav2標準デフォルト相当。Gazebo/実機で、急停止からの復帰が唐突にならないか、
-# かつ停止までの制動距離が安全か、両面を検証したうえで最終確定すること。
-# NOTE: 以前コメントアウトされていたmax_velocity: [0.65, 0.0, 3.0]は、FollowPathの
-# desired_linear_vel: 1.0と整合しない（0.65に頭打ちされてしまう）ため、そのまま有効化せず
-# 意図する巡航速度に合わせて別途決定すること。
+# 速度指令の最後の段 (cmd_vel_collision -> cmd_vel)。最終的な速度の上限と加減速をここで決める。
+# 上限は FollowPath の desired_linear_vel (アンカー &v_max) と同じ値にする。モータドライバ側にも
+# 上限があるので (mg_drivers の motor_driver.max_speed)、そちらは v_max 以上にする。
+# 加速は穏やかに、減速は大きめにする (collision_monitor の PolygonStop の奥行きは、この max_decel から決めている)。
+# 旋回の加速度は、behavior_server の rotational_acc_lim と RPP の max_angular_accel (アンカー &w_acc) と同じ値にする。
+# OPEN_LOOP なので、実機のモータが max_decel どおりに減速できるかは別に確認が要る。
 velocity_smoother:
   ros__parameters:
     use_sim_time: False
     smoothing_frequency: 20.0
-    scale_velocities: false
+    # 加速度の制限で並進と旋回の比が崩れて曲率がずれるのを防ぐ
+    scale_velocities: true
     # feedback: OPEN_LOOP時はOdomSmoother(odom_topic/odom_duration)は生成・参照されない。
     # 実測速度から滑らかに追従させたい場合はCLOSED_LOOPに変更しodom_topic/odom_durationを
     # 追加すること（挙動が変わるため今回は変更しない）。
     feedback: "OPEN_LOOP"
-    max_accel: [2.5, 0.0, 3.2]
-    max_decel: [-2.5, 0.0, -3.2]
+    max_velocity: [*v_max, 0.0, 1.2] # x, y, theta
+    min_velocity: [-0.3, 0.0, -1.2]
+    max_accel: [1.0, 0.0, *w_acc]
+    max_decel: [-2.0, 0.0, -1.5]
     deadband_velocity: [0.0, 0.0, 0.0]
     velocity_timeout: 1.0
-    # max_velocity: [0.65, 0.0, 3.0] # x, y, theta. default: [0.5, 0.0, 2.0]

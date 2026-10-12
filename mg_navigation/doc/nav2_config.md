@@ -27,7 +27,19 @@ controller_server ─ cmd_vel_nav ─► collision_monitor ─ cmd_vel_collision
 ```
 
 - `behavior_server` (後退・旋回) は、`collision_monitor` を通らず、`cmd_vel` を直接出す。後退・旋回中の衝突の回避は、`behavior_server` 自身の、ローカルコストマップによる衝突の確認 (`simulate_ahead_time`) が担う。Humble の `BehaviorServer` が読むのは `costmap_topic` と `footprint_topic` だけで、グローバルコストマップでの衝突の確認はできない。
-- `velocity_smoother` は `OPEN_LOOP` で、`max_accel` / `max_decel` は x が 2.5 m/s²、旋回が 3.2 rad/s²。`max_velocity` は、`FollowPath` の `desired_linear_vel` (1.0 m/s) と合わないため、設定していない。
+- **速度の上限と加減速は `velocity_smoother` が最後に決める** (`OPEN_LOOP`、`scale_velocities: true` で並進と旋回の比を保つ)。
+
+  | | x [m/s, m/s²] | 旋回 [rad/s, rad/s²] |
+  | :--- | :--- | :--- |
+  | `max_velocity` | 0.8 (`FollowPath` の `desired_linear_vel` と同じ。アンカー `&v_max`) | 1.2 |
+  | `min_velocity` | -0.3 | -1.2 |
+  | `max_accel` | 1.0 | 1.5 |
+  | `max_decel` | -2.0 (加速は穏やかに、減速は大きめ) | -1.5 |
+
+  旋回の加速度 1.5 は、`behavior_server` の `rotational_acc_lim` と RPP の `max_angular_accel` と同じ (アンカー `&w_acc`)。
+  `max_velocity` を明示する前は、`velocity_smoother` の既定値 0.5 m/s が実際の上限になっていた (シナリオテストで実測)。
+- 実機では `motor_driver_node` の `motor_driver.max_speed` ([mg_drivers](../../mg_drivers/README.md)) も上限になる。`max_velocity` 以上にする。
+- `OPEN_LOOP` なので、実機のモータが `max_decel` どおりに減速できるかは、別に確認する。`collision_monitor` の停止の余裕はこの値から決めている。
 
 ## コストマップ
 
@@ -62,7 +74,8 @@ controller_server ─ cmd_vel_nav ─► collision_monitor ─ cmd_vel_collision
 ## コントローラ (`controller_server`)
 
 - 周期は 10 Hz。
-- `FollowPath` は Regulated Pure Pursuit。`desired_linear_vel` 1.0 m/s、`lookahead_dist` 0.6 m、衝突の検出 (`use_collision_detection`) あり、曲率とコストによる速度の調整あり。
+- `FollowPath` は Regulated Pure Pursuit。`desired_linear_vel` 0.8 m/s、`lookahead_dist` 1.6 m (速度に応じて 1.3〜1.9 m)、衝突の検出 (`use_collision_detection`) あり、曲率とコストによる速度の調整あり。
+- RPP の衝突の確認 (`max_allowed_time_to_collision_up_to_carrot` 1.5 秒) は、`collision_monitor` の `PolygonApproach` の `time_before_collision` より長くする。障害物を主に避けるのは RPP とコストマップで、`collision_monitor` は通常の走行では発動しない後ろ盾にする。
 - `general_goal_checker`: `xy_goal_tolerance` 0.25 m、`yaw_goal_tolerance` 0.25 rad、`stateful: True`。ウェイポイントの停止点の到達の判定は、この値による ([mg_waypoint_navigation](../../mg_waypoint_navigation/doc/architecture.md))。
 - `progress_checker`: 5 秒 (`movement_time_allowance`) で 0.5 m (`required_movement_radius`) 進まなければ、詰まりとみなして `FollowPath` を失敗させる。衝突の検知のあとの待ち時間としても働く。
 - `failure_tolerance` は 5.0 秒。有効な速度が出せない間 (前方に障害物があるなど) は、速度 0 を出して待ち、この時間を超えると `FollowPath` が失敗して、BT のリカバリー (首振り・待機・後退) に入る。**-1 (無期限) にしない**。`progress_checker` の失敗まで無視され、詰まっても失敗せず、リカバリーにも入れず、永久に止まる (Gazebo で確認)。
@@ -98,3 +111,5 @@ controller_server ─ cmd_vel_nav ─► collision_monitor ─ cmd_vel_collision
 
 - 設定の値は、Nav2 の標準値を踏襲しているものがある。`collision_monitor`、`velocity_smoother`、`behavior_server` の値は、コメントのとおり、Gazebo と実機での確認を経て確定する。
 - `scenarios` (シミュレーションでの回帰テスト) で、変更の影響を確認する ([mg_scenario_test](../../mg_scenario_test/README.md))。
+- **`nav2_params.yaml` の YAML のアンカー (`&名前` / `*名前`) は、スカラー (数値・文字列) だけに使う。** 起動時に `RewrittenYaml` が YAML を読み直して書き出すとき、リストや辞書のアンカーは `&id001` の形で残り、rcl のパラメータのパーサが読めず、全 Nav2 サーバーが起動時に落ちる。現在のアンカーは `&v_max` (巡航速度)、`&w_acc` (旋回の加速度)、`&robot_footprint`、`&footprint_padding`。
+- 符号の反転や、別のファイルの値との関係 (smoother の上限と巡航速度、旋回の加速度、LiDAR の前処理の箱と footprint など) は、アンカーで表せないので `test/test_nav2_params_consistency.py` が検査する。値を変えたら `make test pkg=mg_navigation` を実行する。
