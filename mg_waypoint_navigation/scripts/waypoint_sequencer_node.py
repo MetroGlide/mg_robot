@@ -100,6 +100,8 @@ class WaypointSequencerNode(Node):
             "activity_collision_state_topic", "/collision_monitor_state").value
         self._activity_bt_log_topic: str = self.declare_parameter(
             "activity_bt_log_topic", "/behavior_tree_log").value
+        self._activity_nav_status_topic: str = self.declare_parameter(
+            "activity_nav_status_topic", "/navigate_to_pose/_action/status").value
 
     # ------------------------------------------------------------------
     # ROS 通信初期化
@@ -149,7 +151,8 @@ class WaypointSequencerNode(Node):
             activity_group = MutuallyExclusiveCallbackGroup()
             self._activity_sources = ActivitySources(
                 self, activity_group,
-                self._activity_collision_topic, self._activity_bt_log_topic)
+                self._activity_collision_topic, self._activity_bt_log_topic,
+                self._activity_nav_status_topic)
             self._activity_tracker = ActivityTracker()
             self._activity_pub = self.create_publisher(
                 NavigationActivity, "~/activity", latched_qos)
@@ -300,7 +303,10 @@ class WaypointSequencerNode(Node):
     def _publish_activity_cb(self):
         fsm = self._fsm
         state = fsm.state
-        driving = state == SequencerState.NAVIGATING or fsm.manual_goal_active
+        external_goal_active = self._activity_sources.external_goal_active(
+            fsm.has_live_nav_goal, self.get_clock().now().nanoseconds / 1e9)
+        driving = (state == SequencerState.NAVIGATING or fsm.manual_goal_active
+                   or external_goal_active)
         if not driving:
             self._activity_sources.clear_recovery()
         progress = fsm.navigation_progress()
@@ -314,6 +320,7 @@ class WaypointSequencerNode(Node):
             current_action=fsm.current_action,
             waiting_trigger=fsm.waiting_trigger,
             manual_goal_active=fsm.manual_goal_active,
+            external_goal_active=external_goal_active,
             collision=self._activity_sources.collision,
             running_recovery_nodes=self._activity_sources.recovery_nodes,
             stalled_sec=0.0 if progress is None else progress.stalled_sec,

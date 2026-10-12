@@ -21,6 +21,7 @@ IDLE = 'idle'
 DEPARTURE_WAIT = 'departure_wait'
 NAVIGATING = 'navigating'
 MANUAL_GOAL = 'manual_goal'
+EXTERNAL_GOAL = 'external_goal'
 OBSTACLE_SLOWDOWN = 'obstacle_slowdown'
 OBSTACLE_STOP = 'obstacle_stop'
 SENSOR_TIMEOUT_STOP = 'sensor_timeout_stop'
@@ -79,6 +80,7 @@ class ActivityInputs:
     current_action: str
     waiting_trigger: bool
     manual_goal_active: bool
+    external_goal_active: bool
     collision: Optional[CollisionInput]
     running_recovery_nodes: FrozenSet[str]
     stalled_sec: float
@@ -102,10 +104,15 @@ def _recovery_text(running_nodes: FrozenSet[str]) -> Optional[str]:
     return None
 
 
-def _compose_driving(inputs: ActivityInputs, stall_warn_sec: float) -> Activity:
-    """Nav2 のゴールを走行中の活動。リカバリー・停止・進めない・減速・通常の順に決める。"""
-    index = -1 if inputs.manual_goal_active else inputs.current_index
-    total = -1 if inputs.manual_goal_active else inputs.total_waypoints
+def _compose_driving(
+        inputs: ActivityInputs, stall_warn_sec: float, external: bool = False) -> Activity:
+    """Nav2 のゴールを走行中の活動。リカバリー・停止・進めない・減速・通常の順に決める。
+
+    external は、シーケンサが送っていないゴール (RViz の 2D Goal Pose など) の走行。
+    """
+    no_waypoint = inputs.manual_goal_active or external
+    index = -1 if no_waypoint else inputs.current_index
+    total = -1 if no_waypoint else inputs.total_waypoints
     recovery = _recovery_text(inputs.running_recovery_nodes)
     if recovery is not None:
         return Activity(RECOVERY, recovery, NOTICE, index=index, total=total)
@@ -128,6 +135,9 @@ def _compose_driving(inputs: ActivityInputs, stall_warn_sec: float) -> Activity:
         return Activity(
             OBSTACLE_SLOWDOWN, '障害物で減速中',
             detail=collision.polygon_name, index=index, total=total)
+
+    if external:
+        return Activity(EXTERNAL_GOAL, '外部指定のゴールへ走行中')
 
     remaining = inputs.distance_remaining
     if inputs.manual_goal_active:
@@ -159,6 +169,8 @@ def compose_activity(inputs: ActivityInputs, stall_warn_sec: float) -> Activity:
         return _compose_driving(inputs, stall_warn_sec)
     if state == SequencerState.ERROR:
         return Activity(ERROR, 'エラーで停止中', ALERT)
+    if inputs.external_goal_active:
+        return _compose_driving(inputs, stall_warn_sec, external=True)
     if state == SequencerState.IDLE and inputs.waiting_trigger:
         return Activity(
             TRIGGER_WAIT, 'トリガー待ち',

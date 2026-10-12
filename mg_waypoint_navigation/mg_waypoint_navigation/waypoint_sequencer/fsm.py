@@ -202,6 +202,11 @@ class WaypointSequencerFSM:
     def manual_goal_active(self) -> bool:
         return self._manual_goal_active
 
+    @property
+    def has_live_nav_goal(self) -> bool:
+        """シーケンサが送った Nav2 ゴールが、結果が返るまでの間にあるか。"""
+        return self._navigator.has_live_goal
+
     def navigation_progress(self) -> Optional[ProgressStatus]:
         """Nav2 のゴールを走行中なら、位置が進んでいない時間とリカバリー回数。"""
         return self._navigator.progress_status()

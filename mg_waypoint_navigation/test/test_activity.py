@@ -26,6 +26,7 @@ def make_inputs(**overrides) -> ActivityInputs:
         current_action='',
         waiting_trigger=False,
         manual_goal_active=False,
+        external_goal_active=False,
         collision=None,
         running_recovery_nodes=frozenset(),
         stalled_sec=0.0,
@@ -137,6 +138,41 @@ class TestDriving:
     def test_manual_goal_in_error_state(self):
         result = compose(state=SequencerState.ERROR, manual_goal_active=True)
         assert result.code == act.MANUAL_GOAL
+
+    def test_external_goal(self):
+        result = compose(state=SequencerState.IDLE, external_goal_active=True)
+        assert result.code == act.EXTERNAL_GOAL
+        assert (result.index, result.total, result.remaining) == (-1, -1, -1.0)
+
+    def test_external_goal_replaces_waiting_states(self):
+        for state in (SequencerState.GOAL_REACHED, SequencerState.IDLE):
+            assert compose(state=state, external_goal_active=True).code == act.EXTERNAL_GOAL
+        result = compose(
+            state=SequencerState.IDLE, waiting_trigger=True, external_goal_active=True)
+        assert result.code == act.EXTERNAL_GOAL
+
+    def test_sequencer_states_take_priority_over_external_goal(self):
+        for state, code in (
+                (SequencerState.SUSPENDED, act.PAUSED),
+                (SequencerState.ON_STARTING, act.DEPARTURE_WAIT),
+                (SequencerState.ON_ARRIVING, act.ACTION),
+                (SequencerState.ERROR, act.ERROR)):
+            assert compose(state=state, external_goal_active=True).code == code
+
+    def test_external_goal_shows_obstacles_and_recovery(self):
+        stop = compose(
+            state=SequencerState.IDLE, external_goal_active=True,
+            collision=CollisionInput(act.COLLISION_STOP, 'stop_front'))
+        assert (stop.code, stop.detail) == (act.OBSTACLE_STOP, 'stop_front')
+        assert (stop.index, stop.total) == (-1, -1)
+        slowdown = compose(
+            state=SequencerState.IDLE, external_goal_active=True,
+            collision=CollisionInput(act.COLLISION_SLOWDOWN, 'slow'))
+        assert slowdown.code == act.OBSTACLE_SLOWDOWN
+        recovery = compose(
+            state=SequencerState.IDLE, external_goal_active=True,
+            running_recovery_nodes=frozenset({'BackUp'}))
+        assert recovery.code == act.RECOVERY
 
     def test_paused_takes_priority_over_stop(self):
         result = compose(

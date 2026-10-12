@@ -109,6 +109,12 @@ class WaypointNavigator:
     def distance_remaining(self) -> float:
         return self._distance_remaining
 
+    @property
+    def has_live_goal(self) -> bool:
+        """このナビゲータが送った Nav2 ゴールが、結果が返るまでの間にあるか。"""
+        with self._lock:
+            return self._live_state != _LiveState.NONE
+
     def progress_status(self) -> Optional[ProgressStatus]:
         """論理ゴールの走行中なら、位置が進んでいない時間とリカバリー回数。走行中でなければ None。"""
         with self._lock:
