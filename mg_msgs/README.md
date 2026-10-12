@@ -11,7 +11,7 @@ MG-01 の独自メッセージ・サービスの定義。ノードは持たな�
 | `LocalizationStatus` | 自己位置推定の監督ノードの状態 (`NORMAL`〜`DEGRADED`) と、判定に使った値 | `mg_navigation` の `localization_supervisor_node` | `tools/common/loc_metrics.py` (評価) |
 | `PauseRequest` | ウェイポイントシーケンサへの一時停止の要求 (要求元・有効か・理由) | Web UI、`mg_scenario_test` | `waypoint_sequencer_node` |
 | `SequencerStatus` | シーケンサの状態 (FSM の状態、現在のウェイポイント、一時停止中か、残りの距離、実行中のアクション、トリガー待ちか) | `waypoint_sequencer_node` (トピック `~/status`) | Web UI、`mg_diagnostics`、`mg_scenario_test` |
-| `NavigationActivity` | Waypoint 走行の「いまの活動」の要約 (障害物での停止、リカバリー、トリガー待ちなど)。表示用で、制御の入力にはしない | `waypoint_sequencer_node` (トピック `~/activity`、transient_local) | Web UI、`mg_scenario_test` |
+| `NavigationActivity` | 走行の「いまの活動」の要約 (障害物での停止、リカバリー、トリガー待ち、RViz などシーケンサを通らないゴールの走行など)。表示用で、制御の入力にはしない | `waypoint_sequencer_node` (トピック `~/activity`、transient_local) | Web UI、`mg_scenario_test` |
 | `WaypointInfo` | ウェイポイント 1 点の情報 (位置、到達許容、通過点か、到達時のアクション) | `waypoint_sequencer_node` | `WaypointList` の要素 |
 | `WaypointList` | 読み込んだウェイポイントの一覧 | `waypoint_sequencer_node` (トピック `~/waypoints`、transient_local) | Web UI、`mg_scenario_test`、`waypoint_editor_node` |
 | `PoseGraphDiff` | SLAM のポーズグラフの差分 (新しいノード、エッジ、GNSS の prior、ループ) | `mg_slam` の旧 Python 版 | `mg_slam` のプレビュー、Web UI |
