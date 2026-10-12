@@ -34,6 +34,7 @@ monitors:
   # 速度を 0 にするため、STOP は発動しない
   - bt_node: { node: BackUp, status: RUNNING, expect: never }
   - bt_node: { node: Spin, status: RUNNING, expect: never }
+  - navigation_activity: { code: recovery, expect: never }
 
 expect:
   - reached_all

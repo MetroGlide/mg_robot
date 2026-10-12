@@ -46,6 +46,7 @@ timeline:
 
 monitors:
   - bt_node: { node: Spin, status: RUNNING, expect: occurs }
+  - navigation_activity: { code: recovery }
 
 expect:
   - reached_all
