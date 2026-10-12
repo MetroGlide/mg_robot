@@ -188,15 +188,17 @@ stateDiagram-v2
 | `activity_freq_hz`        | double | `2.0`      | `~/activity` の配信周波数 |
 | `activity_collision_state_topic` | string | `/collision_monitor_state` | 障害物での停止・減速の入力。空にするとこの入力は使わない |
 | `activity_bt_log_topic`   | string | `/behavior_tree_log` | リカバリーの入力。空にするとこの入力は使わない |
+| `activity_nav_status_topic` | string | `/navigate_to_pose/_action/status` | シーケンサを通らないゴール (RViz の 2D Goal Pose など) の検出に使う入力。空にすると、その検出だけ止まる |
 
 > 読み込み済みの地図の記録は、`load_map` アクションと `~/load_map` を通した読み込みだけが更新する。
 > `/map_server/load_map` などを直接呼んだ場合は記録とずれる。
 
 ### いまの活動 (activity)
 
-`~/activity` (`mg_msgs/NavigationActivity`) は、シーケンサ経由の走行が「いま何をしているか」の要約。表示用で、制御の入力にはしない。判定はここ (`waypoint_sequencer/activity.py` の `compose_activity`、ROS に依存しない純関数) だけで行い、UI は表示するだけにする ([doc/monitoring.md](../../doc/monitoring.md))。
+`~/activity` (`mg_msgs/NavigationActivity`) は、走行が「いま何をしているか」の要約。シーケンサ経由の走行に加えて、シーケンサを通らないゴール (RViz の 2D Goal Pose など) の走行も `external_goal` として出す。表示用で、制御の入力にはしない。判定はここ (`waypoint_sequencer/activity.py` の `compose_activity`、ROS に依存しない純関数) だけで行い、UI は表示するだけにする ([doc/monitoring.md](../../doc/monitoring.md))。
 
-- **入力**: `SequencerStatus` と同じシーケンサの状態 (`current_action`、`waiting_trigger`、手動ゴールの有無を含む)、`activity_collision_state_topic` (`nav2_msgs/CollisionMonitorState`)、`activity_bt_log_topic` (`nav2_msgs/BehaviorTreeLog`)、位置が進まない時間 (`ProgressMonitor`)。
+- **入力**: `SequencerStatus` と同じシーケンサの状態 (`current_action`、`waiting_trigger`、手動ゴールの有無を含む)、`activity_collision_state_topic` (`nav2_msgs/CollisionMonitorState`)、`activity_bt_log_topic` (`nav2_msgs/BehaviorTreeLog`)、`activity_nav_status_topic` (`action_msgs/GoalStatusArray`、Nav2 のアクションの状態)、位置が進まない時間 (`ProgressMonitor`)。
+- **外部のゴールの判定**: Nav2 のアクションに生きたゴール (ACCEPTED / EXECUTING) があり、シーケンサ自身が送ったゴールが結果の返るまでの間に無く (`WaypointNavigator.has_live_goal`)、その状態が 1 秒 (`EXTERNAL_GOAL_HOLD_SEC`) 続いたとき。1 秒は、シーケンサのゴールの結果とアクションの状態の到着順の差を吸収するためのもの。アクションの状態は変化したときしか届かないので、発行側が居なくなったら最後の値を捨てる。
 - **配信**: 2Hz のタイマーからだけ合成する (専用の callback group)。状態が変わってから最大 0.5 秒遅れる。`elapsed_sec` は同じ `code` が続いている秒数。
 - **`text` は固定の短い説明**で、変わる数値は `index` / `total` / `remaining` で渡す。`emphasis` は表示の強調で、健全性ではない (健全性は `/diagnostics_agg`)。
 
@@ -207,13 +209,14 @@ stateDiagram-v2
 | `SUSPENDED` | `paused` (`detail` は要求元) |
 | `ON_STARTING` | `departure_wait` (`remaining` は残り秒数) |
 | `ON_ARRIVING` | `action` (`detail` はアクションの type) |
-| `NAVIGATING` か手動ゴール中: リカバリー中 | `recovery` |
+| `NAVIGATING`、手動ゴール中、外部のゴール (下の `ERROR` の次): リカバリー中 | `recovery` |
 | 同上: collision_monitor が停止、`source_timeout:` | `sensor_timeout_stop` |
 | 同上: collision_monitor が停止 | `obstacle_stop` (`detail` はポリゴン名) |
 | 同上: 位置が `stall_warn_sec` 以上進まない | `no_progress` |
 | 同上: collision_monitor が減速 | `obstacle_slowdown` |
 | 同上: 上のどれでもない | `navigating` (手動ゴールなら `manual_goal`) |
 | `ERROR` | `error` |
+| 外部のゴールを走行中 (上の停止・減速・リカバリーに当たらなかったとき) | `external_goal` |
 | `IDLE` でトリガー待ち | `trigger_wait` |
 | `GOAL_REACHED` | `goal_reached` |
 | 上のどれでもない | `idle` |
@@ -223,7 +226,9 @@ stateDiagram-v2
 **制約**
 
 - シーケンサの再起動直後は、collision_monitor の状態が次に変わるまで「障害物なし」として扱う (変化したときしか配信されない)。
-- 範囲は、シーケンサ経由の走行 (手動ゴールを含む) だけ。非常停止 (E-Stop) は入力にしない (Web UI の上部バーが常に表示する)。
+- シーケンサを通らないゴールは `navigate_to_pose` のものだけ (`navigate_through_poses` は対象外)。ゴールを送ってから表示に出るまで約 1 秒かかる。外部のゴールでは、残り距離と `no_progress` は出さない (`ProgressMonitor` はシーケンサのゴール専用)。
+- シーケンス走行中に RViz からゴールを送ると、Nav2 がシーケンサのゴールを置き換えるため、シーケンスが失敗しうる (この機能の前からの挙動で、表示は変えていない)。外部のゴールの判定は、シーケンサ自身のゴールが結果を返すまで有効にならない。
+- 非常停止 (E-Stop) は入力にしない (Web UI の上部バーが常に表示する)。
 - collision_monitor の範囲の外で障害物の手前で待っている間 (コントローラーの待ち) は、`stall_warn_sec` に達するまで `navigating` と表示される。
 - `SequencerStatus` にフィールドを足したので、古い rosbag を `ros2 bag play` で再生すると、新しい型の購読側が読めない。
 - 合成を別のノードへ移すときは、`SequencerStatus` に `stalled_sec` と `manual_goal_active` を足す (今は出していない)。

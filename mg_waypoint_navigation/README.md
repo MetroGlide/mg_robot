@@ -28,6 +28,7 @@
 | `initial_planning_map` | 空 | 起動時に `planning_map_server` が読んでいる計画用の地図 |
 | `publish_waypoint_status` | `true` | `~/status` を配信するか |
 | `publish_activity` | `true` | `~/activity` (走行の「いまの活動」) を配信するか。`false` なら、その入力の購読もしない |
+| `activity_nav_status_topic` | `/navigate_to_pose/_action/status` | RViz の 2D Goal Pose などシーケンサを通らないゴールの走行を、`~/activity` の `external_goal` として出すための入力。空にすると、その検出だけ止まる |
 
 ### waypoint_editor.launch.py
 
