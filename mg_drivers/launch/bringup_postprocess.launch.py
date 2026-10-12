@@ -81,13 +81,17 @@ def generate_launch_description():
                 ),
             ),
 
-            # launch.actions.IncludeLaunchDescription(
-            #     PythonLaunchDescriptionSource(
-            #         pkg_share + "/launch/laser_filters.launch.py"
-            #     ),
-            #     condition=launch.conditions.IfCondition(
-            #         use_lidar_arg.launch_config),
-            # ),
+            # LiDAR の前処理 (/scan_top_lidar -> /scan_filtered/scan_top_lidar)
+            launch.actions.IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(
+                    pkg_share + "/launch/laser_filters.launch.py"
+                ),
+                launch_arguments={
+                    "simulation": simulation_arg.launch_config,
+                }.items(),
+                condition=launch.conditions.IfCondition(
+                    use_lidar_arg.launch_config),
+            ),
 
             Node(
                 package="nmea_navsat_driver",

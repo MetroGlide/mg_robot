@@ -33,6 +33,9 @@ def generate_launch_description():
         executable="scan_to_scan_filter_chain",
         name="top_laser_filter",
         output="screen",
+        # collision_monitor と costmap の入力のため、落ちたら自動で再起動する
+        respawn=True,
+        respawn_delay=1.0,
         parameters=[
             {"use_sim_time": simulation_arg.launch_config},
             top_laser_filter_yaml_path,

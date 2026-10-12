@@ -58,7 +58,7 @@ ros2 run mg_drivers odom_offset_republisher.py
 | :--- | :--- |
 | `bringup_realsense.launch.py` | RealSense の起動 (`use_rs_d415` 既定 `true`、`use_rs_d435i` 既定 `false`) |
 | `bringup_kissicp.launch.py` | KISS-ICP のオドメトリ。`/cloud_top_lidar` を入力に、`/kissicp/odom` を出す (`pc_topic`、`odom_topic`、`visualize`、`deskew`、`max_range`、`min_range` など) |
-| `laser_filters.launch.py` | LiDAR のスキャンのフィルタ (`top_laser_filter_yaml`)。`bringup_postprocess` では無効 |
+| `laser_filters.launch.py` | LiDAR のスキャンの前処理 (`top_laser_filter_yaml`)。`/scan_top_lidar` から、近距離のノイズ (0.1 m 未満) と自車の点 (footprint + 5 cm の箱) を落とし、`/scan_filtered/scan_top_lidar` に出す。`bringup_postprocess` から起動する。ナビゲーションのコストマップと `collision_monitor` が使い、AMCL・SLAM は生の `/scan_top_lidar` を使う。落ちたら自動で再起動する |
 | `depth_to_pointcloud.launch.py` | 深度画像からの点群の復元 (`use_color`、トピック名、`depth_scale`、`stride`) |
 | `obstacle_detection_3d.launch.py` | 障害物検出 (`use_sim_time`、`use_sensor_data_qos`、`param_file`) |
 | `obstacle_detection_replay.launch.py` | rosbag の再生確認用。点群の復元 + 障害物検出 + RViz2 ([doc](./doc/obstacle_detection_3d.md)) |
@@ -114,7 +114,7 @@ ros2 run mg_drivers odom_offset_republisher.py
 | `ekf_slam.yaml`、`navsat_transform.yaml` | slam_toolbox の SLAM で、`use_ekf:=true` のときに使う EKF と `navsat_transform` |
 | `ublox_ubx_gps.yaml` | u-blox の設定 |
 | `rs_d435i.yaml`、`rs_d415.yaml` | RealSense の設定 |
-| `top_laser_filter.yaml` | LiDAR のフィルタ |
+| `top_laser_filter.yaml` | LiDAR の前処理のフィルタ (`LaserScanRangeFilter` と `LaserScanBoxFilter`)。箱の大きさは `mg_navigation` の footprint と `collision_monitor` の `PolygonApproach` に揃える |
 
 ホイールオドメトリ (`wheel_odometry_node`) と、モータドライバのパラメータは、launch に直接書かれている (`bringup_sensors.launch.py`、`bringup_hardware.launch.py`)。
 
