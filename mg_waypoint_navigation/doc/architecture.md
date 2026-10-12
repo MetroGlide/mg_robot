@@ -213,7 +213,7 @@ stateDiagram-v2
 | 同上: collision_monitor が停止、`source_timeout:` | `sensor_timeout_stop` |
 | 同上: collision_monitor が停止 | `obstacle_stop` (`detail` はポリゴン名) |
 | 同上: 位置が `stall_warn_sec` 以上進まない | `no_progress` |
-| 同上: collision_monitor が減速 | `obstacle_slowdown` |
+| 同上: collision_monitor が減速 (`slowdown` と `approach`) | `obstacle_slowdown` |
 | 同上: 上のどれでもない | `navigating` (手動ゴールなら `manual_goal`) |
 | `ERROR` | `error` |
 | 外部のゴールを走行中 (上の停止・減速・リカバリーに当たらなかったとき) | `external_goal` |

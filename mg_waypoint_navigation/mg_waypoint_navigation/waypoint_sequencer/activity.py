@@ -36,6 +36,9 @@ ERROR = 'error'
 # nav2_msgs/msg/CollisionMonitorState の action_type
 COLLISION_STOP = 1
 COLLISION_SLOWDOWN = 2
+COLLISION_APPROACH = 3
+# 速度を落とす動作 (slowdown と approach)。どちらも「障害物で減速中」として出す
+COLLISION_SLOWDOWN_TYPES = (COLLISION_SLOWDOWN, COLLISION_APPROACH)
 
 # データ途絶で停止したときの polygon_name の接頭辞 (mg_navigation/doc/nav2_config.md)
 SOURCE_TIMEOUT_PREFIX = 'source_timeout:'
@@ -131,7 +134,7 @@ def _compose_driving(
     if inputs.stalled_sec >= stall_warn_sec:
         return Activity(NO_PROGRESS, '進めていません', ALERT, index=index, total=total)
 
-    if collision is not None and collision.action_type == COLLISION_SLOWDOWN:
+    if collision is not None and collision.action_type in COLLISION_SLOWDOWN_TYPES:
         return Activity(
             OBSTACLE_SLOWDOWN, '障害物で減速中',
             detail=collision.polygon_name, index=index, total=total)

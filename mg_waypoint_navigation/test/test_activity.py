@@ -111,6 +111,11 @@ class TestDriving:
         result = compose(collision=CollisionInput(act.COLLISION_SLOWDOWN, 'slow'))
         assert result.code == act.OBSTACLE_SLOWDOWN
 
+    def test_approach_is_also_obstacle_slowdown(self):
+        result = compose(collision=CollisionInput(act.COLLISION_APPROACH, 'approach'))
+        assert result.code == act.OBSTACLE_SLOWDOWN
+        assert result.detail == 'approach'
+
     def test_do_nothing_is_navigating(self):
         assert compose(collision=CollisionInput(0, '')).code == act.NAVIGATING
 
