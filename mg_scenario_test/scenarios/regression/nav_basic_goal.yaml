@@ -16,7 +16,7 @@ run:
       - pose: { x: 5.0, y: 2.0, yaw: 0.0 }
 
 monitors:
-  - max_speed: { limit: 1.2 }          # 目標速度 (desired_linear_vel) は 1.0 m/s
+  - max_speed: { limit: 1.0 }          # 巡航速度 (desired_linear_vel, velocity_smoother.max_velocity) は 0.8 m/s
   # nav2_goals はシーケンサを通らないゴールなので、外部のゴールの走行として出る
   - navigation_activity: { code: external_goal }
 
