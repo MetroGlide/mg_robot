@@ -465,6 +465,15 @@ costmap_filter_info_server:
     base: 100.0
     multiplier: -0.6
 
+# collision_monitor: RPP (コストマップと経路に基づく衝突の確認) の後ろ盾になる、最後の安全層。
+# 生の scan (前処理済み) だけで判定するので、コストマップの更新の遅れ (5 Hz) に依存しない。
+# 障害物を主に避けるのは RPP とコストマップなので、通常の走行では発動しないように作る:
+#   Approach の時間 (1.0 秒) は RPP の衝突の確認 (max_allowed_time_to_collision_up_to_carrot 1.5 秒) より短くする。
+#   Stop は制動距離ぶんだけ (velocity_smoother の max_decel から決める)。
+# polygon の形は、LiDAR の前処理 (mg_drivers の top_laser_filter.yaml) が自車の点を消す箱
+# (x -0.25〜0.45, y ±0.35 = footprint + 5 cm) の外に置く。箱の中の点は消えているので、
+# polygon が箱の中に入ると、そこでは何も検出できない。
+# 値の関係は mg_navigation の test_nav2_params_consistency.py が検査する。
 collision_monitor:
   ros__parameters:
     use_sim_time: False
@@ -474,22 +483,22 @@ collision_monitor:
     cmd_vel_out_topic: "cmd_vel_collision" # velocity_smoother へ渡す
     state_topic: "collision_monitor_state" # TUI/診断での観測用
     transform_tolerance: 0.5
-    source_timeout: 3.0
+    # LiDAR は 10 Hz (rosbag の実測で最大の間隔 0.2 秒)。それを十分に超える時間だけ待つ
+    source_timeout: 1.0
     base_shift_correction: True
     # 順序重要: STOPを先に評価させる（polygons.cpp のロジック上、STOPが決まった時点で
     # それ以降のpolygonはスキップされるため、より優先度の高いSTOPを先に置く）
     polygons: ["PolygonStop", "PolygonSlowdown", "PolygonApproach"]
-    # polygons: []
 
-    # 即時の緊急停止（速度ゼロ）。現地チューニングで enabled を false にする、
-    # あるいは approach のみで十分と判断できればブロックごと削除してよい。
+    # 即時の緊急停止（速度ゼロ）。箱の前端 (x 0.45) から 0.25 m。
+    # 制動距離 v²/(2·|max_decel|) = 0.8²/(2·2.0) = 0.16 m に、scan と制御の遅れ 0.1 秒ぶん (0.08 m) を足した値。
     # enabled は動的パラメータのため ros2 param set での即時切替も可能。
     PolygonStop:
       type: "polygon"
-      points: [0.6, 0.3, 0.6, -0.3, 0.3, -0.3, 0.3, 0.3]
+      points: [0.7, 0.35, 0.7, -0.35, 0.45, -0.35, 0.45, 0.35]
       action_type: "stop"
       min_points: 4
-      enabled: False
+      enabled: True
       visualize: True
       polygon_pub_topic: "~/polygon_stop"
 
@@ -502,39 +511,38 @@ collision_monitor:
       type: "polygon"
       points: [1.4, 0.8, 1.4, -0.8, -0.3, -0.8, -0.3, 0.8]
       action_type: "slowdown"
-      slowdown_ratio: 0.3
+      slowdown_ratio: 0.5
       min_points: 4
-      enabled: False
+      enabled: True
       visualize: True
       polygon_pub_topic: "~/polygon_slowdown"
 
-    # points を指定せず footprint_topic を使う: 現在の速度 (旋回を含む) でフットプリント全体を前方へ
-    # シミュレートし、time_before_collision 以内に接触するなら減速する。旋回中の側面接触も対象になる。
-    # 従来の固定の前方の箱に戻す場合は、footprint_topic を消して次の points を有効にする:
-    #   points: [0.6, 0.3, 0.6, -0.3, 0.3, -0.3, 0.3, 0.3]
-    # 実機の注意: footprint は padding (0.1m) を含むので、LiDAR が車体の一部を検出する配置だと、
-    # 常に接触と判定して止まる。実機では、scan に車体の点が入っていないか確認すること。
+    # 箱と同じ大きさの形 (footprint + 5 cm) を、現在の速度 (旋回を含む) で前方へシミュレートし、
+    # time_before_collision 以内に接触するなら減速する。旋回中の側面の接触も対象になる。
+    # footprint_topic (local_costmap/published_footprint) は使わない: padding 0.1 m を含んで幅 0.8 m になり、
+    # 自車除去の箱より大きいので、箱の外の自車の点や、狭い隙間 (間隔 0.8 m のコーンなど) で止まってしまう。
     PolygonApproach:
       type: "polygon"
-      footprint_topic: "local_costmap/published_footprint"
+      points: [0.45, 0.35, 0.45, -0.35, -0.25, -0.35, -0.25, 0.35]
       action_type: "approach"
-      time_before_collision: 2.0
+      time_before_collision: 1.0
       simulation_time_step: 0.1
       min_points: 4
       visualize: True
-      enabled: False
+      enabled: True
       polygon_pub_topic: "~/polygon_approach"
 
     observation_sources: ["scan_top"]
     scan_top:
       type: "scan"
-      topic: "scan_top_lidar"
+      # costmap と同じ前処理済みの scan (近距離のノイズと自車の点を落としたもの)
+      topic: "scan_filtered/scan_top_lidar"
       enabled: True
-      # True にすると、このソースのデータが source_timeout 以上途絶えた (まだ届いていない場合を含む)
-      # とき、ポリゴンの enabled によらず速度 0 にする (state の polygon_name は
-      # "source_timeout:scan_top")。LiDAR が止まったまま走り続けるのを防ぐ。
-      # 動的パラメータ: ros2 param set /collision_monitor scan_top.stop_on_timeout true
-      stop_on_timeout: False
+      # True: このソースのデータが source_timeout 以上途絶えた (まだ届いていない場合を含む) とき、
+      # ポリゴンの enabled によらず速度 0 にする (state の polygon_name は "source_timeout:scan_top")。
+      # LiDAR や前処理が止まったまま走り続けるのを防ぐ。
+      # 動的パラメータ: ros2 param set /collision_monitor scan_top.stop_on_timeout false
+      stop_on_timeout: True
 
 # https://docs.nav2.org/configuration/packages/configuring-velocity-smoother.html
 # 速度指令の最後の段 (cmd_vel_collision -> cmd_vel)。最終的な速度の上限と加減速をここで決める。

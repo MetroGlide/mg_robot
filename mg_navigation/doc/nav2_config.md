@@ -88,19 +88,25 @@ controller_server ─ cmd_vel_nav ─► collision_monitor ─ cmd_vel_collision
 
 ## 衝突の防止 (`collision_monitor`)
 
-入力は上 LiDAR (`scan_top_lidar`)。次の 3 つを、この順に評価する (`stop` が決まったら、以降を飛ばす)。
+**RPP の後ろ盾になる、最後の安全層。** 障害物を主に避けるのは RPP とコストマップ (経路に基づく衝突の確認、コストによる減速) で、`collision_monitor` は生の scan だけで判定する。コストマップの更新の遅れ (5 Hz) に依存しないが、通常の走行では発動しないように作る (障害物のない走行と、静止した障害物を避ける走行で、`STOP` と `APPROACH` が 0 回であることを、シナリオテストで確認している)。
+
+入力は、前処理済みの上 LiDAR (`/scan_filtered/scan_top_lidar`。コストマップと同じ。近距離 0.1 m 未満のノイズと、自車の箱 (x -0.25〜0.45 m、y ±0.35 m = footprint + 5 cm) の中の点を落としたもの。[mg_drivers](../../mg_drivers/README.md))。次の 3 つを、この順に評価する (`stop` が決まったら、以降を飛ばす)。すべて `min_points` 4。
 
 | ポリゴン | 動作 | 形 |
 | :--- | :--- | :--- |
-| `PolygonStop` | 停止 (速度 0) | 前方の箱 (x 0.3〜0.6 m、y ±0.3 m)。`min_points` 4 |
-| `PolygonSlowdown` | 減速 (`slowdown_ratio` 0.3) | 前方 1.4 m、後方 0.3 m、両脇 0.8 m。側方から進路に入る対象 (横切る歩行者) に早く反応するため、広く取っている |
-| `PolygonApproach` | 接近 (`time_before_collision` 2.0 秒) | `local_costmap/published_footprint` を、現在の速度 (旋回を含む) で前方にシミュレートし、2 秒以内に接触するなら減速する |
+| `PolygonStop` | 停止 (速度 0) | 自車の箱の前端から 0.25 m (x 0.45〜0.70 m、y ±0.35 m)。0.8 m/s の制動距離 0.16 m (`max_decel` 2.0) に、scan と制御の遅れ 0.1 秒ぶん (0.08 m) を足した値 |
+| `PolygonSlowdown` | 減速 (`slowdown_ratio` 0.5。0.8 m/s なら 0.4 m/s) | 前方 1.4 m、後方 0.3 m、両脇 0.8 m。側方から進路に入る対象 (横切る歩行者) に早く反応するため、広く取っている |
+| `PolygonApproach` | 接近 (`time_before_collision` 1.0 秒) | 自車の箱と同じ大きさの形 (x -0.25〜0.45 m、y ±0.35 m) を、現在の速度 (旋回を含む) で前方にシミュレートし、1 秒以内に接触するなら減速する。旋回中の側面の接触も対象 |
 
+- `PolygonApproach` の時間 (1.0 秒) は、RPP の衝突の確認 (`max_allowed_time_to_collision_up_to_carrot` 1.5 秒) より短くする。RPP が先に減速・停止する。
+- `PolygonApproach` は `footprint_topic` (`local_costmap/published_footprint`) を使わない。`footprint_padding` (0.1 m) を含んで幅 0.8 m になり、自車の箱より大きいので、箱の外の自車の点や、狭い隙間 (間隔 0.8 m のコーンなど) で止まる。
+- 3 つの形は、自車の箱の外に置く (箱の中の点は前処理で消えている)。値の関係は `test/test_nav2_params_consistency.py` が検査する。
 - 上流の `collision_detector` (指令には介入せず、状態だけを出す) は、使っていないので起動しない。
-- 状態は `collision_monitor_state` に出る (観測用。`waypoint_sequencer_node` の `~/activity` の入力にもなる)。
-- **実機の注意**: `PolygonApproach` は、`footprint_padding` (0.1 m) を含む。LiDAR が車体の一部を検出する配置だと、常に接触と判定して止まる。実機では、scan に車体の点が入っていないか確認する。
-- `PolygonStop` は、`enabled` を動的パラメータ (`ros2 param set`) で切り替えられる。
-- **データの途絶での停止 (`<ソース>.stop_on_timeout`)**: 既定は `False` (`nav2_params.yaml` の `scan_top`)。`True` にすると、そのソースのデータが `source_timeout` (3 秒) 以上途絶えた、またはまだ届いていないときに、ポリゴンの `enabled` によらず速度 0 にする。`collision_monitor_state` の `polygon_name` は `source_timeout:<ソース名>`。`ros2 param set /collision_monitor scan_top.stop_on_timeout true` で切り替えられる。無効のままでは、途絶えたソースは黙って無視され、LiDAR が止まっても走り続ける。シーケンサの走行は、`driver_watchdog_node` が先に一時停止する ([mg_drivers](../../mg_drivers/doc/driver_watchdog.md))。これは、手動ゴールなどシーケンサを通らない走行の備え。
+- 状態は `collision_monitor_state` に出る (観測用。`waypoint_sequencer_node` の `~/activity` の入力にもなる。`slowdown` と `approach` は `obstacle_slowdown`)。
+- 各ポリゴンは、`enabled` を動的パラメータ (`ros2 param set /collision_monitor PolygonStop.enabled false` など) で切り替えられる。走行が不安定なときの切り分けに使える。
+- **データの途絶での停止 (`scan_top.stop_on_timeout: True`)**: scan のデータが `source_timeout` (1 秒。LiDAR は 10 Hz で、rosbag の実測の最大の間隔は 0.2 秒) 以上途絶えた、またはまだ届いていないときに、ポリゴンの `enabled` によらず速度 0 にする。`collision_monitor_state` の `polygon_name` は `source_timeout:scan_top`。LiDAR や前処理 (`top_laser_filter`) が止まったまま走り続けるのを防ぐ。シーケンサの走行は、`driver_watchdog_node` が先に一時停止する ([mg_drivers](../../mg_drivers/doc/driver_watchdog.md))。`ros2 param set /collision_monitor scan_top.stop_on_timeout false` で切り替えられる。
+- **保護の外**: Web UI のジョイスティックなどの手動操作は `/cmd_vel` に直接出すので、`collision_monitor` と `velocity_smoother` を通らない。`behavior_server` (後退・旋回) も通らない。
+- **水平な 2D LiDAR の限界**: 低い障害物 (高さ約 0.6 m の LiDAR の面より低いもの) は見えない。上り坂の地面を、障害物として見ることがある。実機で、段差や坂の手前で意図せず減速・停止しないか確認する。
 
 ## AMCL
 
