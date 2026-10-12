@@ -236,11 +236,16 @@ local_costmap:
         enabled: True
         observation_sources: scan
         scan:
-          topic: /scan_top_lidar
+          # 近距離のノイズと自車の点を落とした scan (mg_drivers の laser_filters)
+          topic: /scan_filtered/scan_top_lidar
           max_obstacle_height: 2.0
           clearing: True
           marking: True
           data_type: "LaserScan"
+          raytrace_max_range: 4.0
+          raytrace_min_range: 0.0
+          obstacle_max_range: 3.5
+          obstacle_min_range: 0.0
       depth_voxel_layer:
         plugin: "nav2_costmap_2d::VoxelLayer"
         enabled: True
@@ -334,7 +339,7 @@ global_costmap:
         enabled: True
         observation_sources: scan
         scan:
-          topic: /scan_top_lidar
+          topic: /scan_filtered/scan_top_lidar
           max_obstacle_height: 2.0
           clearing: True
           marking: True

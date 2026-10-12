@@ -41,7 +41,7 @@ controller_server ─ cmd_vel_nav ─► collision_monitor ─ cmd_vel_collision
 | レイヤー | `top_obstacle_layer`、`obstacle_stvl_layer`、`inflation_layer` | `static_layer`、`top_obstacle_layer`、`obstacle_stvl_layer`、`inflation_layer` |
 | 膨張 | `inflation_radius` 0.8 m、`cost_scaling_factor` 3.0 | `inflation_radius` 1.0 m、`cost_scaling_factor` 3.0 |
 
-- `top_obstacle_layer`: 上 LiDAR (`/scan_top_lidar`) の障害物の記録と消去。
+- `top_obstacle_layer`: 上 LiDAR の障害物の記録と消去。入力は、前処理済みの `/scan_filtered/scan_top_lidar` (近距離 0.1 m 未満のノイズと自車の点を落としたもの。[mg_drivers](../../mg_drivers/README.md) の `laser_filters.launch.py`)。local は `obstacle_max_range` 3.5 m、`raytrace_max_range` 4.0 m、global は 5.5 m と 6.0 m。近距離の除去は前処理に一本化し、`*_min_range` は 0.0 にしている。
 - `obstacle_stvl_layer` (`spatio_temporal_voxel_layer`): 3D 障害物検出の出力 (`/obstacle_detection_3d_node/points_obstacle`、[mg_drivers](../../mg_drivers/doc/obstacle_detection_3d.md)) を記録する。`voxel_decay` は local が 5 秒、global が 25 秒。
 - 深度カメラの `depth_voxel_layer`、`denoise_layer` は、定義だけが残り、`plugins` からは外れている。
 - `speed_filter` (`filters`) は、定義だけがあり、`filters` はコメントアウトされている。
