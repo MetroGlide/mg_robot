@@ -52,7 +52,7 @@ obstacles:
 | `local` | `path` (`pkg://` と `{変数}` に対応) | SDF ファイル |
 | `primitive` | `shape` (`box` / `cylinder` / `sphere`)、`size` | `size`: box は x,y,z、cylinder は radius,length、sphere は radius。**z は中心の高さ** (床に置くなら高さの半分) |
 
-`static` は fuel / primitive に適用。メッシュの大きなモデルはソフトウェアレンダリング環境で
+`static` (既定 true) は fuel / primitive に適用。メッシュの大きなモデルはソフトウェアレンダリング環境で
 シミュレーション速度を大きく下げるため、壁やバリア類は `primitive` を推奨します。
 
 ## 姿勢 (PoseSpec)
@@ -126,7 +126,7 @@ timeline:
   - name: person_crosses          # 結果に表示される名前 (任意)
     when: { robot_travelled: { distance: 1.0 } }
     until: { goal_reached: { index: 0 } }   # 成立したら実行中の do を打ち切る (任意)
-    required: true                # 一度も発火しなければ ERROR (true の場合)
+    required: true                # 一度も発火しなければ ERROR (既定 true)
     do:
       - spawn: { obstacle: person, pose: { frame: robot, x: 2.0, yaw: 3.14 } }
       - delay: { sec: 3.0 }

@@ -1,6 +1,6 @@
 # BT プラグイン
 
-`bt_navigator` が読み込む BT ノード (`params/nav2_params.yaml` の `plugin_lib_names`)。一覧は [README](../README.md#bt-プラグイン)、使い方と BT 全体の動きは [mg_waypoint_navigation](../../mg_waypoint_navigation/README.md#behavior-tree)。ポートの既定値は、ソースの `providedPorts()` が正。
+`bt_navigator` が読み込む BT ノード (`params/nav2_params.yaml` の `plugin_lib_names`)。一覧は [README](../README.md#bt-プラグイン)、使い方と BT 全体の動きは [mg_waypoint_navigation](../../mg_waypoint_navigation/README.md#behavior-tree)。BT の XML を書く人のため、ポートの既定値も載せる (ソースの `providedPorts()` が正)。
 
 ## IsPathClear
 
@@ -18,20 +18,20 @@ RPP (Humble 1.1.20 の `RegulatedPurePursuitController`) の衝突判定と同�
 - ログ (bt_navigator): リカバリーごとに最初の判定の結果 (`first check of this recovery: blocked=...`。コストマップの古さと経路の終点も出す)、塞がっていることを観測したとき (`path is blocked`)、空いて SUCCESS を返したとき (`path became clear, resuming`) に INFO を出す。経路がない、ロボットの姿勢や経路を変換できない、コストマップが古い、で判定できないときは WARN (間引いて出す)。リカバリーで早く再開しなかった理由は、最初の判定が `blocked=0` (障害物以外が原因と判断) か、判定できなかったかで見分ける
 - Nav2 を更新するときは、RPP の判定 (`isCollisionImminent` など) の変更に合わせて見直す
 
-| ポート | 内容 |
-| :--- | :--- |
-| `path` | 判定する経路 |
-| `margin` | 経路に沿って `max_lookahead_dist` の先まで見る距離 [m] |
-| `clear_duration` | 空いた状態が続く必要のある時間 [s] |
-| `controller_node` / `controller_id` | RPP のパラメータの取得先 |
-| `costmap_node` / `costmap_topic` | コストマップのパラメータの取得先と購読するトピック |
-| `transform_tolerance` | TF の許容時間 [s] |
+| ポート | 既定値 | 内容 |
+| :--- | :--- | :--- |
+| `path` | なし | 判定する経路 |
+| `margin` | `0.3` | 経路に沿って `max_lookahead_dist` の先まで見る距離 [m] |
+| `clear_duration` | `1.0` | 空いた状態が続く必要のある時間 [s] |
+| `controller_node` / `controller_id` | `controller_server` / `FollowPath` | RPP のパラメータの取得先 |
+| `costmap_node` / `costmap_topic` | `local_costmap/local_costmap` / `local_costmap/costmap_raw` | コストマップのパラメータの取得先と購読するトピック |
+| `transform_tolerance` | `0.2` | TF の許容時間 [s] |
 
 ## CommitPath
 
-| ポート | 内容 |
-| :--- | :--- |
-| `candidate` | 計画の結果 (`ComputePathToPose` の出力。失敗すると空になる) |
-| `goal` | 今のゴール |
-| `path` | 追従する経路 (入出力) |
-| `goal_tolerance` | 経路の終点とゴールの距離がこれ以内なら、そのゴールへの経路とみなす [m] |
+| ポート | 既定値 | 内容 |
+| :--- | :--- | :--- |
+| `candidate` | なし | 計画の結果 (`ComputePathToPose` の出力。失敗すると空になる) |
+| `goal` | なし | 今のゴール |
+| `path` | なし | 追従する経路 (入出力) |
+| `goal_tolerance` | `0.6` | 経路の終点とゴールの距離がこれ以内なら、そのゴールへの経路とみなす [m] |

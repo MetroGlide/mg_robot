@@ -30,7 +30,7 @@ waypoints:
 
 - `reach_tolerance` は読み込み・保存・配信されるが、到達判定には使われない。`controller_server` の `xy_goal_tolerance` を実行時に書き換えると、controller が速度 0 を出し続けてロボットが走り出さなくなるため（Nav2 Humble で再現）、ゴールごとの設定は廃止した。停止点の到達半径は `nav2_params.yaml` の値が全 WP 共通で適用される。
 - `index` は 0 からの連番とする（重複・欠番があると読み込みエラー）。
-- `defaults` を省略した場合は通過点扱い (`is_through_point: true`) で、`through_tolerance` はソースの既定になる。**最終ウェイポイントや on_reached_actions を持つウェイポイントも、指定しなければ通過点扱い**（`through_tolerance` の手前で到達とみなしてアクションを実行する）になる。その場で止まってほしい地点は `is_through_point: false` を明示すること。
+- `defaults` を省略した場合は `is_through_point: true` / `through_tolerance: 3.0` になる。**最終ウェイポイントや on_reached_actions を持つウェイポイントも、指定しなければ通過点扱い**（3m 手前で到達とみなしてアクションを実行する）になる。その場で止まってほしい地点は `is_through_point: false` を明示すること。
 - 次の設定は読み込みを拒否せず、警告ログを出す: 隣り合う WP の間隔が後ろの WP の `through_tolerance` より短い通過点（すぐ通過扱いになる）、on_reached_actions を持つ通過点、最終 WP の通過点。
 - 読み込み時に on_reached_actions を検証する（未知の type、必須フィールドの欠落、import できない型の指定はエラー）。不正なファイルは読み込み・reload とも拒否される。
 
@@ -102,9 +102,9 @@ waypoints:
   countdown_ms: 3000
 ```
 
-| フィールド | 型 | 説明 |
-| :--- | :--- | :--- |
-| `countdown_ms` | int | 待機時間 [ms] |
+| フィールド | 型 | デフォルト | 説明 |
+| :--- | :--- | :--- | :--- |
+| `countdown_ms` | int | 3000 | 待機時間 [ms] |
 
 ### type: wait_trigger — 外部トリガー待ち
 
@@ -124,9 +124,9 @@ waypoints:
   mode: queue_wait
 ```
 
-| フィールド | 型 | 説明 |
-| :--- | :--- | :--- |
-| `mode` | string | `normal` / `queue_wait`。以降のゴールで使う BT と global_costmap の障害物レイヤーを切り替える |
+| フィールド | 型 | デフォルト | 説明 |
+| :--- | :--- | :--- | :--- |
+| `mode` | string | `normal` | `normal` / `queue_wait`。以降のゴールで使う BT と global_costmap の障害物レイヤーを切り替える |
 
 ---
 
