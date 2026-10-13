@@ -21,6 +21,7 @@ compose のサービス (`make slam`、`make navigation` など) は、ここの
 
 引数の既定に環境変数 (`SIMULATION`、`USE_RVIZ`、`MAP_PATH`、`WAYPOINT_PATH`) を使うものがある ([doc/environment.md](../doc/environment.md))。
 `OPTS` で渡す: `make navigation OPTS="use_ekf:=false global_planner:=navfn"`。
+引数の一覧と説明は `ros2 launch mg_bringup <ファイル> -s` でも確認できる。ここには名前と意味だけを書く (既定値は launch が正)。
 
 ### bringup_common
 
