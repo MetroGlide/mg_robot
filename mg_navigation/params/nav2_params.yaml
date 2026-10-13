@@ -171,14 +171,17 @@ controller_server:
       yaw_goal_tolerance: 0.25
 
     # RPP parameters
+    # 各パラメータの意味と調整の考え方は ../doc/rpp_tuning.md
     FollowPath:
       plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
       # 巡航速度 [m/s]。velocity_smoother の max_velocity (x) も同じ値にする
       desired_linear_vel: &v_max 0.8
-      lookahead_dist: 1.6
-      min_lookahead_dist: 1.3
-      max_lookahead_dist: 1.9
-      lookahead_time: 1.5
+      # 先読み距離は「現在速度 × lookahead_time」を min〜max に収めた値 (use_velocity_scaled_lookahead_dist)。
+      # 巡航速度 × lookahead_time が min と max の間に入るようにする。min に張り付くと速度連動が効かない
+      # (test_nav2_params_consistency.py が検査する)。lookahead_dist は速度連動を使う間は参照されないので置かない
+      lookahead_time: 1.6
+      min_lookahead_dist: 0.8
+      max_lookahead_dist: 1.8
       rotate_to_heading_angular_vel: 0.8
       max_angular_accel: *w_acc
       transform_tolerance: 0.1
@@ -193,9 +196,14 @@ controller_server:
       use_cost_regulated_linear_velocity_scaling: true
       regulated_linear_scaling_min_radius: 0.9
       regulated_linear_scaling_min_speed: 0.25
-      cost_scaling_dist: 0.3
+      # コストによる減速は、ロボットの原点から障害物までの距離 (原点のセルのコストから逆算) が
+      # cost_scaling_dist 未満のときに効く。距離はフットプリントの内接半径以上でしか求まらないので、
+      # cost_scaling_dist は内接半径 (footprint_padding を含む) より大きくする。以下だと減速が一切効かない
+      cost_scaling_dist: 0.6
       cost_scaling_gain: 1.0
-      inflation_cost_scaling_factor: 1.0
+      # コストから距離を逆算するための値。local_costmap の inflation_layer.cost_scaling_factor と同じ値にする
+      # (アンカーで共有する。アンカーはスカラー専用)。違うと距離を誤って求め、コストによる減速がずれる
+      inflation_cost_scaling_factor: &inflation_cost_scaling_factor 3.0
 
 local_costmap:
   local_costmap:
@@ -237,7 +245,8 @@ local_costmap:
         # 半径はフットプリントの外接半径 (padding 込みで約 0.64m) 以上にすること (Smac の衝突判定の高速化の条件)。
         # NavFn に戻す場合 (global_planner:=navfn) は、従来の inflation_radius: 2.5 / cost_scaling_factor: 1.0 も検討する。
         inflation_radius: 0.8
-        cost_scaling_factor: 3.0
+        # RPP の inflation_cost_scaling_factor と同じ値 (アンカーで共有)
+        cost_scaling_factor: *inflation_cost_scaling_factor
       top_obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: True

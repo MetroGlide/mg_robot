@@ -177,3 +177,35 @@ def test_rpp_reacts_before_the_approach_polygon(params):
     rpp = _ros_params(params, 'controller_server')['FollowPath']
     approach = _polygon(params, 'PolygonApproach')
     assert approach['time_before_collision'] < rpp['max_allowed_time_to_collision_up_to_carrot']
+
+
+def test_rpp_lookahead_scales_with_speed_at_cruise(params):
+    rpp = _ros_params(params, 'controller_server')['FollowPath']
+    assert rpp['use_velocity_scaled_lookahead_dist'] is True
+    # 巡航速度での先読みが min にも max にも張り付かないこと (張り付くと速度連動が効かない)
+    lookahead = rpp['desired_linear_vel'] * rpp['lookahead_time']
+    assert rpp['min_lookahead_dist'] < lookahead < rpp['max_lookahead_dist']
+    # 速度連動を使う間は参照されない
+    assert 'lookahead_dist' not in rpp
+
+
+def test_rpp_inflation_cost_scaling_factor_matches_the_local_inflation_layer(params):
+    rpp = _ros_params(params, 'controller_server')['FollowPath']
+    local = params['local_costmap']['local_costmap']['ros__parameters']
+    assert rpp['inflation_cost_scaling_factor'] == (
+        local['inflation_layer']['cost_scaling_factor'])
+
+
+def test_rpp_cost_scaling_dist_exceeds_the_inscribed_radius(params):
+    # コストから求めた障害物までの距離は内接半径以上になるので、cost_scaling_dist が
+    # 内接半径以下だとコストによる減速が一切効かない。内接半径は、原点から (padding を含む)
+    # フットプリントの最も近い辺までの距離 (フットプリントは原点を含む矩形)
+    local = params['local_costmap']['local_costmap']['ros__parameters']
+    xs = [p[0] for p in _footprint(params, 'local_costmap')]
+    ys = [p[1] for p in _footprint(params, 'local_costmap')]
+    inscribed = min(-min(xs), max(xs), -min(ys), max(ys)) + local['footprint_padding']
+    rpp = _ros_params(params, 'controller_server')['FollowPath']
+    assert rpp['use_cost_regulated_linear_velocity_scaling'] is True
+    assert rpp['cost_scaling_dist'] > inscribed
+    # 距離を求められるのは、膨張の範囲内だけ
+    assert rpp['cost_scaling_dist'] <= local['inflation_layer']['inflation_radius']
