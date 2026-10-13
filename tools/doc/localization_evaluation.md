@@ -40,7 +40,7 @@ make bag-eval-localization BAG=<bag> GT_DIR=<評価 bag の SLAM 出力> MAP_GT_
 パラメータを変えた「変種」を同じ条件で試して比べるためのものです。実機は使いません。
 
 ```bash
-# 現状のパラメータでベースラインを測る (既定は短縮版データセット、3 回)
+# 現状のパラメータでベースラインを測る (短縮版データセット)
 tools/scripts/run_localization_variant.sh baseline
 # パラメータを書き換えた変種 (プレフィックス: ekf. / amcl. / bridge.)
 tools/scripts/run_localization_variant.sh lag_on ekf.smooth_lagged_data=true ekf.history_length=1.0
@@ -54,16 +54,16 @@ docker run --rm -v $PWD:/app -v ~/ros2_data:/root/ros2_data mg_develop:latest \
 
 | オプション | 内容 |
 | :--- | :--- |
-| `--dataset <名前\|パス>` | `tools/datasets/localization/` の定義。既定 `map043837_eval051635_short` |
-| `--runs N` | 繰り返す回数 (既定 3)。AMCL は乱数を使うため、分布で比べる |
-| `--init gt\|gnss` | 初期姿勢。`gt` は真値を与える (既定)、`gnss` は GNSS による初期化に任せて初期化も評価する |
-| `--initializer true\|false` | GNSS から AMCL の初期姿勢を与えるノード。既定は `--init gt` で `false`、`gnss` で `true` |
-| `--monitor none\|watchdog\|supervisor` | 自己位置の監視ノード。既定は `--init gt` で `none`、`gnss` で `watchdog` |
+| `--dataset <名前\|パス>` | `tools/datasets/localization/` の定義 |
+| `--runs N` | 繰り返す回数。AMCL は乱数を使うため、分布で比べる |
+| `--init gt\|gnss` | 初期姿勢。`gt` は真値を与える、`gnss` は GNSS による初期化に任せて初期化も評価する |
+| `--initializer true\|false` | GNSS から AMCL の初期姿勢を与えるノード。`--init` に応じて切り替わる (`gt` では使わず、`gnss` では使う) |
+| `--monitor none\|watchdog\|supervisor` | 自己位置の監視ノード。`--init` に応じて切り替わる (`gt` では `none`、`gnss` では `watchdog`) |
 | `--faults <yaml>` | センサ入力に故障を注入して、復旧を評価する (`tools/datasets/localization/faults/`) |
 | `--start S` / `--duration D` | 評価する区間 (データセットの値を上書き) |
-| `--rate R` | 再生速度 (既定 1.0)。処理が間に合わなくなるため実時間が基本 |
+| `--rate R` | 再生速度。処理が間に合わなくなるため実時間が基本 |
 | `--cpus N` | コンテナが使える CPU 数。開発 PC は実機より速いため、実機相当に絞って AMCL の遅延を見る |
-| `--ekf-file` `--nav2-file` `--bridge-file` `--odom-file` `--supervisor-file` | パラメータファイルを、リポジトリの既定ではなく指定したファイルから複製する (複数行のリストなど、1 行の書き換えでは変えられない変更に使う) |
+| `--ekf-file` `--nav2-file` `--bridge-file` `--odom-file` `--supervisor-file` | パラメータファイルを、リポジトリのファイルではなく指定したファイルから複製する (複数行のリストなど、1 行の書き換えでは変えられない変更に使う) |
 
 書き換えるパラメータは `プレフィックス.キー=値` で指定します (キーはドット区切り)。
 
@@ -88,7 +88,7 @@ docker run --rm -v $PWD:/app -v ~/ros2_data:/root/ros2_data mg_develop:latest \
 1. **ベースラインを測る**: 変更前の状態で `run_localization_variant.sh baseline` を実行する。試行間のばらつきが分かる。
 2. **1 つずつ変える**: 変種を 1 つのパラメータ (または 1 組の関連するパラメータ) だけ変えて実行する。複数を同時に変えると効果を分離できない。
 3. **複数の試行で比べる**: AMCL は乱数を使い、条件によっては試行の約半数が破綻する (`movingstart`)。平均や中央値だけでなく、**破綻した試行の割合**
-   (位置誤差の p95 が 3 m を超えた試行) を見る。効果の小さい差は、試行数 (`--runs`) を増やさないと判断できない。
+   (位置誤差の p95 が閾値を超えた試行) を見る。効果の小さい差は、試行数 (`--runs`) を増やさないと判断できない。
 4. **比較表を作る**: `compare_localization.py <変種のディレクトリ...>` (先頭が基準)。
 5. **実機で確認する**: 採用する変更は、実機の走行でも同じコースを走り、記録した bag を `make bag-eval-localization` で評価して、再生の結果と食い違わないか確かめる。
 
@@ -130,4 +130,4 @@ docker run --rm -v $PWD:/app -v ~/ros2_data:/root/ros2_data mg_develop:latest \
 - 評価する走行が、地図の範囲外を通る区間では AMCL が使えず破綻します。区間は地図がカバーする範囲に絞ってください (051635 は地図 043837 に対して 0〜138 s / 462〜1586 s / 1636〜1856 s が範囲内。範囲に入った直後の 462〜540 s も特徴が乏しく誤差が大きい)。
 - **ホイールオドメトリの速度 (twist) が 0 になる不具合**: 051635 の 370〜730 s では、ドライバの速度が 0 のまま姿勢だけが更新されています (043837 は全区間で正常)。EKF は速度を観測として使うので、この区間では速度の共分散を小さくするほど破綻します。補正ノードの `twist_source: pose_diff` (姿勢の差分から速度を求める) で影響を受けなくなります。`odom.twist_source=pose_diff` で試せます。区間を選ぶときは `mg_drivers` の速度と姿勢の差分が一致しているか確認してください。
 - 再生を始める位置は、評価する走行でロボットが**止まっている**時点を選んでください。動いている最中から始めると、初期化直後の収束前に走り出すことになり、実運用より厳しい条件で AMCL が破綻しやすくなります (051635 は 722〜810 s が停止中)。
-- `--init gt` では、初期姿勢を与えた直後の 10 秒 (`EVAL_SKIP`) を評価から除きます。
+- `--init gt` では、初期姿勢を与えた直後の一定時間 (`EVAL_SKIP`) を評価から除きます。
