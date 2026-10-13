@@ -9,8 +9,8 @@
 
 | 実行ファイル | 内容 | 主な入出力 |
 | :--- | :--- | :--- |
-| `wheel_odometry_node` | 車輪のエンコーダ (シリアル) からオドメトリを出す。切断されたら再接続する ([切断からの復旧](#切断からの復旧)) | 出力: `odom` (`nav_msgs/Odometry`)、`~/connected` (`Bool`、1 Hz)、診断 `connection`、イベント `driver.*` |
-| `motor_driver_node` | 速度指令をモータドライバ (シリアル) に送る。切断されたら再接続する ([切断からの復旧](#切断からの復旧)) | 入力: `cmd_vel` (`Twist`)、`~/emergency_stop` (`Bool`)、出力: `~/connected` (`Bool`、1 Hz)、診断 `connection`・`emergency_stop`、イベント `driver.*` |
+| `wheel_odometry_node` | 車輪のエンコーダ (シリアル) からオドメトリを出す。切断されたら再接続する ([切断からの復旧](#切断からの復旧)) | 出力: `odom` (`nav_msgs/Odometry`)、`~/connected` (`Bool`)、診断 `connection`、イベント `driver.*` |
+| `motor_driver_node` | 速度指令をモータドライバ (シリアル) に送る。切断されたら再接続する ([切断からの復旧](#切断からの復旧)) | 入力: `cmd_vel` (`Twist`)、`~/emergency_stop` (`Bool`)、出力: `~/connected` (`Bool`)、診断 `connection`・`emergency_stop`、イベント `driver.*` |
 | `depth_postprocess_node` | 点群をボクセルグリッドで間引き、統計的な外れ値を除く | 入力: `points`、出力: `points_filtered` (`PointCloud2`) |
 | `obstacle_detection_3d_node` | 点群から立体障害物を検出する ([doc](./doc/obstacle_detection_3d.md)) | 入力: `points`、出力: `~/points_obstacle`、`~/cluster_markers` |
 | `pcl_downsampling_node` | 点群の間引き。どの launch からも起動されない | 入力: `points/raw`、出力: `points/downsampled` |
@@ -49,47 +49,47 @@ ros2 run mg_drivers odom_offset_republisher.py
 | :--- | :--- |
 | `bringup_sensors.launch.py` | (実機のみ) `wheel_odometry_node`、RPLiDAR 2 台、GNSS、RealSense |
 | `bringup_postprocess.launch.py` | 補正ノード、TF の配信、前方 LiDAR の中継、GNSS の NMEA 変換、点群の後処理、障害物検出 |
-| `bringup_common.launch.py` | PC のリソースの配信 (`use_resource_pub`、既定 `true`) |
-| `bringup_hardware.launch.py` | (実機のみ) `motor_driver_node` (`wheel_pitch` 0.358 m、`max_speed` 1.0 m/s) |
+| `bringup_common.launch.py` | PC のリソースの配信 (`use_resource_pub`) |
+| `bringup_hardware.launch.py` | (実機のみ) `motor_driver_node` (`wheel_pitch`、`max_speed` は launch に書かれている) |
 
 個別に使う launch は次のとおり。
 
 | ファイル | 内容 |
 | :--- | :--- |
-| `bringup_realsense.launch.py` | RealSense の起動 (`use_rs_d415` 既定 `true`、`use_rs_d435i` 既定 `false`) |
+| `bringup_realsense.launch.py` | RealSense の起動 (`use_rs_d415`、`use_rs_d435i` で機種を選ぶ) |
 | `bringup_kissicp.launch.py` | KISS-ICP のオドメトリ。`/cloud_top_lidar` を入力に、`/kissicp/odom` を出す (`pc_topic`、`odom_topic`、`visualize`、`deskew`、`max_range`、`min_range` など) |
-| `laser_filters.launch.py` | LiDAR のスキャンの前処理 (`top_laser_filter_yaml`)。`/scan_top_lidar` から、近距離のノイズ (0.1 m 未満) と自車の点 (footprint + 5 cm の箱) を落とし、`/scan_filtered/scan_top_lidar` に出す。`bringup_postprocess` から起動する。ナビゲーションのコストマップと `collision_monitor` が使い、AMCL・SLAM は生の `/scan_top_lidar` を使う。落ちたら自動で再起動する |
+| `laser_filters.launch.py` | LiDAR のスキャンの前処理 (`top_laser_filter_yaml`)。`/scan_top_lidar` から、近距離のノイズと自車の点を落とし、`/scan_filtered/scan_top_lidar` に出す。`bringup_postprocess` から起動する ([doc/laser_filters.md](./doc/laser_filters.md)) |
 | `depth_to_pointcloud.launch.py` | 深度画像からの点群の復元 (`use_color`、トピック名、`depth_scale`、`stride`) |
 | `obstacle_detection_3d.launch.py` | 障害物検出 (`use_sim_time`、`use_sensor_data_qos`、`param_file`) |
 | `obstacle_detection_replay.launch.py` | rosbag の再生確認用。点群の復元 + 障害物検出 + RViz2 ([doc](./doc/obstacle_detection_3d.md)) |
 
 ### bringup.launch.py の引数
 
-| 引数 | 既定値 | 内容 |
-| :--- | :--- | :--- |
-| `simulation` | `$SIMULATION` | `true` なら、センサのドライバを起動しない (`bringup_sensors` を除く) |
-| `drive` | `false` | `bringup_hardware` を起動するか ([注意](#注意)) |
-| `use_odom` / `use_odom_tf` | `true` | ホイールオドメトリ / TF の配信 |
-| `use_lidar` / `use_gps` | `true` | LiDAR / GNSS |
-| `use_realsense` | `true` | 点群の後処理と障害物検出 (`bringup_postprocess`) |
-| `use_rs_imu` | `true` | RealSense の IMU (ジャイロと加速度) |
-| `use_odom_corrector` | `false` | 補正ノードを起動し、ドライバの出力を `odom/raw` にする |
-| `odom_corrector_params_file` | `wheel_odom_corrector.yaml` | `params/` のファイル名または絶対パス |
-| `respawn_drivers` | `true` | ドライバのプロセスが終了したら起動し直す ([切断からの復旧](#切断からの復旧)) |
-| `use_driver_watchdog` | `true` | ドライバの監視ノードを起動する (実機のみ。[doc](./doc/driver_watchdog.md)) |
+| 引数 | 内容 |
+| :--- | :--- |
+| `simulation` | `true` なら、センサのドライバを起動しない (`bringup_sensors` を除く) |
+| `drive` | `bringup_hardware` を起動するか ([注意](#注意)) |
+| `use_odom` / `use_odom_tf` | ホイールオドメトリ / TF の配信 |
+| `use_lidar` / `use_gps` | LiDAR / GNSS |
+| `use_realsense` | 点群の後処理と障害物検出 (`bringup_postprocess`) |
+| `use_rs_imu` | RealSense の IMU (ジャイロと加速度) |
+| `use_odom_corrector` | 補正ノードを起動し、ドライバの出力を `odom/raw` にする |
+| `odom_corrector_params_file` | `params/` のファイル名または絶対パス |
+| `respawn_drivers` | ドライバのプロセスが終了したら起動し直す ([切断からの復旧](#切断からの復旧)) |
+| `use_driver_watchdog` | ドライバの監視ノードを起動する (実機のみ。[doc](./doc/driver_watchdog.md)) |
 
 ### bringup_sensors.launch.py の引数
 
-| 引数 | 既定値 | 内容 |
-| :--- | :--- | :--- |
-| `odom_port` | `/dev/ttyRobot-odom` | ホイールオドメトリのシリアルポート |
-| `top_rplidar_port` | `/dev/ttyRobot-toplidar` | LiDAR のポート |
-| `gps_port` | `/dev/ttyRobot-gps` | GNSS のポート |
-| `use_ubx_protocol` | `true` | `true`: u-blox の UBX (`ublox_gps_node`)。`false`: NMEA (`nmea_navsat_driver`) |
-| `use_rs_d435i` / `use_rs_d435` | `true` / `false` | RealSense の機種 |
-| `respawn_drivers` | `true` | 上と同じ |
+| 引数 | 内容 |
+| :--- | :--- |
+| `odom_port` | ホイールオドメトリのシリアルポート |
+| `top_rplidar_port` | LiDAR のポート |
+| `gps_port` | GNSS のポート |
+| `use_ubx_protocol` | `true`: u-blox の UBX (`ublox_gps_node`)。`false`: NMEA (`nmea_navsat_driver`) |
+| `use_rs_d435i` / `use_rs_d435` | RealSense の機種 |
+| `respawn_drivers` | 上と同じ |
 
-`bringup_hardware.launch.py` の引数は、`device_name` (既定 `/dev/ttyRobot-motordriver`) と `respawn_drivers`。
+`bringup_hardware.launch.py` の引数は、`device_name` (モータドライバのポート) と `respawn_drivers`。
 
 ## 主なトピック
 
@@ -110,11 +110,11 @@ ros2 run mg_drivers odom_offset_republisher.py
 | `wheel_odom_corrector.yaml` | ホイールオドメトリの補正 ([doc](./doc/wheel_odom_corrector.md)) |
 | `driver_watchdog.yaml` | ドライバの監視 ([doc](./doc/driver_watchdog.md)) |
 | `obstacle_detection.yaml` | 3D 障害物検出 ([doc](./doc/obstacle_detection_3d.md)) |
-| `ekf_global.yaml` | ナビゲーションの EKF (`ekf_global_node`)。位置はホイールオドメトリの速度、AMCL、GNSS。30 Hz。構成は [mg_navigation](../mg_navigation/README.md) |
+| `ekf_global.yaml` | ナビゲーションの EKF (`ekf_global_node`)。位置はホイールオドメトリの速度、AMCL、GNSS。構成は [mg_navigation](../mg_navigation/README.md) |
 | `ekf_slam.yaml`、`navsat_transform.yaml` | slam_toolbox の SLAM で、`use_ekf:=true` のときに使う EKF と `navsat_transform` |
 | `ublox_ubx_gps.yaml` | u-blox の設定 |
 | `rs_d435i.yaml`、`rs_d415.yaml` | RealSense の設定 |
-| `top_laser_filter.yaml` | LiDAR の前処理のフィルタ (`LaserScanRangeFilter` と `LaserScanBoxFilter`)。箱の大きさは `mg_navigation` の footprint と `collision_monitor` の `PolygonApproach` に揃える |
+| `top_laser_filter.yaml` | LiDAR の前処理のフィルタ ([doc/laser_filters.md](./doc/laser_filters.md)) |
 
 ホイールオドメトリ (`wheel_odometry_node`) と、モータドライバのパラメータは、launch に直接書かれている (`bringup_sensors.launch.py`、`bringup_hardware.launch.py`)。
 
@@ -122,38 +122,15 @@ ros2 run mg_drivers odom_offset_republisher.py
 
 `pc_resource_publisher_node` は、直近 `average_samples` 回の平均が、しきい値以上になると診断のレベルを上げる。Web UI は、この診断のレベルで CPU・メモリの色を決める (しきい値は UI に持たない)。
 
-| パラメータ | 既定値 | 内容 |
-| :--- | :--- | :--- |
-| `cpu_warn_percent` / `cpu_error_percent` | 85 / 95 | CPU 使用率の `WARN` / `ERROR` |
-| `memory_warn_percent` / `memory_error_percent` | 90 / 97 | メモリ使用率の `WARN` / `ERROR` |
-| `average_samples` | 5 | 判定に使う平均の回数 (配信は 1 Hz なので、既定は直近 5 秒) |
+| パラメータ | 内容 |
+| :--- | :--- |
+| `cpu_warn_percent` / `cpu_error_percent` | CPU 使用率の `WARN` / `ERROR` |
+| `memory_warn_percent` / `memory_error_percent` | メモリ使用率の `WARN` / `ERROR` |
+| `average_samples` | 判定に使う平均の回数 (配信の周期 × 回数が、平均する時間) |
 
 ## 切断からの復旧
 
-シリアル接続の機器 (`wheel_odometry_node`、`motor_driver_node`) は、共通の基底クラスで、切断から自分で再接続する。
-
-- `SerialDevice` (`include/mg_drivers/base/serial_device.hpp`): シリアルポートの開閉と、デバイスファイルの有無。`MotorDriver` と `WheelOdometry` が継承し、接続確認の通信 `probe()` を実装する (モータは停止の指令、オドメトリは読み出し)。
-- `SerialDriverNode` (`include/mg_drivers/base/serial_driver_node.hpp`): 2 つのノードの基底クラス。通信の結果を `handle_serial_error()` で受け取り、次のことをする。
-
-| 動作 | 内容 |
-| :--- | :--- |
-| 連続エラーでの開き直し | 連続 `<prefix>.error_recovery_count` (既定 4。`odometry.` / `motor_driver.`) 回のエラーで、シリアルを開き直す (1 回だけ) |
-| 1 Hz の確認 (`health_check`) | デバイスファイルが消えたら、ポートを閉じる。戻ったら開き直し、`probe()` で通信を確かめる。開けていない、または連続エラーが閾値以上なら、同様に開き直して確かめる。エラーが 1 回以上あれば、`probe()` で確かめる (指令が無いあいだの切断に気づくため) |
-| `~/connected` (`Bool`、1 Hz) | `true`: ポートが開いていて、デバイスがあり、連続エラーが 0 |
-| 診断 `<ノード名>: connection` (`diagnostic_updater`、1 Hz) | 接続していれば `OK`、切れていれば `ERROR` (メッセージは理由: `device missing` / `port closed` / `communication errors`)。`hardware_id` は `motor_driver` / `odometry`。`values`: `consecutive_errors`、`device_present`、`reconnect_attempts` (今回の切断のあいだに開き直した回数)、`disconnect_count` (起動してからの切断の回数) |
-| イベント (`driver.*`) | 接続の状態の変化を、`driver.connected` / `driver.disconnected` (`device`、`reason`) に出す。開き直しは `driver.reconnect_attempt` (`device`、`reason`、`count`) で、最初の 1 回と、以降は 10 回ごとに出す (1 Hz の再試行で埋めないため)。`motor_driver_node` は E-Stop の変化を `driver.estop_changed` (`active`) に出す ([doc/monitoring.md](../doc/monitoring.md)) |
-
-`motor_driver_node` は、診断 `motor_driver_node: emergency_stop` も出す (E-Stop が有効なら `WARN`)。診断は集約で `/Robot/Drivers/Motor` に入る。
-
-オドメトリは、以前は閾値に達したあと、毎周期 (20 Hz) 開き直していた。今は 1 回だけ開き直し、以降は 1 Hz で再試行する。
-
-モータドライバは、チェックサムの誤りを接続の判断に使わない (応答があったため)。
-
-自分では直せないものは、プロセスごと起動し直す。`respawn_drivers:=true` (既定) のとき、次のノードは終了コードによらず、終了の 2 秒後に起動し直される。起動時に機器が無くて終了するもの (`rplidar_node` など) は、機器が繋がるまで繰り返す。`false` で従来どおり (起動し直さない)。
-
-`wheel_odometry_node`、`top_rplidar_node`、`ublox_gps_node` (または `gps_driver`)、`motor_driver_node`
-
-走行中に `rplidar_node` が止まる (プロセスは生きたまま、スキャンだけ出なくなる) 場合は、プロセスが終了しないので respawn では直らない。`driver_watchdog_node` がスキャンの途絶を見て、プロセスを終了させ、respawn に起動し直させる。あわせて、復旧するまでシーケンサを一時停止する ([doc](./doc/driver_watchdog.md))。
+シリアル接続のドライバは自分で再接続し、自分で直せないものはプロセスごと起動し直す (`respawn_drivers`)。仕組み、診断、イベントは [doc/driver_recovery.md](./doc/driver_recovery.md)。
 
 ## デバイスと依存
 
@@ -174,7 +151,7 @@ ros2 run mg_drivers odom_offset_republisher.py
 # Python (補正の計算)
 make test pkg=mg_drivers
 
-# C++ (障害物検出のロジックの gtest。13 ケース)
+# C++ (障害物検出のロジックの gtest)
 docker exec <develop コンテナ> bash -c \
   "cd /root/ros2_ws && colcon build --packages-select mg_drivers --cmake-args -DBUILD_TESTING=ON && \
    ./build/mg_drivers/test_obstacle_detector"
@@ -188,4 +165,6 @@ make test pkg=mg_utils
 | ファイル | 内容 |
 | :--- | :--- |
 | [doc/wheel_odom_corrector.md](./doc/wheel_odom_corrector.md) | ホイールオドメトリの補正のモデル、速度が 0 になる不具合、影響、元に戻す方法 |
+| [doc/driver_recovery.md](./doc/driver_recovery.md) | シリアルドライバの切断からの復旧、診断、イベント、respawn |
+| [doc/laser_filters.md](./doc/laser_filters.md) | LiDAR の前処理の構成と、他の設定との関係 |
 | [doc/obstacle_detection_3d.md](./doc/obstacle_detection_3d.md) | 3D 障害物検出のパイプライン、パラメータ、統計ログ、rosbag での確認 |
