@@ -8,7 +8,7 @@
 
 | ドライバ | 切断時の挙動 |
 | :--- | :--- |
-| `wheel_odometry_node` | 連続エラーでシリアルを開き直し、デバイスの有無を 1 Hz で見る (自己復旧。`SerialDriverNode` で `motor_driver_node` と共通) |
+| `wheel_odometry_node` | 連続エラーでシリアルを開き直し、デバイスの有無を定期的に見る (自己復旧。`SerialDriverNode` で `motor_driver_node` と共通) |
 | `motor_driver_node` | 同上 |
 | `rplidar_ros` (`rplidar_node`) | 起動時に接続できなければ終了する。**走行中に止まると、プロセスは生きたままスキャンだけが出なくなり、復旧しない** |
 
@@ -16,7 +16,7 @@
 
 ```
 層 1  ドライバ自身     自前のドライバ (オドメトリ・モータ) が切断を検知して再接続し、状態を配信する
-層 2  launch の respawn  終了したプロセスを 2 秒後に起動し直す。起動時に機器が無くても、繋がるまで繰り返す
+層 2  launch の respawn  終了したプロセスを少し待って起動し直す。起動時に機器が無くても、繋がるまで繰り返す
 層 3  driver_watchdog   トピックの途絶を監視する。走行を一時停止し、止まった上流ドライバを終了させて層 2 に起動し直させる
 ```
 
@@ -27,8 +27,8 @@
 `bringup.launch.py` から、実機 (`simulation:=false`) のときだけ起動する。ドライバと同じ launch・同じコンテナで動くので、navigation と slam のどちらの bringup でも働く。
 
 1. `monitored_sources` のトピックの最終受信時刻を見る。`stale_timeout_sec` を超えたら**異常**にする。`recover_hold_sec` のあいだ正常が続いたら**復旧**とする。
-2. 診断 `driver_watchdog_node: <id>` を出す (`diagnostic_updater`、1 Hz)。異常のあいだは `ERROR`、受信頻度が `expected_hz` × `hz_warn_ratio` を下回るときは `WARN`。`hardware_id` は `<id>`、`values` は `hz`・`expected_hz`・`stale_sec`・`topic`・`restarts`。途絶と受信頻度の判定は `mg_utils.monitoring` の共通のもので、`topic_monitor_node` と同じ。
-3. `pause_on_fault: true` のとき、シーケンサの `pause_request` に `requester_id=driver_watchdog`、`active=true` を **1 Hz で出し続ける**。復旧したら `active=false` を出す。毎秒送るのは、`~/stop` で一時停止の要求が消えたり、シーケンサが再起動したりしても、異常のあいだは一時停止が戻るようにするため (異常のまま `~/start` もできない)。
+2. 診断 `driver_watchdog_node: <id>` を出す (`diagnostic_updater`)。異常のあいだは `ERROR`、受信頻度が `expected_hz` × `hz_warn_ratio` を下回るときは `WARN`。`hardware_id` は `<id>`、`values` は `hz`・`expected_hz`・`stale_sec`・`topic`・`restarts`。途絶と受信頻度の判定は `mg_utils.monitoring` の共通のもので、`topic_monitor_node` と同じ。
+3. `pause_on_fault: true` のとき、シーケンサの `pause_request` に `requester_id=driver_watchdog`、`active=true` を **一定の周期で出し続ける**。復旧したら `active=false` を出す。周期的に送るのは、`~/stop` で一時停止の要求が消えたり、シーケンサが再起動したりしても、異常のあいだは一時停止が戻るようにするため (異常のまま `~/start` もできない)。
 4. `restart_node` を持つソースが `restart_after_sec` 以上途絶えたら、その名前のノードのプロセスに SIGTERM を送る。`kill_timeout_sec` たっても残っていれば SIGKILL を送る。launch の respawn が起動し直す。
 5. 状態の変化を、イベントログに出す ([doc/monitoring.md](../../doc/monitoring.md))。
 
@@ -53,22 +53,22 @@
 
 `params/driver_watchdog.yaml`。
 
-| パラメータ | 既定値 | 内容 |
-| :--- | :--- | :--- |
-| `check_period_sec` | 0.5 | 判定の周期 |
-| `stale_timeout_sec` | 1.0 | 途絶とみなす時間 (ソースごとに `<id>.stale_timeout_sec` で上書きできる) |
-| `recover_hold_sec` | 2.0 | 復旧とみなすまでに、正常が続く時間 |
-| `startup_grace_sec` | 30.0 | 起動直後の猶予 |
-| `max_tick_gap_sec` | 2.0 | 周期処理の遅れの検知 |
-| `pause_on_fault` | true | シーケンサに一時停止を出す |
-| `pause_request_topic` | `/waypoint_sequencer_node/pause_request` | 一時停止を出すトピック |
-| `pause_requester_id` | `driver_watchdog` | 一時停止の要求元の名前 |
-| `restart_enabled` | true | 止まったドライバを終了させる (launch が `respawn_drivers` に合わせる) |
-| `restart_after_sec` | 3.0 | 途絶がこの時間続いたら終了させる |
-| `restart_cooldown_sec` | 10.0 | 続けて終了させない時間 |
-| `kill_timeout_sec` | 3.0 | SIGTERM のあと、SIGKILL を送るまでの時間 |
-| `hz_warn_ratio` | 0.5 | 受信頻度が 期待する周期 × この値 を下回ったら診断を `WARN` にする |
-| `monitored_sources` | `[top_lidar, odom, motor]` | 監視するソースの id |
+| パラメータ | 内容 |
+| :--- | :--- |
+| `check_period_sec` | 判定の周期 |
+| `stale_timeout_sec` | 途絶とみなす時間 (ソースごとに `<id>.stale_timeout_sec` で上書きできる) |
+| `recover_hold_sec` | 復旧とみなすまでに、正常が続く時間 |
+| `startup_grace_sec` | 起動直後の猶予 |
+| `max_tick_gap_sec` | 周期処理の遅れの検知 |
+| `pause_on_fault` | シーケンサに一時停止を出す |
+| `pause_request_topic` | 一時停止を出すトピック |
+| `pause_requester_id` | 一時停止の要求元の名前 |
+| `restart_enabled` | 止まったドライバを終了させる (launch が `respawn_drivers` に合わせる) |
+| `restart_after_sec` | 途絶がこの時間続いたら終了させる |
+| `restart_cooldown_sec` | 続けて終了させない時間 |
+| `kill_timeout_sec` | SIGTERM のあと、SIGKILL を送るまでの時間 |
+| `hz_warn_ratio` | 受信頻度が 期待する周期 × この値 を下回ったら診断を `WARN` にする |
+| `monitored_sources` | 監視するソースの id |
 
 ソースごとの設定 (`<id>.*`)。
 
@@ -76,7 +76,7 @@
 | :--- | :--- |
 | `topic` | 監視するトピック (必須) |
 | `type` | メッセージの型 (必須。例: `sensor_msgs/msg/LaserScan`) |
-| `qos` | `best_effort` / `reliable` (既定 `reliable`) |
+| `qos` | `best_effort` / `reliable` |
 | `expected_hz` | 期待する受信頻度。0 なら頻度は調べない |
 | `ok_field` | 真偽値のフィールド名 (例: `data`)。`false` を受信したら異常。指定しないソースは、デシリアライズせずに受け取る |
 | `enabled` | 監視するか。launch が `top_lidar` を `use_lidar`、`odom` を `use_odom` に合わせる |
@@ -92,14 +92,14 @@
 | :--- | :--- | :--- | :--- |
 | `top_lidar` | `scan_top_lidar` | `top_rplidar_node` | |
 | `odom` | `odom` | なし | `wheel_odometry_node` が自分で再接続する |
-| `motor` | `/motor_driver_node/connected` | なし | 1 Hz の接続状態 (`std_msgs/msg/Bool`、`ok_field: data`)。`armed_on_first_message` で、モータドライバが無い構成でも異常にならない |
+| `motor` | `/motor_driver_node/connected` | なし | 接続状態 (`std_msgs/msg/Bool`、`ok_field: data`)。`armed_on_first_message` で、モータドライバが無い構成でも異常にならない |
 
 ## launch の引数 (`bringup.launch.py`)
 
-| 引数 | 既定値 | 内容 |
-| :--- | :--- | :--- |
-| `use_driver_watchdog` | `true` | 監視ノードを起動する (シミュレーションでは起動しない) |
-| `respawn_drivers` | `true` | ドライバの respawn。`false` にすると、監視ノードの再起動も無効になる |
+| 引数 | 内容 |
+| :--- | :--- |
+| `use_driver_watchdog` | 監視ノードを起動する (シミュレーションでは起動しない) |
+| `respawn_drivers` | ドライバの respawn。`false` にすると、監視ノードの再起動も無効になる |
 
 ## 無効にする・元に戻す
 

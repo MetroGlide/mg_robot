@@ -48,7 +48,7 @@ def honk(ctx, spec, stop_event):
 class BatteryBelow:
     """バッテリー残量が閾値を下回ったら成立する。"""
     def __init__(self, ctx, spec): ...
-    def poll(self) -> bool: ...     # 約 20 Hz で呼ばれる。成立したら True
+    def poll(self) -> bool: ...     # 一定の周期で呼ばれる。成立したら True
 ```
 
 購読はコンストラクタで作り、コールバックが更新した値を `poll` で見るのが定石です。

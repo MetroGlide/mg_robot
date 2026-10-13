@@ -19,14 +19,14 @@
 
 `launch/monitoring.launch.py`。
 
-| 引数 | 既定値 | 内容 |
-| :--- | :--- | :--- |
-| `simulation` | `$SIMULATION` (無ければ `false`) | `true` なら、実機のドライバの診断 (`drivers.yaml`) を集約しない |
-| `use_aggregator` | `true` | 診断を `/diagnostics_agg` に集約する。止めても `/diagnostics` の生の値は残る |
-| `analyzers` | `params/analyzers/navigation.yaml` | スタックごとの集約の設定 (共通の `common.yaml` と一緒に渡される) |
-| `use_topic_monitor` | `true` | `topic_monitor_node` を起動する |
-| `topic_monitor_params` | `params/topic_monitor/navigation.yaml` | `topic_monitor_node` のパラメータ (スタックごとに指定する) |
-| `use_event_relay` | `true` | `event_relay_node` を起動する |
+| 引数 | 内容 |
+| :--- | :--- |
+| `simulation` | `true` なら、実機のドライバの診断 (`drivers.yaml`) を集約しない |
+| `use_aggregator` | 診断を `/diagnostics_agg` に集約する。止めても `/diagnostics` の生の値は残る |
+| `analyzers` | スタックごとの集約の設定 (共通の `common.yaml` と一緒に渡される) |
+| `use_topic_monitor` | `topic_monitor_node` を起動する |
+| `topic_monitor_params` | `topic_monitor_node` のパラメータ (スタックごとに指定する) |
+| `use_event_relay` | `event_relay_node` を起動する |
 
 `bringup_common.launch.py` は、同じ名前の引数 (`analyzers`、`use_topic_monitor`、`topic_monitor_params`) と `use_monitoring` を受け取る。SLAM のスタックは、`analyzers` に `mapping.yaml` を渡し、`use_topic_monitor` を `false` にする。
 
@@ -51,20 +51,20 @@
 
 | 種類 | 内容 | レベル |
 | :--- | :--- | :--- |
-| ノードの生存 (`node /<名前空間>/<名前>`) | ROS のグラフにいるか。名前空間を含めた形で `monitored_nodes` に書く。起動直後は `startup_grace_sec` のあいだ待つ | いなければ `node_fault_level` (既定 `error`) |
+| ノードの生存 (`node /<名前空間>/<名前>`) | ROS のグラフにいるか。名前空間を含めた形で `monitored_nodes` に書く。起動直後は `startup_grace_sec` のあいだ待つ | いなければ `node_fault_level` のレベル |
 | トピックの受信頻度 (`topic <トピック>`) | `expected_hz` × `hz_warn_ratio` を下回るか、途絶したか | 下回れば `WARN`、途絶は `fault_level`。`fault_level: ok` は観測のみ (止まっているのが正常なトピック用。値と途絶の時間は出すが、レベルは上げない) |
 
 トピックは `monitored_sources` に ID を並べ、ID ごとに設定を書く (書き方は `mg_utils.monitoring.topic_source_config`、[mg_utils の README](../mg_utils/README.md))。コードの変更は要らない。
 
-| パラメータ | 既定値 | 内容 |
-| :--- | :--- | :--- |
-| `monitored_nodes` | なし | 生存を調べるノード (`/ns/name`) |
-| `monitored_sources` | なし | 受信頻度を調べるトピックの ID |
-| `hz_warn_ratio` | `0.5` | 期待する周期に対する、警告を出す割合 |
-| `stale_timeout_sec` | `3.0` | 途絶とみなす時間 (ソースごとに上書きできる)。期待する周期より長くする |
-| `startup_grace_sec` | `30.0` | 起動直後に、ノードやメッセージが無くても異常にしない時間 |
-| `recover_hold_sec` | `2.0` | 異常から戻るまでに、正常が続く必要がある時間 |
-| `node_fault_level` | `error` | ノードがいないときのレベル (`warn` / `error`) |
+| パラメータ | 内容 |
+| :--- | :--- |
+| `monitored_nodes` | 生存を調べるノード (`/ns/name`) |
+| `monitored_sources` | 受信頻度を調べるトピックの ID |
+| `hz_warn_ratio` | 期待する周期に対する、警告を出す割合 |
+| `stale_timeout_sec` | 途絶とみなす時間 (ソースごとに上書きできる)。期待する周期より長くする |
+| `startup_grace_sec` | 起動直後に、ノードやメッセージが無くても異常にしない時間 |
+| `recover_hold_sec` | 異常から戻るまでに、正常が続く必要がある時間 |
+| `node_fault_level` | ノードがいないときのレベル (`warn` / `error`) |
 
 現在の設定は `params/topic_monitor/navigation.yaml`。LiDAR・odom・モータの途絶は `driver_watchdog_node`、シーケンサの進捗は `waypoint_sequencer_node` が自分の診断として出すので、ここでは調べない。
 
@@ -72,13 +72,13 @@
 
 - `/rosout` のうち本文が `evt=` で始まるものを、そのまま `/events` (`rcl_interfaces/Log`、reliable・transient_local、履歴 `history_depth` 件) に流す。
 - `/diagnostics_agg` の元の診断 (`<ノード名>: <タスク名>`) のレベルが変わったら、`evt=health.level_changed path=... from=... to=... message=...` をログに出す。これも `/rosout` を経由して `/events` に流れる。レベルが `OK` なら INFO、`WARN` なら WARN、それ以外は ERROR。
-- 最初の `startup_grace_sec` (既定 30 秒) のあいだは、変化を覚えるだけでイベントにしない。猶予のあとに初めて見た診断は、`OK` 以外のときだけ `from=NONE` として出す。
+- 最初の `startup_grace_sec` のあいだは、変化を覚えるだけでイベントにしない。猶予のあとに初めて見た診断は、`OK` 以外のときだけ `from=NONE` として出す。
 
-| パラメータ | 既定値 | 内容 |
-| :--- | :--- | :--- |
-| `startup_grace_sec` | `30.0` | 起動直後に、レベルの変化をイベントにしない時間 |
-| `history_depth` | `500` | `/events` に残す履歴の件数 |
-| `diagnostics_topic` | `/diagnostics_agg` | レベルの変化を見る診断 |
+| パラメータ | 内容 |
+| :--- | :--- |
+| `startup_grace_sec` | 起動直後に、レベルの変化をイベントにしない時間 |
+| `history_depth` | `/events` に残す履歴の件数 |
+| `diagnostics_topic` | レベルの変化を見る診断 |
 
 後から `/events` を購読する側は、購読側の深さの分だけ履歴を受け取る。多く受け取るには、購読側の深さを大きくする (`foxglove_bridge` は `max_qos_depth`)。
 

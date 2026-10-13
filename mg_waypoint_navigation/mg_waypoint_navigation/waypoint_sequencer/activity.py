@@ -40,7 +40,7 @@ COLLISION_APPROACH = 3
 # 速度を落とす動作 (slowdown と approach)。どちらも「障害物で減速中」として出す
 COLLISION_SLOWDOWN_TYPES = (COLLISION_SLOWDOWN, COLLISION_APPROACH)
 
-# データ途絶で停止したときの polygon_name の接頭辞 (mg_navigation/doc/nav2_config.md)
+# データ途絶で停止したときの polygon_name の接頭辞 (mg_navigation/doc/costmap_and_collision.md)
 SOURCE_TIMEOUT_PREFIX = 'source_timeout:'
 
 # リカバリーの BT ノード名と文言。先に書いたものを優先する。

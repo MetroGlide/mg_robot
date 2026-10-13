@@ -1,9 +1,8 @@
 # RPP (Regulated Pure Pursuit) の調整
 
-`controller_server` の `FollowPath` (`nav2_regulated_pure_pursuit_controller`) のパラメータの意味と、調整の考え方。Nav2 全体の構成は [nav2_config.md](./nav2_config.md)。
+`controller_server` の `FollowPath` (`nav2_regulated_pure_pursuit_controller`) のパラメータの意味と、調整の考え方。Nav2 全体の構成は [architecture.md](./architecture.md)。
 
 - **実際の値は [nav2_params.yaml](../params/nav2_params.yaml) の `FollowPath` が正**。この文書には現在値を書かない。文中の数値は、考え方を説明するための**例**で、実際の設定とは限らない。
-- 「既定」と書いたものは、Nav2 (Humble) の既定値。
 - 値同士の関係 (守る規則) は [3. 値の関係](#3-値の関係) にまとめ、`test/test_nav2_params_consistency.py` が検査する。
 
 ## 1. 動作の流れ
@@ -25,8 +24,8 @@
 | `lookahead_time` | 速度から L を作るときの係数 [s]。「何秒先を見るか」 |
 | `min_lookahead_dist` / `max_lookahead_dist` | L の下限と上限 [m] |
 | `lookahead_dist` | 速度連動を使わないときの固定値。**速度連動を使う間は参照されないので、設定に置かない** |
-| `use_interpolation` | 経路の点の間を補間して carrot を決める (既定 true) |
-| `max_robot_pose_search_dist` | 最近点を探す範囲。経路が自分に近づく形 (ループ、折り返し) で、最近点が離れた区間へ飛ぶのを防ぐ (既定はコストマップの範囲) |
+| `use_interpolation` | 経路の点の間を補間して carrot を決める |
+| `max_robot_pose_search_dist` | 最近点を探す範囲。経路が自分に近づく形 (ループ、折り返し) で、最近点が離れた区間へ飛ぶのを防ぐ |
 
 **考え方**
 
@@ -58,7 +57,7 @@
 - 曲率による減速は、半径が `regulated_linear_scaling_min_radius` 未満のカーブでしか効かない。巡航が遅く、経路のカーブが緩やかなら、ほとんど発動しない。カーブの手前で十分に落としたいときは、この値を大きくする。
 - ゴール接近の下限は、モータが起動できる最小速度より高くする。低すぎると、ゴール手前で止まりきって進めず、`progress_checker` の「進捗なし」に引っかかる。
 - `approach_velocity_scaling_dist` は、ゴールで滑らかに止まるための距離。必要な制動距離は v² / (2 × 減速度)。例: 0.8 m/s、減速度 2.0 m/s² なら 0.16 m。これに余裕を足す。短くするとゴール付近の所要時間が縮み、長くすると止まり方が穏やかになる。
-- 実際の上限と加減速は `velocity_smoother` が最後に決める ([nav2_config.md](./nav2_config.md#速度指令の経路))。RPP の出力は、そこで絞られる。
+- 実際の上限と加減速は `velocity_smoother` が最後に決める ([architecture.md](./architecture.md#速度指令の経路))。RPP の出力は、そこで絞られる。
 
 #### コストによる減速
 
@@ -79,11 +78,11 @@ d < cost_scaling_dist のとき、速度 ×= cost_scaling_gain × d / cost_scali
 
 | パラメータ | 内容 |
 | :--- | :--- |
-| `use_rotate_to_heading` | 経路とのヨー差が大きいとき、または最終ゴールで向きを合わせるとき、その場で旋回する (既定 true) |
-| `rotate_to_heading_min_angle` | その場旋回を始めるヨー差 [rad] (既定 0.785) |
+| `use_rotate_to_heading` | 経路とのヨー差が大きいとき、または最終ゴールで向きを合わせるとき、その場で旋回する |
+| `rotate_to_heading_min_angle` | その場旋回を始めるヨー差 [rad] |
 | `rotate_to_heading_angular_vel` | その場旋回の角速度 [rad/s] |
 | `max_angular_accel` | その場旋回の角加速度 [rad/s²]。`velocity_smoother` と `behavior_server` の旋回の加速度と同じ値にする |
-| `allow_reversing` | 経路が後退を含むときに後退する (既定 false) |
+| `allow_reversing` | 経路が後退を含むときに後退する |
 
 **考え方**
 
@@ -101,7 +100,7 @@ d < cost_scaling_dist のとき、速度 ×= cost_scaling_gain × d / cost_scali
 **考え方**
 
 - フットプリントは `footprint_padding` を含む。誤検出で止まるときは、コストマップのノイズ、padding、この時間のどれかを疑う。
-- **この時間は、`collision_monitor` の `PolygonApproach` の `time_before_collision` より長くする。** RPP が先に減速・停止し、`collision_monitor` は通常の走行では発動しない後ろ盾になる ([nav2_config.md](./nav2_config.md#衝突の防止-collision_monitor))。
+- **この時間は、`collision_monitor` の `PolygonApproach` の `time_before_collision` より長くする。** RPP が先に減速・停止し、`collision_monitor` は通常の走行では発動しない後ろ盾になる ([costmap_and_collision.md](./costmap_and_collision.md#衝突の防止-collision_monitor))。
 - `transform_tolerance` が小さすぎると、PC の負荷や EKF の遅れで、TF の外挿のエラーが出る。
 
 ## 3. 値の関係

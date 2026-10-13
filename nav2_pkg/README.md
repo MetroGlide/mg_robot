@@ -5,7 +5,7 @@ Nav2 (ROS 2 Humble) のパッケージのうち、**リポジトリに取り込�
 
 | パッケージ | `package.xml` のバージョン | 使うもの |
 | :--- | :--- | :--- |
-| `nav2_collision_monitor` | 1.2.0 | 衝突の防止 (`collision_monitor`)。上流の `collision_detector` のソースも含むが、このプロジェクトでは起動しない。[mg_navigation](../mg_navigation/doc/nav2_config.md#衝突の防止-collision_monitor) |
+| `nav2_collision_monitor` | 1.2.0 | 衝突の防止 (`collision_monitor`)。上流の `collision_detector` のソースも含むが、このプロジェクトでは起動しない。[mg_navigation](../mg_navigation/doc/costmap_and_collision.md#衝突の防止-collision_monitor) |
 | `nav2_costmap_2d` | 1.1.20 | コストマップ (レイヤー、フィルタ) |
 | `nav2_msgs` | 1.1.19 | Nav2 のメッセージ・サービス・アクション |
 

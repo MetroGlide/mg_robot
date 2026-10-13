@@ -48,7 +48,7 @@ UI の System ページでの表示グループ (`layer`) は、Core、Function�
 
 | メソッドとパス | 内容 |
 | :--- | :--- |
-| `GET /status` | すべてのサービスのコンテナの状態 `{サービス: State}` (1 秒のキャッシュ) |
+| `GET /status` | すべてのサービスのコンテナの状態 `{サービス: State}` (短いキャッシュ) |
 | `GET /status/detail` | 状態の詳細 `{サービス: {state, health, exit_code, level}}` (`/status` と同じキャッシュ)。Web UI は `level` で色を決める |
 | `GET /services` | サービスの一覧とグループ |
 | `POST /<service>/start`・`stop`・`restart` | `SERVICES` の各サービスの起動・停止・再起動 |
@@ -118,23 +118,23 @@ UI の System ページでの表示グループ (`layer`) は、Core、Function�
 | `GET /settings` | UI の設定 |
 | `PATCH /settings` | 指定したキーだけを更新する。値が `null` のキーは削除する |
 
-設定の保存先は `UI_DATA_DIR` (既定 `/root/ros2_data/mg_ui_local`)。
+設定の保存先は `UI_DATA_DIR` ([doc/environment.md](../../../doc/environment.md#データディレクトリの構成))。
 
 ## 設定 (環境変数)
 
 compose の `system-manager` で設定している。
 
-| 変数 | 既定値 | 内容 |
-| :--- | :--- | :--- |
-| `PROJECT_DIR` | `/app` | コンテナ内のプロジェクトのパス |
-| `HOST_PROJECT_DIR`、`HOST_HOME` | | ホストのパス (docker compose に渡す) |
-| `COMPOSE_PROJECT_NAME` | ディレクトリ名 | compose のプロジェクト名 |
-| `SIMULATION_WORLD`、`SIMULATION_ROBOT_NAME` | `warehouse`、`mg` | `reset-pose` が使う Gazebo のワールドとロボット名 |
-| `UI_DATA_DIR` | `/root/ros2_data/mg_ui_local` | UI の設定の保存先 |
-| `SCENARIO_DIRS`、`SCENARIO_RESULTS_DIR`、`SCENARIO_PROFILE`、`SCENARIO_ROS_DOMAIN_ID` | 回帰・サンプルのシナリオ、`/root/ros2_data/scenario_results`、`mg01`、`42` | シナリオテスト |
-| `SCENARIO_STACK_ALLOWED_PACKAGES` | `mg_bringup` | `scenario-remote-stack` で起動してよいパッケージ |
-| `MAP_PATH` | | 地図の一覧 (`map_list.txt`) の場所 |
-| `SYSTEM_MANAGER_ALLOW_ORIGINS` | | 許可するオリジンの追加 (カンマ区切り) |
+| 変数 | 内容 |
+| :--- | :--- |
+| `PROJECT_DIR` | コンテナ内のプロジェクトのパス |
+| `HOST_PROJECT_DIR`、`HOST_HOME` | ホストのパス (docker compose に渡す) |
+| `COMPOSE_PROJECT_NAME` | compose のプロジェクト名 |
+| `SIMULATION_WORLD`、`SIMULATION_ROBOT_NAME` | `reset-pose` が使う Gazebo のワールドとロボット名 |
+| `UI_DATA_DIR` | UI の設定の保存先 |
+| `SCENARIO_DIRS`、`SCENARIO_RESULTS_DIR`、`SCENARIO_PROFILE`、`SCENARIO_ROS_DOMAIN_ID` | シナリオテスト |
+| `SCENARIO_STACK_ALLOWED_PACKAGES` | `scenario-remote-stack` で起動してよいパッケージ |
+| `MAP_PATH` | 地図の一覧 (`map_list.txt`) の場所 |
+| `SYSTEM_MANAGER_ALLOW_ORIGINS` | 許可するオリジンの追加 (カンマ区切り) |
 
 ## CORS
 

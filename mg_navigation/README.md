@@ -3,7 +3,8 @@
 Nav2 の起動と設定、自己位置推定の補助ノード (AMCL の初期化・監視・入/切の調停)。
 `mg_bringup` の `bringup_navigation.launch.py` から `bringup.launch.py` が起動される ([mg_bringup](../mg_bringup/README.md))。
 
-- Nav2 の構成と設定: [doc/nav2_config.md](./doc/nav2_config.md)
+- Nav2 の構成 (ノード、速度指令の経路、コントローラ): [doc/architecture.md](./doc/architecture.md)
+- コストマップ、プランナ、衝突の防止 (`collision_monitor`): [doc/costmap_and_collision.md](./doc/costmap_and_collision.md)
 - 自己位置推定 (AMCL・GNSS・EKF の融合、監視と復旧): [doc/localization.md](./doc/localization.md)
 - RPP (経路追従) のパラメータの意味と調整の考え方: [doc/rpp_tuning.md](./doc/rpp_tuning.md)
 
@@ -34,39 +35,7 @@ Nav2 の起動と設定、自己位置推定の補助ノード (AMCL の初期�
 | `IsPathClear` (Condition) | `mg_is_path_clear_condition_bt_node` | リカバリーの間に、RPP が衝突判定なしで走り出せる状態になったかを判定する。塞がっていた経路が空いたら SUCCESS |
 | `CommitPath` (Action) | `mg_commit_path_action_bt_node` | 計画の結果 (`candidate`) が今のゴールへの経路なら `path` に反映する。計画が失敗しても、今のゴールへの経路があれば保つ。なければ `path` を空にして FAILURE |
 
-#### IsPathClear
-
-RPP (Humble 1.1.20 の `RegulatedPurePursuitController`) の衝突判定と同等以上に厳しく判定する。次のどこかで、フットプリントのコストが致死 (`LETHAL_OBSTACLE`) 以上ならブロックとする (Nav2 の `FootprintCollisionChecker` を使う。未知のセルの扱いも RPP と同じ)。
-
-1. 現在の姿勢
-2. 最小・最大の先読み距離のキャロットへ向かう動き。向きのずれが `rotate_to_heading_min_angle` を超えればその場の回転の掃引、そうでなければピュアパーシュートの円弧
-3. 経路の、ロボットの最近傍点から `max_lookahead_dist + margin` までの範囲
-
-- 設定値は持たない。RPP のパラメータ (`<controller_id>.lookahead_dist` など) を `controller_server` から、フットプリント・`footprint_padding`・`track_unknown_space`・`robot_base_frame` を `local_costmap` から取得する。tick の間隔が 1 秒以上空いたら新しいリカバリーとみなし、取得し直す (パラメータの変更は次のリカバリーから効く)。取得できない間は FAILURE (再開しない)
-- コストマップは `local_costmap/costmap_raw` (2 Hz) を購読する。判定は、新しいコストマップか経路が届いたとき、または 0.1 秒ごと (姿勢の変化を反映する) に行い、tick では結果を返すだけ
-- SUCCESS は、そのリカバリーの間に一度ブロックを観測し、その後、空いた状態が `clear_duration` (1 秒) 以上、かつコストマップ 2 枚以上続いたとき。最初から空いている場合 (スリップなど障害物以外が原因の失敗) は SUCCESS にしない。ブロックはリカバリーに入る直前のコストマップでも記録するが、空いたことはリカバリーが始まってから届いたコストマップでだけ記録する (コストマップのクリア直後の空の地図で誤判定しない)。コストマップが 2 秒以上届かなければ、空いたとはみなさない
-- `local_costmap` の `publish_frequency` を下げると、「2 枚以上・1 秒以上」に時間がかかり、再開が遅れる
-- RPP の `use_collision_detection` が false なら、常に FAILURE
-- ログ (bt_navigator): リカバリーごとに最初の判定の結果 (`first check of this recovery: blocked=...`。コストマップの古さと経路の終点も出す)、塞がっていることを観測したとき (`path is blocked`)、空いて SUCCESS を返したとき (`path became clear, resuming`) に INFO を出す。経路がない、ロボットの姿勢や経路を変換できない、コストマップが古い、で判定できないときは WARN (5 秒に 1 回)。リカバリーで早く再開しなかった理由は、最初の判定が `blocked=0` (障害物以外が原因と判断) か、判定できなかったかで見分ける
-- Nav2 を更新するときは、RPP の判定 (`isCollisionImminent` など) の変更に合わせて見直す
-
-| ポート | 既定値 | 内容 |
-| :--- | :--- | :--- |
-| `path` | なし | 判定する経路 |
-| `margin` | `0.3` | 経路に沿って `max_lookahead_dist` の先まで見る距離 [m] |
-| `clear_duration` | `1.0` | 空いた状態が続く必要のある時間 [s] |
-| `controller_node` / `controller_id` | `controller_server` / `FollowPath` | RPP のパラメータの取得先 |
-| `costmap_node` / `costmap_topic` | `local_costmap/local_costmap` / `local_costmap/costmap_raw` | コストマップのパラメータの取得先と購読するトピック |
-| `transform_tolerance` | `0.2` | TF の許容時間 [s] |
-
-#### CommitPath
-
-| ポート | 既定値 | 内容 |
-| :--- | :--- | :--- |
-| `candidate` | なし | 計画の結果 (`ComputePathToPose` の出力。失敗すると空になる) |
-| `goal` | なし | 今のゴール |
-| `path` | なし | 追従する経路 (入出力) |
-| `goal_tolerance` | `0.6` | 経路の終点とゴールの距離がこれ以内なら、そのゴールへの経路とみなす [m] |
+判定の仕様、ポート、ログは [doc/bt_plugins.md](./doc/bt_plugins.md)。
 
 ## launch
 
@@ -74,7 +43,7 @@ RPP (Humble 1.1.20 の `RegulatedPurePursuitController`) の衝突判定と同�
 | :--- | :--- |
 | `bringup.launch.py` | 下の 3 つを束ねる。RViz2 と rosbag の収録も起動できる |
 | `localization_launch.py` | `map_server`、`amcl`、`amcl_publish_controller_node`、`amcl_gate_arbiter`、初期化・監視ノード (遅れて起動) |
-| `navigation_launch.py` | Nav2 のノード ([doc/nav2_config.md](./doc/nav2_config.md)) |
+| `navigation_launch.py` | Nav2 のノード ([doc/architecture.md](./doc/architecture.md)) |
 | (他パッケージの launch) | `mg_waypoint_navigation/waypoint_sequencer.launch.py` (ウェイポイントシーケンサ) |
 | `bag_play.launch.py` | rosbag の再生中に、コストマップを動かして確認する (`costmap_for_bag_play`。引数: `simulation`、`rviz`、`map`、`planning_map`) |
 | `record_bag.launch.py` | rosbag の収録。`mg_utils` の同名の launch と別のファイル |
@@ -84,26 +53,26 @@ RPP (Humble 1.1.20 の `RegulatedPurePursuitController`) の衝突判定と同�
 
 `mg_bringup` の `bringup_navigation.launch.py` から、同じ名前で伝わる。
 
-| 引数 | 既定値 | 内容 |
-| :--- | :--- | :--- |
-| `simulation` | `$SIMULATION` | `use_sim_time` |
-| `localization_map` | `map/map.yaml` | 測位用の地図 (`mg_bringup` から渡される) |
-| `planning_map` | `map/map.yaml` | 計画用の地図 (同上) |
-| `params_file` | `params/nav2_params.yaml` | Nav2 (AMCL を含む) のパラメータ (`mg_bringup` では `nav2_params_file`) |
-| `global_planner` | `smac_lattice` | `smac_lattice` / `navfn` |
-| `use_navigation` | `true` | `false` で、`map_server` と AMCL などの自己位置推定だけを起動する (rosbag の再生評価用) |
-| `use_waypoints_follower` | `true` | ウェイポイントシーケンサの起動 (`use_navigation` も `true` のとき) |
-| `waypoints_load_path` | `$WAYPOINT_PATH` | ウェイポイントのファイル |
-| `use_gnss_amcl_initializer` | `true` | GNSS から AMCL の初期姿勢を与えるノード |
-| `localization_monitor` | `watchdog` | 自己位置の監視ノード: `none` / `watchdog` / `supervisor` |
-| `supervisor_params_file` | `params/localization_supervisor.yaml` | 監督ノードのパラメータ |
-| `rviz` | `$USE_RVIZ` | RViz2 の起動 |
-| `record_bag` | `false` | rosbag の収録 |
-| `namespace`、`use_namespace` | 空、`false` | 名前空間 |
-| `autostart` | `true` | ライフサイクルノードの自動起動 |
-| `use_composition` | `False` | コンポーネントとして起動 |
-| `use_respawn` | `false` | 落ちたノードの再起動 |
-| `log_level` | `info` | ログのレベル |
+| 引数 | 内容 |
+| :--- | :--- |
+| `simulation` | `use_sim_time` |
+| `localization_map` | 測位用の地図 (`mg_bringup` から渡される) |
+| `planning_map` | 計画用の地図 (同上) |
+| `params_file` | Nav2 (AMCL を含む) のパラメータ (`mg_bringup` では `nav2_params_file`) |
+| `global_planner` | プランナの選択: `smac_lattice` / `navfn` |
+| `use_navigation` | `false` で、`map_server` と AMCL などの自己位置推定だけを起動する (rosbag の再生評価用) |
+| `use_waypoints_follower` | ウェイポイントシーケンサの起動 (`use_navigation` も `true` のとき) |
+| `waypoints_load_path` | ウェイポイントのファイル |
+| `use_gnss_amcl_initializer` | GNSS から AMCL の初期姿勢を与えるノード |
+| `localization_monitor` | 自己位置の監視ノード: `none` / `watchdog` / `supervisor` |
+| `supervisor_params_file` | 監督ノードのパラメータ |
+| `rviz` | RViz2 の起動 |
+| `record_bag` | rosbag の収録 |
+| `namespace`、`use_namespace` | 名前空間 |
+| `autostart` | ライフサイクルノードの自動起動 |
+| `use_composition` | コンポーネントとして起動 |
+| `use_respawn` | 落ちたノードの再起動 |
+| `log_level` | ログのレベル |
 
 ## パラメータ
 
@@ -158,5 +127,7 @@ colcon test --packages-select mg_navigation --ctest-args -R test_ && colcon test
 | ファイル | 内容 |
 | :--- | :--- |
 | [doc/localization.md](./doc/localization.md) | 自己位置推定の構成、AMCL の調停・初期化・監視、監督ノードの検知と復旧 |
-| [doc/nav2_config.md](./doc/nav2_config.md) | Nav2 のノード、速度指令の経路、コストマップ、プランナ、コントローラ、衝突の防止 |
+| [doc/architecture.md](./doc/architecture.md) | Nav2 のノード、速度指令の経路、コントローラ、BT、アンカーの規則 |
+| [doc/costmap_and_collision.md](./doc/costmap_and_collision.md) | コストマップ、グローバルプランナ、衝突の防止 (`collision_monitor`) |
+| [doc/bt_plugins.md](./doc/bt_plugins.md) | `IsPathClear`・`CommitPath` の判定とポート |
 | [doc/rpp_tuning.md](./doc/rpp_tuning.md) | RPP のパラメータの意味、値の関係、調整の進め方、症状と対処 |

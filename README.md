@@ -86,7 +86,7 @@ make scenario-test-all TIER=smoke   # シミュレータでの回帰テスト (�
 | [mg_navigation](./mg_navigation/README.md) | Nav2 の設定、自己位置推定の補助ノード |
 | [mg_waypoint_navigation](./mg_waypoint_navigation/README.md) | ウェイポイントシーケンサ |
 | [slam_gnss_2d](./slam_gnss_2d/README.md) | GNSS 拘束付き 2D SLAM (C++)、GNSS ブリッジ |
-| [mg_slam](./mg_slam/README.md) | slam_toolbox の launch、地図プレビュー |
+| [mg_slam](./mg_slam/README.md) | slam_toolbox の launch、地図プレビュー、rosbag の収録 |
 | [mg_ui](./mg_ui/README.md) | Web UI と system_manager |
 | [mg_diagnostics](./mg_diagnostics/README.md) | 診断の集約 (`/diagnostics_agg`)、第三者のノードの監視、イベントの中継 (`/events`) |
 | [mg_msgs](./mg_msgs/README.md) | メッセージ・サービスの定義 |
@@ -110,5 +110,6 @@ make scenario-test-all TIER=smoke   # シミュレータでの回帰テスト (�
 | [doc/commands.md](./doc/commands.md) | make ターゲットと compose サービスの一覧 |
 | [doc/environment.md](./doc/environment.md) | `.env` の変数、地図の指定、データの置き場 |
 | [doc/docker.md](./doc/docker.md) | Docker イメージの構成、ビルド、GPU |
+| [doc/documentation_guide.md](./doc/documentation_guide.md) | 文書の種類、値を書かない規約、置き場所 |
 
 各パッケージの README から、そのパッケージの `doc/` へたどれる。

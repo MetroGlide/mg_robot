@@ -18,13 +18,13 @@ GPU の指定は `.env` の `USE_GPU`、または `make gazebo-simulation USE_GP
 
 `launch/bringup.launch.py` (compose サービス `gazebo-simulation`)。
 
-| 引数 | 既定値 | 内容 |
-| :--- | :--- | :--- |
-| `world` | `worlds/warehouse.sdf` | ワールドの SDF (絶対パス) |
-| `robot_name` | `mg` | Gazebo 上のロボット名 |
-| `spawn_x` / `spawn_y` / `spawn_z` / `spawn_yaw` | `0.0` / `0.0` / `0.05` / `0.0` | ロボットを置く位置 |
-| `headless` | `false` | `true` で GUI なし (`gz sim -s`) |
-| `publish_gazebo_tf` | `$PUBLISH_GAZEBO_TF` (未設定なら `false`) | `true` で `robot_state_publisher` を起動して、Gazebo 側の TF を出す |
+| 引数 | 内容 |
+| :--- | :--- |
+| `world` | ワールドの SDF (絶対パス) |
+| `robot_name` | Gazebo 上のロボット名 |
+| `spawn_x` / `spawn_y` / `spawn_z` / `spawn_yaw` | ロボットを置く位置 |
+| `headless` | `true` で GUI なし (`gz sim -s`) |
+| `publish_gazebo_tf` | `true` で `robot_state_publisher` を起動して、Gazebo 側の TF を出す |
 
 起動するもの: Gazebo (`ros_gz_sim` の `gz_sim.launch.py`)、ロボットの生成 (`ros_gz_sim create`)、`ros_gz_bridge` の `parameter_bridge`。
 ロボットの URDF は、`mg_description` の xacro を `simulation:=true` で展開して作る ([mg_description](../mg_description/README.md))。
@@ -47,7 +47,7 @@ GPU の指定は `.env` の `USE_GPU`、または `make gazebo-simulation USE_GP
 ### モデル
 
 `models/` (ワールドが使う 3D モデル。`IGN_GAZEBO_RESOURCE_PATH` に設定される) は、Git に含まれない (`.gitignore` の対象)。`.gitkeep` だけがある。
-`scripts/download_models.sh` は、clearpath_simulator のモデル (約 280 MB) を取得するスクリプト。ただし、`models/` が `.gitkeep` のために常に存在するので、「ディレクトリが無ければ取得する」判定が成立せず、何もしない。モデルは各自の環境で `models/` に置く。
+`scripts/download_models.sh` は、clearpath_simulator のモデル (大きい) を取得するスクリプト。ただし、`models/` が `.gitkeep` のために常に存在するので、「ディレクトリが無ければ取得する」判定が成立せず、何もしない。モデルは各自の環境で `models/` に置く。
 
 ## ブリッジ (`config/bridge.yaml`)
 

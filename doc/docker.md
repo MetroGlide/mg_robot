@@ -92,12 +92,12 @@ docker compose -f compose.yaml -f compose.gpu.nvidia.yaml build gazebo-simulatio
 | オプション | 値 | 意味 |
 | :--- | :--- | :--- |
 | `driver` | `json-file` | |
-| `max-size` | `${LOG_MAX_SIZE:-10m}` | 1 ファイルの上限。超えると新しいファイルに切り替える |
-| `max-file` | `${LOG_MAX_FILE:-5}` | 残す世代数。超えた古い世代は削除される |
-| `compress` | `true` | 古い世代を gzip で圧縮する |
+| `max-size` | `${LOG_MAX_SIZE}` (未設定時の値は compose が正) | 1 ファイルの上限。超えると新しいファイルに切り替える |
+| `max-file` | `${LOG_MAX_FILE}` (同上) | 残す世代数。超えた古い世代は削除される |
+| `compress` | 有効 | 古い世代を gzip で圧縮する |
 | `labels` | `com.docker.compose.service` | ログにサービス名を付ける |
 
-1 コンテナあたり最大で 10MB x 5 世代 = 約 50MB (圧縮後はさらに小さい)。値は `.env` の `LOG_MAX_SIZE`・`LOG_MAX_FILE` で変える ([environment.md](./environment.md))。
+1 コンテナあたりの最大は `max-size` x `max-file` (圧縮後はさらに小さい)。値は `.env` の `LOG_MAX_SIZE`・`LOG_MAX_FILE` で変える ([environment.md](./environment.md))。
 
 - **変更はコンテナの再作成で反映される**。`compose.yaml` や `.env` を変えても、起動中のコンテナのログ設定は変わらない (`make down` してから起動し直す)。
 - 確認: `docker inspect <コンテナ名> --format '{{.HostConfig.LogConfig}}'`
@@ -134,7 +134,7 @@ docker compose -f compose.yaml -f compose.gpu.nvidia.yaml build gazebo-simulatio
 
 ### ホスト全体の既定 (任意。実機 PC の初期設定)
 
-compose の設定がないコンテナ (手で `docker run` したものなど) にも上限をかけるときは、`/etc/docker/daemon.json` に追記して Docker を再起動する (`sudo systemctl restart docker`。起動中のコンテナが止まるため、停止してから行う)。**既存の設定 (例: `runtimes.nvidia`) を消さずに、`log-driver` と `log-opts` を足す**。
+compose の設定がないコンテナ (手で `docker run` したものなど) にも上限をかけるときは、`/etc/docker/daemon.json` に追記して Docker を再起動する (`sudo systemctl restart docker`。起動中のコンテナが止まるため、停止してから行う)。**既存の設定 (例: `runtimes.nvidia`) を消さずに、`log-driver` と `log-opts` を足す** (値は例)。
 
 ```json
 {
@@ -158,7 +158,7 @@ compose の設定がないコンテナ (手で `docker run` したものなど) 
 - **起動と終了**
   - `entrypoint` は `docker/ros_entrypoint.sh`。ROS 2 とワークスペースの `setup.bash` を読み込んでから、`command` に `exec` で置き換わる。`command` に `source` を書く必要はない (`web-ui` だけは、イメージに `/app` を焼き込んでいて再ビルドが要るため、`command` で `source` している)。
   - `command` は `ros2 launch ...` のようにそのまま書く。`$$VAR` などシェルの展開が要るときだけ `bash -c "exec ..."` とする (`exec` しないとシグナルが届かない)。
-  - `init: true` で PID 1 に tini を置き、`stop_signal: SIGINT`、`stop_grace_period: 30s` にしている。`docker stop` (system_manager の停止も同じ) が SIGINT で ROS 2 の launch を正常終了させるため、rosbag の mcap や Nav2 を安全に閉じられる。猶予内に終わらなければ SIGKILL になる。
+  - `init: true` で PID 1 に tini を置き、`stop_signal: SIGINT` と、ROS 2 が終了を終えるだけの `stop_grace_period` を設定している。`docker stop` (system_manager の停止も同じ) が SIGINT で ROS 2 の launch を正常終了させるため、rosbag の mcap や Nav2 を安全に閉じられる。猶予内に終わらなければ SIGKILL になる。
   - `tty` は付けない。ログに色コードが混ざるのを避けるため。対話で使うときは `run -it` や `exec` が tty を確保する。
 - **環境変数**: `x-common-env` が全サービス共通 (`PYTHONUNBUFFERED`、`ROS_LOG_DIR`、`RCUTILS_CONSOLE_OUTPUT_FORMAT`)。GUI を使うサービスは `x-gui-env` (`DISPLAY` を追加)。サービスごとの `environment` は、これを `<<:` で取り込んで追加する。
 - **ROS のファイルログ**: `ROS_LOG_DIR` により、ホストの `${HOME}/ros2_data/ros_log` に保存される (launch のログと、ノードごとのログ)。コンテナを削除しても残る。古いものは `make logs-clean [DAYS=14]` で削除する。コンソールの出力は、上の「ログ」の Docker のログに入る。
