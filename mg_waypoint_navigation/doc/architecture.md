@@ -198,7 +198,7 @@ stateDiagram-v2
 `~/activity` (`mg_msgs/NavigationActivity`) は、走行が「いま何をしているか」の要約。シーケンサ経由の走行に加えて、シーケンサを通らないゴール (RViz の 2D Goal Pose など) の走行も `external_goal` として出す。表示用で、制御の入力にはしない。判定はここ (`waypoint_sequencer/activity.py` の `compose_activity`、ROS に依存しない純関数) だけで行い、UI は表示するだけにする ([doc/monitoring.md](../../doc/monitoring.md))。
 
 - **入力**: `SequencerStatus` と同じシーケンサの状態 (`current_action`、`waiting_trigger`、手動ゴールの有無を含む)、`activity_collision_state_topic` (`nav2_msgs/CollisionMonitorState`)、`activity_bt_log_topic` (`nav2_msgs/BehaviorTreeLog`)、`activity_nav_status_topic` (`action_msgs/GoalStatusArray`、Nav2 のアクションの状態)、位置が進まない時間 (`ProgressMonitor`)。
-- **外部のゴールの判定**: Nav2 のアクションに生きたゴール (ACCEPTED / EXECUTING) があり、シーケンサ自身が送ったゴールが結果の返るまでの間に無く (`WaypointNavigator.has_live_goal`)、その状態が 1 秒 (`EXTERNAL_GOAL_HOLD_SEC`) 続いたとき。1 秒は、シーケンサのゴールの結果とアクションの状態の到着順の差を吸収するためのもの。アクションの状態は変化したときしか届かないので、発行側が居なくなったら最後の値を捨てる。
+- **外部のゴールの判定**: Nav2 のアクションに生きたゴール (ACCEPTED / EXECUTING) があり、シーケンサ自身が送ったゴールが結果の返るまでの間に無く (`WaypointNavigator.has_live_goal`)、その状態が `EXTERNAL_GOAL_HOLD_SEC` 続いたとき。この時間は、シーケンサのゴールの結果とアクションの状態の到着順の差を吸収するためのもの。アクションの状態は変化したときしか届かないので、発行側が居なくなったら最後の値を捨てる。
 - **配信**: `activity_freq_hz` のタイマーからだけ合成する (専用の callback group)。状態が変わってから、最大でタイマーの周期だけ遅れる。`elapsed_sec` は同じ `code` が続いている秒数。
 - **`text` は固定の短い説明**で、変わる数値は `index` / `total` / `remaining` で渡す。`emphasis` は表示の強調で、健全性ではない (健全性は `/diagnostics_agg`)。
 
@@ -226,7 +226,7 @@ stateDiagram-v2
 **制約**
 
 - シーケンサの再起動直後は、collision_monitor の状態が次に変わるまで「障害物なし」として扱う (変化したときしか配信されない)。
-- シーケンサを通らないゴールは `navigate_to_pose` のものだけ (`navigate_through_poses` は対象外)。ゴールを送ってから表示に出るまで約 1 秒かかる。外部のゴールでは、残り距離と `no_progress` は出さない (`ProgressMonitor` はシーケンサのゴール専用)。
+- シーケンサを通らないゴールは `navigate_to_pose` のものだけ (`navigate_through_poses` は対象外)。ゴールを送ってから表示に出るまで少し遅れる。外部のゴールでは、残り距離と `no_progress` は出さない (`ProgressMonitor` はシーケンサのゴール専用)。
 - シーケンス走行中に RViz からゴールを送ると、Nav2 がシーケンサのゴールを置き換えるため、シーケンスが失敗しうる (この機能の前からの挙動で、表示は変えていない)。外部のゴールの判定は、シーケンサ自身のゴールが結果を返すまで有効にならない。
 - 非常停止 (E-Stop) は入力にしない (Web UI の上部バーが常に表示する)。
 - collision_monitor の範囲の外で障害物の手前で待っている間 (コントローラーの待ち) は、`stall_warn_sec` に達するまで `navigating` と表示される。
@@ -249,7 +249,7 @@ stateDiagram-v2
 - 通過した後も Nav2 のゴールは止めない。FSM がすぐ次の WP へ向かう場合は、同じ BT の次のゴールでそのまま**上書き**する（bt_navigator の preemption）。ロボットは減速・停止せずに走り続ける。上書きされた古いゴールは ABORTED で終わるが、無視する。
 - 次のいずれかの場合は `cancel` して止まる: アクション実行（ON_ARRIVING）、最終 WP（GOAL_REACHED）、wait_trigger（IDLE）、pause（SUSPENDED）。
 - BT が異なるゴール（navigation_mode の切り替え）は Nav2 が上書きを受け付けない。キャンセル中のゴールも同様。これらの場合は、走っているゴールの終了を待ってから次のゴールを送る。
-- 上書き直後にすぐ経路を計画し直すため、両方の BT に `GoalUpdatedController` を入れている（RateController の周期を待つと、最大 1〜2 秒のあいだ古い経路を追従してしまうため）。`mg_navigation/params/nav2_params.yaml` の `plugin_lib_names` に `nav2_goal_updated_controller_bt_node` が必要。
+- 上書き直後にすぐ経路を計画し直すため、両方の BT に `GoalUpdatedController` を入れている（RateController の周期を待つと、一定時間のあいだ古い経路を追従してしまうため）。`mg_navigation/params/nav2_params.yaml` の `plugin_lib_names` に `nav2_goal_updated_controller_bt_node` が必要。
 
 ### スレッドモデル
 

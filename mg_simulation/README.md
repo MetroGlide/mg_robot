@@ -47,7 +47,7 @@ GPU の指定は `.env` の `USE_GPU`、または `make gazebo-simulation USE_GP
 ### モデル
 
 `models/` (ワールドが使う 3D モデル。`IGN_GAZEBO_RESOURCE_PATH` に設定される) は、Git に含まれない (`.gitignore` の対象)。`.gitkeep` だけがある。
-`scripts/download_models.sh` は、clearpath_simulator のモデル (約 280 MB) を取得するスクリプト。ただし、`models/` が `.gitkeep` のために常に存在するので、「ディレクトリが無ければ取得する」判定が成立せず、何もしない。モデルは各自の環境で `models/` に置く。
+`scripts/download_models.sh` は、clearpath_simulator のモデル (大きい) を取得するスクリプト。ただし、`models/` が `.gitkeep` のために常に存在するので、「ディレクトリが無ければ取得する」判定が成立せず、何もしない。モデルは各自の環境で `models/` に置く。
 
 ## ブリッジ (`config/bridge.yaml`)
 

@@ -87,7 +87,7 @@ SLAM のパラメータは `slam_gnss_2d/params/slam_gnss_2d.yaml` (ノード名
 | `icp.*` | `icp`、`coarse_to_fine` の細かい段。`max_iterations` 100、`max_correspondence_dist` 1.0、`robust_kernel` `huber` (`robust_kernel_scale` 0.15)、`motion_prior_weight_x/y/yaw` 10 / 500 / 0 (差動二輪の横すべりを防ぐ) |
 | `ndt.*` | `ndt`、`coarse_to_fine` の粗い段。`cell_size` 1.0、`cell_sizes` [1.0, 0.5]、`use_bilinear` |
 | `csm.*` | 単体の `csm`。`linear_search_window` 1.0、`angular_search_window` 0.5、`linear_step` 0.05、`angular_step` 0.02 |
-| `local_map.*` | `scan_to_local_map` のとき。`window` 30 (直近のノード数)、`radius` 30.0 m |
+| `local_map.*` | `scan_to_local_map` のとき。`window` (直近のノード数)、`radius` [m] |
 
 ## ループクロージャ (`loop_closure.*`)
 

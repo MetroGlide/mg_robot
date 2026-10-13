@@ -19,7 +19,7 @@ wheel_odometry_node ─ /odom/raw ─► wheel_odom_corrector_node ─ /odom ─
 | `yaw_bias_per_meter` (`c`) | 走行距離あたりに曲がる量 [rad/m] (左右の車輪半径差) | 同上 |
 | `time_offset` | 生のオドメトリの遅れ [s] | スタンプを過去へずらす |
 | `twist_source` | 速度の出どころ (`raw` / `pose_diff`) | `raw`: ドライバの速度にスケール補正をかける。`pose_diff`: 補正した姿勢の差分から求める |
-| `twist_window` | `pose_diff` で、何メッセージ前の姿勢との差から求めるか | 20 Hz で 2 なら 0.1 秒 |
+| `twist_window` | `pose_diff` で、何メッセージ前の姿勢との差から求めるか | 例: 20 Hz で 2 なら 0.1 秒 |
 | `reset_jump_m` | 姿勢が飛んだとみなす、1 メッセージあたりの移動量 [m] | 飛んだら生の姿勢に合わせ直す |
 | `enabled` | `false` で補正せずに生の値を通す (共分散は設定する) | |
 | `covariance_x` / `covariance_y` / `covariance_yaw` | 姿勢の共分散 (EKF は姿勢を使わない) | |
@@ -62,4 +62,4 @@ EKF は速度を観測として使うため、速度を信頼する設定 (共�
 - **単一障害点**: 補正ノードが落ちると、`/odom` と `odom→base_footprint` の TF が止まる。launch で `respawn` (1 s 後) を付けてある。姿勢が飛んだときは、`reset_jump_m` の処理で生の姿勢に合わせ直す。
 - **補正値は路面と荷重で変わる**: yaml の値は、特定の日・同じ路面での推定。環境が変わったら、`calib_wheel_odom.py` で再推定する。
 - **元に戻す方法**: `use_odom_corrector:=false` で、ドライバが `/odom` を直接出す従来の構成になる。SLAM (`slam_gnss_2d`、slam_toolbox) は補正を使わず、従来どおり生の `/odom` を使う。
-- **負荷**: 20 Hz のメッセージを 1 つ変換する Python ノードで、ごくわずか。
+- **負荷**: オドメトリのメッセージを 1 つ変換する Python ノードで、ごくわずか。
