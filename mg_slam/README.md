@@ -61,14 +61,14 @@ Web UI の地図の管理 (`mg_system_manager` の `/maps`) が、このサー�
 
 `params/slam_toolbox.yaml` の要点。
 
-| 項目 | 値 |
+| 項目 | 内容 (値は `params/slam_toolbox.yaml` が正) |
 | :--- | :--- |
 | ソルバ | Ceres (`SPARSE_NORMAL_CHOLESKY`、`SCHUR_JACOBI`、`LEVENBERG_MARQUARDT`) |
 | モード | `mapping` (`enable_interactive_mode: true`) |
 | フレーム | `odom` / `map` / `base_footprint`、スキャンは `/scan_top_lidar` |
-| 地図 | 解像度 0.05 m、`max_laser_range` 30 m、`map_update_interval` 5 s |
-| キーフレーム | `minimum_travel_distance` 0.5 m、`minimum_travel_heading` 0.5 rad |
-| ループクロージャ | 有効 (`loop_search_maximum_distance` 3.0 m、`loop_match_minimum_chain_size` 10) |
+| 地図 | 解像度、`max_laser_range`、`map_update_interval` |
+| キーフレーム | `minimum_travel_distance`、`minimum_travel_heading` |
+| ループクロージャ | `loop_search_maximum_distance`、`loop_match_minimum_chain_size` |
 
 内部のアルゴリズムと、パラメータの意味は、[doc/slam_toolbox.md](./doc/slam_toolbox.md)。
 

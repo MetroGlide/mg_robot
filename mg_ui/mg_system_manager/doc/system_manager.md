@@ -48,7 +48,7 @@ UI の System ページでの表示グループ (`layer`) は、Core、Function�
 
 | メソッドとパス | 内容 |
 | :--- | :--- |
-| `GET /status` | すべてのサービスのコンテナの状態 `{サービス: State}` (1 秒のキャッシュ) |
+| `GET /status` | すべてのサービスのコンテナの状態 `{サービス: State}` (短いキャッシュ) |
 | `GET /status/detail` | 状態の詳細 `{サービス: {state, health, exit_code, level}}` (`/status` と同じキャッシュ)。Web UI は `level` で色を決める |
 | `GET /services` | サービスの一覧とグループ |
 | `POST /<service>/start`・`stop`・`restart` | `SERVICES` の各サービスの起動・停止・再起動 |

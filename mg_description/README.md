@@ -28,23 +28,18 @@ MG-01 の URDF (xacro) と、RViz2 の表示設定。`robot_state_publisher` を
 
 ```
 base_footprint
-└─ base_link (z=0.15)
-   ├─ left_wheel_link  (y=+0.25)
-   ├─ right_wheel_link (y=-0.25)
-   ├─ caster_link      (x=-0.45, z=-0.1)
-   ├─ gps_link         (0.26, -0.13, 0.33)
-   └─ top_frame_link   (0.23, 0, 0.45)
-      ├─ top_lrf_link       上 LiDAR (RPLiDAR S2)。(0, 0, 0.03)、yaw=π
-      ├─ livox_lidar_link   Livox。(0, 0, 0.06)
-      └─ camera_link_base   RealSense D435i。(0.02, 0, -0.23)、pitch=0.27
+└─ base_link
+   ├─ left_wheel_link
+   ├─ right_wheel_link
+   ├─ caster_link
+   ├─ gps_link
+   └─ top_frame_link
+      ├─ top_lrf_link       上 LiDAR (RPLiDAR S2)
+      ├─ livox_lidar_link   Livox
+      └─ camera_link_base   RealSense D435i
 ```
 
-数値は `base_link` または親リンクからの位置 [m] と回転 [rad]。
-
-| 項目 | 値 |
-| :--- | :--- |
-| 車輪間隔 | 0.5 m (`robot_base.urdf.xacro` の `wheel_separation`) |
-| 車輪半径 | 0.15 m |
+各リンクの位置・向き・車輪の寸法 (`wheel_separation` など) は、`urdf/` の xacro が正。
 
 - `map→odom` は EKF、`odom→base_footprint` は `mg_drivers` の `odometry_tf_broadcaster_node` が配信する ([doc/system_architecture.md](../doc/system_architecture.md#座標系-tf))。
 - Livox はリンクだけで、ドライバは起動していない。
@@ -53,7 +48,7 @@ base_footprint
 
 `sensors.xacro` のマクロは、`simulation:=true` のとき Gazebo のセンサを定義する。
 
-- 上 LiDAR (`lidar_2d`): 10 Hz、3200 サンプル、0.05〜30 m、ノイズ σ=0.02
+- 上 LiDAR (`lidar_2d`): 周期、サンプル数、測距範囲、ノイズは `sensors.xacro` が正
 - GPS (`gps`)
 - RealSense D435i (`realsense_d435i`)
 
