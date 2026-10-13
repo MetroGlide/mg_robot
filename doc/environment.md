@@ -24,7 +24,7 @@ cp .env.example .env
 
 ### ログ
 
-Docker のログのローテーション設定。compose の `${LOG_MAX_SIZE:-10m}` などで参照される。詳細は [docker.md](./docker.md#ログ)。
+Docker のログのローテーション設定。compose の `${LOG_MAX_SIZE}` などで参照される。詳細は [docker.md](./docker.md#ログ)。
 
 | 変数 | 内容 |
 | :--- | :--- |
