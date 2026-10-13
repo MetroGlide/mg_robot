@@ -77,25 +77,12 @@ source /opt/ros/humble/setup.bash && source /root/ros2_ws/install/setup.bash
 
 ## パッケージ構成
 
-| パッケージ               | 役割                                                           |
-| ------------------------ | -------------------------------------------------------------- |
-| [`mg_bringup`](./mg_bringup/README.md)             | slam/navigationを束ねるトップレベルlaunch群                    |
-| [`mg_description`](./mg_description/README.md)         | URDF・RViz設定                                                 |
-| [`mg_diagnostics`](./mg_diagnostics/README.md)         | 診断の集約`/diagnostics_agg`・第三者ノードの監視・イベント中継`/events` |
-| [`mg_drivers`](./mg_drivers/README.md)             | LiDAR/DepthCam/GPS/モータドライバ群、ホイールオドメトリの補正(`wheel_odom_corrector_node`)、ドライバの途絶の監視と復旧(`driver_watchdog_node`)、3D障害物検出 |
-| [`mg_msgs`](./mg_msgs/README.md)                | カスタムメッセージ・サービス定義                               |
-| [`mg_navigation`](./mg_navigation/README.md)          | Nav2の起動・設定, 自己位置推定の補助ノード(GNSS初期化, AMCL watchdog, AMCL入切の調停`amcl_gate_arbiter`, 監督ノード`localization_supervisor`)。構成は [doc/localization.md](./mg_navigation/doc/localization.md) |
-| [`mg_scenario_test`](./mg_scenario_test/README.md)       | MG-01用のシナリオテスト（プロファイル・プラグイン・シナリオ） |
-| [`sim_scenario_test`](./sim_scenario_test/README.md)      | ロボット非依存のGazebo+Nav2シナリオテスト基盤（mg_*に依存しない） |
-| [`mg_simulation`](./mg_simulation/README.md)          | Gazebo Fortress ワールド・launch設定                           |
-| [`mg_simulator_client`](./mg_simulator_client/README.md)    | Unityシミュレータ用のROS-TCP-Endpoint起動（現在は未使用）      |
-| [`slam_gnss_2d`](./slam_gnss_2d/README.md)            | **現役のSLAM**。GNSS拘束付き2D SLAM (C++)、GNSSブリッジ`slam_gnss_nav_bridge_node`。`slam_gnss_2d_msgs`を含む |
-| [`mg_slam`](./mg_slam/README.md)                | slam_toolbox launch・パラメータ、地図プレビュー、rosbag収録。`scripts/slam_gnss_2d/`は旧Python版 |
-| [`mg_ui`](./mg_ui/README.md)                  | Web UI (`mg_web_ui`) と system_manager (`mg_system_manager`) の2サブパッケージ |
-| [`mg_utils`](./mg_utils/README.md)               | `LaunchArgumentCreator`、点群変換、rosbag収録launch            |
-| [`mg_waypoint_navigation`](./mg_waypoint_navigation/README.md) | FSMベースのウェイポイントシーケンサ(Nav2 ActionClientラッパー) |
-| [`nav2_pkg`](./nav2_pkg/README.md)               | **カスタム修正済み**のNav2（アップストリームと差分あり）       |
-| [`geometry2_pkg`](./geometry2_pkg/README.md)          | apt の `tf2` 0.25.23 のデッドロックを避けるため取り込んだ上流の `tf2` 0.25.24（apt が追いついたら削除） |
+パッケージの一覧と役割は [README.md](./README.md#リポジトリ構成)。作業で注意する点:
+
+- `slam_gnss_2d` が**現役のSLAM**。`mg_slam/scripts/slam_gnss_2d/` は旧Python版。
+- `nav2_pkg` は**カスタム修正済み**のNav2（アップストリームと差分あり）。`geometry2_pkg` は上流の `tf2` の取り込み（apt が追いついたら削除）。どちらも文書を含めて変更しない。
+- `mg_simulator_client`（Unityシミュレータ用）は現在未使用。
+- `mg_navigation` の自己位置推定の構成は [doc/localization.md](./mg_navigation/doc/localization.md)。
 
 ## 重要なコード規約
 

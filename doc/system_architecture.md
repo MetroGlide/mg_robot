@@ -37,7 +37,7 @@ mg_bringup/navigation/bringup_navigation.launch.py   (make navigation)
 ├─ mg_bringup/common/bringup_common.launch.py
 │   ├─ mg_drivers/bringup.launch.py                  センサ・前処理・補正ノード (実機のみ sensors)
 │   │   ├─ bringup_sensors      (実機のみ) wheel_odometry / rplidar / GNSS / RealSense
-│   │   ├─ bringup_postprocess  odom 補正・TF・scan の公開制御・点群の後処理・障害物検出
+│   │   ├─ bringup_postprocess  odom 補正・TF・LiDAR の前処理 (laser_filters)・点群の後処理・障害物検出
 │   │   ├─ bringup_common       PC のリソース配信
 │   │   └─ bringup_hardware     motor_driver_node (実機のみ)
 │   └─ mg_description/bringup.launch.py              robot_state_publisher

@@ -86,7 +86,7 @@ make scenario-test-all TIER=smoke   # シミュレータでの回帰テスト (�
 | [mg_navigation](./mg_navigation/README.md) | Nav2 の設定、自己位置推定の補助ノード |
 | [mg_waypoint_navigation](./mg_waypoint_navigation/README.md) | ウェイポイントシーケンサ |
 | [slam_gnss_2d](./slam_gnss_2d/README.md) | GNSS 拘束付き 2D SLAM (C++)、GNSS ブリッジ |
-| [mg_slam](./mg_slam/README.md) | slam_toolbox の launch、地図プレビュー |
+| [mg_slam](./mg_slam/README.md) | slam_toolbox の launch、地図プレビュー、rosbag の収録 |
 | [mg_ui](./mg_ui/README.md) | Web UI と system_manager |
 | [mg_diagnostics](./mg_diagnostics/README.md) | 診断の集約 (`/diagnostics_agg`)、第三者のノードの監視、イベントの中継 (`/events`) |
 | [mg_msgs](./mg_msgs/README.md) | メッセージ・サービスの定義 |
