@@ -13,7 +13,7 @@
 | 定期の確認 (`health_check`) | デバイスファイルが消えたら、ポートを閉じる。戻ったら開き直し、`probe()` で通信を確かめる。開けていない、または連続エラーが閾値以上なら、同様に開き直して確かめる。エラーが 1 回以上あれば、`probe()` で確かめる (指令が無いあいだの切断に気づくため) |
 | `~/connected` (`Bool`) | `true`: ポートが開いていて、デバイスがあり、連続エラーが 0 |
 | 診断 `<ノード名>: connection` (`diagnostic_updater`) | 接続していれば `OK`、切れていれば `ERROR` (メッセージは理由: `device missing` / `port closed` / `communication errors`)。`hardware_id` は `motor_driver` / `odometry`。`values`: `consecutive_errors`、`device_present`、`reconnect_attempts` (今回の切断のあいだに開き直した回数)、`disconnect_count` (起動してからの切断の回数) |
-| イベント (`driver.*`) | 接続の状態の変化を、`driver.connected` / `driver.disconnected` (`device`、`reason`) に出す。開き直しは `driver.reconnect_attempt` (`device`、`reason`、`count`) で、最初の 1 回と、以降は複数回ごとに出す (再試行で埋めないため)。`motor_driver_node` は E-Stop の変化を `driver.estop_changed` (`active`) に出す ([doc/monitoring.md](../doc/monitoring.md)) |
+| イベント (`driver.*`) | 接続の状態の変化を、`driver.connected` / `driver.disconnected` (`device`、`reason`) に出す。開き直しは `driver.reconnect_attempt` (`device`、`reason`、`count`) で、最初の 1 回と、以降は複数回ごとに出す (再試行で埋めないため)。`motor_driver_node` は E-Stop の変化を `driver.estop_changed` (`active`) に出す ([doc/monitoring.md](../../doc/monitoring.md)) |
 
 `motor_driver_node` は、診断 `motor_driver_node: emergency_stop` も出す (E-Stop が有効なら `WARN`)。診断は集約で `/Robot/Drivers/Motor` に入る。
 
@@ -25,4 +25,4 @@
 
 `wheel_odometry_node`、`top_rplidar_node`、`ublox_gps_node` (または `gps_driver`)、`motor_driver_node`
 
-走行中に `rplidar_node` が止まる (プロセスは生きたまま、スキャンだけ出なくなる) 場合は、プロセスが終了しないので respawn では直らない。`driver_watchdog_node` がスキャンの途絶を見て、プロセスを終了させ、respawn に起動し直させる。あわせて、復旧するまでシーケンサを一時停止する ([doc](./doc/driver_watchdog.md))。
+走行中に `rplidar_node` が止まる (プロセスは生きたまま、スキャンだけ出なくなる) 場合は、プロセスが終了しないので respawn では直らない。`driver_watchdog_node` がスキャンの途絶を見て、プロセスを終了させ、respawn に起動し直させる。あわせて、復旧するまでシーケンサを一時停止する ([doc](./driver_watchdog.md))。
