@@ -74,8 +74,8 @@ controller_server ─ cmd_vel_nav ─► collision_monitor ─ cmd_vel_collision
 ## コントローラ (`controller_server`)
 
 - 周期は 10 Hz。
-- `FollowPath` は Regulated Pure Pursuit。`desired_linear_vel` 0.8 m/s、`lookahead_dist` 1.6 m (速度に応じて 1.3〜1.9 m)、衝突の検出 (`use_collision_detection`) あり、曲率とコストによる速度の調整あり。
-- RPP の衝突の確認 (`max_allowed_time_to_collision_up_to_carrot` 1.5 秒) は、`collision_monitor` の `PolygonApproach` の `time_before_collision` より長くする。障害物を主に避けるのは RPP とコストマップで、`collision_monitor` は通常の走行では発動しない後ろ盾にする。
+- `FollowPath` は Regulated Pure Pursuit。先読み距離は速度に連動し、衝突の検出 (`use_collision_detection`) と、曲率・コスト・ゴール接近による速度の調整がある。各パラメータの意味と調整の考え方、守る値の関係は [rpp_tuning.md](./rpp_tuning.md)。実際の値は `nav2_params.yaml`。
+- RPP の衝突の確認の時間 (`max_allowed_time_to_collision_up_to_carrot`) は、`collision_monitor` の `PolygonApproach` の `time_before_collision` より長くする。障害物を主に避けるのは RPP とコストマップで、`collision_monitor` は通常の走行では発動しない後ろ盾にする。
 - `general_goal_checker`: `xy_goal_tolerance` 0.25 m、`yaw_goal_tolerance` 0.25 rad、`stateful: True`。ウェイポイントの停止点の到達の判定は、この値による ([mg_waypoint_navigation](../../mg_waypoint_navigation/doc/architecture.md))。
 - `progress_checker`: 5 秒 (`movement_time_allowance`) で 0.5 m (`required_movement_radius`) 進まなければ、詰まりとみなして `FollowPath` を失敗させる。衝突の検知のあとの待ち時間としても働く。
 - `failure_tolerance` は 5.0 秒。有効な速度が出せない間 (前方に障害物があるなど) は、速度 0 を出して待ち、この時間を超えると `FollowPath` が失敗して、BT のリカバリー (首振り・待機・後退) に入る。**-1 (無期限) にしない**。`progress_checker` の失敗まで無視され、詰まっても失敗せず、リカバリーにも入れず、永久に止まる (Gazebo で確認)。
@@ -117,5 +117,5 @@ controller_server ─ cmd_vel_nav ─► collision_monitor ─ cmd_vel_collision
 
 - 設定の値は、Nav2 の標準値を踏襲しているものがある。`collision_monitor`、`velocity_smoother`、`behavior_server` の値は、コメントのとおり、Gazebo と実機での確認を経て確定する。
 - `scenarios` (シミュレーションでの回帰テスト) で、変更の影響を確認する ([mg_scenario_test](../../mg_scenario_test/README.md))。
-- **`nav2_params.yaml` の YAML のアンカー (`&名前` / `*名前`) は、スカラー (数値・文字列) だけに使う。** 起動時に `RewrittenYaml` が YAML を読み直して書き出すとき、リストや辞書のアンカーは `&id001` の形で残り、rcl のパラメータのパーサが読めず、全 Nav2 サーバーが起動時に落ちる。現在のアンカーは `&v_max` (巡航速度)、`&w_acc` (旋回の加速度)、`&robot_footprint`、`&footprint_padding`。
+- **`nav2_params.yaml` の YAML のアンカー (`&名前` / `*名前`) は、スカラー (数値・文字列) だけに使う。** 起動時に `RewrittenYaml` が YAML を読み直して書き出すとき、リストや辞書のアンカーは `&id001` の形で残り、rcl のパラメータのパーサが読めず、全 Nav2 サーバーが起動時に落ちる。アンカーを使っているのは、巡航速度 (`&v_max`)、旋回の加速度 (`&w_acc`)、`&robot_footprint`、`&footprint_padding`、RPP とコストマップの膨張で共有する `&inflation_cost_scaling_factor`。
 - 符号の反転や、別のファイルの値との関係 (smoother の上限と巡航速度、旋回の加速度、LiDAR の前処理の箱と footprint など) は、アンカーで表せないので `test/test_nav2_params_consistency.py` が検査する。値を変えたら `make test pkg=mg_navigation` を実行する。
