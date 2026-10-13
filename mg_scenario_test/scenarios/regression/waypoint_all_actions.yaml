@@ -24,6 +24,12 @@ run:
   mg_sequencer:
     waypoints_file: "pkg://mg_scenario_test/scenarios/data/actions_waypoints.yaml"
     waypoint_timeout_sec: 120
+    hooks:
+      # wait_trigger の IDLE は auto_start だとすぐ抜け、~/activity (2 Hz) に出る前に終わる。
+      # 外部の ~/start を待つ状態を、activity の配信周期より長く保つ。
+      2:
+        before:
+          - delay: { sec: 2.0 }
 
 monitors:
   - topic_received: { topic: /scenario_marker, type: String, data: wp0_published }

@@ -5,6 +5,7 @@ Nav2 の起動と設定、自己位置推定の補助ノード (AMCL の初期�
 
 - Nav2 の構成と設定: [doc/nav2_config.md](./doc/nav2_config.md)
 - 自己位置推定 (AMCL・GNSS・EKF の融合、監視と復旧): [doc/localization.md](./doc/localization.md)
+- RPP (経路追従) のパラメータの意味と調整の考え方: [doc/rpp_tuning.md](./doc/rpp_tuning.md)
 
 ## ノード
 
@@ -158,3 +159,4 @@ colcon test --packages-select mg_navigation --ctest-args -R test_ && colcon test
 | :--- | :--- |
 | [doc/localization.md](./doc/localization.md) | 自己位置推定の構成、AMCL の調停・初期化・監視、監督ノードの検知と復旧 |
 | [doc/nav2_config.md](./doc/nav2_config.md) | Nav2 のノード、速度指令の経路、コストマップ、プランナ、コントローラ、衝突の防止 |
+| [doc/rpp_tuning.md](./doc/rpp_tuning.md) | RPP のパラメータの意味、値の関係、調整の進め方、症状と対処 |

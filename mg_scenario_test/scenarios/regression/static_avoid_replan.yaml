@@ -27,6 +27,8 @@ timeline:
 
 monitors:
   - min_scan_range: { min_range: 0.1, topic: /scan_top_lidar }
+  # collision_monitor は RPP の後ろ盾なので、静止した障害物を避ける通常の走行では停止まで発動しない
+  - collision_monitor_action: { action: STOP, expect: never }
 
 expect:
   - reached_all

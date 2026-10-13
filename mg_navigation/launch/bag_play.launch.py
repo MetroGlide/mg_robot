@@ -78,9 +78,20 @@ def generate_launch_description():
         ],
     )
 
+    # 本番と同じ前処理済みの scan (/scan_filtered/scan_top_lidar) を、bag の生の scan から作る
+    laser_filters_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(os.path.join(
+            get_package_share_directory('mg_drivers'),
+            'launch', 'laser_filters.launch.py')),
+        launch_arguments={
+            'simulation': simulation_arg.launch_config,
+        }.items(),
+    )
+
     return LaunchDescription([
         *launch_argument_creator.get_created_declare_launch_args(),
 
+        laser_filters_launch,
         localcostmap_node,
         globalcostmap_node,
 
