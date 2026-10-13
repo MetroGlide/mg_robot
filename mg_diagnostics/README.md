@@ -51,7 +51,7 @@
 
 | 種類 | 内容 | レベル |
 | :--- | :--- | :--- |
-| ノードの生存 (`node /<名前空間>/<名前>`) | ROS のグラフにいるか。名前空間を含めた形で `monitored_nodes` に書く。起動直後は `startup_grace_sec` のあいだ待つ | いなければ `node_fault_level` (既定 `error`) |
+| ノードの生存 (`node /<名前空間>/<名前>`) | ROS のグラフにいるか。名前空間を含めた形で `monitored_nodes` に書く。起動直後は `startup_grace_sec` のあいだ待つ | いなければ `node_fault_level` のレベル |
 | トピックの受信頻度 (`topic <トピック>`) | `expected_hz` × `hz_warn_ratio` を下回るか、途絶したか | 下回れば `WARN`、途絶は `fault_level`。`fault_level: ok` は観測のみ (止まっているのが正常なトピック用。値と途絶の時間は出すが、レベルは上げない) |
 
 トピックは `monitored_sources` に ID を並べ、ID ごとに設定を書く (書き方は `mg_utils.monitoring.topic_source_config`、[mg_utils の README](../mg_utils/README.md))。コードの変更は要らない。
@@ -72,7 +72,7 @@
 
 - `/rosout` のうち本文が `evt=` で始まるものを、そのまま `/events` (`rcl_interfaces/Log`、reliable・transient_local、履歴 `history_depth` 件) に流す。
 - `/diagnostics_agg` の元の診断 (`<ノード名>: <タスク名>`) のレベルが変わったら、`evt=health.level_changed path=... from=... to=... message=...` をログに出す。これも `/rosout` を経由して `/events` に流れる。レベルが `OK` なら INFO、`WARN` なら WARN、それ以外は ERROR。
-- 最初の `startup_grace_sec` (既定 30 秒) のあいだは、変化を覚えるだけでイベントにしない。猶予のあとに初めて見た診断は、`OK` 以外のときだけ `from=NONE` として出す。
+- 最初の `startup_grace_sec` のあいだは、変化を覚えるだけでイベントにしない。猶予のあとに初めて見た診断は、`OK` 以外のときだけ `from=NONE` として出す。
 
 | パラメータ | 内容 |
 | :--- | :--- |

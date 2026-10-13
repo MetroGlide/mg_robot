@@ -63,7 +63,7 @@ make ui-all              # system-manager・web-ui・foxglove-bridge を起動
 
 タブレットやブラウザから `http://<ロボットの IP>:8080` を開く。個別に起動するときは、`make web-ui`、`make foxglove-bridge`、`make system-manager`。
 
-`web_ui.launch.py` の引数: `port` (既定 8080)、`dist_dir` (空なら、インストールした `frontend/dist`)。
+`web_ui.launch.py` の引数: `port`、`dist_dir` (空なら、インストールした `frontend/dist`)。
 
 ### 開発 (変更をすぐ反映する)
 

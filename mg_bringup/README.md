@@ -19,7 +19,7 @@ compose のサービス (`make slam`、`make navigation` など) は、ここの
 
 ## 起動引数
 
-引数の既定値に環境変数 (`SIMULATION`、`USE_RVIZ`、`MAP_PATH`、`WAYPOINT_PATH`) を使うものがある ([doc/environment.md](../doc/environment.md))。
+引数の既定に環境変数 (`SIMULATION`、`USE_RVIZ`、`MAP_PATH`、`WAYPOINT_PATH`) を使うものがある ([doc/environment.md](../doc/environment.md))。
 `OPTS` で渡す: `make navigation OPTS="use_ekf:=false global_planner:=navfn"`。
 
 ### bringup_common
@@ -35,7 +35,7 @@ compose のサービス (`make slam`、`make navigation` など) は、ここの
 
 ### bringup_navigation
 
-`bringup_common` の引数 (`use_odom_corrector` の既定値は `true`) に加えて次の引数がある。
+`bringup_common` の引数 に加えて次の引数がある。
 
 | 引数 | 内容 |
 | :--- | :--- |
@@ -93,7 +93,7 @@ compose のサービス (`make slam`、`make navigation` など) は、ここの
 ## 注意
 
 - `drive` を `true` にしてもしなくても、実機 (`simulation:=false`) ではモータドライバが起動する。`mg_drivers/launch/bringup.launch.py` の条件式が、Python の `and` で書かれているため。
-- `navigation` サービスの `map_path` と `planning_map_path` の既定値は、特定のファイル名 (`Region1_*.yaml`) に固定されている。別の地図を使うときは引数で渡す ([doc/environment.md](../doc/environment.md#地図の指定))。
+- `navigation` サービスの `map_path` と `planning_map_path` の既定の地図は、launch に固定されている。別の地図を使うときは引数で渡す ([doc/environment.md](../doc/environment.md#地図の指定))。
 
 ## 依存
 

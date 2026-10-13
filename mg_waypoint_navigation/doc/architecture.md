@@ -63,7 +63,7 @@ graph TD
         FSM["WaypointSequencerFSM\nSequencerState\nNamed Pause Slots"]
         NAV["WaypointNavigator\n(Nav2 ActionClient)"]
         EXEC["ActionExecutor\n(別スレッド)"]
-        PUB["~/status (SequencerStatus) 10Hz\n~/waypoints (WaypointList) latched\n~/waypoints_markers (MarkerArray)"]
+        PUB["~/status (SequencerStatus) \n~/waypoints (WaypointList) latched\n~/waypoints_markers (MarkerArray)"]
     end
 
     Nav2["Nav2 Stack\n(navigate_to_pose)"]
@@ -85,10 +85,10 @@ graph TD
 
 衝突検知から回避までの一連の振る舞いは、`WaypointSequencerFSM`やPauseRequestを経由せず、**Nav2標準機構の組み合わせで`navigate_to_pose`アクション内部に完結する**（旧`mg_navigation/scripts/collision_behavior_node.py`は廃止済み）。
 
-- **急な動的障害物への即時停止**: `mg_navigation`の`collision_monitor`（`nav2_collision_monitor`）が`cmd_vel_nav`→`cmd_vel_collision`に介入し、`PolygonStop`（速度即ゼロ）と`PolygonApproach`（時間投影による連続減速）の2段構えで低遅延に停止する。RPP（`FollowPath`）自身のコストマップベース衝突チェック（`use_collision_detection`）も併用。
+- **急な動的障害物への即時停止**: `mg_navigation`の`collision_monitor`（`nav2_collision_monitor`）が`cmd_vel_nav`→`cmd_vel_collision`に介入し、`PolygonStop`（速度即ゼロ）、`PolygonSlowdown`（減速）、`PolygonApproach`（時間投影による連続減速）で低遅延に止まる・減速する。障害物を主に避けるのは、RPP（`FollowPath`）自身のコストマップベース衝突チェック（`use_collision_detection`）で、`collision_monitor`はその後ろ盾（[衝突の防止](../../mg_navigation/doc/costmap_and_collision.md#衝突の防止-collision_monitor)）。
 - **一定時間待つ**: `controller_server`の`progress_checker`（`movement_time_allowance`）が、ロボットが一定時間進まないことを検知すると`FollowPath`アクションを失敗させる。この値は`controller_server`単一インスタンスの共有設定のため、衝突対応専用ではなく下記`queue_wait`モードのFollowPathにも同じ値が効く点に注意。
 - **計画の失敗では止めない**: 定期的な経路の計画が失敗しても、`CommitPath`（`mg_navigation`のBTプラグイン）が直前の経路を保つので、止まるかどうかはRPPの衝突判定で決まる。新しいゴールへの経路がないときだけ、経路を捨ててリカバリーに入る。
-- **解消しなければ回避行動**: 上記の失敗をトリガーに、`mg_navigate_to_pose.xml`の`RecoveryNode`/`RoundRobin`リカバリーが発火する。1回のリカバリーで1段階（首振り → コストマップのクリアと待機 → 逆向きの首振り → 待機 → 0.3mの後退）を行って走行に戻る。試行回数は実質無制限で、詰まりは診断`waypoint_sequencer_node: progress`で知らせる。首振り・後退は`behavior_server`が担当し、`collision_monitor`を経由せず`cmd_vel`に直接publishするため、その間の安全性は`behavior_server`自身のローカルコストマップベースの衝突チェックに委ねられる。後退を最後の手段にしているのはこのため。
+- **解消しなければ回避行動**: 上記の失敗をトリガーに、`mg_navigate_to_pose.xml`の`RecoveryNode`/`RoundRobin`リカバリーが発火する。1回のリカバリーで1段階（首振り → コストマップのクリアと待機 → 逆向きの首振り → 待機 → 短い後退）を行って走行に戻る。試行回数は実質無制限で、詰まりは診断`waypoint_sequencer_node: progress`で知らせる。首振り・後退は`behavior_server`が担当し、`collision_monitor`を経由せず`cmd_vel`に直接publishするため、その間の安全性は`behavior_server`自身のローカルコストマップベースの衝突チェックに委ねられる。後退を最後の手段にしているのはこのため。
 - **空いたらすぐ走行へ戻る**: リカバリーの間は`IsPathClear`（`mg_navigation`のBTプラグイン）が、RPPが衝突判定なしで走り出せるかをRPPと同等以上の基準で調べ、塞がっていた経路が空いたら回避行動を中断して走行に戻る。詳細は[README](../README.md#障害物に出会ったときの動き-両-bt-共通の考え方)。
 - **列に並ぶ区間（queue_wait）**: `set_navigation_mode`アクションで`navigation_mode`を`queue_wait`に切り替えると、`mg_navigate_to_pose_queue_wait.xml`が使われる。こちらはリトライ無制限・待機のみで回避動作を行わず、列に詰める動作を再現する（前が空けば`IsPathClear`で待機を中断する）。
   同時に、global_costmapのセンサ障害物層（`top_obstacle_layer`・`obstacle_stvl_layer`）を無効にするので、グローバル経路は動的障害物を避けずに引かれる（`static_layer`と`inflation_layer`は有効のまま。local_costmapは変えない）。障害物の手前での停止は`collision_monitor`とRPPの衝突チェックが担う。`normal`に切り替えると層を有効に戻す。自動では戻さないので、列の区間の終わりに`normal`を呼ぶ。
@@ -160,13 +160,13 @@ stateDiagram-v2
 | Service | `~/load_map`                | `mg_msgs/LoadMaps`               | 測位用・計画用の地図を map_server に読み込ませる (空文字の側は変更しない)。状態によらず実行でき、`load_map` アクションと同じ経路 |
 | Sub     | `~/set_next_waypoint_index` | `std_msgs/Int16`                 | IDLE/SUSPENDED 時のみ有効                    |
 | Sub     | `~/pause_request`           | `mg_msgs/PauseRequest`           | Named Pause Slot 制御 (複数ノードから送信可) |
-| Pub     | `~/status`                  | `mg_msgs/SequencerStatus`        | 10Hz, パラメータで無効化可                   |
-| Pub     | `~/activity`                | `mg_msgs/NavigationActivity`     | 走行の「いまの活動」の要約 (2Hz、transient_local)。`publish_activity` で無効化可。[いまの活動](#いまの活動-activity) |
+| Pub     | `~/status`                  | `mg_msgs/SequencerStatus`        | パラメータで無効化可                   |
+| Pub     | `~/activity`                | `mg_msgs/NavigationActivity`     | 走行の「いまの活動」の要約 (transient_local)。`publish_activity` で無効化可。[いまの活動](#いまの活動-activity) |
 | Pub     | `~/waypoints`               | `mg_msgs/WaypointList`           | transient_local latched                      |
 | Pub     | `~/waypoints_markers`       | `visualization_msgs/MarkerArray` | RViz 表示                                    |
 | Pub     | `~/loaded_maps`             | `mg_msgs/LoadedMaps`             | map_server に読み込ませた地図 (読み込みに成功したものだけを記録)。transient_local latched |
 | Pub     | `~/navigation_mode`         | `std_msgs/String`                | 次のゴールで使うモードと BT の JSON (`{"mode": "normal", "behavior_tree": "<ファイル名>"}`)。変化したときだけ。transient_local latched |
-| Pub     | `/diagnostics`              | `diagnostic_msgs/DiagnosticArray` | 1Hz (`diagnostic_updater`)。`waypoint_sequencer_node: progress`: 走行中でなければ OK (`not navigating`)、走行中に位置が `stall_distance` 以上動かない時間が `stall_warn_sec` 以上なら WARN (`no progress for N s`)。values に `stalled_sec` と `number_of_recoveries` (NavigateToPose のフィードバック) |
+| Pub     | `/diagnostics`              | `diagnostic_msgs/DiagnosticArray` | (`diagnostic_updater`)。`waypoint_sequencer_node: progress`: 走行中でなければ OK (`not navigating`)、走行中に位置が `stall_distance` 以上動かない時間が `stall_warn_sec` 以上なら WARN (`no progress for N s`)。values に `stalled_sec` と `number_of_recoveries` (NavigateToPose のフィードバック) |
 
 ### ノードパラメータ
 
@@ -199,7 +199,7 @@ stateDiagram-v2
 
 - **入力**: `SequencerStatus` と同じシーケンサの状態 (`current_action`、`waiting_trigger`、手動ゴールの有無を含む)、`activity_collision_state_topic` (`nav2_msgs/CollisionMonitorState`)、`activity_bt_log_topic` (`nav2_msgs/BehaviorTreeLog`)、`activity_nav_status_topic` (`action_msgs/GoalStatusArray`、Nav2 のアクションの状態)、位置が進まない時間 (`ProgressMonitor`)。
 - **外部のゴールの判定**: Nav2 のアクションに生きたゴール (ACCEPTED / EXECUTING) があり、シーケンサ自身が送ったゴールが結果の返るまでの間に無く (`WaypointNavigator.has_live_goal`)、その状態が 1 秒 (`EXTERNAL_GOAL_HOLD_SEC`) 続いたとき。1 秒は、シーケンサのゴールの結果とアクションの状態の到着順の差を吸収するためのもの。アクションの状態は変化したときしか届かないので、発行側が居なくなったら最後の値を捨てる。
-- **配信**: 2Hz のタイマーからだけ合成する (専用の callback group)。状態が変わってから最大 0.5 秒遅れる。`elapsed_sec` は同じ `code` が続いている秒数。
+- **配信**: `activity_freq_hz` のタイマーからだけ合成する (専用の callback group)。状態が変わってから、最大でタイマーの周期だけ遅れる。`elapsed_sec` は同じ `code` が続いている秒数。
 - **`text` は固定の短い説明**で、変わる数値は `index` / `total` / `remaining` で渡す。`emphasis` は表示の強調で、健全性ではない (健全性は `/diagnostics_agg`)。
 
 優先順位 (上から。最初に当たったもの):

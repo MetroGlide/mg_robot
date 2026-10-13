@@ -24,7 +24,7 @@ Nav2 の他の部分は [architecture.md](./architecture.md)。値は `params/na
 
 ## グローバルプランナ
 
-`global_planner` 引数で、`params/planner_<名前>.yaml` を選ぶ (既定は launch が正)。
+`global_planner` 引数で、`params/planner_<名前>.yaml` を選ぶ (launch が既定を決める)。
 
 | 名前 | ファイル | 特徴 |
 | :--- | :--- | :--- |

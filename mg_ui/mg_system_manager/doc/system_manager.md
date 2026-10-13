@@ -118,7 +118,7 @@ UI の System ページでの表示グループ (`layer`) は、Core、Function�
 | `GET /settings` | UI の設定 |
 | `PATCH /settings` | 指定したキーだけを更新する。値が `null` のキーは削除する |
 
-設定の保存先は `UI_DATA_DIR` (既定 `/root/ros2_data/mg_ui_local`)。
+設定の保存先は `UI_DATA_DIR` ([doc/environment.md](../../../doc/environment.md#データディレクトリの構成))。
 
 ## 設定 (環境変数)
 

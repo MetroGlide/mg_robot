@@ -13,7 +13,7 @@ RealSense D435i の点群 (`points`) を `base_link` に変換し、2.5D グリ�
 
 - 出力は、検出ゼロのフレームでも必ず publish する (Nav2 のコストマップがクリアされるように)。
 - クラスタの点数に上限はない (大きな障害物も欠落しない)。
-- `use_sensor_data_qos` (既定 `false`) で、入出力の QoS を `SensorDataQoS` に切り替える。`false` のときは、depth 10 の reliable。
+- `use_sensor_data_qos` で、入出力の QoS を `SensorDataQoS` に切り替える。`false` のときは、reliable の QoS。
 
 ## パイプライン
 
@@ -45,7 +45,7 @@ RealSense D435i の点群 (`points`) を `base_link` に変換し、2.5D グリ�
 
 ## 処理速度の確認 (統計ログ)
 
-`publish_stats: true` (既定) のとき、`stats_period` 秒ごとに次のログが出る。
+`publish_stats: true` のとき、`stats_period` 秒ごとに次のログが出る。
 
 ```
 stats [5.9 fps, 6 frames] time avg/max [ms]: tf 0.02/0.02 accumulate 0.76/0.89 judge 0.00/0.00

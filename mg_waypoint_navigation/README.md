@@ -56,13 +56,13 @@ GUI の [waypoint-tool](https://github.com/Chu-son/waypoint-tool) でも作れ�
 | Service | `~/load_map` | `mg_msgs/LoadMaps` | 測位用・計画用の地図を読み込ませる |
 | Subscriber | `~/set_next_waypoint_index` | `std_msgs/Int16` | 次に向かうウェイポイントを指定する |
 | Subscriber | `~/pause_request` | `mg_msgs/PauseRequest` | 一時停止の要求 |
-| Publisher | `~/status` | `mg_msgs/SequencerStatus` | 状態 (10 Hz) |
-| Publisher | `~/activity` | `mg_msgs/NavigationActivity` | 走行の「いまの活動」の要約 (2 Hz、transient_local)。表示用。詳細は [doc/architecture.md](./doc/architecture.md#いまの活動-activity) |
+| Publisher | `~/status` | `mg_msgs/SequencerStatus` | 状態 |
+| Publisher | `~/activity` | `mg_msgs/NavigationActivity` | 走行の「いまの活動」の要約 (transient_local)。表示用。詳細は [doc/architecture.md](./doc/architecture.md#いまの活動-activity) |
 | Publisher | `~/waypoints` | `mg_msgs/WaypointList` | 読み込んだウェイポイント |
 | Publisher | `~/waypoints_markers` | `visualization_msgs/MarkerArray` | RViz2 用のマーカー |
 | Publisher | `~/loaded_maps` | `mg_msgs/LoadedMaps` | 読み込み済みの地図 |
 | Publisher | `~/navigation_mode` | `std_msgs/String` | 次のゴールで使うモードと BT |
-| Publisher | `/diagnostics` | `diagnostic_msgs/DiagnosticArray` | `waypoint_sequencer_node: progress` (`diagnostic_updater`、1 Hz)。走行中に位置が `stall_warn_sec` (既定 30 秒) 進まなければ WARN。集約で `/Robot/Navigation/Sequencer` |
+| Publisher | `/diagnostics` | `diagnostic_msgs/DiagnosticArray` | `waypoint_sequencer_node: progress` (`diagnostic_updater`)。走行中に位置が `stall_warn_sec` 進まなければ WARN。集約で `/Robot/Navigation/Sequencer` |
 
 操作は Web UI から行う ([mg_ui](../mg_ui/README.md))。
 
@@ -89,18 +89,18 @@ YAML (v2.0)。各ウェイポイントの位置と、到達時のアクション
 
 ### 障害物に出会ったときの動き (両 BT 共通の考え方)
 
-1. **待つ**: 前方に障害物があると、RPP (`FollowPath`) の衝突判定で止まり、`controller_server` の `failure_tolerance` (5 秒) まで待つ。この間も 1 Hz で経路を計画し直し、迂回路が引ければそれに乗って走り出す。消えればそのまま走り出す
+1. **待つ**: 前方に障害物があると、RPP (`FollowPath`) の衝突判定で止まり、`controller_server` の `failure_tolerance` まで待つ。この間も一定の周期で経路を計画し直し、迂回路が引ければそれに乗って走り出す。消えればそのまま走り出す
 2. **計画が失敗しても止めない**: 定期的な計画は `{candidate_path}` に書き、`CommitPath` が今のゴールへの経路のときだけ `{path}` に反映する。計画が失敗しても直前の経路で追従を続け、止まるかどうかは RPP の判定に任せる。ゴールが変わって新しいゴールへの経路がないときだけ、経路を捨ててリカバリーに入る (古いゴールで到着と報告しないため)
-3. **回避行動** (normal のみ): 5 秒待っても空かなければ `FollowPath` が失敗し、リカバリーで次の段階を 1 つ行ってから走行に戻る。段階は順に、首振り (+0.5rad) → コストマップのクリアと 3 秒の待機 → 逆向きの首振り (-1.0rad) → 3 秒の待機 → 0.3m の後退 (0.15m/s)。首振りと後退の後は経路を計画し直す。後退は危険なので最後の手段にしている
-4. **空いたらすぐ戻る**: リカバリーの間、`IsPathClear` が「RPP が衝突判定なしで走り出せるか」を RPP と同等以上の基準で調べる。塞がっていた経路が空いた状態 (コストマップ 2 枚以上、1 秒以上) になったら、回避行動の途中でも中断して走行に戻る (除去から 1.5 秒程度)。最初から空いている失敗 (スリップなど障害物以外が原因) では中断せず、回避行動を行う
+3. **回避行動** (normal のみ): `failure_tolerance` の間待っても空かなければ `FollowPath` が失敗し、リカバリーで次の段階を 1 つ行ってから走行に戻る。段階は順に、首振り → コストマップのクリアと待機 → 逆向きの首振り → 待機 → 短い後退 (角度・時間・距離・速度は BT の XML と `behavior_server` の設定)。首振りと後退の後は経路を計画し直す。後退は危険なので最後の手段にしている
+4. **空いたらすぐ戻る**: リカバリーの間、`IsPathClear` が「RPP が衝突判定なしで走り出せるか」を RPP と同等以上の基準で調べる。塞がっていた経路が空いた状態 (コストマップ複数枚、一定時間以上) になったら、回避行動の途中でも中断して走行に戻る。最初から空いている失敗 (スリップなど障害物以外が原因) では中断せず、回避行動を行う
 
 注意:
 
-- リカバリーの試行回数は 99999 (実質無制限)。障害物が居座ると、上の段階を「RPP の待ち 5 秒 + 段階 1 つ」の周期で際限なくくり返す (1 周約 40 秒)。詰まりは診断 `waypoint_sequencer_node: progress` で知らせる
+- リカバリーの試行回数は実質無制限。障害物が居座ると、上の段階を「RPP の待ち + 段階 1 つ」の周期で際限なくくり返す。詰まりは診断 `waypoint_sequencer_node: progress` で知らせる
 - `IsPathClear` で回避行動を中断すると、次のリカバリーは段階 1 (首振り) から始まる (Nav2 の `RoundRobin` が halt で位置を戻すため)
 - 首振りの効果は 2 つ。(1) RPP の円弧・その場の回転は今の向きから投影されるので、経路は引けているのに向きのせいで衝突判定に掛かる場合は、向きを変えると通れるようになる (プランナによらない。`IsPathClear` も今の向きから判定するので、通れるようになれば走行に戻る)。(2) 向きを考慮する Smac Lattice (`global_planner:=smac_lattice`) では、再計画で障害物を避ける経路が引けやすくなる。既定の NavFn では (2) は効かない
-- `CommitPath` は、経路の終点がゴールから `goal_tolerance` (0.6m。`plan_goal_match_tolerance` と同じ) 以内かで「今のゴールへの経路か」を判定する。0.6m より近いゴールが続くと区別できない
-- `collision_monitor` のポリゴン (今はすべて無効) を有効にすると、RPP が止めないのに `collision_monitor` が止める状況ができる。このとき `IsPathClear` (RPP 基準) は空いていると判定するので、「空いたら戻る」が働かない場合がある。有効にするときは見直す
+- `CommitPath` は、経路の終点がゴールから `goal_tolerance` (`plan_goal_match_tolerance` と同じ値にする) 以内かで「今のゴールへの経路か」を判定する。この距離より近いゴールが続くと区別できない
+- `collision_monitor` のポリゴンが有効なとき、RPP が止めないのに `collision_monitor` が止める状況がありうる。このとき `IsPathClear` (RPP 基準) は空いていると判定するので、「空いたら戻る」が働かない場合がある。`collision_monitor` のポリゴンは、RPP より先に反応しないように作ってある ([衝突の防止](../mg_navigation/doc/costmap_and_collision.md#衝突の防止-collision_monitor))
 
 ## 構成
 
