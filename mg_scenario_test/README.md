@@ -48,11 +48,11 @@ make scenario-test-all REPEAT=3 TIER=smoke          # 繰り返して安定性�
 
 | 項目 | MG-01 の値 |
 |---|---|
-| `sim` | `gazebo_fortress`。`mg_simulation` の `bringup.launch.py` を、`world` と `headless` を渡して起動する。ロボットは `mg`、生成する高さ `robot_spawn_z` は 0.05 |
+| `sim` | `gazebo_fortress`。`mg_simulation` の `bringup.launch.py` を、`world` と `headless` を渡して起動する。ロボット名と生成する高さ `robot_spawn_z` は profile が決める |
 | `stack` | `mg_bringup` の `bringup_navigation.launch.py`。ワールドごとの地図・ウェイポイント・`gnss_transform.yaml` を渡し、GNSS ブリッジは `mg_simulation/config/nav_bridge_sim.yaml`、RViz2 は起動しない |
 | `frames` | `map`、`base_footprint`。Gazebo のワールドの原点と地図の原点は一致 |
-| `robot.footprint` | `[[0.4, 0.3], [0.4, -0.3], [-0.2, -0.3], [-0.2, 0.3]]` (`nav2_params.yaml` の footprint の実寸) |
-| `readiness` | 180 秒以内に `lifecycle_manager_localization` と `lifecycle_manager_navigation` が起動するのを待つ |
+| `robot.footprint` | `nav2_params.yaml` の footprint の実寸 (値は profile が正) |
+| `readiness` | 制限時間内に `lifecycle_manager_localization` と `lifecycle_manager_navigation` が起動するのを待つ |
 | `worlds` | `warehouse` (`mg_simulation` の SDF・地図・ウェイポイント・`gnss_transform.yaml`) |
 
 `sim_tests/` の pytest 結合テストの書き方は [sim_scenario_test/doc/python_scenarios.md](../sim_scenario_test/doc/python_scenarios.md)。
@@ -143,7 +143,7 @@ make scenario-test-all TIER=smoke ROBOT=<実機PCのIP>
 | `mg_simulation/worlds/warehouse.sdf` | ワールド |
 | `mg_simulation/maps/warehouse/{localization,planning}.yaml`, `map.pgm` | 測位・計画用の地図 |
 | `mg_simulation/maps/warehouse/gnss_transform.yaml` | Gazebo の navsat を地図座標に直す変換 (`tools/scripts/make_sim_gnss_transform.py` で生成)。GNSS ブリッジ (`config/nav_bridge_sim.yaml`) が使い、`/odom/gps` を EKF に入れる |
-| `mg_simulation/maps/warehouse/waypoints.yaml` | sequencer 用の waypoint (通過点、許容距離 1.5 m) |
+| `mg_simulation/maps/warehouse/waypoints.yaml` | sequencer 用の waypoint (通過点) |
 
 ## トラブルシュート
 
@@ -151,7 +151,7 @@ make scenario-test-all TIER=smoke ROBOT=<実機PCのIP>
 |---|---|
 | `ERROR ... no result was produced` | 起動に失敗している。`launch.log` の先頭側のエラーを見る。新しいファイルを追加したなら `make build svc=scenario-test` |
 | `readiness timeout ... simulator world` | シナリオの `world` とシミュレータのワールドの不一致、または Gazebo が起動していない |
-| `... does not exist after 5s (model download failure?)` | Fuel モデルの取得に失敗。初回は `~/.ignition/fuel` へダウンロードされる。オフラインなら `primitive` か `local` モデルを使う |
+| `... does not exist after Ns (model download failure?)` | Fuel モデルの取得に失敗。初回は `~/.ignition/fuel` へダウンロードされる。オフラインなら `primitive` か `local` モデルを使う |
 | シミュレーションが極端に遅い (RTF が 0.05 など) | GPU が使われていない (`USE_GPU`)。大きなメッシュのモデルを避ける |
 | `simulation clock stalled` | シミュレータが停止・フリーズしている |
 | 同じスタックで繰り返すと不安定になる | 仕様どおりシナリオごとに起動し直す (`make scenario-test` / `-all`)。`-attach` は反復開発用 |

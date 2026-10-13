@@ -11,7 +11,7 @@
 ```yaml
 run:
   mg_sequencer:
-    namespace: waypoint_sequencer_node   # 既定
+    namespace: waypoint_sequencer_node   # 省略可
     waypoints_file: "{world.waypoints}"  # 省略時は sequencer が配信する ~/waypoints トピックから取得
     start_index: 0                       # ここから走行する
     auto_start: true                     # 下記
@@ -25,7 +25,7 @@ run:
         countdown_ms: 3000               # この waypoint 向けの ~/start のカウントダウン
 ```
 
-`auto_start: true` (既定) の動作:
+`auto_start: true` の動作:
 
 1. 開始時に `~/stop` → `set_next_waypoint_index(start_index)` (反映を確認) → `~/start`。
 2. waypoint を通過した後、sequencer が `wait_trigger` で IDLE になっていたら、`hooks.<n>.before` を実行してから `~/start` を呼ぶ。

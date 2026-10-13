@@ -31,7 +31,7 @@ readiness ─ setup ─ ┬ driver.run (走行。ゴール到達などを ctx.ev
 ### タイムライン
 
 各項目は `when` (trigger) が成立した時点で `do` (action 列) を別スレッドで実行する。`until` が成立すると
-実行中の `do` を打ち切る。`required: true` (既定) の項目が一度も発火しなかった場合は ERROR とする
+実行中の `do` を打ち切る。`required: true` の項目が一度も発火しなかった場合は ERROR とする
 (障害物が出ないまま PASSED になる偽陽性を防ぐ)。
 
 ### 時間
@@ -51,7 +51,7 @@ sim 時計が `sim.clock_stall_sec` (壁時計) 以上進まない場合は、�
 
 ## 座標系
 
-`PoseSpec.frame`: `map` (既定・Nav2 の地図座標)、`world` (Gazebo のワールド座標)、`robot` (現在のロボット姿勢基準)。
+`PoseSpec.frame`: `map` (Nav2 の地図座標)、`world` (Gazebo のワールド座標)、`robot` (現在のロボット姿勢基準)。
 地図原点とワールド原点の関係はプロファイルの `frames.map_in_world` で与える。`robot` は TF `map→base` から解決する。
 
 ## 拡張ポイント
@@ -71,6 +71,6 @@ sim 時計が `sim.clock_stall_sec` (壁時計) 以上進まない場合は、�
 ## 既知の制約
 
 - Gazebo Fortress の `create` / `remove` サービスは要求の受理で成功を返す。生成の確認は `spawn` action が `ign model --list` で行う。
-- Humble + Fortress では Python の gz-transport が使えないため、`ign service` CLI を使う。障害物の移動は 5 Hz 程度が上限。
-- シナリオごとにスタックを起動し直すので 1 本あたり 30〜60 秒のオーバーヘッドがある。
+- Humble + Fortress では Python の gz-transport が使えないため、`ign service` CLI を使う。障害物の移動の更新頻度には上限がある (CLI の呼び出しが遅いため)。
+- シナリオごとにスタックを起動し直すので 1 本あたり起動のオーバーヘッドがある。
 - 同一マシン・同一 ROS ドメインで別のスタックを起動していると干渉する。

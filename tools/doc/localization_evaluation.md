@@ -52,7 +52,7 @@ docker run --rm -v $PWD:/app -v ~/ros2_data:/root/ros2_data mg_develop:latest \
   python3 /app/tools/scripts/compare_localization.py <出力ディレクトリ1> <出力ディレクトリ2>
 ```
 
-| オプション | 内容 |
+| オプション | 内容 (既定値は `--help` と各スクリプトが正) |
 | :--- | :--- |
 | `--dataset <名前\|パス>` | `tools/datasets/localization/` の定義 |
 | `--runs N` | 繰り返す回数。AMCL は乱数を使うため、分布で比べる |
