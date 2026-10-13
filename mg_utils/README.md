@@ -75,12 +75,12 @@ ROS に依存しない numpy の関数。
 
 `ros2 bag record` を、mcap 形式で起動する。`mg_navigation/bringup.launch.py` と `mg_slam/bringup_slam_toolbox.launch.py` が、`record_bag:=true` のときに include する。`mg_slam` には、独自の `record_bag.launch.py` もある。
 
-| 引数 | 既定値 | 内容 |
-| :--- | :--- | :--- |
-| `caller_pkg_name` | `mg_navigation` | 収録するトピックの一覧 `params/record_topic_list.txt` を持つパッケージ |
-| `record_bag_base_name` | `navigation_` | bag のディレクトリ名の接頭辞 |
-| `simulation` | `$SIMULATION` | `true` なら `--use-sim-time` を付ける |
-| `record_monitoring` | `true` | 状態監視とイベントのトピック (`params/record_topics_monitoring.txt`) も収録する |
+| 引数 | 内容 |
+| :--- | :--- |
+| `caller_pkg_name` | 収録するトピックの一覧 `params/record_topic_list.txt` を持つパッケージ |
+| `record_bag_base_name` | bag のディレクトリ名の接頭辞 |
+| `simulation` | `true` なら `--use-sim-time` を付ける |
+| `record_monitoring` | 状態監視とイベントのトピック (`params/record_topics_monitoring.txt`) も収録する |
 
 - 環境変数 `ROSBAG_PATH` が必須 (未設定ならエラーになる)。
 - 保存先は `$ROSBAG_PATH/<YYYYMMDD>_bag/<接頭辞><番号>`。番号は、同じ日のディレクトリの最大値に 1 を足す。

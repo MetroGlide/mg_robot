@@ -39,10 +39,10 @@ EKF は速度を観測として使うため、速度を信頼する設定 (共�
 
 `mg_bringup` の `bringup_navigation.launch.py` から `mg_drivers` の launch まで、同じ名前で伝わる。
 
-| 引数 | 既定値 | 内容 |
-| :--- | :--- | :--- |
-| `use_odom_corrector` | `bringup_navigation`: `true` (実機・シミュレータとも)。それ以外の launch (SLAM など): `false` | `true` でドライバの出力先を `/odom/raw` に変え、補正ノードを起動する |
-| `odom_corrector_params_file` | `wheel_odom_corrector.yaml` | `params/` 配下のファイル名、または絶対パス |
+| 引数 | 内容 |
+| :--- | :--- |
+| `use_odom_corrector` | `true` でドライバの出力先を `/odom/raw` に変え、補正ノードを起動する |
+| `odom_corrector_params_file` | `params/` 配下のファイル名、または絶対パス |
 
 ## `/odom` の利用者と影響
 

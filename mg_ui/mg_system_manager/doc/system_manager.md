@@ -124,17 +124,17 @@ UI の System ページでの表示グループ (`layer`) は、Core、Function�
 
 compose の `system-manager` で設定している。
 
-| 変数 | 既定値 | 内容 |
-| :--- | :--- | :--- |
-| `PROJECT_DIR` | `/app` | コンテナ内のプロジェクトのパス |
-| `HOST_PROJECT_DIR`、`HOST_HOME` | | ホストのパス (docker compose に渡す) |
-| `COMPOSE_PROJECT_NAME` | ディレクトリ名 | compose のプロジェクト名 |
-| `SIMULATION_WORLD`、`SIMULATION_ROBOT_NAME` | `warehouse`、`mg` | `reset-pose` が使う Gazebo のワールドとロボット名 |
-| `UI_DATA_DIR` | `/root/ros2_data/mg_ui_local` | UI の設定の保存先 |
-| `SCENARIO_DIRS`、`SCENARIO_RESULTS_DIR`、`SCENARIO_PROFILE`、`SCENARIO_ROS_DOMAIN_ID` | 回帰・サンプルのシナリオ、`/root/ros2_data/scenario_results`、`mg01`、`42` | シナリオテスト |
-| `SCENARIO_STACK_ALLOWED_PACKAGES` | `mg_bringup` | `scenario-remote-stack` で起動してよいパッケージ |
-| `MAP_PATH` | | 地図の一覧 (`map_list.txt`) の場所 |
-| `SYSTEM_MANAGER_ALLOW_ORIGINS` | | 許可するオリジンの追加 (カンマ区切り) |
+| 変数 | 内容 |
+| :--- | :--- |
+| `PROJECT_DIR` | コンテナ内のプロジェクトのパス |
+| `HOST_PROJECT_DIR`、`HOST_HOME` | ホストのパス (docker compose に渡す) |
+| `COMPOSE_PROJECT_NAME` | compose のプロジェクト名 |
+| `SIMULATION_WORLD`、`SIMULATION_ROBOT_NAME` | `reset-pose` が使う Gazebo のワールドとロボット名 |
+| `UI_DATA_DIR` | UI の設定の保存先 |
+| `SCENARIO_DIRS`、`SCENARIO_RESULTS_DIR`、`SCENARIO_PROFILE`、`SCENARIO_ROS_DOMAIN_ID` | シナリオテスト |
+| `SCENARIO_STACK_ALLOWED_PACKAGES` | `scenario-remote-stack` で起動してよいパッケージ |
+| `MAP_PATH` | 地図の一覧 (`map_list.txt`) の場所 |
+| `SYSTEM_MANAGER_ALLOW_ORIGINS` | 許可するオリジンの追加 (カンマ区切り) |
 
 ## CORS
 

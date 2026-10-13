@@ -20,25 +20,25 @@
 
 ### waypoint_sequencer.launch.py
 
-| 引数 | 既定値 | 内容 |
-| :--- | :--- | :--- |
-| `simulation` | `false` | `use_sim_time` |
-| `load_path` | `$WAYPOINT_PATH` | ウェイポイントの YAML |
-| `initial_localization_map` | 空 | 起動時に `map_server` が読んでいる測位用の地図 (`~/loaded_maps` の初期値) |
-| `initial_planning_map` | 空 | 起動時に `planning_map_server` が読んでいる計画用の地図 |
-| `publish_waypoint_status` | `true` | `~/status` を配信するか |
-| `publish_activity` | `true` | `~/activity` (走行の「いまの活動」) を配信するか。`false` なら、その入力の購読もしない |
-| `activity_nav_status_topic` | `/navigate_to_pose/_action/status` | RViz の 2D Goal Pose などシーケンサを通らないゴールの走行を、`~/activity` の `external_goal` として出すための入力。空にすると、その検出だけ止まる |
+| 引数 | 内容 |
+| :--- | :--- |
+| `simulation` | `use_sim_time` |
+| `load_path` | ウェイポイントの YAML |
+| `initial_localization_map` | 起動時に `map_server` が読んでいる測位用の地図 (`~/loaded_maps` の初期値) |
+| `initial_planning_map` | 起動時に `planning_map_server` が読んでいる計画用の地図 |
+| `publish_waypoint_status` | `~/status` を配信するか |
+| `publish_activity` | `~/activity` (走行の「いまの活動」) を配信するか。`false` なら、その入力の購読もしない |
+| `activity_nav_status_topic` | RViz の 2D Goal Pose などシーケンサを通らないゴールの走行を、`~/activity` の `external_goal` として出すための入力。空にすると、その検出だけ止まる |
 
 ### waypoint_editor.launch.py
 
 環境変数 `MAP_PATH` が必須で、そのディレクトリの `map_list.txt` (1 行に 1 つの地図の YAML。`#` で始まる行はコメント) に書かれた地図を、すべて読み込んで表示する。
 
-| 引数 | 既定値 | 内容 |
-| :--- | :--- | :--- |
-| `simulation` | `false` | `use_sim_time` |
-| `load_path` | `/root/ros2_data/map/waypoint.yaml` | 編集を始めるときに読み込む YAML |
-| `save_path` | `$WAYPOINT_PATH` | 保存先。サービス `save_waypoints` は、ファイルが既にあると失敗する。`force_save_waypoints` は上書きする |
+| 引数 | 内容 |
+| :--- | :--- |
+| `simulation` | `use_sim_time` |
+| `load_path` | 編集を始めるときに読み込む YAML |
+| `save_path` | 保存先。サービス `save_waypoints` は、ファイルが既にあると失敗する。`force_save_waypoints` は上書きする |
 
 RViz2 の `/goal_pose` (2D Goal Pose) でウェイポイントを追加し、マーカーを動かして編集する。
 GUI の [waypoint-tool](https://github.com/Chu-son/waypoint-tool) でも作れる ([doc/waypoint_format.md](./doc/waypoint_format.md#waypoint-tool-での作成))。

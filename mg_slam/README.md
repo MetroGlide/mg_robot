@@ -15,14 +15,14 @@ slam_toolbox による 2D SLAM の launch と設定、地図のプレビュー�
 
 ### bringup_slam_toolbox.launch.py
 
-| 引数 | 既定値 | 内容 |
-| :--- | :--- | :--- |
-| `slam_params_file` | `params/slam_toolbox.yaml` | slam_toolbox のパラメータ |
-| `simulation` | `$SIMULATION` | `use_sim_time` |
-| `log_level` | `info` | ログのレベル |
-| `rviz` | `$USE_RVIZ` | RViz2 の起動 |
-| `rviz_param` | `rviz.rviz` | RViz2 の設定ファイル (`rviz/` の名前) |
-| `record_bag` | `false` | rosbag の収録 (`mg_utils` の `record_bag.launch.py`。`ROSBAG_PATH` が必須) |
+| 引数 | 内容 |
+| :--- | :--- |
+| `slam_params_file` | slam_toolbox のパラメータ |
+| `simulation` | `use_sim_time` |
+| `log_level` | ログのレベル |
+| `rviz` | RViz2 の起動 |
+| `rviz_param` | RViz2 の設定ファイル (`rviz/` の名前) |
+| `record_bag` | rosbag の収録 (`mg_utils` の `record_bag.launch.py`。`ROSBAG_PATH` が必須) |
 
 起動するもの: slam_toolbox (`slam_toolbox` パッケージの launch を include)、`map_saver_server` (Nav2、ライフサイクルで管理)、`actual_path_publisher.py` (`actual_path`: TF から作った実際の軌跡)、RViz2 (任意)。
 センサのドライバは、`mg_bringup` の `bringup_slam_toolbox.launch.py` が、先に起動する ([mg_bringup](../mg_bringup/README.md))。

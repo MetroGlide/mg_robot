@@ -170,25 +170,25 @@ stateDiagram-v2
 
 ### ノードパラメータ
 
-| パラメータ                | 型     | デフォルト | 説明                             |
-| ------------------------- | ------ | ---------- | -------------------------------- |
-| `load_path`               | string | `""`       | ウェイポイント YAML パス         |
-| `publish_waypoint_status` | bool   | `true`     | ステータスパブリッシュ有効/無効  |
-| `waypoint_status_freq_hz` | double | `10.0`     | ステータスパブリッシュ周波数     |
-| `publish_waypoints_list`  | bool   | `true`     | ウェイポイントリストパブリッシュ |
-| `bt_xml_normal`           | string | パッケージ内 `mg_navigate_to_pose.xml` | 通常モードの BT |
-| `bt_xml_queue_wait`       | string | パッケージ内 `mg_navigate_to_pose_queue_wait.xml` | queue_wait モードの BT |
-| `plan_topic`              | string | `/plan`    | 通過点判定に使う経路のトピック   |
-| `initial_localization_map` | string | `""`      | 起動時に map_server が読み込んでいる測位用地図 (`~/loaded_maps` の初期値。`mg_navigation` の bringup が渡す) |
-| `initial_planning_map`    | string | `""`       | 起動時に planning_map_server が読み込んでいる計画用地図 (同上) |
-| `plan_goal_match_tolerance` | double | `0.6`    | 経路の終点をゴールのものとみなす距離 [m]（NavFn の `tolerance` 以上にする） |
-| `stall_distance`          | double | `0.5`      | 詰まりの検知で、進んだとみなす移動距離 [m] |
-| `stall_warn_sec`          | double | `30.0`     | 位置が進まない時間がこれ以上になったら `/diagnostics` に WARN を出す [s]。`~/activity` の `no_progress` の判定にも使う (判定は 1 つ) |
-| `publish_activity`        | bool   | `true`     | `~/activity` の配信。`false` なら購読もしない |
-| `activity_freq_hz`        | double | `2.0`      | `~/activity` の配信周波数 |
-| `activity_collision_state_topic` | string | `/collision_monitor_state` | 障害物での停止・減速の入力。空にするとこの入力は使わない |
-| `activity_bt_log_topic`   | string | `/behavior_tree_log` | リカバリーの入力。空にするとこの入力は使わない |
-| `activity_nav_status_topic` | string | `/navigate_to_pose/_action/status` | シーケンサを通らないゴール (RViz の 2D Goal Pose など) の検出に使う入力。空にすると、その検出だけ止まる |
+| パラメータ | 型 | 説明 |
+| :--- | :--- | :--- |
+| `load_path` | string | ウェイポイント YAML パス |
+| `publish_waypoint_status` | bool | ステータスパブリッシュ有効/無効 |
+| `waypoint_status_freq_hz` | double | ステータスパブリッシュ周波数 |
+| `publish_waypoints_list` | bool | ウェイポイントリストパブリッシュ |
+| `bt_xml_normal` | string | 通常モードの BT |
+| `bt_xml_queue_wait` | string | queue_wait モードの BT |
+| `plan_topic` | string | 通過点判定に使う経路のトピック |
+| `initial_localization_map` | string | 起動時に map_server が読み込んでいる測位用地図 (`~/loaded_maps` の初期値。`mg_navigation` の bringup が渡す) |
+| `initial_planning_map` | string | 起動時に planning_map_server が読み込んでいる計画用地図 (同上) |
+| `plan_goal_match_tolerance` | double | 経路の終点をゴールのものとみなす距離 [m]（NavFn の `tolerance` 以上にする） |
+| `stall_distance` | double | 詰まりの検知で、進んだとみなす移動距離 [m] |
+| `stall_warn_sec` | double | 位置が進まない時間がこれ以上になったら `/diagnostics` に WARN を出す [s]。`~/activity` の `no_progress` の判定にも使う (判定は 1 つ) |
+| `publish_activity` | bool | `~/activity` の配信。`false` なら購読もしない |
+| `activity_freq_hz` | double | `~/activity` の配信周波数 |
+| `activity_collision_state_topic` | string | 障害物での停止・減速の入力。空にするとこの入力は使わない |
+| `activity_bt_log_topic` | string | リカバリーの入力。空にするとこの入力は使わない |
+| `activity_nav_status_topic` | string | シーケンサを通らないゴール (RViz の 2D Goal Pose など) の検出に使う入力。空にすると、その検出だけ止まる |
 
 > 読み込み済みの地図の記録は、`load_map` アクションと `~/load_map` を通した読み込みだけが更新する。
 > `/map_server/load_map` などを直接呼んだ場合は記録とずれる。

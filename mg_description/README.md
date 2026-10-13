@@ -16,10 +16,10 @@ MG-01 の URDF (xacro) と、RViz2 の表示設定。`robot_state_publisher` を
 
 `launch/bringup.launch.py` は、`mg_bringup` の `bringup_common` から起動される ([mg_bringup](../mg_bringup/README.md))。
 
-| 引数 | 既定値 | 内容 |
-| :--- | :--- | :--- |
-| `simulation` | `$SIMULATION` | `use_sim_time` に渡す |
-| `xacro_file_name` | `mg_description.urdf.xacro` | `urdf/` の xacro ファイル名 |
+| 引数 | 内容 |
+| :--- | :--- |
+| `simulation` | `use_sim_time` に渡す |
+| `xacro_file_name` | `urdf/` の xacro ファイル名 |
 
 - この launch は、xacro に `simulation:=` を渡さない。常に実機用の URDF (`simulation=false`) になる。
 - シミュレーション用の URDF (`simulation:=true`。センサの Gazebo プラグインを含む) は、`mg_simulation` の launch が xacro を直接展開して作る ([mg_simulation](../mg_simulation/README.md))。

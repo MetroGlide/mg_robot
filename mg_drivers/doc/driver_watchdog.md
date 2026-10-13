@@ -53,22 +53,22 @@
 
 `params/driver_watchdog.yaml`。
 
-| パラメータ | 既定値 | 内容 |
-| :--- | :--- | :--- |
-| `check_period_sec` | 0.5 | 判定の周期 |
-| `stale_timeout_sec` | 1.0 | 途絶とみなす時間 (ソースごとに `<id>.stale_timeout_sec` で上書きできる) |
-| `recover_hold_sec` | 2.0 | 復旧とみなすまでに、正常が続く時間 |
-| `startup_grace_sec` | 30.0 | 起動直後の猶予 |
-| `max_tick_gap_sec` | 2.0 | 周期処理の遅れの検知 |
-| `pause_on_fault` | true | シーケンサに一時停止を出す |
-| `pause_request_topic` | `/waypoint_sequencer_node/pause_request` | 一時停止を出すトピック |
-| `pause_requester_id` | `driver_watchdog` | 一時停止の要求元の名前 |
-| `restart_enabled` | true | 止まったドライバを終了させる (launch が `respawn_drivers` に合わせる) |
-| `restart_after_sec` | 3.0 | 途絶がこの時間続いたら終了させる |
-| `restart_cooldown_sec` | 10.0 | 続けて終了させない時間 |
-| `kill_timeout_sec` | 3.0 | SIGTERM のあと、SIGKILL を送るまでの時間 |
-| `hz_warn_ratio` | 0.5 | 受信頻度が 期待する周期 × この値 を下回ったら診断を `WARN` にする |
-| `monitored_sources` | `[top_lidar, odom, motor]` | 監視するソースの id |
+| パラメータ | 内容 |
+| :--- | :--- |
+| `check_period_sec` | 判定の周期 |
+| `stale_timeout_sec` | 途絶とみなす時間 (ソースごとに `<id>.stale_timeout_sec` で上書きできる) |
+| `recover_hold_sec` | 復旧とみなすまでに、正常が続く時間 |
+| `startup_grace_sec` | 起動直後の猶予 |
+| `max_tick_gap_sec` | 周期処理の遅れの検知 |
+| `pause_on_fault` | シーケンサに一時停止を出す |
+| `pause_request_topic` | 一時停止を出すトピック |
+| `pause_requester_id` | 一時停止の要求元の名前 |
+| `restart_enabled` | 止まったドライバを終了させる (launch が `respawn_drivers` に合わせる) |
+| `restart_after_sec` | 途絶がこの時間続いたら終了させる |
+| `restart_cooldown_sec` | 続けて終了させない時間 |
+| `kill_timeout_sec` | SIGTERM のあと、SIGKILL を送るまでの時間 |
+| `hz_warn_ratio` | 受信頻度が 期待する周期 × この値 を下回ったら診断を `WARN` にする |
+| `monitored_sources` | 監視するソースの id |
 
 ソースごとの設定 (`<id>.*`)。
 
@@ -96,10 +96,10 @@
 
 ## launch の引数 (`bringup.launch.py`)
 
-| 引数 | 既定値 | 内容 |
-| :--- | :--- | :--- |
-| `use_driver_watchdog` | `true` | 監視ノードを起動する (シミュレーションでは起動しない) |
-| `respawn_drivers` | `true` | ドライバの respawn。`false` にすると、監視ノードの再起動も無効になる |
+| 引数 | 内容 |
+| :--- | :--- |
+| `use_driver_watchdog` | 監視ノードを起動する (シミュレーションでは起動しない) |
+| `respawn_drivers` | ドライバの respawn。`false` にすると、監視ノードの再起動も無効になる |
 
 ## 無効にする・元に戻す
 
