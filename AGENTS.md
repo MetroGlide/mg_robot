@@ -144,9 +144,10 @@ node_name:
 
 - プロジェクト全体: [README.md](./README.md)（入口）と [doc/](./doc/)（システム構成・Docker・コマンド・環境変数・運用手順）
 - 状態監視（diagnostics）とイベントログの規約: [doc/monitoring.md](./doc/monitoring.md)。診断は `diagnostic_updater` で出し、判定は発信元のノードが1回だけ行う。イベントは `evt=<domain>.<event> key=value` の書式で出す。ソースにロボットのバージョン名（`mg01` など）を書かない
+- 書き方の規約 (文書の種類、値を書かない、1 つの事実は 1 か所): [doc/documentation_guide.md](./doc/documentation_guide.md)。設定値・既定値は文書に書かず、yaml・launch・`.env.example` を正とする
 - パッケージごと: パッケージルートの `README.md`（役割・ノード・launch・使い方の入口）と、詳細を書く `doc/`（ディレクトリ名は `doc/` に統一）
 - パッケージ固有の開発ルールは、そのパッケージの `README.md` または `doc/` に書き、パッケージ内に `AGENTS.md` を新設しない。本ファイルには要点とリンクだけを載せる
-- コードを変更したときは、対応する README・doc（launch引数、パラメータの既定値、トピック名など）も実装に合わせて更新する
+- コードを変更したときは、対応する README・doc（launch引数の名前、トピック名、パラメータの意味や関係など）も実装に合わせて更新する
 
 ## テスト
 

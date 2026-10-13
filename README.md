@@ -110,5 +110,6 @@ make scenario-test-all TIER=smoke   # シミュレータでの回帰テスト (�
 | [doc/commands.md](./doc/commands.md) | make ターゲットと compose サービスの一覧 |
 | [doc/environment.md](./doc/environment.md) | `.env` の変数、地図の指定、データの置き場 |
 | [doc/docker.md](./doc/docker.md) | Docker イメージの構成、ビルド、GPU |
+| [doc/documentation_guide.md](./doc/documentation_guide.md) | 文書の種類、値を書かない規約、置き場所 |
 
 各パッケージの README から、そのパッケージの `doc/` へたどれる。
