@@ -109,6 +109,7 @@ Gazebo とナビゲーションを起動して合否を判定する。詳細は 
 
 - `make test` は Python のテストだけを実行する。C++ の gtest は `colcon test` で実行する ([mg_drivers の README](../mg_drivers/README.md) など)。
 - Web UI のテストは `make ui-test`。
+- 文書のリンクとアンカー、コードから文書への参照の検査は `make test pkg=tools OPTS="-k docs_links"` ([書き方の規約](./documentation_guide.md))。
 
 ## ビルド
 
