@@ -74,7 +74,7 @@ ros2 launch slam_gnss_2d bringup_slam_gnss_2d.launch.py rviz:=true
 ros2 launch slam_gnss_2d bringup_slam_gnss_2d.launch.py simulation:=true rviz:=true   # シミュレーション
 ```
 
-GNSS を使うので、走行を始めてから、`gnss.anchor.init_distance_m` (30 m) 走るまで、地図の向きが決まらない。
+GNSS を使うので、走行を始めてから、`gnss.anchor.init_distance_m` 走るまで、地図の向きが決まらない。
 
 ### オフラインの再処理 (rosbag2)
 
@@ -87,7 +87,7 @@ ros2 launch slam_gnss_2d offline_slam_gnss_2d.launch.py bag_path:=<bag> start_ti
 ```
 
 - `start_time` / `end_time`: bag の開始からの経過秒 [s]。`0.0` で、先頭 / 末尾。
-- `skip_intermediate_rendering` (既定 `true`): 途中の地図の描画を止めて、終了時に描く (高速)。RViz2 で処理中の地図を見るときは `false`。
+- `skip_intermediate_rendering` : 途中の地図の描画を止めて、終了時に描く (高速)。RViz2 で処理中の地図を見るときは `false`。
 
 終了時に、処理の段階ごとの所要時間が、`[timing]` のログに出る。
 
@@ -114,10 +114,10 @@ ros2 run slam_gnss_2d save_slam_map_cli -d /root/ros2_data/slam_maps/experiment_
 | オプション | 内容 |
 | :--- | :--- |
 | `-d`, `--dir <PATH>` | 保存先 (省略時はカレントディレクトリ) |
-| `-m`, `--map-topic <TOPIC>` | 地図のトピック (既定 `/map`) |
-| `-s`, `--service <NAME>` | 保存のサービス (既定 `/slam_gnss_2d/save_slam_map`) |
+| `-m`, `--map-topic <TOPIC>` | 地図のトピック |
+| `-s`, `--service <NAME>` | 保存のサービス |
 | `--no-pgm` | `map.pgm` / `map.yaml` の出力を省く |
-| `-t`, `--timeout <SEC>` | タイムアウト (既定 5.0) |
+| `-t`, `--timeout <SEC>` | タイムアウト [秒] |
 
 サービスを直接呼ぶこともできる。この場合、`gnss_transform.yaml` と `pose_graph.json` だけが保存される (`map.pgm` と `map.yaml` を含めるには、`save_slam_map_cli` を使う)。
 
@@ -136,14 +136,14 @@ ros2 service call /slam_gnss_2d/save_slam_map slam_gnss_2d_msgs/srv/SaveSlamMap 
 
 ## パラメータ
 
-`slam_gnss_2d/params/slam_gnss_2d.yaml` (SLAM)、`slam_gnss_2d/params/nav_bridge.yaml` (ナビゲーションのブリッジ)。全項目と、既定値の理由は [doc/parameters.md](./doc/parameters.md)。
+`slam_gnss_2d/params/slam_gnss_2d.yaml` (SLAM)、`slam_gnss_2d/params/nav_bridge.yaml` (ナビゲーションのブリッジ)。全項目の意味と関係は [doc/parameters.md](./doc/parameters.md)。
 
-主な既定の構成:
+主な構成 (値は yaml が正):
 
-- スキャンマッチング: `multi_res_csm` (2 段階の相関探索)。参照は直近 30 キーフレームのローカルマップ
-- キーフレーム: 0.5 m / 0.5 rad ごと
-- ループクロージャ: **無効** (`loop_closure.enabled: false`)
-- GNSS: 有効。NavPVT 入力。アンテナのレバーアーム (0.26, -0.13) m を補正する
+- スキャンマッチング: `multi_res_csm` (2 段階の相関探索)。参照は直近のキーフレームのローカルマップ
+- キーフレーム: 一定の移動量・回転量ごと
+- ループクロージャ: `loop_closure.enabled` で切り替える (yaml の既定は無効)
+- GNSS: 有効。NavPVT 入力。アンテナのレバーアームを補正する
 - 最適化: iSAM2
 
 ## テスト
