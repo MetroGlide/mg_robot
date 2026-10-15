@@ -108,15 +108,20 @@ set(BT_PLUGIN_DEPENDENCIES
   "tf2_geometry_msgs"
 )
 
-add_library(mg_bt_path_clearance SHARED src/bt_plugins/path_clearance.cpp)
+add_library(mg_bt_path_clearance SHARED
+  src/bt_plugins/path_clearance.cpp
+  src/bt_plugins/path_clearance_monitor.cpp)
 ament_target_dependencies(mg_bt_path_clearance ${BT_PLUGIN_DEPENDENCIES})
 
 set(BT_PLUGIN_LIBS
   mg_is_path_clear_condition_bt_node
+  mg_is_path_blocked_condition_bt_node
   mg_commit_path_action_bt_node
 )
 add_library(mg_is_path_clear_condition_bt_node SHARED
   src/bt_plugins/is_path_clear_condition.cpp)
+add_library(mg_is_path_blocked_condition_bt_node SHARED
+  src/bt_plugins/is_path_blocked_condition.cpp)
 add_library(mg_commit_path_action_bt_node SHARED
   src/bt_plugins/commit_path_action.cpp)
 foreach(bt_plugin ${BT_PLUGIN_LIBS})
@@ -181,6 +186,10 @@ if(BUILD_TESTING)
   ament_add_gtest(test_path_clearance test/test_path_clearance.cpp)
   target_link_libraries(test_path_clearance mg_bt_path_clearance)
   ament_target_dependencies(test_path_clearance ${BT_PLUGIN_DEPENDENCIES})
+
+  ament_add_gtest(test_is_path_blocked_condition test/test_is_path_blocked_condition.cpp)
+  target_link_libraries(test_is_path_blocked_condition mg_is_path_blocked_condition_bt_node)
+  ament_target_dependencies(test_is_path_blocked_condition ${BT_PLUGIN_DEPENDENCIES})
 
   ament_add_gtest(test_commit_path_action test/test_commit_path_action.cpp)
   target_link_libraries(test_commit_path_action mg_commit_path_action_bt_node)

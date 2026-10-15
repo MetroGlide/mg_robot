@@ -96,6 +96,7 @@ bt_navigator:
       - nav2_goal_checker_selector_bt_node
       # mg_navigation の BT プラグイン (mg_waypoint_navigation の BT で使う)
       - mg_is_path_clear_condition_bt_node
+      - mg_is_path_blocked_condition_bt_node
       - mg_commit_path_action_bt_node
 
 # behavior_server: BackUp/Spin/Wait/DriveOnHeading等のリカバリー動作を実行するノード。

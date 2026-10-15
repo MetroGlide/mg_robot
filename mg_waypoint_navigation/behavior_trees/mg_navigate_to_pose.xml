@@ -15,10 +15,16 @@
             <CommitPath candidate="{candidate_path}" goal="{goal}" path="{path}"/>
           </Sequence>
         </GoalUpdatedController>
-        <!-- 定期的な再計画。失敗しても直前の経路を保ち、障害物の判定は RPP に任せる -->
+        <!-- 定期的な再計画。失敗しても直前の経路を保ち、障害物の判定は RPP に任せる。
+             経路の近くが塞がっている間は再計画しない (急に現れた障害物は、迂回せずにまず
+             failure_tolerance の間待ち、居座ればリカバリーの首振りと再計画で迂回する)。
+             IsPathBlocked の行を外すと、迂回路があればすぐ乗る動きに戻る -->
         <RateController hz="1.0">
           <ForceSuccess>
             <Sequence name="ReplanPath">
+              <Inverter>
+                <IsPathBlocked path="{path}"/>
+              </Inverter>
               <ComputePathToPose goal="{goal}" path="{candidate_path}" planner_id="GridBased"/>
               <CommitPath candidate="{candidate_path}" goal="{goal}" path="{path}"/>
             </Sequence>
