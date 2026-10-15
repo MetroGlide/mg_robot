@@ -51,6 +51,10 @@ monitors:
   - bt_node: { node: BackUp, status: RUNNING, expect: never }      # BackUp が動かないこと
 ```
 
+**急に現れる障害物** — Fuel モデルの `spawn` は完了まで時間がかかり、その間にロボットが進むので、走行中の `spawn` では狙った位置に出せない。
+障害物を `setup` で走行範囲から離れた待避位置 (xy を離し、`static` なら z を負にしてもよい) に置き、`timeline` で `teleport` (`frame: robot`) して出し、`delay` のあとに待避位置へ戻す。
+障害物に出会えたかは `obstacle_clearance` の `require_within` で判定する (速度を変えて空振りしても PASS にしない)。実例は `dynamic_stop_and_resume.yaml`、`static_avoid_replan.yaml`。
+
 **自己位置推定の誘拐 (kidnapped robot)** — `teleport` はロボットをシミュレータ上で動かすだけで自己位置推定に通知しない。
 AMCL の復帰処理の確認に使える。
 

@@ -27,6 +27,15 @@ RPP (Humble 1.1.20 の `RegulatedPurePursuitController`) の衝突判定と同�
 | `costmap_node` / `costmap_topic` | `local_costmap/local_costmap` / `local_costmap/costmap_raw` | コストマップのパラメータの取得先と購読するトピック |
 | `transform_tolerance` | `0.2` | TF の許容時間 [s] |
 
+## IsPathBlocked
+
+走行中に、経路の近くが今塞がっているかを判定する。判定は `IsPathClear` と同じ (RPP の衝突判定と同等以上)。パラメータの取得、コストマップの購読、評価は両者で共通のクラス (`PathClearanceMonitor`) が行う。
+
+- SUCCESS は、塞がっていると確定したときだけ。判定できないとき (パラメータの未取得、コストマップが古い、経路がない、`use_collision_detection` が false) は FAILURE。XML では `Inverter` で包んで再計画のゲートにするので、判定できないときは再計画を止めない (安全側)
+- `IsPathClear` と違い、定期的に tick されるので、tick の間隔でパラメータを取り直さない。パラメータは一度取得し、変更は拾わない
+- ログ (bt_navigator): 塞がり始めと解消のときに INFO を出す (`holding periodic replanning` / `resuming periodic replanning`)
+- ポートは `IsPathClear` から `clear_duration` を除いたもの (`path`, `margin`, `controller_node`, `controller_id`, `costmap_node`, `costmap_topic`, `transform_tolerance`)
+
 ## CommitPath
 
 | ポート | 既定値 | 内容 |

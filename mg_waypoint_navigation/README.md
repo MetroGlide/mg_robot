@@ -85,11 +85,11 @@ YAML (v2.0)。各ウェイポイントの位置と、到達時のアクション
 `mg_navigation/params/nav2_params.yaml` の `plugin_lib_names` に、次が必要。
 
 - `nav2_goal_updated_controller_bt_node`: 通過点の走行で、ゴールの上書き直後に経路を計画し直すため
-- `mg_is_path_clear_condition_bt_node`、`mg_commit_path_action_bt_node`: `mg_navigation` の BT プラグイン (`IsPathClear`、`CommitPath`。[mg_navigation](../mg_navigation/README.md#bt-プラグイン))
+- `mg_is_path_clear_condition_bt_node`、`mg_is_path_blocked_condition_bt_node`、`mg_commit_path_action_bt_node`: `mg_navigation` の BT プラグイン (`IsPathClear`、`IsPathBlocked`、`CommitPath`。[mg_navigation](../mg_navigation/README.md#bt-プラグイン))
 
 ### 障害物に出会ったときの動き (両 BT 共通の考え方)
 
-1. **待つ**: 前方に障害物があると、RPP (`FollowPath`) の衝突判定で止まり、`controller_server` の `failure_tolerance` まで待つ。この間も一定の周期で経路を計画し直し、迂回路が引ければそれに乗って走り出す。消えればそのまま走り出す
+1. **待つ**: 前方に障害物があると、RPP (`FollowPath`) の衝突判定で止まり、`controller_server` の `failure_tolerance` まで待つ。経路の近くが塞がっている間は、定期的な再計画を止める (`IsPathBlocked`)。急に現れた障害物は、迂回路が引けても乗らずに待ち、消えればそのまま走り出す。居座れば回避行動の首振りと再計画で迂回する。遠くの障害物は、定期的な再計画で滑らかに避ける。XML の `IsPathBlocked` の行を外すと、迂回路があればすぐ乗る動きに戻る
 2. **計画が失敗しても止めない**: 定期的な計画は `{candidate_path}` に書き、`CommitPath` が今のゴールへの経路のときだけ `{path}` に反映する。計画が失敗しても直前の経路で追従を続け、止まるかどうかは RPP の判定に任せる。ゴールが変わって新しいゴールへの経路がないときだけ、経路を捨ててリカバリーに入る (古いゴールで到着と報告しないため)
 3. **回避行動** (normal のみ): `failure_tolerance` の間待っても空かなければ `FollowPath` が失敗し、リカバリーで次の段階を 1 つ行ってから走行に戻る。段階は順に、首振り → コストマップのクリアと待機 → 逆向きの首振り → 待機 → 短い後退 (角度・時間・距離・速度は BT の XML と `behavior_server` の設定)。首振りと後退の後は経路を計画し直す。後退は危険なので最後の手段にしている
 4. **空いたらすぐ戻る**: リカバリーの間、`IsPathClear` が「RPP が衝突判定なしで走り出せるか」を RPP と同等以上の基準で調べる。塞がっていた経路が空いた状態 (コストマップ複数枚、一定時間以上) になったら、回避行動の途中でも中断して走行に戻る。最初から空いている失敗 (スリップなど障害物以外が原因) では中断せず、回避行動を行う

@@ -24,8 +24,8 @@ scenarios/
 | `nav_basic_goal` | 障害物なしの単一ゴールに時間内に到達し、停止位置の誤差が 0.5m 以内、速度が 1.2m/s 以下 |
 | `nav_unreachable_goal` | 地図の外のゴールへの走行が失敗として扱われる (異常系) |
 | `static_avoid_cones` | 通れない隙間 (間隔 0.8m) のコーン列を避けて回り込み、到達する |
-| `static_avoid_replan` | 走行中に進路の正面へ壁が出現しても、再計画して迂回し到達する |
-| `dynamic_stop_and_resume` | 目の前に人が飛び出しても、3 秒で立ち去ればリカバリー (Spin / BackUp) に入らず、待つだけで再開し到達する (`failure_tolerance` の回帰) |
+| `static_avoid_replan` | 走行中に進路の正面へ壁が出現しても、まず `failure_tolerance` の間待ち、リカバリーの首振りと再計画で迂回して到達する |
+| `dynamic_stop_and_resume` | 目の前に人が飛び出しても、迂回せずに人が立ち去る (3 秒) まで止まって待ち、リカバリー (Spin / BackUp) に入らず再開して到達する (`failure_tolerance` の回帰) |
 | `through_point_continuity` | 通過点 3 つを減速・停止せず (停止 3 秒以内) 走り抜け、停止点で止まる (通過点判定・ゴール上書きの回帰) |
 
 ### full 層
