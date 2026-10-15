@@ -166,10 +166,15 @@ class ObstacleClearanceSpec:
     radius: Optional[float] = None
     # 姿勢を評価するタイミングの元になるトピック (受信するたびに評価する)
     topic: str = "/odom"
+    # 全期間の最小距離 (障害物が動いた分を含む) がこの値 [m] 以内まで近づいたことを要求する。
+    # 障害物に出会わないまま PASS する (タイミングのずれ、速度の変更など) のを検出する。省略時は要求しない
+    require_within: Optional[float] = None
 
     def validate(self, where: str) -> None:
         if not self.obstacles:
             raise ScenarioValidationError(f"{where}: 'obstacles' must not be empty")
+        if self.require_within is not None and self.require_within <= 0.0:
+            raise ScenarioValidationError(f"{where}: 'require_within' must be > 0")
 
 
 def _obstacle_shape(model, radius: Optional[float], name: str):
@@ -279,6 +284,12 @@ class ObstacleClearanceMonitor(TopicMonitor):
                 "", ResultStatus.ERROR,
                 f"obstacle(s) {self._spec.obstacles} were never observed")
         reference = f"overall min {self._min_all:.2f} m"
+        required = self._spec.require_within
+        if required is not None and self._min_all > required:
+            return CheckResult(
+                "", ResultStatus.FAILED,
+                f"obstacles never came within {required} m of the robot "
+                f"({reference}): the scenario did not meet the obstacle")
         if self._min_caused is None:
             return CheckResult(
                 "", ResultStatus.PASSED, f"robot never approached obstacles ({reference})")

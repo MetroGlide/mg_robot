@@ -300,11 +300,13 @@ def _clearance_ctx(robot=None):
     return ctx
 
 
-def _clearance_monitor(ctx, min_clearance=0.0, obstacles=("ped",)):
+def _clearance_monitor(ctx, min_clearance=0.0, obstacles=("ped",), require_within=None):
     from sim_scenario_test.builtin.monitors import (
         ObstacleClearanceMonitor, ObstacleClearanceSpec)
     return ObstacleClearanceMonitor(
-        ctx, ObstacleClearanceSpec(obstacles=list(obstacles), min_clearance=min_clearance))
+        ctx, ObstacleClearanceSpec(
+            obstacles=list(obstacles), min_clearance=min_clearance,
+            require_within=require_within))
 
 
 def test_obstacle_clearance_ignores_obstacle_walking_into_robot():
@@ -366,6 +368,28 @@ def test_obstacle_clearance_counts_rotation_toward_obstacle():
     robot.pose = Pose(0.0, 0.0, 0.0, 0.5)
     monitor._callback(_odom_twist(angular=0.5))
     assert monitor.result().status == ResultStatus.FAILED
+
+
+def test_obstacle_clearance_require_within_fails_when_obstacle_never_came_close():
+    robot = FakeRobot(Pose(0.0, 0.0))
+    ctx = _clearance_ctx(robot)
+    monitor = _clearance_monitor(ctx, require_within=1.0)
+    ctx.entity_poses["ped"] = Pose(0.0, 3.0)  # 側面から 2.75 m 以上離れたまま
+    monitor._callback(_odom_twist(0.5))
+    robot.pose = Pose(1.0, 0.0)
+    monitor._callback(_odom_twist(0.5))
+    result = monitor.result()
+    assert result.status == ResultStatus.FAILED and "never came within" in result.message
+
+
+def test_obstacle_clearance_require_within_counts_obstacle_side_motion():
+    robot = FakeRobot(Pose(0.0, 0.0))
+    ctx = _clearance_ctx(robot)
+    monitor = _clearance_monitor(ctx, require_within=1.0)
+    for y in (3.0, 1.0):  # 歩行者だけが近づく (ロボットは停止中)
+        ctx.entity_poses["ped"] = Pose(0.0, y)
+        monitor._callback(_odom_twist())
+    assert monitor.result().status == ResultStatus.PASSED
 
 
 def test_obstacle_clearance_requires_footprint_and_known_shape():

@@ -64,7 +64,9 @@ class RobotSpec:
 @dataclass
 class Nav2Spec:
     navigate_to_pose_action: str = "navigate_to_pose"
-    initialpose_topic: str = "/initialpose"
+    # 初期位置を出すトピック (すべてに同じ姿勢を出す)。
+    # AMCL の /initialpose だけでは、融合側 (EKF) が前の位置に残り、収束しないことがある
+    initialpose_topics: List[str] = field(default_factory=lambda: ["/initialpose"])
     initialpose_cov_xy: float = 0.25
     initialpose_cov_yaw: float = 0.06853891945200942
     clear_costmap_services: List[str] = field(default_factory=lambda: [
