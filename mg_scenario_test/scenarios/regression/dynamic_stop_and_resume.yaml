@@ -40,6 +40,8 @@ monitors:
   - bt_node: { node: BackUp, status: RUNNING, expect: never }
   - bt_node: { node: Spin, status: RUNNING, expect: never }
   - navigation_activity: { code: recovery, expect: never }
+  # 人が出ている間は、迂回せずに止まって待つ (出現時間より少し短い下限)
+  - max_stop_duration: { min_stop_sec: 2.5, from_goal_started: 0, until_goal_reached: 0 }
 
 expect:
   - reached_all

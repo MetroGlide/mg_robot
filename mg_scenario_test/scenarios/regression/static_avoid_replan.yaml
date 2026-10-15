@@ -1,7 +1,7 @@
 version: "2.0"
 name: static_avoid_replan
 description: >
-  走行中に進路の正面へ壁 (幅 5m) が出現しても、再計画して迂回しゴールへ到達することを確認する。
+  走行中に進路の正面へ壁 (幅 5m) が出現しても、まず待ち (failure_tolerance)、居座るのでリカバリーの首振りと再計画で迂回してゴールへ到達することを確認する。
 profile: mg01
 world: warehouse
 tags: [smoke, static_obstacle, replan, nav2_goals]
@@ -32,6 +32,9 @@ monitors:
   - min_scan_range: { min_range: 0.1, topic: /scan_top_lidar }
   # collision_monitor は RPP の後ろ盾なので、静止した障害物を避ける通常の走行では停止まで発動しない
   - collision_monitor_action: { action: STOP, expect: never }
+  # 急に現れた居座る障害物は、まず failure_tolerance の間待ち、リカバリーの首振りで迂回する
+  - max_stop_duration: { min_stop_sec: 4.0, from_goal_started: 0, until_goal_reached: 0 }
+  - bt_node: { node: Spin, status: RUNNING, expect: occurs }
 
 expect:
   - reached_all
