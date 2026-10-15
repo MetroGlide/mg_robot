@@ -12,9 +12,12 @@ obstacles:
 
 setup:
   - respawn: { pose: { x: 0.0, y: 0.0, yaw: 0.0 }, settle_sec: 3.0 }
+  # 壁は待避位置に置き、出現時に teleport で正面へ出す
+  - spawn: { obstacle: wall, pose: { frame: map, x: -30.0, y: -30.0, z: 0.75 } }
 
 run:
   nav2_goals:
+    behavior_tree: "pkg://mg_waypoint_navigation/behavior_trees/mg_navigate_to_pose.xml"
     goals:
       - pose: { x: 10.0, y: 6.0, yaw: 1.57 }
 
@@ -23,7 +26,7 @@ timeline:
     when: { robot_travelled: { distance: 3.0 } }
     do:
       # ロボットの進行方向に対して垂直な壁を、正面 2m に置く
-      - spawn: { obstacle: wall, pose: { frame: robot, x: 2.0, y: 0.0, z: 0.75 } }
+      - teleport: { entity: wall, pose: { frame: robot, x: 2.0, y: 0.0, z: 0.75 } }
 
 monitors:
   - min_scan_range: { min_range: 0.1, topic: /scan_top_lidar }
