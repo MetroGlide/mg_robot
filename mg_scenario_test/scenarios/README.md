@@ -76,8 +76,11 @@ scenarios/
   `PolygonStop` を前方 1.0m・左右 0.5m に広げると接触は減るが、壁際で止まり続けて `static_avoid_replan` が失敗した。
 
 - 一時的な障害物で、出現から 1 秒足らずで FollowPath が中断されリカバリーに入っていた。
-  原因は `controller_server.failure_tolerance: 0.5`。`5.0` (progress_checker の `movement_time_allowance` と同じ) にした。
+  原因は `controller_server.failure_tolerance: 0.5`。数秒待てる長さにした。
   **`-1` (無期限) は不可**: progress_checker の失敗まで無視され、詰まると永久に停止する。
+- 人が数秒前に立って去っても、再開して進みきる前に progress_checker が失敗し、Spin に入っていた (`dynamic_stop_and_resume`)。
+  `movement_time_allowance` が `failure_tolerance` と同じで、どちらも止まった時点から数えるため。
+  `movement_time_allowance` を、再開して `required_movement_radius` 進む時間の分だけ長くした。
 - コーン列 (間隔 0.8m) の隙間を、プランナが通れると誤認して詰まっていた。膨張レイヤーの内接半径がフットプリントの後端 (0.2m) で
   決まり半幅 (0.3m) より小さかったため。`nav2_params.yaml` の両コストマップに `footprint_padding: 0.1` を追加した。
 - world に常設されていたコーン (`warehouse.sdf`) が、他のシナリオの走行を妨げていた。`static_avoid_cones` へ移した。

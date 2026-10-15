@@ -144,8 +144,9 @@ controller_server:
     min_theta_velocity_threshold: 0.001
     # controller が有効な速度を出せない状態 (前方に障害物、進捗なし等) を許容する時間 [s]。
     # この間は速度 0 を出して待ち、超えると FollowPath が失敗して BT のリカバリー (Wait/BackUp) に入る。
-    # 一時的な障害物なら消えるまで待つだけで再開できるよう、progress_checker の
-    # movement_time_allowance と同じ 5.0 にしている (0.5 だと出現から 1 秒足らずでリカバリーに入る)。
+    # 障害物の前で待つ時間はこの値で決まる。一時的な障害物なら消えるまで待つだけで再開できる長さにする
+    # (0.5 だと出現から 1 秒足らずでリカバリーに入る)。progress_checker の movement_time_allowance は
+    # これより長くする。
     # -1 (無期限) にはしないこと: progress_checker の「進捗なし」の失敗まで無視され、詰まっても
     # FollowPath が失敗せず、リカバリーにも入れず永久に停止する (Gazebo で確認)。
     failure_tolerance: 5.0
@@ -157,12 +158,14 @@ controller_server:
 
     # Progress checker parameters
     # movement_time_allowance: 「一定時間進まなければ詰まりとみなしFollowPathを失敗させる」タイムアウト。
-    # 衝突検知後の待機時間としても機能する（初期値は旧collision_behavior_nodeのstop_wait_timeを踏襲）。
-    # 現地/Gazebo検証で最終値を確定すること。
+    # 停止した地点から数え始め、障害物が去っても required_movement_radius 進むまでは止まらない。
+    # failure_tolerance と同じだと、待っている途中で障害物が去っても、再開して進みきる前に失敗する。
+    # そのため failure_tolerance に、再開して required_movement_radius 進む時間 (collision_monitor の
+    # 減速を含む) を足した値より長くする。待つ時間は failure_tolerance だけで決まる。
     progress_checker:
       plugin: "nav2_controller::SimpleProgressChecker"
       required_movement_radius: 0.5
-      movement_time_allowance: 5.0
+      movement_time_allowance: 8.0
 
     general_goal_checker:
       stateful: True
