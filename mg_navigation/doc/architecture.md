@@ -42,7 +42,7 @@ controller_server ─ cmd_vel_nav ─► collision_monitor ─ cmd_vel_collision
 - RPP の衝突の確認の時間 (`max_allowed_time_to_collision_up_to_carrot`) は、`collision_monitor` の `PolygonApproach` の `time_before_collision` より長くする。障害物を主に避けるのは RPP とコストマップで、`collision_monitor` は通常の走行では発動しない後ろ盾にする。
 - `general_goal_checker`: `xy_goal_tolerance` と `yaw_goal_tolerance` が、到達の判定の許容。`stateful: True`。ウェイポイントの停止点の到達の判定は、この値による ([mg_waypoint_navigation](../../mg_waypoint_navigation/doc/architecture.md))。
 - `progress_checker`: `movement_time_allowance` の間に `required_movement_radius` 進まなければ、詰まりとみなして `FollowPath` を失敗させる。数え始めは止まった時点で、障害物が去っても、再開して `required_movement_radius` 進むまでは止まらない。このため `movement_time_allowance` は、`failure_tolerance` に、再開して進みきる時間 (`collision_monitor` の減速を含む) を足した値より長くする。同じ値だと、待っている途中に障害物が去っても進みきる前に失敗し、不要なリカバリーに入る。障害物の前で待つ時間は `failure_tolerance` で決まる。
-- `failure_tolerance`: 有効な速度が出せない間 (前方に障害物があるなど) は、速度 0 を出して待ち、この時間を超えると `FollowPath` が失敗して、BT のリカバリー (首振り・待機・後退) に入る。**-1 (無期限) にしない**。`progress_checker` の失敗まで無視され、詰まっても失敗せず、リカバリーにも入れず、永久に止まる (Gazebo で確認)。
+- `failure_tolerance`: 有効な速度が出せない間 (前方に障害物があるなど) は、速度 0 を出して待ち、この時間を超えると `FollowPath` が失敗して、BT のリカバリー (引き直し・後退・首振り・待機) に入る。**-1 (無期限) にしない**。`progress_checker` の失敗まで無視され、詰まっても失敗せず、リカバリーにも入れず、永久に止まる (Gazebo で確認)。
 - `speed_limit_topic` は `/speed_limit`。
 
 ## Behavior Tree

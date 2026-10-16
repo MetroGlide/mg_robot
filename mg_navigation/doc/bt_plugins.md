@@ -29,10 +29,19 @@ RPP (Humble 1.1.20 の `RegulatedPurePursuitController`) の衝突判定と同�
 
 ## IsPathBlocked
 
-走行中に、経路の近くが今塞がっているかを判定する。判定は `IsPathClear` と同じ (RPP の衝突判定と同等以上)。パラメータの取得、コストマップの購読、評価は両者で共通のクラス (`PathClearanceMonitor`) が行う。
+経路の近くが今塞がっているかを判定する。判定は `IsPathClear` と同じ (RPP の衝突判定と同等以上)。パラメータの取得、コストマップの購読、評価は両者で共通のクラス (`PathClearanceMonitor`) が行う。
 
-- SUCCESS は、塞がっていると確定したときだけ。判定できないとき (パラメータの未取得、コストマップが古い、経路がない、`use_collision_detection` が false) は FAILURE。XML では `Inverter` で包んで再計画のゲートにするので、判定できないときは再計画を止めない (安全側)
-- `IsPathClear` と違い、定期的に tick されるので、tick の間隔でパラメータを取り直さない。パラメータは一度取得し、変更は拾わない
+`mg_navigate_to_pose.xml` では 3 つの使い方をする。
+
+- 走行中の定期的な再計画のゲート (`Inverter` で包む): 塞がっている間は再計画しない
+- リカバリーで引き直した経路の確かめ (`Inverter` で包む): 塞がっていなければ走行へ戻る
+- リカバリーの後退の条件 (そのまま): 今の経路が塞がっているときだけ後退する
+
+判定の扱い:
+
+- SUCCESS は、塞がっていると確定したときだけ。判定できないとき (パラメータの未取得、コストマップが古い、経路がない、`use_collision_detection` が false) は FAILURE。ゲートでは再計画を止めず、確かめでは走行へ戻して RPP に判定を任せ、後退の条件では後退しない
+- リカバリーの段階の中のノードは、その段階で初めて tick される。最初の tick から判定できるよう、パラメータの応答を tick の中で短い上限まで待つ (サービスが見つからないときは待たない)
+- `IsPathClear` と違い、tick の間隔でパラメータを取り直さない。パラメータは一度取得し、変更は拾わない
 - ログ (bt_navigator): 塞がり始めと解消のときに INFO を出す (`holding periodic replanning` / `resuming periodic replanning`)
 - ポートは `IsPathClear` から `clear_duration` を除いたもの (`path`, `margin`, `controller_node`, `controller_id`, `costmap_node`, `costmap_topic`, `transform_tolerance`)
 
