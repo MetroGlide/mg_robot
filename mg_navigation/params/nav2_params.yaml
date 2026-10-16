@@ -130,7 +130,9 @@ behavior_server:
     # バックアップ/スピン実行中に衝突予測のためシミュレートする時間。値が短すぎると
     # 急な後方障害物の検知が間に合わない可能性があるため要検証。
     simulate_ahead_time: 2.0
-    max_rotational_vel: 1.0
+    # Spin の旋回の速さ [rad/s] (全 Spin に共通)。リカバリーの首振りは障害物の近くで回るので、
+    # ゆっくり回る値にする。min_rotational_vel 以上にする (test_nav2_params_consistency.py が検査する)
+    max_rotational_vel: 0.5
     min_rotational_vel: 0.4
     # 旋回の加速度 [rad/s²]。RPP の max_angular_accel と velocity_smoother の旋回の max_accel / max_decel も同じ値にする。
     # アンカー (&名前 / *名前) はスカラー専用。リストや辞書に置くと Nav2 が起動しない (test_nav2_params_consistency.py が検査する)
