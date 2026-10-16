@@ -15,7 +15,7 @@ MG-01 のノードとデータの流れ、座標系 (TF)、センサの取り付
 ├────────────────┤       ├───────────────────┤                                                   │ │
 │ u-blox GNSS     │─────►│ ublox_gps_node     │─ /navpvt ─► slam_gnss_nav_bridge ─ /odom/gps ─────┘ │
 ├────────────────┤       ├───────────────────┤                                                     │
-│ RealSense D435i │─────►│ realsense2_camera  │─ 点群 ─► depth_postprocess ─► obstacle_detection_3d  │
+│ RealSense D435i │─────►│ realsense2_camera  │─ 点群 ─► obstacle_detection_3d ──────────────────────│
 └────────────────┘       └───────────────────┘                                                     │
                                                                                                     ▼
  EKF ─► map→odom TF ─► Nav2 (planner / controller / bt_navigator) ─ /cmd_vel_nav ─► collision_monitor
