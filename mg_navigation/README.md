@@ -33,6 +33,7 @@ Nav2 の起動と設定、自己位置推定の補助ノード (AMCL の初期�
 | BT ノード | ライブラリ | 内容 |
 | :--- | :--- | :--- |
 | `IsPathClear` (Condition) | `mg_is_path_clear_condition_bt_node` | リカバリーの間に、RPP が衝突判定なしで走り出せる状態になったかを判定する。塞がっていた経路が空いたら SUCCESS |
+| `IsPathBlocked` (Condition) | `mg_is_path_blocked_condition_bt_node` | 走行中に、経路の近くが塞がっているかを判定する。塞がっていると確定したときだけ SUCCESS。定期的な再計画を止めるゲートに使う |
 | `CommitPath` (Action) | `mg_commit_path_action_bt_node` | 計画の結果 (`candidate`) が今のゴールへの経路なら `path` に反映する。計画が失敗しても、今のゴールへの経路があれば保つ。なければ `path` を空にして FAILURE |
 
 判定の仕様、ポート、ログは [doc/bt_plugins.md](./doc/bt_plugins.md)。
@@ -129,5 +130,5 @@ colcon test --packages-select mg_navigation --ctest-args -R test_ && colcon test
 | [doc/localization.md](./doc/localization.md) | 自己位置推定の構成、AMCL の調停・初期化・監視、監督ノードの検知と復旧 |
 | [doc/architecture.md](./doc/architecture.md) | Nav2 のノード、速度指令の経路、コントローラ、BT、アンカーの規則 |
 | [doc/costmap_and_collision.md](./doc/costmap_and_collision.md) | コストマップ、グローバルプランナ、衝突の防止 (`collision_monitor`) |
-| [doc/bt_plugins.md](./doc/bt_plugins.md) | `IsPathClear`・`CommitPath` の判定とポート |
+| [doc/bt_plugins.md](./doc/bt_plugins.md) | `IsPathClear`・`IsPathBlocked`・`CommitPath` の判定とポート |
 | [doc/rpp_tuning.md](./doc/rpp_tuning.md) | RPP のパラメータの意味、値の関係、調整の進め方、症状と対処 |

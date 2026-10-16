@@ -38,7 +38,7 @@ timeline:
       - spawn: { obstacle: wall_left, pose: { frame: robot, x: 0.0, y: 1.2, z: 0.75 } }
       - spawn: { obstacle: wall_right, pose: { frame: robot, x: 0.0, y: -1.2, z: 0.75 } }
       - spawn: { obstacle: wall_back, pose: { frame: robot, x: -1.2, y: 0.0, z: 0.75 } }
-  # リカバリーの最初の Wait は、首振りの次の段階 (コストマップのクリア → Wait 3 秒)
+  # リカバリーの最初の Wait は、引き直しの次の段階 (コストマップのクリア → 作り直されるまでの Wait)
   - name: walls_removed
     when: { bt_node: { node: Wait, status: RUNNING } }
     do:

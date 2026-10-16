@@ -34,6 +34,11 @@ frames:
   # Gazebo ワールド原点と地図原点は一致させている
   map_in_world: {x: 0.0, y: 0.0, yaw: 0.0}
 
+nav2:
+  # AMCL に加えて EKF (robot_localization の set_pose) も初期化する。
+  # AMCL だけだと EKF が前のシナリオの位置に残り、attach で続けて実行したときに respawn が収束しない
+  initialpose_topics: [/initialpose, /set_pose]
+
 robot:
   # nav2_params.yaml の footprint (padding なしの実寸)
   footprint: [[0.4, 0.3], [0.4, -0.3], [-0.2, -0.3], [-0.2, 0.3]]

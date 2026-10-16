@@ -158,6 +158,21 @@ def test_spawn_jitter_is_reproducible():
     assert 0.5 <= spawn_x(1) <= 1.5
 
 
+def test_teleport_jitter_is_reproducible():
+    from sim_scenario_test.builtin.actions import TeleportSpec, teleport
+
+    def teleport_x(seed):
+        backend = FakeBackend()
+        ctx = _scenario_ctx(backend)
+        ctx.rng.seed(seed)
+        teleport(ctx, TeleportSpec(PoseSpec(x=1.0), entity="box", jitter=0.5), threading.Event())
+        return [c[2] for c in backend.calls if c[0] == "set_pose"][0].x
+
+    assert teleport_x(1) == teleport_x(1)
+    assert teleport_x(1) != teleport_x(2)
+    assert 0.5 <= teleport_x(1) <= 1.5
+
+
 def test_robot_travelled_accumulates_path_length():
     from sim_scenario_test.builtin.triggers import RobotTravelled, RobotTravelledSpec
     robot = FakeRobot(Pose(0.0, 0.0))
@@ -274,6 +289,44 @@ def test_min_stop_duration_requires_a_real_stop():
     assert monitor.result().status == ResultStatus.PASSED       # 4 秒の停止
 
 
+def test_max_stop_duration_starts_after_timeline_entry():
+    from sim_scenario_test.builtin.monitors import MaxStopDurationMonitor, MaxStopDurationSpec
+    ctx = _scenario_ctx()
+    clock = {"t": 0.0}
+    ctx.clock.now = lambda: clock["t"]
+    monitor = MaxStopDurationMonitor(
+        ctx, MaxStopDurationSpec(max_stop_sec=2.0, after_timeline="appear"))
+    ctx.events.emit("goal_started", index=0)
+    for t, v in ((0.0, 0.0), (5.0, 0.0)):                # 発火前の停止は数えない
+        clock["t"] = t
+        monitor._callback(_odom(v))
+    assert monitor.result().status == ResultStatus.ERROR
+    ctx.events.emit("timeline_fired", entry="appear")
+    for t, v in ((6.0, 0.0), (7.0, 0.0), (7.5, 0.5)):
+        clock["t"] = t
+        monitor._callback(_odom(v))
+    result = monitor.result()
+    assert result.status == ResultStatus.PASSED and "1.0" in result.message
+
+
+def test_max_stop_duration_can_count_turning_as_motion():
+    from sim_scenario_test.builtin.monitors import MaxStopDurationMonitor, MaxStopDurationSpec
+    ctx = _scenario_ctx()
+    clock = {"t": 0.0}
+    ctx.clock.now = lambda: clock["t"]
+    linear_only = MaxStopDurationMonitor(ctx, MaxStopDurationSpec())
+    with_turning = MaxStopDurationMonitor(ctx, MaxStopDurationSpec(include_turning=True))
+    ctx.events.emit("goal_started", index=0)
+    # 1 秒止まってから、その場で 3 秒回り、走り出す
+    for t, vx, wz in ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.1, 0.0, 0.5), (4.0, 0.0, 0.5),
+                      (4.5, 0.5, 0.0)):
+        clock["t"] = t
+        linear_only._callback(_odom(vx, wz=wz))
+        with_turning._callback(_odom(vx, wz=wz))
+    assert "longest stop 4.0" in linear_only.result().message
+    assert "longest stop 1.0" in with_turning.result().message
+
+
 # ---------------------------------------------------------------------------
 # obstacle_clearance
 # ---------------------------------------------------------------------------
@@ -300,11 +353,13 @@ def _clearance_ctx(robot=None):
     return ctx
 
 
-def _clearance_monitor(ctx, min_clearance=0.0, obstacles=("ped",)):
+def _clearance_monitor(ctx, min_clearance=0.0, obstacles=("ped",), require_within=None):
     from sim_scenario_test.builtin.monitors import (
         ObstacleClearanceMonitor, ObstacleClearanceSpec)
     return ObstacleClearanceMonitor(
-        ctx, ObstacleClearanceSpec(obstacles=list(obstacles), min_clearance=min_clearance))
+        ctx, ObstacleClearanceSpec(
+            obstacles=list(obstacles), min_clearance=min_clearance,
+            require_within=require_within))
 
 
 def test_obstacle_clearance_ignores_obstacle_walking_into_robot():
@@ -357,6 +412,46 @@ def test_obstacle_clearance_ignores_robot_moving_away():
     assert monitor.result().status == ResultStatus.PASSED
 
 
+def test_obstacle_clearance_can_use_the_true_robot_pose():
+    from sim_scenario_test.builtin.monitors import (
+        ObstacleClearanceMonitor, ObstacleClearanceSpec)
+    # 自己位置推定は障害物へ突っ込んだと思っているが、真の姿勢は動いていない
+    robot = FakeRobot(Pose(0.0, 0.0))
+    ctx = _clearance_ctx(robot)
+    entity = ctx.profile.sim.robot_entity
+    ctx.backend.true_poses[entity] = Pose(0.0, 0.0)
+    tf_monitor = _clearance_monitor(ctx)
+    sim_monitor = ObstacleClearanceMonitor(
+        ctx, ObstacleClearanceSpec(obstacles=["ped"], pose_source="sim"))
+    ctx.entity_poses["ped"] = Pose(1.0, 0.0)
+    for monitor in (tf_monitor, sim_monitor):
+        monitor._callback(_odom_twist(0.5))
+    robot.pose = Pose(0.6, 0.0)
+    for monitor in (tf_monitor, sim_monitor):
+        monitor._callback(_odom_twist(0.5))
+    assert tf_monitor.result().status == ResultStatus.FAILED
+    assert sim_monitor.result().status == ResultStatus.PASSED
+    # 真の姿勢が障害物へ突っ込めば FAILED
+    ctx.backend.true_poses[entity] = Pose(0.6, 0.0)
+    sim_monitor._callback(_odom_twist(0.5))
+    assert sim_monitor.result().status == ResultStatus.FAILED
+
+
+def test_obstacle_clearance_true_pose_needs_backend_support():
+    from sim_scenario_test.builtin.monitors import (
+        ObstacleClearanceMonitor, ObstacleClearanceSpec)
+    from sim_scenario_test.sim.base import SimulationBackend
+
+    class NoPoseBackend(FakeBackend):
+        entity_pose = SimulationBackend.entity_pose
+
+    ctx = _clearance_ctx()
+    ctx.backend = NoPoseBackend()
+    with pytest.raises(ScenarioError, match="does not provide entity poses"):
+        ObstacleClearanceMonitor(
+            ctx, ObstacleClearanceSpec(obstacles=["ped"], pose_source="sim"))
+
+
 def test_obstacle_clearance_counts_rotation_toward_obstacle():
     robot = FakeRobot(Pose(0.0, 0.0, 0.0, 0.0))
     ctx = _clearance_ctx(robot)
@@ -366,6 +461,28 @@ def test_obstacle_clearance_counts_rotation_toward_obstacle():
     robot.pose = Pose(0.0, 0.0, 0.0, 0.5)
     monitor._callback(_odom_twist(angular=0.5))
     assert monitor.result().status == ResultStatus.FAILED
+
+
+def test_obstacle_clearance_require_within_fails_when_obstacle_never_came_close():
+    robot = FakeRobot(Pose(0.0, 0.0))
+    ctx = _clearance_ctx(robot)
+    monitor = _clearance_monitor(ctx, require_within=1.0)
+    ctx.entity_poses["ped"] = Pose(0.0, 3.0)  # 側面から 2.75 m 以上離れたまま
+    monitor._callback(_odom_twist(0.5))
+    robot.pose = Pose(1.0, 0.0)
+    monitor._callback(_odom_twist(0.5))
+    result = monitor.result()
+    assert result.status == ResultStatus.FAILED and "never came within" in result.message
+
+
+def test_obstacle_clearance_require_within_counts_obstacle_side_motion():
+    robot = FakeRobot(Pose(0.0, 0.0))
+    ctx = _clearance_ctx(robot)
+    monitor = _clearance_monitor(ctx, require_within=1.0)
+    for y in (3.0, 1.0):  # 歩行者だけが近づく (ロボットは停止中)
+        ctx.entity_poses["ped"] = Pose(0.0, y)
+        monitor._callback(_odom_twist())
+    assert monitor.result().status == ResultStatus.PASSED
 
 
 def test_obstacle_clearance_requires_footprint_and_known_shape():

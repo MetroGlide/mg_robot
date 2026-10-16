@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
+from sim_scenario_test.errors import ScenarioError
 from sim_scenario_test.geometry import Pose
 from sim_scenario_test.sim.model import ModelSpec
 
@@ -39,3 +41,25 @@ class SimulationBackend(ABC):
     @abstractmethod
     def remove_entity(self, name: str) -> None:
         ...
+
+    def entity_pose(self, name: str) -> Optional[Pose]:
+        """シミュレータ上の真の姿勢 (ワールド座標) を返す。まだ届いていなければ None。
+
+        取れないバックエンドは ScenarioError を送出する (既定)。
+        """
+        raise ScenarioError(f"backend {type(self).__name__} does not provide entity poses")
+
+    @staticmethod
+    def companion_nodes(world_name: str) -> List[NodeSpec]:
+        """シミュレータと一緒に起動するノード (entity_pose のための中継など)。"""
+        return []
+
+
+@dataclass(frozen=True)
+class NodeSpec:
+    """launch で起動するノード (バックエンドを launch に依存させないための記述)。"""
+    package: str
+    executable: str
+    name: str
+    arguments: Tuple[str, ...] = ()
+    remappings: Tuple[Tuple[str, str], ...] = ()

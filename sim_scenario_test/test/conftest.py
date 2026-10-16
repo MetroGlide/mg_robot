@@ -11,6 +11,8 @@ _ROS2_MODULES = [
     "rclpy.action",
     "rclpy.executors",
     "tf2_ros",
+    "tf2_msgs",
+    "tf2_msgs.msg",
     "geometry_msgs",
     "geometry_msgs.msg",
     "sensor_msgs",

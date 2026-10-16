@@ -15,7 +15,7 @@ profile: mg01                  # プロファイル名またはパス。CLI の 
 description: >                 # 説明 (任意)
 tags: [smoke, collision]       # run-all の --tags で絞り込む (任意)
 timeout: 180                   # 走行開始からの sim 秒の上限。超えると走行を打ち切り FAILED (任意)
-seed: 0                        # 乱数 (spawn の jitter) の種。--seed で上書き
+seed: 0                        # 乱数 (spawn・teleport の jitter) の種。--seed で上書き
 stack_args: {...}              # プロファイルの stack.args を、このシナリオ用に上書き・追加する launch 引数
 obstacles: {...}               # 名前付き障害物の定義
 setup: [...]                   # 走行前に順に実行する action
@@ -95,7 +95,7 @@ run:
 | 型 | パラメータ | 内容 |
 |---|---|---|
 | `respawn` | `pose`, `settle_sec`=2, `set_initial_pose`=true, `clear_costmaps`=true, `converge_tolerance`=0.5, `converge_timeout_sec`=10 | ロボットを移動 → `/initialpose` → 待機 → 自己位置が指定位置から `converge_tolerance` [m] 以内に収束するまで待つ (収束しなければ ERROR) → コストマップをクリア |
-| `teleport` | `pose`, `entity`=ロボット | エンティティを移動する。**自己位置推定には通知しない** (誘拐ロボット問題の再現に使う) |
+| `teleport` | `pose`, `entity`=ロボット, `jitter`=0 | エンティティを移動する。**自己位置推定には通知しない** (誘拐ロボット問題の再現に使う)。`jitter` [m] は `spawn` と同じ |
 | `set_initial_pose` | `pose` | 自己位置推定に初期位置を与える |
 | `clear_costmaps` | なし | グローバル・ローカルのコストマップをクリア |
 | `spawn` | `obstacle`, `pose`, `jitter`=0 | 障害物を配置する。生成の確認まで行う。`jitter` [m] は x,y の一様乱数 (seed で再現可能) |
@@ -139,11 +139,11 @@ timeline:
 |---|---|---|
 | `bt_node` | `node`, `status`=RUNNING (`IDLE`/`RUNNING`/`SUCCESS`/`FAILURE`), `expect`=occurs (`occurs`/`never`), `topic`=/behavior_tree_log | BT のノードが指定の状態になった回数で、発生した／しないことを判定 (例: BackUp が動いたか) |
 | `min_scan_range` | `min_range`, `topic`=/scan | LiDAR の最小測距値が `min_range` [m] 未満になったら FAILED (接触・急接近の近似検出)。データが来なければ ERROR |
-| `obstacle_clearance` | `obstacles` (必須, scenario.obstacles のキー), `min_clearance`=0.0, `speed_threshold`=0.1, `angular_threshold`=0.2, `radius`=省略, `topic`=/odom | **ロボット自身の動きで**、フットプリントと障害物の表面の距離が `min_clearance` [m] 以下 (0 なら接触だけ) になったら FAILED。`set_pose` で動かす障害物 (歩行者) は物理的に押し返されずロボットを通り抜けるため、障害物側の動きで近づいた場合は数えない (前回の障害物の位置と今回のロボットの姿勢で距離を測り、縮まったときだけ数える)。ロボットの並進・角速度が閾値以下のときは対象外 (停止直前の低速や、停止中の自己位置推定の揺れを除く)。プロファイルの `robot.footprint` が必要。形状は primitive (cylinder / sphere / box) から取り、fuel / local は `radius` の円として扱う。ロボット姿勢は TF の推定値のため数 cm の誤差がある。障害物を一度も観測しなければ ERROR |
+| `obstacle_clearance` | `obstacles` (必須, scenario.obstacles のキー), `min_clearance`=0.0, `speed_threshold`=0.1, `angular_threshold`=0.2, `radius`=省略, `topic`=/odom, `require_within`=省略, `pose_source`=tf | **ロボット自身の動きで**、フットプリントと障害物の表面の距離が `min_clearance` [m] 以下 (0 なら接触だけ) になったら FAILED。`set_pose` で動かす障害物 (歩行者) は物理的に押し返されずロボットを通り抜けるため、障害物側の動きで近づいた場合は数えない (前回の障害物の位置と今回のロボットの姿勢で距離を測り、縮まったときだけ数える)。ロボットの並進・角速度が閾値以下のときは対象外 (停止直前の低速や、停止中の自己位置推定の揺れを除く)。プロファイルの `robot.footprint` が必要。形状は primitive (cylinder / sphere / box) から取り、fuel / local は `radius` の円として扱う。ロボット姿勢は、`pose_source: tf` なら TF の推定値で、数 cm の誤差がある。地図にない障害物に囲まれるなど自己位置推定が大きくずれる配置では、`pose_source: sim` でシミュレータ上の真の姿勢を使う (バックエンドが対応している場合。`gazebo_fortress` は対応)。障害物を一度も観測しなければ ERROR。`require_within` を指定すると、全期間の最小距離 (障害物側の動きを含む) がその値以内まで近づかなかったとき FAILED (障害物に出会わないまま PASS するのを防ぐ) |
 | `no_diagnostic_errors` | `names`=[] (空なら全部), `topic`=/diagnostics | ERROR 以上の診断が出たら FAILED |
 | `topic_received` | `topic`, `type` (`String` / `Bool` / `OccupancyGrid`), `data`="" (String の一致), `expect`=occurs, `min_count`=1 | メッセージを `min_count` 回以上受信した／しないことを判定。action の効果の確認 (publish した、地図を再読み込みした等) に使う |
 | `max_speed` | `limit` [m/s], `topic`=/odom | オドメトリの並進速度が `limit` を超えたら FAILED |
-| `max_stop_duration` | `max_stop_sec`=省略, `min_stop_sec`=0, `speed_threshold`=0.05, `from_goal_started`=0, `until_goal_reached`=0, `topic`=/odom | 区間 (指定ゴールの開始から指定ゴールの到達まで) の連続した停止時間を判定。`max_stop_sec` 超で FAILED (通過点で止まらないこと)、`min_stop_sec` 未満で FAILED (一時停止で止まること) |
+| `max_stop_duration` | `max_stop_sec`=省略, `min_stop_sec`=0, `speed_threshold`=0.05, `include_turning`=false, `turn_threshold`=0.1, `from_goal_started`=0, `until_goal_reached`=0, `after_timeline`=省略, `topic`=/odom | 区間 (指定ゴールの開始から指定ゴールの到達まで。`after_timeline` を指定すると、その項目が発火するまでは区間に入らない) の連続した停止時間を判定。`include_turning` が true なら、その場の回転 (`resume_within` と同じ判定) は停止に数えない。`max_stop_sec` 超で FAILED (通過点で止まらないこと)、`min_stop_sec` 未満で FAILED (一時停止で止まること) |
 
 | `resume_within` | `after_timeline` (timeline[].name), `max_sec`, `speed_threshold`=0.05, `min_moving_sec`=0.5, `include_turning`=false, `turn_threshold`=0.1, `topic`=/odom | 指定したタイムライン項目が発火してから、並進速度が `speed_threshold` 以上 (`include_turning` が true なら、角速度が `turn_threshold` [rad/s] 以上でもよい) の状態が `min_moving_sec` 続き始めるまでの時間を判定 (一瞬の速度は数えない)。`include_turning` が false のときは、回転を始めた時刻も結果に添える。`max_sec` 超、または走り出さなければ FAILED。項目が発火しなければ ERROR (障害物を除いてから走行を再開するまでの時間の確認) |
 

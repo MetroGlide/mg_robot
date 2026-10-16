@@ -8,7 +8,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.substitutions import LaunchConfiguration
 
-from sim_scenario_test.launch_include import include_launch
+from sim_scenario_test.launch_include import backend_launch_actions, include_launch
 from sim_scenario_test.profile import load_profile
 from sim_scenario_test.registry import DEFAULT_REGISTRY
 
@@ -22,6 +22,7 @@ def _setup(context, *args, **kwargs):
     actions = []
     if profile.sim.launch is not None:
         actions.append(include_launch(profile.sim.launch, variables, "profile.sim.launch.args"))
+    actions += backend_launch_actions(profile, variables)
     if profile.stack is not None:
         actions.append(include_launch(profile.stack, variables, "profile.stack.args"))
     return actions

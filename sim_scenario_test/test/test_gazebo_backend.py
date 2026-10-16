@@ -1,6 +1,7 @@
 """GazeboFortressBackend のリクエスト生成とエラー処理の単体テスト (ign CLI はモック)。"""
 from __future__ import annotations
 
+import math
 import subprocess
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -9,7 +10,7 @@ import pytest
 
 from sim_scenario_test.errors import ScenarioError
 from sim_scenario_test.geometry import Pose
-from sim_scenario_test.sim.gazebo_fortress import GazeboFortressBackend
+from sim_scenario_test.sim.gazebo_fortress import ENTITY_POSES_TOPIC, GazeboFortressBackend
 from sim_scenario_test.sim.model import ModelSpec
 
 
@@ -84,6 +85,33 @@ def test_is_ready_checks_world_service(ign):
 def test_missing_local_file_raises(ign):
     with pytest.raises(ScenarioError, match="failed to read SDF"):
         _backend().spawn_entity("m", ModelSpec(type="local", path="/nonexistent.sdf"), Pose())
+
+
+def _transform(name, x, y, qz, qw):
+    return SimpleNamespace(
+        child_frame_id=name,
+        transform=SimpleNamespace(
+            translation=SimpleNamespace(x=x, y=y, z=0.0),
+            rotation=SimpleNamespace(x=0.0, y=0.0, z=qz, w=qw)))
+
+
+def test_entity_pose_comes_from_the_relayed_poses():
+    backend = _backend()
+    assert backend.entity_pose("mg") is None
+    backend._on_poses(SimpleNamespace(transforms=[
+        _transform("mg", 1.0, 2.0, math.sin(0.25), math.cos(0.25)),
+        _transform("wheel", 9.0, 9.0, 0.0, 1.0)]))
+    pose = backend.entity_pose("mg")
+    assert (pose.x, pose.y) == (1.0, 2.0)
+    assert pose.yaw == pytest.approx(0.5)
+
+
+def test_launch_actions_relay_the_world_poses():
+    (bridge,) = GazeboFortressBackend.companion_nodes("warehouse")
+    assert (bridge.package, bridge.executable) == ("ros_gz_bridge", "parameter_bridge")
+    assert bridge.arguments == (
+        "/world/warehouse/dynamic_pose/info@tf2_msgs/msg/TFMessage[ignition.msgs.Pose_V",)
+    assert bridge.remappings == (("/world/warehouse/dynamic_pose/info", ENTITY_POSES_TOPIC),)
 
 
 def test_entity_exists_parses_model_list(ign):

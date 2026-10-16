@@ -46,10 +46,11 @@ SOURCE_TIMEOUT_PREFIX = 'source_timeout:'
 # リカバリーの BT ノード名と文言。先に書いたものを優先する。
 # 自作の BT (mg_waypoint_navigation/behavior_trees) の名前を先に、Nav2 既定の BT 用の汎用の名前を後に置く
 RECOVERY_TEXTS: Tuple[Tuple[str, str], ...] = (
+    ('Replan', 'リカバリー: 経路を引き直し'),
+    ('ClearAndReplan', 'リカバリー: 障害物の記録を消して引き直し'),
     ('SpinLeftAndReplan', 'リカバリー: 左へ回転'),
     ('SpinRightAndReplan', 'リカバリー: 右へ回転'),
     ('BackUpAndReplan', 'リカバリー: 後退'),
-    ('ClearCostmapsAndWait', 'リカバリー: 障害物の記録を消して待機'),
     ('ClearLocalCostmapAndWait', 'リカバリー: 障害物の記録を消して待機'),
     ('Spin', 'リカバリー: 回転'),
     ('BackUp', 'リカバリー: 後退'),

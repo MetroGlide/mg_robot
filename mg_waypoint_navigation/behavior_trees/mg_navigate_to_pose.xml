@@ -15,65 +15,96 @@
             <CommitPath candidate="{candidate_path}" goal="{goal}" path="{path}"/>
           </Sequence>
         </GoalUpdatedController>
-        <!-- 定期的な再計画。失敗しても直前の経路を保ち、障害物の判定は RPP に任せる -->
+        <!-- 定期的な再計画。失敗しても直前の経路を保ち、障害物の判定は RPP に任せる。
+             経路の近くが塞がっている間は再計画しない (急に現れた障害物は、迂回せずにまず
+             failure_tolerance の間待ち、居座ればリカバリーで迂回する)。
+             Inverter と IsPathBlocked の行を外すと、迂回路があれば待たずにすぐ乗る動きになる
+             (リカバリーはそのまま使える) -->
         <RateController hz="1.0">
           <ForceSuccess>
             <Sequence name="ReplanPath">
+              <Inverter>
+                <IsPathBlocked path="{path}"/>
+              </Inverter>
               <ComputePathToPose goal="{goal}" path="{candidate_path}" planner_id="GridBased"/>
               <CommitPath candidate="{candidate_path}" goal="{goal}" path="{path}"/>
             </Sequence>
           </ForceSuccess>
         </RateController>
-        <!-- 前方に障害物があると RPP が止まり、failure_tolerance (5 秒) 待ってから失敗する -->
+        <!-- 前方に障害物があると RPP が止まり、failure_tolerance の間待ってから失敗する -->
         <FollowPath path="{path}" controller_id="FollowPath"/>
       </PipelineSequence>
 
-      <!-- 回避行動は 1 回のリカバリーで 1 段階だけ行い、終わるたびに走行へ戻る。
-           回避行動の途中でも、IsPathClear が「空いた」と判定したら中断して走行へ戻る -->
+      <!-- 段階を上から順に試し、引き直した経路が RPP と同じ判定 (経路の向きへの旋回を含む) で
+           塞がっていなければ、その時点で走行へ戻る。段階の中の失敗 (計画の失敗、塞がった経路、
+           後退・首振りの衝突による中止) は次の段階へ進む。段階の間に RPP の待ちは挟まない。
+           どの段階の途中でも、IsPathClear が「空いた」と判定したら中断して走行へ戻る。
+           中断・終了のたびに、次のリカバリーは最初の段階から始まる -->
       <ReactiveFallback name="RecoveryFallback">
         <GoalUpdated/>
         <IsPathClear path="{path}"/>
-        <RoundRobin name="RecoveryActions">
+        <Fallback name="RecoveryLadder">
 
-          <!-- 向きを変えて、障害物を避ける経路を計画し直す -->
-          <ForceSuccess>
-            <Sequence name="SpinLeftAndReplan">
-              <Spin spin_dist="0.5"/>
-              <ComputePathToPose goal="{goal}" path="{candidate_path}" planner_id="GridBased"/>
-              <CommitPath candidate="{candidate_path}" goal="{goal}" path="{path}"/>
-            </Sequence>
-          </ForceSuccess>
+          <!-- 今のコストマップで引き直す -->
+          <Sequence name="Replan">
+            <ComputePathToPose goal="{goal}" path="{candidate_path}" planner_id="GridBased"/>
+            <CommitPath candidate="{candidate_path}" goal="{goal}" path="{path}"/>
+            <Inverter>
+              <IsPathBlocked path="{path}"/>
+            </Inverter>
+          </Sequence>
 
-          <!-- 残った障害物の痕跡を消し、コストマップが作り直されるまで待つ -->
-          <ForceSuccess>
-            <Sequence name="ClearCostmapsAndWait">
-              <ClearEntireCostmap name="ClearLocalCostmap" service_name="local_costmap/clear_entirely_local_costmap"/>
-              <ClearEntireCostmap name="ClearGlobalCostmap" service_name="global_costmap/clear_entirely_global_costmap"/>
-              <Wait wait_duration="3"/>
-            </Sequence>
-          </ForceSuccess>
+          <!-- 残った障害物の痕跡を消して引き直す。クリア直後の空の地図で通れると判定しないよう、
+               グローバル・ローカルのコストマップが作り直されて届くまで (両方の更新周期より長く) 待つ -->
+          <Sequence name="ClearAndReplan">
+            <ClearEntireCostmap name="ClearLocalCostmap" service_name="local_costmap/clear_entirely_local_costmap"/>
+            <ClearEntireCostmap name="ClearGlobalCostmap" service_name="global_costmap/clear_entirely_global_costmap"/>
+            <Wait wait_duration="2"/>
+            <ComputePathToPose goal="{goal}" path="{candidate_path}" planner_id="GridBased"/>
+            <CommitPath candidate="{candidate_path}" goal="{goal}" path="{path}"/>
+            <Inverter>
+              <IsPathBlocked path="{path}"/>
+            </Inverter>
+          </Sequence>
+
+          <!-- 近くの実在の障害物で今の経路が塞がっているときだけ、ゆっくり短く下がって距離を取る。
+               計画が他の理由 (自己位置のずれ、地図との不一致) で失敗しているときは下がらない
+               (ローカルコストマップはセンサだけで作る)。後退は collision_monitor を経由しないので、
+               behavior_server がローカルコストマップで後方の衝突を確かめる -->
+          <Sequence name="BackUpAndReplan">
+            <IsPathBlocked path="{path}"/>
+            <BackUp backup_dist="0.3" backup_speed="0.1"/>
+            <ComputePathToPose goal="{goal}" path="{candidate_path}" planner_id="GridBased"/>
+            <CommitPath candidate="{candidate_path}" goal="{goal}" path="{path}"/>
+            <Inverter>
+              <IsPathBlocked path="{path}"/>
+            </Inverter>
+          </Sequence>
+
+          <!-- 向きを変えて引き直す (回る速さは behavior_server の max_rotational_vel) -->
+          <Sequence name="SpinLeftAndReplan">
+            <Spin spin_dist="0.5"/>
+            <ComputePathToPose goal="{goal}" path="{candidate_path}" planner_id="GridBased"/>
+            <CommitPath candidate="{candidate_path}" goal="{goal}" path="{path}"/>
+            <Inverter>
+              <IsPathBlocked path="{path}"/>
+            </Inverter>
+          </Sequence>
 
           <!-- 逆向きに振る (向きの変化は合計 -0.5rad) -->
-          <ForceSuccess>
-            <Sequence name="SpinRightAndReplan">
-              <Spin spin_dist="-1.0"/>
-              <ComputePathToPose goal="{goal}" path="{candidate_path}" planner_id="GridBased"/>
-              <CommitPath candidate="{candidate_path}" goal="{goal}" path="{path}"/>
-            </Sequence>
-          </ForceSuccess>
+          <Sequence name="SpinRightAndReplan">
+            <Spin spin_dist="-1.0"/>
+            <ComputePathToPose goal="{goal}" path="{candidate_path}" planner_id="GridBased"/>
+            <CommitPath candidate="{candidate_path}" goal="{goal}" path="{path}"/>
+            <Inverter>
+              <IsPathBlocked path="{path}"/>
+            </Inverter>
+          </Sequence>
 
+          <!-- どの段階でも通れなければ待ってから走行へ戻り、RPP の待ちからくり返す -->
           <Wait wait_duration="3"/>
 
-          <!-- 最後の手段として、少しだけ距離を取る -->
-          <ForceSuccess>
-            <Sequence name="BackUpAndReplan">
-              <BackUp backup_dist="0.3" backup_speed="0.15"/>
-              <ComputePathToPose goal="{goal}" path="{candidate_path}" planner_id="GridBased"/>
-              <CommitPath candidate="{candidate_path}" goal="{goal}" path="{path}"/>
-            </Sequence>
-          </ForceSuccess>
-
-        </RoundRobin>
+        </Fallback>
       </ReactiveFallback>
 
     </RecoveryNode>

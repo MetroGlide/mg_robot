@@ -79,26 +79,35 @@ YAML (v2.0)。各ウェイポイントの位置と、到達時のアクション
 
 | ファイル | 内容 |
 | :--- | :--- |
-| `behavior_trees/mg_navigate_to_pose.xml` | 通常。前方の障害物では止まって待ち、居座れば首振り・コストマップのクリア・短い後退で回復する |
+| `behavior_trees/mg_navigate_to_pose.xml` | 通常。前方の障害物では止まって待ち、居座れば引き直し・コストマップのクリア・短い後退・首振りを順に試して回復する |
 | `behavior_trees/mg_navigate_to_pose_queue_wait.xml` | `queue_wait`。回避動作をせず、待つだけ (列に詰める動作用) |
 
 `mg_navigation/params/nav2_params.yaml` の `plugin_lib_names` に、次が必要。
 
 - `nav2_goal_updated_controller_bt_node`: 通過点の走行で、ゴールの上書き直後に経路を計画し直すため
-- `mg_is_path_clear_condition_bt_node`、`mg_commit_path_action_bt_node`: `mg_navigation` の BT プラグイン (`IsPathClear`、`CommitPath`。[mg_navigation](../mg_navigation/README.md#bt-プラグイン))
+- `mg_is_path_clear_condition_bt_node`、`mg_is_path_blocked_condition_bt_node`、`mg_commit_path_action_bt_node`: `mg_navigation` の BT プラグイン (`IsPathClear`、`IsPathBlocked`、`CommitPath`。[mg_navigation](../mg_navigation/README.md#bt-プラグイン))
 
 ### 障害物に出会ったときの動き (両 BT 共通の考え方)
 
-1. **待つ**: 前方に障害物があると、RPP (`FollowPath`) の衝突判定で止まり、`controller_server` の `failure_tolerance` まで待つ。この間も一定の周期で経路を計画し直し、迂回路が引ければそれに乗って走り出す。消えればそのまま走り出す
+1. **待つ**: 前方に障害物があると、RPP (`FollowPath`) の衝突判定で止まり、`controller_server` の `failure_tolerance` まで待つ。経路の近くが塞がっている間は、定期的な再計画を止める (`IsPathBlocked`)。急に現れた障害物は、迂回路が引けても乗らずに待ち、消えればそのまま走り出す。居座ればリカバリーで迂回する。遠くの障害物は、定期的な再計画で滑らかに避ける。XML の定期的な再計画の `Inverter` と `IsPathBlocked` の行を外すと、待たずに迂回路へすぐ乗る動きになる (リカバリーはそのまま使える)
 2. **計画が失敗しても止めない**: 定期的な計画は `{candidate_path}` に書き、`CommitPath` が今のゴールへの経路のときだけ `{path}` に反映する。計画が失敗しても直前の経路で追従を続け、止まるかどうかは RPP の判定に任せる。ゴールが変わって新しいゴールへの経路がないときだけ、経路を捨ててリカバリーに入る (古いゴールで到着と報告しないため)
-3. **回避行動** (normal のみ): `failure_tolerance` の間待っても空かなければ `FollowPath` が失敗し、リカバリーで次の段階を 1 つ行ってから走行に戻る。段階は順に、首振り → コストマップのクリアと待機 → 逆向きの首振り → 待機 → 短い後退 (角度・時間・距離・速度は BT の XML と `behavior_server` の設定)。首振りと後退の後は経路を計画し直す。後退は危険なので最後の手段にしている
+3. **回避行動** (normal のみ): `failure_tolerance` の間待っても空かなければ `FollowPath` が失敗し、リカバリーに入る。1 回のリカバリーの中で次の段階を順に試し、どこかで引き直した経路が通れた時点で走行に戻る (角度・時間・距離・速度は BT の XML と `behavior_server` の設定)
+   1. 今のコストマップで引き直す
+   2. コストマップをクリアし、作り直されるまで待ってから引き直す
+   3. 近くの実在の障害物で今の経路が塞がっているときだけ、ゆっくり短く後退して引き直す
+   4. ゆっくり首振り (左、右の順) して、そのたびに引き直す
+   5. 待ってから走行に戻る (RPP の待ちからくり返す)
+
+   「通れた」は、引き直した経路を `IsPathBlocked` (RPP と同じ判定。経路の向きへのその場の回転を含む) で確かめる。段階の間に RPP の待ちは挟まない。計画の失敗、塞がった経路、後退・首振りの衝突による中止は、どれも次の段階へ進む
 4. **空いたらすぐ戻る**: リカバリーの間、`IsPathClear` が「RPP が衝突判定なしで走り出せるか」を RPP と同等以上の基準で調べる。塞がっていた経路が空いた状態 (コストマップ複数枚、一定時間以上) になったら、回避行動の途中でも中断して走行に戻る。最初から空いている失敗 (スリップなど障害物以外が原因) では中断せず、回避行動を行う
 
 注意:
 
-- リカバリーの試行回数は実質無制限。障害物が居座ると、上の段階を「RPP の待ち + 段階 1 つ」の周期で際限なくくり返す。詰まりは診断 `waypoint_sequencer_node: progress` で知らせる
-- `IsPathClear` で回避行動を中断すると、次のリカバリーは段階 1 (首振り) から始まる (Nav2 の `RoundRobin` が halt で位置を戻すため)
-- 首振りの効果は 2 つ。(1) RPP の円弧・その場の回転は今の向きから投影されるので、経路は引けているのに向きのせいで衝突判定に掛かる場合は、向きを変えると通れるようになる (プランナによらない。`IsPathClear` も今の向きから判定するので、通れるようになれば走行に戻る)。(2) 向きを考慮する Smac Lattice (`global_planner:=smac_lattice`) では、再計画で障害物を避ける経路が引けやすくなる。既定の NavFn では (2) は効かない
+- リカバリーの試行回数は実質無制限。障害物が居座ると、「RPP の待ち + 上の段階すべて」の周期で際限なくくり返す。詰まりは診断 `waypoint_sequencer_node: progress` で知らせる。リカバリーは中断・終了のたびに段階 1 から始まる
+- 引き直しを首振りより先に置くのは、引き直した経路の確かめで向きの問題 (経路の向きへの回転で当たるか) を判定済みだから。コストマップはセンサの層だけで、向きを変えても見える範囲は変わらない。首振りが効くのは、向きを考慮する Smac Lattice (`global_planner:=smac_lattice`) で経路が引けやすくなる場合で、既定の NavFn では効かない
+- 後退は、計画が他の理由 (自己位置のずれ、地図との不一致、ゴールが通れない場所) で失敗し、近くに実在の障害物がないときは行わない。ローカルコストマップはセンサの層だけ (odom 座標) なので、自己位置がずれても実在の障害物の位置は正しい
+- 既知の制約: 自己位置がゆっくりずれ (AMCL のずれ、静止中の GNSS の引き込み)、地図に沿って引いた経路が近くの実在の壁に掛かると、リカバリーのたびに後退をくり返す。後退は `behavior_server` がローカルコストマップとフットプリントで先読みして確かめ、致死・未知のセルで止まるので、後方が見えていれば実在の障害物には当たらない。後退の合計の上限や自己位置の状態での抑止は、自己位置飛びの対策 (将来の拡張) で検討する
+- 後退・首振りの `cmd_vel` は `collision_monitor` を経由しない。安全は `behavior_server` の衝突の確かめだけに頼る (見えない物と実機で確かめることは [保護の外](../mg_navigation/doc/costmap_and_collision.md#衝突の防止-collision_monitor))
 - `CommitPath` は、経路の終点がゴールから `goal_tolerance` (`plan_goal_match_tolerance` と同じ値にする) 以内かで「今のゴールへの経路か」を判定する。この距離より近いゴールが続くと区別できない
 - `collision_monitor` のポリゴンが有効なとき、RPP が止めないのに `collision_monitor` が止める状況がありうる。このとき `IsPathClear` (RPP 基準) は空いていると判定するので、「空いたら戻る」が働かない場合がある。`collision_monitor` のポリゴンは、RPP より先に反応しないように作ってある ([衝突の防止](../mg_navigation/doc/costmap_and_collision.md#衝突の防止-collision_monitor))
 
