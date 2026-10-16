@@ -39,8 +39,12 @@ def generate_launch_description():
         "use_gps", default="true")
     use_rs_imu_arg = launch_argument_creator.create(
         "use_rs_imu", default="true")
+    use_rs_align_depth_arg = launch_argument_creator.create(
+        "use_rs_align_depth", default="false")
     use_realsense_arg = launch_argument_creator.create(
         "use_realsense", default="true")
+    use_depth_postprocess_arg = launch_argument_creator.create(
+        "use_depth_postprocess", default="false")
     use_odom_corrector_arg = launch_argument_creator.create(
         "use_odom_corrector", default="false")
     odom_corrector_params_file_arg = launch_argument_creator.create(
@@ -61,6 +65,7 @@ def generate_launch_description():
             "use_lidar": use_lidar_arg.launch_config,
             "use_gps": use_gps_arg.launch_config,
             "use_rs_imu": use_rs_imu_arg.launch_config,
+            "use_rs_align_depth": use_rs_align_depth_arg.launch_config,
             "use_odom_corrector": use_odom_corrector_arg.launch_config,
             "respawn_drivers": respawn_drivers_arg.launch_config,
         }.items(),
@@ -79,6 +84,7 @@ def generate_launch_description():
             "use_lidar": use_lidar_arg.launch_config,
             "use_gps": use_gps_arg.launch_config,
             "use_realsense": use_realsense_arg.launch_config,
+            "use_depth_postprocess": use_depth_postprocess_arg.launch_config,
             "use_odom_corrector": use_odom_corrector_arg.launch_config,
             "odom_corrector_params_file": odom_corrector_params_file_arg.launch_config,
         }.items(),

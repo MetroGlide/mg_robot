@@ -48,6 +48,9 @@ def generate_launch_description():
         "use_rs_d435", default="false")
     use_rs_imu_arg = launch_argument_creator.create(
         "use_rs_imu", default="true")
+    # 深度をカラーへ位置合わせした画像 (aligned_depth_to_color)。使うノードがないため既定では無効
+    use_rs_align_depth_arg = launch_argument_creator.create(
+        "use_rs_align_depth", default="false")
 
     pkg_name = "mg_drivers"
     pkg_share = get_package_share_directory(pkg_name)
@@ -180,7 +183,7 @@ def generate_launch_description():
                 ),
                 launch_arguments={
                     "serial_no": "",
-                    "align_depth.enable": "true",
+                    "align_depth.enable": use_rs_align_depth_arg.launch_config,
                     "pointcloud.enable": "true",
 
                     "enable_gyro": use_rs_imu_arg.launch_config,
