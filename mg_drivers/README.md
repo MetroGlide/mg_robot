@@ -11,7 +11,7 @@
 | :--- | :--- | :--- |
 | `wheel_odometry_node` | 車輪のエンコーダ (シリアル) からオドメトリを出す。切断されたら再接続する ([切断からの復旧](#切断からの復旧)) | 出力: `odom` (`nav_msgs/Odometry`)、`~/connected` (`Bool`)、診断 `connection`、イベント `driver.*` |
 | `motor_driver_node` | 速度指令をモータドライバ (シリアル) に送る。切断されたら再接続する ([切断からの復旧](#切断からの復旧)) | 入力: `cmd_vel` (`Twist`)、`~/emergency_stop` (`Bool`)、出力: `~/connected` (`Bool`)、診断 `connection`・`emergency_stop`、イベント `driver.*` |
-| `depth_postprocess_node` | 点群をボクセルグリッドで間引き、統計的な外れ値を除く | 入力: `points`、出力: `points_filtered` (`PointCloud2`) |
+| `depth_postprocess_node` | 点群をボクセルグリッドで間引き、統計的な外れ値を除く。出力を使うノードがないため、既定では起動しない (`use_depth_postprocess`) | 入力: `points`、出力: `points_filtered` (`PointCloud2`) |
 | `obstacle_detection_3d_node` | 点群から立体障害物を検出する ([doc](./doc/obstacle_detection_3d.md)) | 入力: `points`、出力: `~/points_obstacle`、`~/cluster_markers` |
 | `pcl_downsampling_node` | 点群の間引き。どの launch からも起動されない | 入力: `points/raw`、出力: `points/downsampled` |
 
@@ -71,8 +71,11 @@ ros2 run mg_drivers odom_offset_republisher.py
 | `drive` | `bringup_hardware` を起動するか ([注意](#注意)) |
 | `use_odom` / `use_odom_tf` | ホイールオドメトリ / TF の配信 |
 | `use_lidar` / `use_gps` | LiDAR / GNSS |
-| `use_realsense` | 点群の後処理と障害物検出 (`bringup_postprocess`) |
+| `use_realsense` | 障害物検出と点群の後処理 (`bringup_postprocess`) |
+| `use_depth_postprocess` | 点群の後処理 (`depth_postprocess_node`) も起動する。`use_realsense` が `true` のときだけ効く |
 | `use_rs_imu` | RealSense の IMU (ジャイロと加速度) |
+| `use_rs_align_depth` | RealSense で、深度をカラーに位置合わせした画像 (`aligned_depth_to_color`) を出す。使うノードがないため既定では出さない |
+| `rs_color_profile` | RealSense のカラー画像の `<幅>x<高さ>x<fps>`。カラーは目視の確認 (記録・RViz) にだけ使い、処理には使わないので低い解像度にしている |
 | `use_odom_corrector` | 補正ノードを起動し、ドライバの出力を `odom/raw` にする |
 | `odom_corrector_params_file` | `params/` のファイル名または絶対パス |
 | `respawn_drivers` | ドライバのプロセスが終了したら起動し直す ([切断からの復旧](#切断からの復旧)) |
@@ -87,6 +90,7 @@ ros2 run mg_drivers odom_offset_republisher.py
 | `gps_port` | GNSS のポート |
 | `use_ubx_protocol` | `true`: u-blox の UBX (`ublox_gps_node`)。`false`: NMEA (`nmea_navsat_driver`) |
 | `use_rs_d435i` / `use_rs_d435` | RealSense の機種 |
+| `use_rs_imu` / `use_rs_align_depth` / `rs_color_profile` | 上と同じ |
 | `respawn_drivers` | 上と同じ |
 
 `bringup_hardware.launch.py` の引数は、`device_name` (モータドライバのポート) と `respawn_drivers`。
@@ -98,7 +102,7 @@ ros2 run mg_drivers odom_offset_republisher.py
 | `/odom` (補正あり: `/odom/raw` → `/odom`) | `wheel_odometry_node`、補正ノード | ホイールオドメトリ |
 | `/scan_top_lidar` | `top_rplidar_node` | 上 LiDAR (RPLiDAR S2) |
 | `/gps/fix`、`/navpvt` ほか | `ublox_gps_node` | GNSS |
-| `/camera/camera/depth/color/points` → `/camera/depth/points_postprocessed` | RealSense → `depth_postprocess_node` | 点群と、後処理した点群 |
+| `/camera/camera/depth/color/points` → `/camera/depth/points_postprocessed` | RealSense → `depth_postprocess_node` | 点群と、後処理した点群 (`use_depth_postprocess` のとき) |
 | `/cmd_vel` | (入力) `motor_driver_node` | 速度指令 |
 
 ## パラメータ

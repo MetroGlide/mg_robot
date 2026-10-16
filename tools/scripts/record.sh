@@ -20,7 +20,7 @@ show_help() {
 オプション:
   -m <mode>     記録モードを選択します (デフォルト: slam)
                 slam | a : 軽量版 (SLAMGNSS2D & TF のみ、約0.28GB/30分)
-                all  | c : 全センサ版 (SLAMGNSS2D & TF & RealSense RGB/Depth/IMU、約39GB/30分)
+                all  | c : 全センサ版 (SLAMGNSS2D & TF & RealSense RGB/Depth/IMU、約17GB/30分)
   -o <output>   出力ファイル/ディレクトリ名
                 相対パス指定時は ROSBAG_PATH 配下に保存されます。
                 未指定時は ROSBAG_PATH 配下に record_<mode>_YYYYMMDD_HHMMSS が生成されます。

@@ -4,7 +4,7 @@ import launch
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, ExecuteProcess
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch.substitutions import AndSubstitution, LaunchConfiguration, PathJoinSubstitution
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from ament_index_python.packages import get_package_share_directory
 from launch_ros.actions import Node
@@ -31,6 +31,9 @@ def generate_launch_description():
         "use_gps", default="true")
     use_sensor_data_qos_arg = launch_argument_creator.create(
         "use_sensor_data_qos", default="false")
+    # 点群の後処理 (外れ値除去・間引き)。出力を使うノードがないため既定では起動しない
+    use_depth_postprocess_arg = launch_argument_creator.create(
+        "use_depth_postprocess", default="false")
     use_odom_corrector_arg = launch_argument_creator.create(
         "use_odom_corrector", default="false")
     # ファイル名 (mg_drivers/params 配下) または絶対パス
@@ -167,7 +170,10 @@ def generate_launch_description():
                     ("points_filtered", "/camera/depth/points_postprocessed"),
                 ],
                 condition=launch.conditions.IfCondition(
-                    use_realsense_arg.launch_config
+                    AndSubstitution(
+                        use_realsense_arg.launch_config,
+                        use_depth_postprocess_arg.launch_config,
+                    )
                 ),
             ),
 
