@@ -169,10 +169,15 @@ class ObstacleClearanceSpec:
     # 全期間の最小距離 (障害物が動いた分を含む) がこの値 [m] 以内まで近づいたことを要求する。
     # 障害物に出会わないまま PASS する (タイミングのずれ、速度の変更など) のを検出する。省略時は要求しない
     require_within: Optional[float] = None
+    # ロボットの姿勢の取り方。tf: 自己位置推定 (map -> base)。sim: シミュレータ上の真の姿勢
+    # (地図にない障害物で自己位置推定がずれる配置でも、実際に当たったかを測る)
+    pose_source: str = "tf"
 
     def validate(self, where: str) -> None:
         if not self.obstacles:
             raise ScenarioValidationError(f"{where}: 'obstacles' must not be empty")
+        if self.pose_source not in ("tf", "sim"):
+            raise ScenarioValidationError(f"{where}: 'pose_source' must be 'tf' or 'sim'")
         if self.require_within is not None and self.require_within <= 0.0:
             raise ScenarioValidationError(f"{where}: 'require_within' must be > 0")
 
@@ -200,7 +205,8 @@ class ObstacleClearanceMonitor(TopicMonitor):
     ロボットが走行・旋回 (speed_threshold / angular_threshold 超) で障害物へ寄った場合が対象で、
     停止中のロボットへ障害物が寄る場合や、ロボットが離れていく場合は対象外。
     全期間の最小距離は参考値として出す。
-    ロボットの姿勢は TF (推定値) なので、数 cm の誤差を含む。
+    ロボットの姿勢は、pose_source が tf なら TF (推定値) で、数 cm の誤差を含む。地図にない
+    障害物に囲まれるなどで自己位置推定が大きくずれる配置では、sim (シミュレータ上の真の姿勢) にする。
     """
     MSG_TYPE = Odometry
 
@@ -227,6 +233,9 @@ class ObstacleClearanceMonitor(TopicMonitor):
         self._min_caused: Optional[float] = None
         self._min_caused_info = ("", 0.0, 0.0, (0.0, 0.0))
         self._previous = {}
+        if spec.pose_source == "sim":
+            # 真の姿勢を出せないバックエンドなら、ここで ScenarioError にする
+            ctx.backend.entity_pose(ctx.profile.sim.robot_entity)
 
     def _obstacle_pose(self, name: str) -> Optional[Pose]:
         world_pose = self._ctx.entity_poses.get(name)
@@ -243,11 +252,22 @@ class ObstacleClearanceMonitor(TopicMonitor):
                 robot_polygon, transform_polygon(rectangle_vertices(*box), obstacle))
         return polygon_circle_distance(robot_polygon, (obstacle.x, obstacle.y), radius)
 
+    def _robot_pose(self) -> Optional[Pose]:
+        if self._spec.pose_source == "sim":
+            world_pose = self._ctx.backend.entity_pose(self._ctx.profile.sim.robot_entity)
+            if world_pose is None:
+                return None
+            return self._ctx.poses.to_map(PoseSpec(
+                "world", world_pose.x, world_pose.y, world_pose.z, world_pose.yaw))
+        try:
+            return self._ctx.poses.robot.get()
+        except ScenarioError:
+            return None
+
     def _on_msg(self, msg) -> None:
         self._received += 1
-        try:
-            robot = self._ctx.poses.robot.get()
-        except ScenarioError:
+        robot = self._robot_pose()
+        if robot is None:
             return
         twist = msg.twist.twist
         speed = math.hypot(twist.linear.x, twist.linear.y)

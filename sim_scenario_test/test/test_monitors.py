@@ -412,6 +412,46 @@ def test_obstacle_clearance_ignores_robot_moving_away():
     assert monitor.result().status == ResultStatus.PASSED
 
 
+def test_obstacle_clearance_can_use_the_true_robot_pose():
+    from sim_scenario_test.builtin.monitors import (
+        ObstacleClearanceMonitor, ObstacleClearanceSpec)
+    # 自己位置推定は障害物へ突っ込んだと思っているが、真の姿勢は動いていない
+    robot = FakeRobot(Pose(0.0, 0.0))
+    ctx = _clearance_ctx(robot)
+    entity = ctx.profile.sim.robot_entity
+    ctx.backend.true_poses[entity] = Pose(0.0, 0.0)
+    tf_monitor = _clearance_monitor(ctx)
+    sim_monitor = ObstacleClearanceMonitor(
+        ctx, ObstacleClearanceSpec(obstacles=["ped"], pose_source="sim"))
+    ctx.entity_poses["ped"] = Pose(1.0, 0.0)
+    for monitor in (tf_monitor, sim_monitor):
+        monitor._callback(_odom_twist(0.5))
+    robot.pose = Pose(0.6, 0.0)
+    for monitor in (tf_monitor, sim_monitor):
+        monitor._callback(_odom_twist(0.5))
+    assert tf_monitor.result().status == ResultStatus.FAILED
+    assert sim_monitor.result().status == ResultStatus.PASSED
+    # 真の姿勢が障害物へ突っ込めば FAILED
+    ctx.backend.true_poses[entity] = Pose(0.6, 0.0)
+    sim_monitor._callback(_odom_twist(0.5))
+    assert sim_monitor.result().status == ResultStatus.FAILED
+
+
+def test_obstacle_clearance_true_pose_needs_backend_support():
+    from sim_scenario_test.builtin.monitors import (
+        ObstacleClearanceMonitor, ObstacleClearanceSpec)
+    from sim_scenario_test.sim.base import SimulationBackend
+
+    class NoPoseBackend(FakeBackend):
+        entity_pose = SimulationBackend.entity_pose
+
+    ctx = _clearance_ctx()
+    ctx.backend = NoPoseBackend()
+    with pytest.raises(ScenarioError, match="does not provide entity poses"):
+        ObstacleClearanceMonitor(
+            ctx, ObstacleClearanceSpec(obstacles=["ped"], pose_source="sim"))
+
+
 def test_obstacle_clearance_counts_rotation_toward_obstacle():
     robot = FakeRobot(Pose(0.0, 0.0, 0.0, 0.0))
     ctx = _clearance_ctx(robot)

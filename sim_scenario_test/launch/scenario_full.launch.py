@@ -17,7 +17,7 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 
-from sim_scenario_test.launch_include import include_launch
+from sim_scenario_test.launch_include import backend_launch_actions, include_launch
 from sim_scenario_test.loader import load_scenario
 
 
@@ -32,6 +32,7 @@ def _setup(context, *args, **kwargs):
     actions = []
     if profile.sim.launch is not None:
         actions.append(include_launch(profile.sim.launch, variables, "profile.sim.launch.args"))
+    actions += backend_launch_actions(profile, variables)
     # 実機PCなど別の場所でスタックを起動する場合 (--remote-stack) は include しない
     launch_stack = LaunchConfiguration("launch_stack").perform(context) == "true"
     if profile.stack is not None and launch_stack:
