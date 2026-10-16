@@ -53,12 +53,13 @@ monitors:
 
 **急に現れる障害物** — Fuel モデルの `spawn` は完了まで時間がかかり、その間にロボットが進むので、走行中の `spawn` では狙った位置に出せない。
 障害物を `setup` で走行範囲から離れた待避位置 (xy を離し、`static` なら z を負にしてもよい) に置き、`timeline` で `teleport` (`frame: robot`) して出し、`delay` のあとに待避位置へ戻す。
-障害物に出会えたかは `obstacle_clearance` の `require_within` で判定する (速度を変えて空振りしても PASS にしない)。実例は `dynamic_stop_and_resume.yaml`、`static_avoid_replan.yaml`。
+障害物に出会えたかは `obstacle_clearance` の `require_within` で判定する (速度を変えて空振りしても PASS にしない)。
+障害物の前で待った時間は、`max_stop_duration` の `after_timeline` で出した時点から測る。向き直りのその場の回転を停止に数えないなら `include_turning: true`。実例は `dynamic_stop_and_resume.yaml`、`static_avoid_replan.yaml`。
 
 **自己位置推定の誘拐 (kidnapped robot)** — `teleport` はロボットをシミュレータ上で動かすだけで自己位置推定に通知しない。
 AMCL の復帰処理の確認に使える。
 
-**乱数で揺らす** — `spawn` の `jitter` と、シナリオの `seed`。CLI の `--seed` で上書き、`REPEAT` ごとに +1。
+**乱数で揺らす** — `spawn`・`teleport` の `jitter` と、シナリオの `seed`。CLI の `--seed` で上書き、`REPEAT` ごとに +1。
 
 ## つまずきやすい点
 

@@ -35,7 +35,7 @@ timeline:
   - name: pedestrian_crosses
     when: { robot_near: { x: 1.8, y: 0.7, radius: 0.5 } }
     do:
-      - teleport: { entity: pedestrian, pose: { frame: map, x: 3.0, y: 0.3, z: 0.85 } }
+      - teleport: { entity: pedestrian, pose: { frame: map, x: 3.0, y: 0.3, z: 0.85 }, jitter: 0.2 }
       - move_obstacle:
           obstacle: pedestrian
           to: { frame: map, x: 3.0, y: 3.5, z: 0.85 }
