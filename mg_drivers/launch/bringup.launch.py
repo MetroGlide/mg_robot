@@ -41,6 +41,8 @@ def generate_launch_description():
         "use_rs_imu", default="true")
     use_rs_align_depth_arg = launch_argument_creator.create(
         "use_rs_align_depth", default="false")
+    rs_color_profile_arg = launch_argument_creator.create(
+        "rs_color_profile", default="640x360x6")
     use_realsense_arg = launch_argument_creator.create(
         "use_realsense", default="true")
     use_depth_postprocess_arg = launch_argument_creator.create(
@@ -66,6 +68,7 @@ def generate_launch_description():
             "use_gps": use_gps_arg.launch_config,
             "use_rs_imu": use_rs_imu_arg.launch_config,
             "use_rs_align_depth": use_rs_align_depth_arg.launch_config,
+            "rs_color_profile": rs_color_profile_arg.launch_config,
             "use_odom_corrector": use_odom_corrector_arg.launch_config,
             "respawn_drivers": respawn_drivers_arg.launch_config,
         }.items(),

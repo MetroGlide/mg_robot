@@ -51,6 +51,9 @@ def generate_launch_description():
     # 深度をカラーへ位置合わせした画像 (aligned_depth_to_color)。使うノードがないため既定では無効
     use_rs_align_depth_arg = launch_argument_creator.create(
         "use_rs_align_depth", default="false")
+    # カラー画像の <幅>x<高さ>x<fps>。カラーは目視の確認用で処理に使わないため、低い解像度にする
+    rs_color_profile_arg = launch_argument_creator.create(
+        "rs_color_profile", default="640x360x6")
 
     pkg_name = "mg_drivers"
     pkg_share = get_package_share_directory(pkg_name)
@@ -191,7 +194,7 @@ def generate_launch_description():
                     "unite_imu_method": "1",
 
                     "depth_module.depth_profile": "848x480x6",
-                    "rgb_camera.color_profile": "1280x720x6",
+                    "rgb_camera.color_profile": rs_color_profile_arg.launch_config,
                     "publish_tf": "false",
 
                 }.items(),

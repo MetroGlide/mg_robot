@@ -75,6 +75,7 @@ ros2 run mg_drivers odom_offset_republisher.py
 | `use_depth_postprocess` | 点群の後処理 (`depth_postprocess_node`) も起動する。`use_realsense` が `true` のときだけ効く |
 | `use_rs_imu` | RealSense の IMU (ジャイロと加速度) |
 | `use_rs_align_depth` | RealSense で、深度をカラーに位置合わせした画像 (`aligned_depth_to_color`) を出す。使うノードがないため既定では出さない |
+| `rs_color_profile` | RealSense のカラー画像の `<幅>x<高さ>x<fps>`。カラーは目視の確認 (記録・RViz) にだけ使い、処理には使わないので低い解像度にしている |
 | `use_odom_corrector` | 補正ノードを起動し、ドライバの出力を `odom/raw` にする |
 | `odom_corrector_params_file` | `params/` のファイル名または絶対パス |
 | `respawn_drivers` | ドライバのプロセスが終了したら起動し直す ([切断からの復旧](#切断からの復旧)) |
@@ -89,7 +90,7 @@ ros2 run mg_drivers odom_offset_republisher.py
 | `gps_port` | GNSS のポート |
 | `use_ubx_protocol` | `true`: u-blox の UBX (`ublox_gps_node`)。`false`: NMEA (`nmea_navsat_driver`) |
 | `use_rs_d435i` / `use_rs_d435` | RealSense の機種 |
-| `use_rs_imu` / `use_rs_align_depth` | 上と同じ |
+| `use_rs_imu` / `use_rs_align_depth` / `rs_color_profile` | 上と同じ |
 | `respawn_drivers` | 上と同じ |
 
 `bringup_hardware.launch.py` の引数は、`device_name` (モータドライバのポート) と `respawn_drivers`。
