@@ -39,7 +39,7 @@ logs-export: ## コンテナのログをファイルに書き出す [svc OUT_DIR
 	done
 
 # 全サービスのコンテナのログを、ホストの ${HOME}/ros2_data/logs/<サービス名>/<日付>.log に常時書き出す
-# log-collector を起動する (doc/monitoring.md)。初回はイメージの取得にネットワークが要る。
+# log-collector を起動する (doc/monitoring.md)。イメージが無ければ取得する (ネットワークが要る。make build-robot でも取得する)。
 # 一度起動すれば、ホストの再起動後も残る。make slam / navigation / slam-gnss-2d も、
 # イメージがあれば起動する。make down で止まる。
 log-collector: ## ログの常時書き出し (log-collector) を起動
@@ -50,7 +50,7 @@ _ensure-log-collector:
 	@if docker image inspect timberio/vector:0.43.1-alpine >/dev/null 2>&1; then \
 	  $(COMPOSE) up -d log-collector; \
 	else \
-	  echo '[log-collector] イメージが無いので、ログをファイルに保存しません。ネットワークのある環境で make log-collector を一度実行してください'; \
+	  echo '[log-collector] イメージが無いので、ログをファイルに保存しません。ネットワークのある環境で make build-robot か make log-collector を一度実行してください'; \
 	fi
 
 # 古いログを削除する。削除したパスを表示する。

@@ -41,7 +41,7 @@ frontend-builder  node:20-slim。Web UI をビルドして dist/ だけを web-u
 ## ビルド
 
 ```bash
-make build-robot                 # 実機向け: slam(runtime)・develop・web-ui を一括ビルド
+make build-robot                 # 実機向け: slam(runtime)・develop・web-ui を一括ビルドし、log-collector のイメージを取得
 make build-sim                   # シミュレータ込み: 上記 + gazebo-simulation
 make build svc=slam              # 特定サービスのイメージだけビルド
 make build-no-cache svc=slam     # キャッシュ無効でビルド
@@ -108,7 +108,7 @@ docker compose -f compose.yaml -f compose.gpu.nvidia.yaml build gazebo-simulatio
 
 - アプリにも各サービスの起動処理にも手を入れない。Docker のログ (`json-file`) はそのまま残るので、`make logs` と Web UI のログ表示は変わらない。
 - コンテナを削除 (`make down`、`run --rm`) してもファイルは残る。調べるときは、`make log-events` で `evt=` の行を時刻順の表にできる ([doc/monitoring.md](./monitoring.md))。
-- `make log-collector` で起動する (初回はイメージの取得にネットワークが要る)。`restart: unless-stopped` なので、ホストの再起動後も残る。`make slam` / `navigation` / `slam-gnss-2d` は、イメージがあれば起動する (無ければ案内を表示して続ける)。`make down` で止まる。
+- `make log-collector` で起動する (イメージが無ければ取得する。取得にはネットワークが要る。`make build-robot` でも取得する)。`restart: unless-stopped` なので、ホストの再起動後も残る。`make slam` / `navigation` / `slam-gnss-2d` は、イメージがあれば起動する (無ければ案内を表示して続ける)。`make down` で止まる。
 - 対象は `COMPOSE_PROJECT_NAME` (未設定ならディレクトリ名 `mg_robot`) のコンテナだけ。ディレクトリ名を変えたときは、`.env` に `COMPOSE_PROJECT_NAME` を書く。
 - コンテナを起動する**前**から動かしておく (起動したあとのログから書き出す)。
 - 設定は `docker/log-collector/vector.toml`。止めたいときは、サービスを起動しない (`make down` か `docker compose stop log-collector`)。ロボットの動作には影響しない。

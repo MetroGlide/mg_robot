@@ -115,7 +115,7 @@ Gazebo とナビゲーションを起動して合否を判定する。詳細は 
 
 | コマンド | 内容 |
 | :--- | :--- |
-| `make build-robot` | 実機向け: `slam`・`develop`・`web-ui` のイメージ |
+| `make build-robot` | 実機向け: `slam`・`develop`・`web-ui` のイメージ。`log-collector` のイメージも取得する |
 | `make build-robot-no-cache` | 同上、キャッシュ無効 |
 | `make build-sim` | 上記 + `gazebo-simulation` |
 | `make build svc=<名前>` | 指定したサービスのイメージ |
