@@ -89,6 +89,18 @@ def test_angular_acceleration_is_the_same_everywhere(params):
     assert behavior == rpp == smoother['max_accel'][2] == -smoother['max_decel'][2]
 
 
+def test_progress_checker_waits_longer_than_the_controller(params):
+    # 同じだと、障害物の前で待つ途中で障害物が去っても、進みきる前に「進捗なし」で失敗する
+    controller = _ros_params(params, 'controller_server')
+    checker = controller[controller['progress_checker_plugin']]
+    assert checker['movement_time_allowance'] > controller['failure_tolerance']
+
+
+def test_spin_speed_range_is_valid(params):
+    behavior = _ros_params(params, 'behavior_server')
+    assert 0.0 < behavior['min_rotational_vel'] <= behavior['max_rotational_vel']
+
+
 def _box_filter(laser_filter):
     chain = laser_filter['top_laser_filter']['ros__parameters']
     return next(

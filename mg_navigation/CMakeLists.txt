@@ -191,6 +191,10 @@ if(BUILD_TESTING)
   target_link_libraries(test_is_path_blocked_condition mg_is_path_blocked_condition_bt_node)
   ament_target_dependencies(test_is_path_blocked_condition ${BT_PLUGIN_DEPENDENCIES})
 
+  ament_add_gtest(test_is_path_clear_condition test/test_is_path_clear_condition.cpp)
+  target_link_libraries(test_is_path_clear_condition mg_is_path_clear_condition_bt_node)
+  ament_target_dependencies(test_is_path_clear_condition ${BT_PLUGIN_DEPENDENCIES})
+
   ament_add_gtest(test_commit_path_action test/test_commit_path_action.cpp)
   target_link_libraries(test_commit_path_action mg_commit_path_action_bt_node)
   ament_target_dependencies(test_commit_path_action ${BT_PLUGIN_DEPENDENCIES})
