@@ -67,6 +67,11 @@ scenarios/
   通れない幅の回廊 (`narrow_corridor_blocked`) は、迂回して到達できる。
 - **走行の途中・終了後に遠くへ再び respawn**: AMCL の watchdog / GNSS 初期化ノードが `/initialpose` を上書きして位置が狂う。
   原点以外への respawn も、開始時に収束しないことがある (地図の特徴が少ない)。GNSS 関連は範囲外。
+- **飛び出した人の前で止まる余裕が小さい (`dynamic_stop_and_resume` がまれに失敗する)**: 人 (`obstacle_clearance` では半径の円) と止まった
+  ロボットとの距離は数 cm〜十数 cm しかなく、まれに 0 になって失敗する。シミュレータの真の姿勢で測っても同じなので、自己位置の誤差ではない。
+  人を出してから止まるまでに進む距離 (teleport の反映の遅れ、制動距離、scan と制御の遅れ) が巡航速度で決まり、反映の遅れが回ごとにばらつく。
+  巡航速度 (`nav2_params.yaml` のアンカー `&v_max`) を下げれば余裕が増える。実機で止まる余裕を確かめてから決める
+  ([costmap_and_collision.md](../../mg_navigation/doc/costmap_and_collision.md))。出す距離を延ばすことは、判定を緩めることになるのでしない。
 
 ## 解決済みの問題 (参考)
 
