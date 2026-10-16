@@ -415,9 +415,16 @@ class MaxStopDurationSpec:
     # 区間内で、少なくともこの秒数の連続した停止があること (一時停止の確認用。0 なら確認しない)
     min_stop_sec: float = 0.0
     speed_threshold: float = 0.05
+    # true なら、その場の回転 (角速度が turn_threshold 以上) も動いているとみなし、停止に数えない
+    # (resume_within の include_turning と同じ考え方)
+    include_turning: bool = False
+    turn_threshold: float = 0.1
     # 監視区間: from_goal_started 番目のゴールの開始から、until_goal_reached 番目のゴールの到達まで
     from_goal_started: int = 0
     until_goal_reached: int = 0
+    # 指定すると、このタイムライン項目 (timeline[].name) が発火してから区間を始める
+    # (障害物を出してからの停止を測る)
+    after_timeline: Optional[str] = None
     topic: str = "/odom"
 
 
@@ -435,6 +442,9 @@ class MaxStopDurationMonitor(TopicMonitor):
 
     def _in_window(self) -> bool:
         events = self._ctx.events
+        if (self._spec.after_timeline is not None
+                and events.find("timeline_fired", entry=self._spec.after_timeline) is None):
+            return False
         return (events.find("goal_started", index=self._spec.from_goal_started) is not None
                 and events.find("goal_reached", index=self._spec.until_goal_reached) is None)
 
@@ -445,7 +455,9 @@ class MaxStopDurationMonitor(TopicMonitor):
         self._observed = True
         v = msg.twist.twist.linear
         now = self._ctx.clock.now()
-        if math.hypot(v.x, v.y) < self._spec.speed_threshold:
+        turning = (self._spec.include_turning
+                   and abs(msg.twist.twist.angular.z) >= self._spec.turn_threshold)
+        if math.hypot(v.x, v.y) < self._spec.speed_threshold and not turning:
             if self._stop_since is None:
                 self._stop_since = now
             self._longest = max(self._longest, now - self._stop_since)

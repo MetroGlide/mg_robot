@@ -68,13 +68,24 @@ class TeleportSpec:
     pose: PoseSpec
     # 省略時はロボット
     entity: str = ""
+    # x, y に ±jitter [m] の一様乱数を加える (シナリオの seed で再現できる)
+    jitter: float = 0.0
+
+
+def _jittered(ctx: "ScenarioContext", world: Pose, jitter: float) -> Pose:
+    if jitter <= 0.0:
+        return world
+    return Pose(
+        world.x + ctx.rng.uniform(-jitter, jitter),
+        world.y + ctx.rng.uniform(-jitter, jitter),
+        world.z, world.yaw)
 
 
 @register_action("teleport", TeleportSpec)
 def teleport(ctx: "ScenarioContext", spec: TeleportSpec, stop: threading.Event) -> None:
     """エンティティをシミュレータ上で移動する (自己位置推定には通知しない)。"""
     entity = spec.entity or ctx.profile.sim.robot_entity
-    world = ctx.poses.to_world(spec.pose)
+    world = _jittered(ctx, ctx.poses.to_world(spec.pose), spec.jitter)
     if entity == ctx.profile.sim.robot_entity:
         world = Pose(world.x, world.y, world.z + ctx.profile.sim.robot_spawn_z, world.yaw)
     ctx.backend.set_entity_pose(entity, world)
@@ -116,12 +127,7 @@ def spawn(ctx: "ScenarioContext", spec: SpawnSpec, stop: threading.Event) -> Non
     if model.path:
         model = dataclasses.replace(
             model, path=ctx.expand(model.path, f"obstacles.{spec.obstacle}.model.path"))
-    world = ctx.poses.to_world(spec.pose)
-    if spec.jitter > 0.0:
-        world = Pose(
-            world.x + ctx.rng.uniform(-spec.jitter, spec.jitter),
-            world.y + ctx.rng.uniform(-spec.jitter, spec.jitter),
-            world.z, world.yaw)
+    world = _jittered(ctx, ctx.poses.to_world(spec.pose), spec.jitter)
     ctx.logger.info(
         f"[spawn] '{spec.obstacle}' at world ({world.x:.2f}, {world.y:.2f})")
     ctx.backend.spawn_entity(spec.obstacle, model, world)

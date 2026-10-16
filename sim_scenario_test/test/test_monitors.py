@@ -158,6 +158,21 @@ def test_spawn_jitter_is_reproducible():
     assert 0.5 <= spawn_x(1) <= 1.5
 
 
+def test_teleport_jitter_is_reproducible():
+    from sim_scenario_test.builtin.actions import TeleportSpec, teleport
+
+    def teleport_x(seed):
+        backend = FakeBackend()
+        ctx = _scenario_ctx(backend)
+        ctx.rng.seed(seed)
+        teleport(ctx, TeleportSpec(PoseSpec(x=1.0), entity="box", jitter=0.5), threading.Event())
+        return [c[2] for c in backend.calls if c[0] == "set_pose"][0].x
+
+    assert teleport_x(1) == teleport_x(1)
+    assert teleport_x(1) != teleport_x(2)
+    assert 0.5 <= teleport_x(1) <= 1.5
+
+
 def test_robot_travelled_accumulates_path_length():
     from sim_scenario_test.builtin.triggers import RobotTravelled, RobotTravelledSpec
     robot = FakeRobot(Pose(0.0, 0.0))
@@ -272,6 +287,44 @@ def test_min_stop_duration_requires_a_real_stop():
         clock["t"] = t
         monitor._callback(_odom(v))
     assert monitor.result().status == ResultStatus.PASSED       # 4 秒の停止
+
+
+def test_max_stop_duration_starts_after_timeline_entry():
+    from sim_scenario_test.builtin.monitors import MaxStopDurationMonitor, MaxStopDurationSpec
+    ctx = _scenario_ctx()
+    clock = {"t": 0.0}
+    ctx.clock.now = lambda: clock["t"]
+    monitor = MaxStopDurationMonitor(
+        ctx, MaxStopDurationSpec(max_stop_sec=2.0, after_timeline="appear"))
+    ctx.events.emit("goal_started", index=0)
+    for t, v in ((0.0, 0.0), (5.0, 0.0)):                # 発火前の停止は数えない
+        clock["t"] = t
+        monitor._callback(_odom(v))
+    assert monitor.result().status == ResultStatus.ERROR
+    ctx.events.emit("timeline_fired", entry="appear")
+    for t, v in ((6.0, 0.0), (7.0, 0.0), (7.5, 0.5)):
+        clock["t"] = t
+        monitor._callback(_odom(v))
+    result = monitor.result()
+    assert result.status == ResultStatus.PASSED and "1.0" in result.message
+
+
+def test_max_stop_duration_can_count_turning_as_motion():
+    from sim_scenario_test.builtin.monitors import MaxStopDurationMonitor, MaxStopDurationSpec
+    ctx = _scenario_ctx()
+    clock = {"t": 0.0}
+    ctx.clock.now = lambda: clock["t"]
+    linear_only = MaxStopDurationMonitor(ctx, MaxStopDurationSpec())
+    with_turning = MaxStopDurationMonitor(ctx, MaxStopDurationSpec(include_turning=True))
+    ctx.events.emit("goal_started", index=0)
+    # 1 秒止まってから、その場で 3 秒回り、走り出す
+    for t, vx, wz in ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.1, 0.0, 0.5), (4.0, 0.0, 0.5),
+                      (4.5, 0.5, 0.0)):
+        clock["t"] = t
+        linear_only._callback(_odom(vx, wz=wz))
+        with_turning._callback(_odom(vx, wz=wz))
+    assert "longest stop 4.0" in linear_only.result().message
+    assert "longest stop 1.0" in with_turning.result().message
 
 
 # ---------------------------------------------------------------------------
