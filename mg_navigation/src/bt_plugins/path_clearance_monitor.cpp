@@ -179,6 +179,20 @@ void PathClearanceMonitor::pollParameters()
   }
 }
 
+void PathClearanceMonitor::pollParametersWithin(std::chrono::milliseconds timeout)
+{
+  pollParameters();
+  const auto deadline = std::chrono::steady_clock::now() + timeout;
+  while (!ready() && (controller_params_future_ || costmap_params_future_)) {
+    const auto now = std::chrono::steady_clock::now();
+    if (now >= deadline) {
+      return;
+    }
+    callback_group_executor_.spin_once(deadline - now);
+    pollParameters();
+  }
+}
+
 bool PathClearanceMonitor::applyControllerParameters(
   const std::vector<rclcpp::Parameter> & params)
 {

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -68,6 +69,8 @@ public:
   void refreshParameters();
   // パラメータの応答を取り込み、未取得なら要求する
   void pollParameters();
+  // pollParameters に加え、要求中の応答を timeout まで待つ (要求できないときは待たない)
+  void pollParametersWithin(std::chrono::milliseconds timeout);
   // 設定値をすべて取得済みなら true
   bool ready() const {return controller_params_.has_value() && footprint_.has_value();}
   bool useCollisionDetection() const {return use_collision_detection_.value_or(false);}

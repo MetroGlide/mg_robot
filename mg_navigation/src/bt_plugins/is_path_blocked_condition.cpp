@@ -1,5 +1,6 @@
 #include "mg_navigation/bt_plugins/is_path_blocked_condition.hpp"
 
+#include <chrono>
 #include <memory>
 #include <string>
 
@@ -10,6 +11,14 @@ namespace mg_navigation
 {
 namespace bt_plugins
 {
+
+namespace
+{
+
+// 設定値の応答を tick の中で待つ上限 (BT のループを長く止めない)
+constexpr std::chrono::milliseconds kParameterWait{200};
+
+}  // namespace
 
 IsPathBlockedCondition::IsPathBlockedCondition(
   const std::string & condition_name, const BT::NodeConfiguration & conf)
@@ -24,7 +33,9 @@ IsPathBlockedCondition::IsPathBlockedCondition(
 BT::NodeStatus IsPathBlockedCondition::tick()
 {
   monitor_->spinSome();
-  monitor_->pollParameters();
+  // リカバリーの段階の中では、最初の tick から判定できないと判定を素通りするので、
+  // 設定値の応答を少しだけ待つ
+  monitor_->pollParametersWithin(kParameterWait);
   if (!monitor_->ready() || !monitor_->useCollisionDetection()) {
     // RPP が障害物で止まらない設定では、再計画を止めると障害物へ向かって進み続ける
     report(false);
