@@ -3,6 +3,7 @@
 単純に等しい値は YAML のスカラーのアンカーで共有している。アンカーで表せない関係
 (符号の反転、別のファイルとの関係、大小) と、アンカーの使い方の規則をここで検査する。
 """
+import math
 from pathlib import Path
 import re
 
@@ -130,11 +131,13 @@ def test_laser_filter_box_contains_footprint(params, laser_filter):
     assert box['min_y'] <= min(ys) and box['max_y'] >= max(ys)
 
 
-def test_collision_monitor_polygons_are_enabled(params):
+def test_collision_monitor_evaluates_stop_first(params):
+    # polygon の enabled は運用で切り替える (すべて無効にしてもよい) ので検査しない。
+    # STOP が決まった時点で以降の polygon は評価されないため、STOP を先頭に置く
     monitor = _ros_params(params, 'collision_monitor')
     assert monitor['polygons'][0] == 'PolygonStop'
     for name in monitor['polygons']:
-        assert monitor[name]['enabled'] is True, name
+        assert isinstance(monitor[name]['enabled'], bool), name
 
 
 def test_collision_monitor_uses_the_same_scan_as_the_costmaps(params):
@@ -166,7 +169,8 @@ def test_stop_polygon_depth_covers_the_braking_distance(params):
     braking = speed ** 2 / (2 * -smoother['max_decel'][0])
     # scan と制御の遅れ (0.1 秒) ぶんを足す。設計値であり、実機の制動距離は別に測る
     min_x, max_x, _, _ = _extent(_polygon(params, 'PolygonStop')['points'])
-    assert max_x - min_x >= braking + speed * 0.1
+    # ちょうど等しい設計値が浮動小数の丸めで落ちないように、1e-9 の許容を持たせる
+    assert max_x - min_x >= braking + speed * 0.1 - 1e-9
 
 
 def test_approach_polygon_is_the_laser_filter_box(params, laser_filter):
@@ -208,14 +212,21 @@ def test_rpp_inflation_cost_scaling_factor_matches_the_local_inflation_layer(par
         local['inflation_layer']['cost_scaling_factor'])
 
 
+def _distance_to_segment_line(point, a, b):
+    """点 point から、点 a と b を通る直線までの距離。"""
+    (px, py), (ax, ay), (bx, by) = point, a, b
+    return abs((bx - ax) * (ay - py) - (ax - px) * (by - ay)) / math.hypot(bx - ax, by - ay)
+
+
 def test_rpp_cost_scaling_dist_exceeds_the_inscribed_radius(params):
     # コストから求めた障害物までの距離は内接半径以上になるので、cost_scaling_dist が
     # 内接半径以下だとコストによる減速が一切効かない。内接半径は、原点から (padding を含む)
-    # フットプリントの最も近い辺までの距離 (フットプリントは原点を含む矩形)
+    # フットプリントの最も近い辺までの距離
     local = params['local_costmap']['local_costmap']['ros__parameters']
-    xs = [p[0] for p in _footprint(params, 'local_costmap')]
-    ys = [p[1] for p in _footprint(params, 'local_costmap')]
-    inscribed = min(-min(xs), max(xs), -min(ys), max(ys)) + local['footprint_padding']
+    footprint = _footprint(params, 'local_costmap')
+    inscribed = min(
+        _distance_to_segment_line((0.0, 0.0), footprint[i], footprint[(i + 1) % len(footprint)])
+        for i in range(len(footprint))) + local['footprint_padding']
     rpp = _ros_params(params, 'controller_server')['FollowPath']
     assert rpp['use_cost_regulated_linear_velocity_scaling'] is True
     assert rpp['cost_scaling_dist'] > inscribed
