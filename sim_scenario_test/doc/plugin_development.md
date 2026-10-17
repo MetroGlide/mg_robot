@@ -48,7 +48,7 @@ def honk(ctx, spec, stop_event):
 class BatteryBelow:
     """バッテリー残量が閾値を下回ったら成立する。"""
     def __init__(self, ctx, spec): ...
-    def poll(self) -> bool: ...     # 約 20 Hz で呼ばれる。成立したら True
+    def poll(self) -> bool: ...     # 一定の周期で呼ばれる。成立したら True
 ```
 
 購読はコンストラクタで作り、コールバックが更新した値を `poll` で見るのが定石です。
@@ -124,6 +124,10 @@ def load(path) -> List[IndexedPose]:
 
 `SimulationBackend` を継承し (`is_ready` / `entity_exists` / `set_entity_pose` / `spawn_entity` / `remove_entity`)、
 `register_backend("name")` で登録します。姿勢はすべてシミュレータのワールド座標で渡されます。
+任意で、`entity_pose` (シミュレータ上の真の姿勢。`obstacle_clearance` の `pose_source: sim` が使う) と、
+それに要る中継などを `companion_nodes` (シミュレータと一緒に launch で起動するノード) で実装します。
+`gazebo_fortress` は、`/world/<world>/dynamic_pose/info` を ros_gz_bridge で ROS に中継して真の姿勢を得ます
+(動く (static でない) エンティティだけ)。
 
 ## `ScenarioContext` (ctx) で使えるもの
 

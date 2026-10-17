@@ -29,6 +29,21 @@
 | `~/change_publish_state` | `std_srvs/SetBool` | `/odom/gps` の配信を止める・再開する (ウェイポイントの `gps_on` / `gps_off` が使う)。ノード名 `slam_gnss_nav_bridge` なら `/slam_gnss_nav_bridge/change_publish_state` |
 | `~/publish_state` | `std_msgs/Bool` (transient_local) | 配信の状態。起動時と、切り替えたときだけ配信する |
 
+### 診断とイベント
+
+GNSS を地図に使えているか (採用しているか) を、診断 `slam_gnss_nav_bridge: adoption` (`diagnostic_updater`、集約で `/Robot/Localization/GnssBridge`) に出す。ublox の受信そのものの品質は `gnss_diagnostics_node` が出す。
+
+| 状態 | レベル | メッセージ |
+| :--- | :--- | :--- |
+| 変換ファイルを読めなかった | `ERROR` | `GNSS transform not loaded` |
+| `~/change_publish_state` で配信を止めている | `OK` | `publishing disabled` (意図した状態) |
+| `adoption_timeout_sec` 以内に、使える測位があった | `OK` | `adopting GNSS` |
+| 使える測位が無い | `WARN` (`not_adopting_level: ok` なら `OK`) | `not adopting GNSS: <理由>` |
+
+理由 (`last_reject_reason`): `no fix` (Fix なし)、`low quality (not RTK or accuracy too low)` (解の種類・精度が条件を満たさない)、`heading unavailable` (ヘディングを求められない)、`no GNSS data yet` (まだ受信していない)。`min_publish_distance` で出さなかった測位は、使えているので採用とする。
+
+採用の有無が変わったときだけ、イベント `gnss.adoption_changed` (`adopting`、`reason`) を出す ([doc/monitoring.md](../../doc/monitoring.md)。このパッケージは `mg_*` に依存しないので、書式を自分で守っている)。
+
 ## `/odom/gps` の仕様
 
 `robot_localization` が、そのまま融合できるように作る。
@@ -39,8 +54,8 @@
 - `pose.pose.position`: 地図の位置 (z は 0)。**アンテナの位置の補正が有効なとき (`lever_arm_compensation`) は、車体の中心の位置**
 - `pose.pose.orientation`: 推定したヘディングのクォータニオン (EKF は使わない。AMCL の初期化に使う)
 - **共分散** (`pose.covariance`、36 要素):
-  - `cov[0]` (x)、`cov[7]` (y): `max(hAcc, 下限)² × 係数`。アンテナの位置を補正できなかったときは、レバーアームの長さの二乗 (約 0.085 m²) を足す
-  - `cov[35]` (yaw): ヘディングの分散 (既定 0.1 rad²)
+  - `cov[0]` (x)、`cov[7]` (y): `max(hAcc, 下限)² × 係数`。アンテナの位置を補正できなかったときは、レバーアームの長さの二乗 (レバーアームの長さの二乗) を足す
+  - `cov[35]` (yaw): ヘディングの分散 
   - `cov[14]` (z)、`cov[21]` (roll)、`cov[28]` (pitch): 未観測として 99999.0 (EKF に無視させる)
 
 ### 分散の決め方
@@ -53,42 +68,44 @@
 | RTK Float | `float_floor_m` | `float_scale` |
 | 単独測位 | `single_floor_m` | `single_scale` |
 
-- コードの既定は、下限 0.02 m、係数 1.0 (従来と同じ `hAcc²`)。
-- **`params/nav_bridge.yaml` では、係数が 1.44 (= 1.2²)**。SLAM の `gnss.navpvt_hacc_scale` (標準偏差を hAcc の 1.2 倍) に合わせた値。
+- コードの既定の係数は 1 (従来と同じ `hAcc²`)。
+- **`params/nav_bridge.yaml` の係数は、SLAM の `gnss.navpvt_hacc_scale` (標準偏差を hAcc の何倍にするか) の二乗に合わせる**。
 - NavSatFix の入力 (`gnss_input: navsatfix`) では、搬送波位相の解の種類が分からないので、RTK (`STATUS_GBAS_FIX` 以上) だけを Fix、それ以外を単独測位とし、`position_covariance[0]` の平方根を hAcc とする。
 - `accept_single: false` にすると、単独測位は使わない。
-- 位置の分散の 2 倍が `max_covariance_threshold` (49 m²、標準偏差で約 4.95 m) を超える測位は、使わない。
+- 位置の分散の 2 倍が `max_covariance_threshold` を超える測位は、使わない。
 
 ### アンテナの位置の補正
 
-`robot_localization` は、Odometry の姿勢について `child_frame_id` を使わない。アンテナの位置のまま渡すと、アンテナのずれ (0.26, -0.13) m が車体の位置として扱われ、車体の向きによって、最大約 0.29 m の誤差になる。
+`robot_localization` は、Odometry の姿勢について `child_frame_id` を使わない。アンテナの位置のまま渡すと、アンテナのずれ (レバーアーム) が車体の位置として扱われ、車体の向きによって、レバーアームの長さまでの誤差になる。
 そこで、EKF が出す `map→base_footprint` の TF から車体の向き ψ を取り、`車体の中心 = アンテナの位置 − R(ψ)·(lx, ly)` にして出す。
 TF が無い、または `yaw_max_age_sec` より古いときは、アンテナの位置のまま、レバーアームの分だけ分散を増やして出す。
 
-- 負荷は、1 Hz の測位ごとの座標変換だけで、ごくわずか。
+- 負荷は、測位ごとの座標変換だけで、ごくわずか。
 - `lever_arm_compensation: false` で、従来どおりアンテナの位置を出す。
 
 ## パラメータ
 
-`params/nav_bridge.yaml` (ノード名 `slam_gnss_nav_bridge`)。シミュレータ用は `mg_simulation/config/nav_bridge_sim.yaml` ([mg_simulation](../../mg_simulation/README.md))。
+`params/nav_bridge.yaml` (ノード名 `slam_gnss_nav_bridge`)。シミュレータ用は `mg_simulation/config/nav_bridge_sim.yaml` ([mg_simulation](../../mg_simulation/README.md))。値はこれらの yaml が正 (yaml に無い項目は、コードの既定を使う)。
 
-| パラメータ | コードの既定値 | `nav_bridge.yaml` | 内容 |
-| :--- | :--- | :--- | :--- |
-| `gnss_transform_file` | `""` | launch から渡される | 読み込む `gnss_transform.yaml` (必須) |
-| `gnss_input` | `navpvt` | `navpvt` | 入力: `navpvt` / `navsatfix` |
-| `gnss_topic` | `/navpvt` | `/navpvt` | 受信するトピック |
-| `map_frame_id` | `map` | - | 地図のフレーム |
-| `base_frame_id` | `base_footprint` | - | 車体のフレーム (アンテナの位置の補正で、向きを取る TF の子) |
-| `gps_frame_id` | `gps_link` | - | アンテナのフレーム |
-| `heading_source` | `computed` | `computed` | ヘディングの算出元: `computed` (変位ベクトル) / `navpvt` (内蔵の方位) |
-| `heading_min_distance` | `0.6` | - | 変位からヘディングを求める最小の移動量 [m] |
-| `heading_smoothing_alpha` | `0.6` | - | Circular EMA の平滑化係数 |
-| `min_publish_distance` | `1.0` | `1.0` | 前の地点からこの距離以上動くまで、次の測位を出さない [m] |
-| `max_covariance_threshold` | `49.0` | `49.0` | 配信を許す最大の共分散 (2σ²) [m²] |
-| `lever_arm_compensation` | `true` | `true` | アンテナの位置を、車体の中心の位置に直す |
-| `lever_arm_x` / `lever_arm_y` | `0.26` / `-0.13` | `0.26` / `-0.13` | アンテナの車体座標での位置 [m] (URDF の `base_footprint`→`gps_link` と合わせる) |
-| `yaw_max_age_sec` | `1.0` | - | 向きに使う TF の古さの上限 [s] |
-| `time_offset_sec` | `0.0` | `0.0` | `/odom/gps` のスタンプを、`now()` からこの秒数だけ過去にする (測位が届くまでの遅れの補正) |
-| `fix_floor_m` / `float_floor_m` / `single_floor_m` | `0.02` | `0.02` | 解の種類ごとの hAcc の下限 [m] |
-| `fix_scale` / `float_scale` / `single_scale` | `1.0` | `1.44` | 解の種類ごとの、分散にかける係数 |
-| `accept_single` | `true` | `true` | `false` で単独測位を使わない |
+| パラメータ | 内容 |
+| :--- | :--- |
+| `gnss_transform_file` | 読み込む `gnss_transform.yaml` (必須) |
+| `gnss_input` | 入力: `navpvt` / `navsatfix` |
+| `gnss_topic` | 受信するトピック |
+| `map_frame_id` | 地図のフレーム |
+| `base_frame_id` | 車体のフレーム (アンテナの位置の補正で、向きを取る TF の子) |
+| `gps_frame_id` | アンテナのフレーム |
+| `heading_source` | ヘディングの算出元: `computed` (変位ベクトル) / `navpvt` (内蔵の方位) |
+| `heading_min_distance` | 変位からヘディングを求める最小の移動量 [m] |
+| `heading_smoothing_alpha` | Circular EMA の平滑化係数 |
+| `min_publish_distance` | 前の地点からこの距離以上動くまで、次の測位を出さない [m] |
+| `max_covariance_threshold` | 配信を許す最大の共分散 (2σ²) [m²] |
+| `adoption_timeout_sec` | 使える測位がこの時間なければ、診断を `not_adopting_level` にする [s] |
+| `not_adopting_level` | 使える測位が無いときの診断のレベル (`warn` / `ok`)。停止中は方位を求められないなど、無いのが正常な環境で `ok` にする |
+| `lever_arm_compensation` | アンテナの位置を、車体の中心の位置に直す |
+| `lever_arm_x` / `lever_arm_y` | アンテナの車体座標での位置 [m] (URDF の `base_footprint`→`gps_link` と合わせる) |
+| `yaw_max_age_sec` | 向きに使う TF の古さの上限 [s] |
+| `time_offset_sec` | `/odom/gps` のスタンプを、`now()` からこの秒数だけ過去にする (測位が届くまでの遅れの補正) |
+| `fix_floor_m` / `float_floor_m` / `single_floor_m` | 解の種類ごとの hAcc の下限 [m] |
+| `fix_scale` / `float_scale` / `single_scale` | 解の種類ごとの、分散にかける係数 |
+| `accept_single` | `false` で単独測位を使わない |

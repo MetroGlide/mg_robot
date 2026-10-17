@@ -77,7 +77,7 @@ GNSS を使わない (`gnss.enabled: false`) ときは、状態が最初から `
 
 | 種別 | 内容 |
 | :--- | :--- |
-| `multi_res_csm` (既定) | 2 段階の相関探索 (粗い → 細かい) と、放物線によるピークの補間。尤度場のグリッドを使う |
+| `multi_res_csm` | 2 段階の相関探索 (粗い → 細かい) と、放物線によるピークの補間。尤度場のグリッドを使う |
 | `icp` | Point-to-Line ICP。法線方向の残差を最小にする。Huber・Cauchy のロバストカーネル |
 | `ndt` | 2D の NDT (セル内の分布の尤度を最大にする) |
 | `csm` | 単体の相関スキャンマッチャー (網羅的な探索) |
@@ -95,20 +95,20 @@ GNSS を使わない (`gnss.enabled: false`) ときは、状態が最初から `
 - 現在位置から `search_radius` 以内で、ノード番号の差が `min_node_gap` 以上の過去のノードを、候補にする。
 - 候補の周辺のキーフレームの点群を合成したサブマップ (`submap_radius`) に対して、`matcher_type` のマッチャーで合わせる。
 - マッチングのスコア (`max_score`)、相対回転 (`max_dyaw_deg`)、交差の角度 (`crossing_reject_deg`) の判定を通ったものだけを、ループのエッジとしてグラフに加える。
-- 既定では**無効** (`loop_closure.enabled: false`)。
+- `loop_closure.enabled` で切り替える。
 
 ## 地図の描画 (`map_manager/`)
 
 | レンダラー | 内容 |
 | :--- | :--- |
-| `counting` (既定) | セルごとに hit と miss の重み付きの数を数え、比が `hit_threshold` 以上で、`min_hits` 回以上のセルを占有とする。壁をかすめた通過による、消しすぎを抑える |
+| `counting` | セルごとに hit と miss の重み付きの数を数え、比が `hit_threshold` 以上で、`min_hits` 回以上のセルを占有とする。壁をかすめた通過による、消しすぎを抑える |
 | `overwrite` | 新しいスキャンで上書きする |
 
-`trajectory_noise_filter` で、軌跡の周りのノイズを消す (または薄める)。既定では無効。
+`trajectory_noise_filter` で、軌跡の周りのノイズを消す (または薄める)。`enabled` で切り替える。
 
 ## 最適化 (`optimizer/`)
 
-- 既定の `isam2` (`ISAM2Optimizer`) が、ノード・エッジ・GNSS の prior を足すたびに、逐次に最適化する。`relinearize_threshold` は 0.1。
+- `isam2` (`ISAM2Optimizer`) が、ノード・エッジ・GNSS の prior を足すたびに、逐次に最適化する。`relinearize_threshold` で再線形化の頻度を決める。
 - `GTSAMOptimizer` (Levenberg-Marquardt) は、`reoptimize_node` の一括最適化が使う。
 - オフラインの終了時の一括最適化は、`optimization.batch_on_finalize` と `batch_max_iterations` で決まる (`GraphOrchestrator::finalize`)。
 

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { ReactNode, useMemo, useState } from "react";
 import { useDiagnosticsMap } from "../hooks/useDiagnosticsMap";
 import { FoxgloveClientHandle } from "../hooks/useFoxgloveClient";
 import { SystemManagerHandle } from "../hooks/useSystemManagerClient";
@@ -31,12 +31,24 @@ function persistServiceSet(storageKey: string, value: Set<string>): void {
   localStorage.setItem(storageKey, JSON.stringify([...value]));
 }
 
+/** 生の /diagnostics の表(旧 UI 用) */
+function RawDiagnostics({ client }: { client: FoxgloveClientHandle }) {
+  const statuses = useDiagnosticsMap(client);
+  return <DiagnosticsTable statuses={statuses} />;
+}
+
 export default function SystemPage({
   client,
   sysManager,
+  diagnosticsSlot,
+  eventsSlot,
 }: {
   client: FoxgloveClientHandle;
   sysManager: SystemManagerHandle;
+  /** 渡すと、生の診断の表の代わりに表示する(運用ビュー用) */
+  diagnosticsSlot?: ReactNode;
+  /** 渡すと「Events」の折りたたみを追加する(運用ビュー用) */
+  eventsSlot?: ReactNode;
 }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,7 +60,6 @@ export default function SystemPage({
   );
   const { callApi, containers } = sysManager;
   const { layers: serviceLayers, services: allServices } = useServiceRegistry();
-  const diagStatuses = useDiagnosticsMap(client);
 
   const subscribedServices = useMemo(
     () => [...logReceiveSet].sort(),
@@ -149,7 +160,7 @@ export default function SystemPage({
     services.some(({ key }) => containers[key] === "running");
 
   const [openSections, setOpenSections] = useState<Set<string>>(
-    () => new Set(["services", "diagnostics", "service-log", "api-log"]),
+    () => new Set(["services", "diagnostics", "events", "service-log", "api-log"]),
   );
 
   const toggleSection = (id: string) => {
@@ -182,7 +193,7 @@ export default function SystemPage({
   const accordionHeader = (id: string, label: string) => (
     <button
       onClick={() => toggleSection(id)}
-      className="w-full flex items-center justify-between px-4 py-2.5 text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-700 transition-colors"
+      className="w-full flex items-center justify-between px-4 py-2.5 text-sm font-semibold hover:bg-surface-sunken transition-colors"
     >
       <span>{label}</span>
       {chevron(id)}
@@ -204,7 +215,7 @@ export default function SystemPage({
 
   return (
     <div className="space-y-2">
-      <div className="bg-gray-800 rounded-lg overflow-hidden">
+      <div className="overflow-hidden rounded-xl border border-line bg-surface-elevated">
         {accordionHeader("services", "Services")}
         {openSections.has("services") && (
           <div className="px-4 pb-4 pt-1 space-y-3">
@@ -287,13 +298,13 @@ export default function SystemPage({
               {serviceLayers.map((layer) => (
                 <div
                   key={layer.id}
-                  className="border border-gray-700 rounded-lg overflow-hidden"
+                  className="overflow-hidden rounded-lg border border-line"
                 >
                   {/* レイヤーヘッダー */}
-                  <div className="flex items-center bg-gray-750 px-3 py-1.5">
+                  <div className="flex items-center bg-surface-sunken px-3 py-1.5">
                     <button
                       onClick={() => toggleLayer(layer.id)}
-                      className="flex items-center gap-2 flex-1 text-left text-xs font-semibold text-gray-400 hover:text-gray-200 transition-colors"
+                      className="flex items-center gap-2 flex-1 text-left text-xs font-semibold text-muted hover:text-content transition-colors"
                     >
                       <svg
                         className={`w-3 h-3 flex-shrink-0 transform transition-transform ${
@@ -394,7 +405,7 @@ export default function SystemPage({
                           key={key}
                           className="flex items-center gap-3 flex-wrap"
                         >
-                          <span className="w-36 text-sm text-gray-300">
+                          <span className="w-36 text-sm text-content">
                             {label}
                           </span>
                           <StatusBadge status={containers[key] ?? "unknown"} />
@@ -425,7 +436,7 @@ export default function SystemPage({
                             />
                           </div>
                           <div className="flex items-center gap-4 ml-2">
-                            <label className="flex items-center gap-1.5 text-xs text-gray-300 select-none cursor-pointer">
+                            <label className="flex items-center gap-1.5 text-xs text-content select-none cursor-pointer">
                               <input
                                 type="checkbox"
                                 checked={logReceiveSet.has(key)}
@@ -439,7 +450,7 @@ export default function SystemPage({
                               />
                               ログ受信
                             </label>
-                            <label className="flex items-center gap-1.5 text-xs text-gray-300 select-none cursor-pointer">
+                            <label className="flex items-center gap-1.5 text-xs text-content select-none cursor-pointer">
                               <input
                                 type="checkbox"
                                 checked={logDisplaySet.has(key)}
@@ -460,22 +471,31 @@ export default function SystemPage({
                   )}
                 </div>
               ))}
-              {error && <p className="text-red-400 text-sm">{error}</p>}
+              {error && <p className="text-sm text-error">{error}</p>}
             </div>
           </div>
         )}
       </div>
 
-      <div className="bg-gray-800 rounded-lg overflow-hidden">
+      <div className="overflow-hidden rounded-xl border border-line bg-surface-elevated">
         {accordionHeader("diagnostics", "Diagnostics")}
         {openSections.has("diagnostics") && (
           <div className="px-4 pb-4 pt-1">
-            <DiagnosticsTable statuses={diagStatuses} />
+            {diagnosticsSlot ?? <RawDiagnostics client={client} />}
           </div>
         )}
       </div>
 
-      <div className="bg-gray-800 rounded-lg overflow-hidden">
+      {eventsSlot && (
+        <div className="overflow-hidden rounded-xl border border-line bg-surface-elevated">
+          {accordionHeader("events", "Events")}
+          {openSections.has("events") && (
+            <div className="px-4 pb-4 pt-1">{eventsSlot}</div>
+          )}
+        </div>
+      )}
+
+      <div className="overflow-hidden rounded-xl border border-line bg-surface-elevated">
         {accordionHeader("service-log", "Service Log")}
         {openSections.has("service-log") && (
           <ServiceLogPanel
@@ -488,7 +508,7 @@ export default function SystemPage({
         )}
       </div>
 
-      <div className="bg-gray-800 rounded-lg overflow-hidden">
+      <div className="overflow-hidden rounded-xl border border-line bg-surface-elevated">
         {accordionHeader("api-log", "API Log")}
         {openSections.has("api-log") && <ApiLogPanel logs={sysManager.logs} />}
       </div>

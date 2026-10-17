@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
+
+from nav2_msgs.msg import BehaviorTreeLog
+from rclpy.qos import qos_profile_sensor_data
 
 from sim_scenario_test.geometry import PoseSpec
 from sim_scenario_test.registry import register_trigger
@@ -104,3 +108,29 @@ class RobotNear:
     def poll(self) -> bool:
         robot = self._ctx.poses.robot.get()
         return robot.distance_xy(self._target) <= self._spec.radius
+
+
+@dataclass
+class BtNodeTriggerSpec:
+    node: str
+    status: Literal["IDLE", "RUNNING", "SUCCESS", "FAILURE"] = "RUNNING"
+    topic: str = "/behavior_tree_log"
+
+
+@register_trigger("bt_node", BtNodeTriggerSpec)
+class BtNodeTrigger:
+    """BT のノード node が status になったら成立する (例: リカバリーの Spin が始まった)。"""
+
+    def __init__(self, ctx: "ScenarioContext", spec: BtNodeTriggerSpec):
+        self._spec = spec
+        self._occurred = threading.Event()
+        self._sub = ctx.node.create_subscription(
+            BehaviorTreeLog, spec.topic, self._callback, qos_profile_sensor_data)
+
+    def _callback(self, msg) -> None:
+        if any(e.node_name == self._spec.node and e.current_status == self._spec.status
+               for e in msg.event_log):
+            self._occurred.set()
+
+    def poll(self) -> bool:
+        return self._occurred.is_set()

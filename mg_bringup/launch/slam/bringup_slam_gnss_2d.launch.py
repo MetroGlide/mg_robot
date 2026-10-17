@@ -43,6 +43,8 @@ def generate_launch_description():
             'use_odom_tf': 'true',
             'use_lidar': use_lidar_arg.launch_config,
             'use_gps': use_gps_arg.launch_config,
+            'analyzers': get_package_share_directory('mg_diagnostics') + '/params/analyzers/mapping.yaml',
+            'use_topic_monitor': 'false',
         }.items(),
     )
 

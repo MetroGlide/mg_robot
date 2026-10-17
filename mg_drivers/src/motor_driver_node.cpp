@@ -2,12 +2,27 @@
 
 using mg_drivers::MotorDriverNode;
 
-MotorDriverNode::MotorDriverNode(rclcpp::NodeOptions options) : Node("motor_driver_node", options)
+MotorDriverNode::MotorDriverNode(rclcpp::NodeOptions options)
+: SerialDriverNode("motor_driver_node", "motor_driver", options)
 {
   init_ros_params();
   prepare_ros_communications();
 
   motor_driver_ = std::make_shared<mg_drivers::MotorDriver>(device_name_);
+  set_device(motor_driver_);
+
+  updater().add("emergency_stop", this, &MotorDriverNode::produce_emergency_stop_diagnostics);
+}
+
+void MotorDriverNode::produce_emergency_stop_diagnostics(
+  diagnostic_updater::DiagnosticStatusWrapper & stat)
+{
+  using diagnostic_msgs::msg::DiagnosticStatus;
+  if (emergency_stop_) {
+    stat.summary(DiagnosticStatus::WARN, "active");
+  } else {
+    stat.summary(DiagnosticStatus::OK, "inactive");
+  }
 }
 
 void MotorDriverNode::init_ros_params()
@@ -75,8 +90,9 @@ mg_drivers::MotorDriverResponse MotorDriverNode::send_speed_command(
   // TODO: print log about res
 
   if (res.error != SerialError::NO_ERROR && res.error != SerialError::CHECKSUM_ERROR) {
-    RCLCPP_ERROR(
-      this->get_logger(), "Failed to send speed command to motor driver: %s",
+    RCLCPP_ERROR_THROTTLE(
+      this->get_logger(), *this->get_clock(), 1000,
+      "Failed to send speed command to motor driver: %s",
       SerialErrorStrings[static_cast<int>(res.error)].c_str());
   }
 
@@ -92,23 +108,32 @@ void MotorDriverNode::twist_sub_cb(const geometry_msgs::msg::Twist::SharedPtr ms
 
   SpeedParameter req = create_speed_parameter(msg);
 
-  motor_driver_->send_speed_command(req);
+  MotorDriverResponse res = send_speed_command(req);
+  // チェックサムの誤りは、応答があったので、接続の判断には使わない
+  if (res.error != SerialError::CHECKSUM_ERROR) {
+    handle_serial_error(res.error);
+  }
 }
 
 void MotorDriverNode::emergency_stop_sub_cb(const std_msgs::msg::Bool::SharedPtr msg)
 {
+  const bool changed = emergency_stop_ != msg->data;
   emergency_stop_ = msg->data;
 
-  if (emergency_stop_) {
-    RCLCPP_WARN(this->get_logger(), "Emergency stop is active. Stopping the robot.");
+  if (changed) {
+    if (emergency_stop_) {
+      events().Warn("driver.estop_changed", {{"device", "motor_driver"}, {"active", true}});
+    } else {
+      events().Info("driver.estop_changed", {{"device", "motor_driver"}, {"active", false}});
+    }
+  }
 
+  if (emergency_stop_) {
     SpeedParameter req;
     req.left_wheel_speed = 0;
     req.right_wheel_speed = 0;
 
     motor_driver_->send_speed_command(req);
-  } else {
-    RCLCPP_INFO(this->get_logger(), "Emergency stop is inactive. Resuming the robot.");
   }
 }
 

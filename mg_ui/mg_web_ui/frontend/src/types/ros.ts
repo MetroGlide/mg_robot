@@ -191,13 +191,75 @@ export interface SequencerStatus {
   is_paused: boolean
   pause_requesters: string[]
   distance_remaining: number
+  /** ON_ARRIVING 中に実行しているアクションの type。実行していなければ空 */
+  current_action: string
+  /** wait_trigger で IDLE に止まっているか */
+  waiting_trigger: boolean
 }
+
+/** Waypoint 走行の「いまの活動」の要約 (mg_msgs/NavigationActivity)。判定はロボット側で行う */
+export interface NavigationActivity {
+  stamp: { sec: number; nanosec: number }
+  code: string
+  /** 固定の短い説明。変わる数値は下のフィールドで渡される */
+  text: string
+  detail: string
+  emphasis: number
+  elapsed_sec: number
+  /** 該当しなければ -1 */
+  index: number
+  total: number
+  /** 走行中は残り距離 [m]、出発待ちは残り秒数。該当しなければ -1 */
+  remaining: number
+}
+
+/** NavigationActivity.emphasis。値は mg_msgs/msg/NavigationActivity.msg に合わせる */
+export const ACTIVITY_EMPHASIS = {
+  NORMAL: 0,
+  NOTICE: 1,
+  ALERT: 2,
+} as const
+
+/** NavigationActivity.code。値は mg_msgs/msg/NavigationActivity.msg に合わせる */
+export const ACTIVITY_CODE = {
+  IDLE: 'idle',
+  DEPARTURE_WAIT: 'departure_wait',
+  NAVIGATING: 'navigating',
+  MANUAL_GOAL: 'manual_goal',
+  EXTERNAL_GOAL: 'external_goal',
+  OBSTACLE_SLOWDOWN: 'obstacle_slowdown',
+  OBSTACLE_STOP: 'obstacle_stop',
+  SENSOR_TIMEOUT_STOP: 'sensor_timeout_stop',
+  RECOVERY: 'recovery',
+  NO_PROGRESS: 'no_progress',
+  ACTION: 'action',
+  TRIGGER_WAIT: 'trigger_wait',
+  PAUSED: 'paused',
+  GOAL_REACHED: 'goal_reached',
+  ERROR: 'error',
+} as const
 
 /** amcl_gate_arbiter の状態 (mg_msgs/GateArbiterState) */
 export interface GateArbiterState {
   desired: boolean
   applied: boolean
   holders: string[]
+}
+
+/** localization_supervisor が配信する自己位置推定の状態 (mg_msgs/LocalizationStatus) */
+export interface LocalizationStatus {
+  state: number
+  amcl_attached: boolean
+  last_event: string
+}
+
+/** LocalizationStatus.state の名前。値は mg_msgs/msg/LocalizationStatus.msg に合わせる */
+export const LOCALIZATION_STATE_NAME: Record<number, string> = {
+  0: 'NORMAL',
+  1: 'SUSPECT',
+  2: 'ISOLATED',
+  3: 'RECOVERING',
+  4: 'DEGRADED',
 }
 
 /** waypoint_sequencer が map_server に読み込ませた地図 (mg_msgs/LoadedMaps) */
@@ -232,10 +294,10 @@ export const DIAG_LEVEL: Record<number, string> = {
 }
 
 export const DIAG_COLOR: Record<number, string> = {
-  0: 'text-green-500',
-  1: 'text-yellow-500',
-  2: 'text-red-500',
-  3: 'text-gray-400',
+  0: 'text-ok',
+  1: 'text-warn',
+  2: 'text-error',
+  3: 'text-muted',
 }
 
 export interface GoalStatus {
@@ -291,11 +353,6 @@ export interface OdomMsg {
   }
 }
 
-export interface CollisionDetectorState {
-  polygons: string[]
-  detections: boolean[]
-}
-
 export interface TwistMsg {
   linear: { x: number; y: number; z: number }
   angular: { x: number; y: number; z: number }
@@ -306,6 +363,20 @@ export interface NavSatStatus {
   service: number
 }
 
+/** ublox_msgs/NavPVT。単位は u-blox の定義のまま(lat・lon は 1e-7 deg、距離は mm、p_dop は 0.01) */
+export interface NavPvt {
+  fix_type: number
+  flags: number
+  num_sv: number
+  lon: number
+  lat: number
+  height: number
+  h_msl: number
+  h_acc: number
+  v_acc: number
+  p_dop: number
+}
+
 export interface NavSatFix {
   header: Header
   status: NavSatStatus
@@ -314,4 +385,13 @@ export interface NavSatFix {
   altitude: number
   position_covariance: number[]
   position_covariance_type: number
+}
+
+/** rcl_interfaces/msg/Log(/rosout と /events) */
+export interface RosLog {
+  stamp: { sec: number; nanosec: number }
+  /** 10 DEBUG / 20 INFO / 30 WARN / 40 ERROR / 50 FATAL */
+  level: number
+  name: string
+  msg: string
 }

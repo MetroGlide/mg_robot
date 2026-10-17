@@ -56,28 +56,6 @@
       "discriminator": "type",
       "presets": [
         {
-          "name": "front_lidar_on",
-          "label": "前方LiDAR 有効化",
-          "value": {
-            "type": "service",
-            "service": "/front_lidar_publish_controller_node/change_publish_state",
-            "srv_module": "std_srvs.srv",
-            "srv_class": "SetBool",
-            "request": { "data": true }
-          }
-        },
-        {
-          "name": "front_lidar_off",
-          "label": "前方LiDAR 無効化",
-          "value": {
-            "type": "service",
-            "service": "/front_lidar_publish_controller_node/change_publish_state",
-            "srv_module": "std_srvs.srv",
-            "srv_class": "SetBool",
-            "request": { "data": false }
-          }
-        },
-        {
           "name": "amcl_on",
           "label": "AMCL の出力を EKF に入れる",
           "value": {

@@ -1,65 +1,98 @@
 # mg_diagnostics
 
-ノードの生存とトピックの配信周期を監視して、`/diagnostics` (`diagnostic_msgs/DiagnosticArray`) に 1 Hz で配信する。
-Web UI のトップページとシステムページが、この配信を購読して表示する ([mg_ui](../mg_ui/README.md))。
+状態監視の「集める」層。各ノードが出す診断 (`/diagnostics`) を集約して `/diagnostics_agg` に出し、自分で診断を出せないノードを外から調べ、イベントログを `/events` に中継する。
+どの状態をどのノードが判定するか、診断・イベントの書式は [doc/monitoring.md](../doc/monitoring.md)。Web UI は、`/diagnostics_agg` と `/events` を表示する ([mg_ui](../mg_ui/README.md))。
+
+スタック (`make navigation`、`make slam`、`make slam-gnss-2d`) の bringup (`mg_bringup/launch/common/bringup_common.launch.py`) が、`monitoring.launch.py` を起動する。専用のコンテナは無い。
 
 ## ノード
 
-| 実行ファイル | 内容 |
-| :--- | :--- |
-| `diagnostics_node.py` (ノード名 `diagnostics_node`) | 監視対象のノードとトピックを調べ、結果を `/diagnostics` に配信する |
-
-## 監視の内容
-
-### ノードの生存 (`node/<ノード名>`)
-
-`monitored_nodes` に指定したノード名が、ROS のグラフにあるかを調べる。ある場合は `OK` (`alive`)、無い場合は `WARN` (`not found`)。
-
-### トピックの周期 (`topic/<トピック名>`)
-
-直近 10 メッセージの間隔から周期 [Hz] を計り、期待する周期と比べる。期待周期のトピックは、コード (`MONITORED_TOPICS`) に固定されている。
-
-| トピック | 型 | 期待周期 [Hz] |
+| 実行ファイル | ノード名 | 内容 |
 | :--- | :--- | :--- |
-| `waypoint_sequencer_node/status` | `mg_msgs/SequencerStatus` | 10 |
-| `amcl_pose` | `PoseWithCovarianceStamped` | 1 |
-| `cmd_vel` | `Twist` | 10 |
-| `odom` | `Odometry` | 20 |
-| `scan_top_lidar` | `LaserScan` | 10 |
-| `scan_front_lidar` | `LaserScan` | 10 |
-| `motor_driver_node/emergency_stop` | `Bool` | 1 |
-| `collision_detector_state` | `nav2_msgs/CollisionDetectorState` | 5 |
+| `aggregator_node` (`diagnostic_aggregator`) | `analyzers` | `/diagnostics` を `/Robot/<区分>/...` にまとめて `/diagnostics_agg` に出す。届かなくなった診断や、必須なのに欠けている診断を `STALE` にする |
+| `scripts/topic_monitor_node.py` | `topic_monitor_node` | 自分で診断を出せないノード (Nav2 など) のトピックの受信頻度と、ノードの生存を診断として出す |
+| `scripts/event_relay_node.py` | `event_relay_node` | イベントログを `/events` に中継し、診断のレベルの変化を `health.level_changed` のイベントにする |
 
-判定は次のとおり。いずれも `OK` / `WARN` の 2 段階で、`ERROR` は出さない。
-
-| 条件 | レベル | メッセージ |
-| :--- | :--- | :--- |
-| 周期 ≥ 期待周期 × `hz_warn_ratio` | `OK` | `<周期> Hz` |
-| 0 < 周期 < 期待周期 × `hz_warn_ratio` | `WARN` | `low rate: ...` |
-| メッセージが来ていない (周期 0) | `WARN` | `no data` |
-
-トピック名は相対名なので、ノードの名前空間の下で解決される。
+どのノードも止めても、ロボットの動作は変わらない (回復の機能は診断に依存しない)。
 
 ## launch
 
-`launch/diagnostics.launch.py` (compose サービス `diagnostics`、`make diagnostics`)。
+`launch/monitoring.launch.py`。
 
-| 引数 | 既定値 | 内容 |
+| 引数 | 内容 |
+| :--- | :--- |
+| `simulation` | `true` なら、実機のドライバの診断 (`drivers.yaml`) を集約しない |
+| `use_aggregator` | 診断を `/diagnostics_agg` に集約する。止めても `/diagnostics` の生の値は残る |
+| `analyzers` | スタックごとの集約の設定 (共通の `common.yaml` と一緒に渡される) |
+| `use_topic_monitor` | `topic_monitor_node` を起動する |
+| `topic_monitor_params` | `topic_monitor_node` のパラメータ (スタックごとに指定する) |
+| `use_event_relay` | `event_relay_node` を起動する |
+
+`bringup_common.launch.py` は、同じ名前の引数 (`analyzers`、`use_topic_monitor`、`topic_monitor_params`) と `use_monitoring` を受け取る。SLAM のスタックは、`analyzers` に `mapping.yaml` を渡し、`use_topic_monitor` を `false` にする。
+
+## 集約の設定 (`params/analyzers/`)
+
+| ファイル | 内容 | 渡す条件 |
 | :--- | :--- | :--- |
-| `params_file` | `params/diagnostics.yaml` | パラメータのファイル |
+| `common.yaml` | 根のパス (`Robot`)、`System` (PC の資源)、捨てる第三者の診断 | 常に |
+| `drivers.yaml` | `Drivers` (LiDAR・Motor・Odometry・GNSS)。必須の診断 (`expected`) を含む | 実機のみ |
+| `navigation.yaml` | `Localization` (Monitor・GnssBridge・Gate・EKF)、`Navigation` (Nav2・Sequencer・Nodes・Topics) | ナビゲーションのスタック |
+| `mapping.yaml` | (今は空) | SLAM のスタック |
 
-## パラメータ
+- 照合は、診断の名前 (`<ノード名>: <タスク名>`) の `startswith` / `regex` で行う。
+- 集約のパスの規約と、UI が参照するパスは [doc/monitoring.md](../doc/monitoring.md)。
+- 診断の名前や担当を変えたら、この設定も合わせて変える。名前が合わないものは `/Robot/Other` に出る (異常とはしない)。
+- 常に `WARN` / `ERROR` になる第三者の診断は、`common.yaml` の `discard_third_party` で捨てる。捨てた診断も、生の `/diagnostics` と rosbag には残る。**捨てる診断に一致する `startswith` を、他の analyzer に書かない** (照合の順序に頼らず、`regex` で限定する)。
+- 実機では、`drivers.yaml` の `expected` の診断が欠けると、その項目が `STALE` ("Missing") になる。シミュレーションでは `drivers.yaml` を渡さない。
 
-`params/diagnostics.yaml` の値 (launch はこのファイルを読む)。
+## topic_monitor_node
 
-| パラメータ | yaml の値 | コードの既定値 | 内容 |
-| :--- | :--- | :--- | :--- |
-| `monitored_nodes` | `waypoint_sequencer_node`、`amcl`、`bt_navigator`、`controller_server`、`planner_server` | 上の 5 つに `collision_monitor`、`motor_driver_node` を加えた 7 つ | 生存を調べるノード名 |
-| `hz_warn_ratio` | `0.5` | `0.5` | 期待周期に対する、警告を出す割合 |
+自作のノードは、自分の状態を自分の診断として出す。ここでは、自分で診断を出せないノードだけを外から調べる。
 
-- yaml の `monitored_nodes` が使われるため、`collision_monitor` と `motor_driver_node` は、yaml に足さない限り監視されない。
-- 監視するトピックと期待周期は、パラメータでは変えられない。変えるときは `MONITORED_TOPICS` を編集する。
+| 種類 | 内容 | レベル |
+| :--- | :--- | :--- |
+| ノードの生存 (`node /<名前空間>/<名前>`) | ROS のグラフにいるか。名前空間を含めた形で `monitored_nodes` に書く。起動直後は `startup_grace_sec` のあいだ待つ | いなければ `node_fault_level` のレベル |
+| トピックの受信頻度 (`topic <トピック>`) | `expected_hz` × `hz_warn_ratio` を下回るか、途絶したか | 下回れば `WARN`、途絶は `fault_level`。`fault_level: ok` は観測のみ (止まっているのが正常なトピック用。値と途絶の時間は出すが、レベルは上げない) |
+
+トピックは `monitored_sources` に ID を並べ、ID ごとに設定を書く (書き方は `mg_utils.monitoring.topic_source_config`、[mg_utils の README](../mg_utils/README.md))。コードの変更は要らない。
+
+| パラメータ | 内容 |
+| :--- | :--- |
+| `monitored_nodes` | 生存を調べるノード (`/ns/name`) |
+| `monitored_sources` | 受信頻度を調べるトピックの ID |
+| `hz_warn_ratio` | 期待する周期に対する、警告を出す割合 |
+| `stale_timeout_sec` | 途絶とみなす時間 (ソースごとに上書きできる)。期待する周期より長くする |
+| `startup_grace_sec` | 起動直後に、ノードやメッセージが無くても異常にしない時間 |
+| `recover_hold_sec` | 異常から戻るまでに、正常が続く必要がある時間 |
+| `node_fault_level` | ノードがいないときのレベル (`warn` / `error`) |
+
+現在の設定は `params/topic_monitor/navigation.yaml`。LiDAR・odom・モータの途絶は `driver_watchdog_node`、シーケンサの進捗は `waypoint_sequencer_node` が自分の診断として出すので、ここでは調べない。
+
+## event_relay_node
+
+- `/rosout` のうち本文が `evt=` で始まるものを、そのまま `/events` (`rcl_interfaces/Log`、reliable・transient_local、履歴 `history_depth` 件) に流す。
+- `/diagnostics_agg` の元の診断 (`<ノード名>: <タスク名>`) のレベルが変わったら、`evt=health.level_changed path=... from=... to=... message=...` をログに出す。これも `/rosout` を経由して `/events` に流れる。レベルが `OK` なら INFO、`WARN` なら WARN、それ以外は ERROR。
+- 最初の `startup_grace_sec` のあいだは、変化を覚えるだけでイベントにしない。猶予のあとに初めて見た診断は、`OK` 以外のときだけ `from=NONE` として出す。
+
+| パラメータ | 内容 |
+| :--- | :--- |
+| `startup_grace_sec` | 起動直後に、レベルの変化をイベントにしない時間 |
+| `history_depth` | `/events` に残す履歴の件数 |
+| `diagnostics_topic` | レベルの変化を見る診断 |
+
+後から `/events` を購読する側は、購読側の深さの分だけ履歴を受け取る。多く受け取るには、購読側の深さを大きくする (`foxglove_bridge` は `max_qos_depth`)。
 
 ## 依存
 
-`diagnostic_msgs`、`nav2_msgs`、`mg_msgs`。テストはない。
+`diagnostic_aggregator`、`diagnostic_updater`、`diagnostic_msgs`、`rcl_interfaces`、`mg_utils` (判定エンジン・イベントログ)。監視するトピックの型 (`geometry_msgs`、`mg_msgs` など) は、設定で指定したものを実行時に読み込む。
+
+`diagnostic_aggregator` は、イメージに入っていないので、`make build` でイメージを作り直す必要がある (`package.xml` の依存から入る)。
+
+## テスト
+
+判定は `mg_utils` のテスト (`make test pkg=mg_utils`) で調べる。`make test pkg=mg_diagnostics` は設定の整合を調べる (ROS 不要)。
+
+- analyzer の `startswith` のノード名が、ソースのどこかに実在する名前か (名前の違いで診断が `Other` に入り、期待した項目が `STALE` のままになるのを防ぐ)
+- `topic_monitor` の設定の各ソースが、`mg_utils` の設定の検証を通るか
+
+集約の動作そのものは、`scenario-env` を起動して `/diagnostics_agg` を見て確かめる。

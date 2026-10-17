@@ -1,5 +1,7 @@
 import dataclasses
 
+import pytest
+
 from mg_system_manager.config import Settings
 from mg_system_manager.docker_ops import ComposeRunner
 from sm_fakes import FakeContainer, FakeDockerClient
@@ -62,10 +64,10 @@ def test_start_failure_returns_stderr(client, compose_calls):
 
 
 def test_restart_runs_compose_restart(client, compose_calls):
-    client.post("/diagnostics/restart")
+    client.post("/foxglove-bridge/restart")
 
     assert compose_calls.calls[0]["command"] == [
-        "docker", "compose", "restart", "diagnostics"]
+        "docker", "compose", "restart", "foxglove-bridge"]
 
 
 def test_stop_stops_container(client, containers):
@@ -86,3 +88,35 @@ def test_stop_reports_missing_container(client):
 
 def test_unknown_service_is_not_routable(client):
     assert client.post("/unknown/start").status_code == 404
+
+
+@pytest.mark.parametrize("container, expected", [
+    (FakeContainer("a", "running"), {"state": "running", "health": "", "exit_code": None, "level": "ok"}),
+    (FakeContainer("a", "running", health="healthy"),
+     {"state": "running", "health": "healthy", "exit_code": None, "level": "ok"}),
+    (FakeContainer("a", "running", health="health: starting"),
+     {"state": "running", "health": "starting", "exit_code": None, "level": "warn"}),
+    (FakeContainer("a", "running", health="unhealthy"),
+     {"state": "running", "health": "unhealthy", "exit_code": None, "level": "error"}),
+    (FakeContainer("a", "restarting"), {"state": "restarting", "health": "", "exit_code": None, "level": "warn"}),
+    (FakeContainer("a", "exited", exit_code=0), {"state": "exited", "health": "", "exit_code": 0, "level": "off"}),
+    (FakeContainer("a", "exited", exit_code=137), {"state": "exited", "health": "", "exit_code": 137, "level": "off"}),
+    (FakeContainer("a", "exited", exit_code=130), {"state": "exited", "health": "", "exit_code": 130, "level": "off"}),
+    (FakeContainer("a", "exited", exit_code=1), {"state": "exited", "health": "", "exit_code": 1, "level": "error"}),
+    (FakeContainer("a", "dead"), {"state": "dead", "health": "", "exit_code": None, "level": "error"}),
+    (FakeContainer("a", "created"), {"state": "created", "health": "", "exit_code": None, "level": "off"}),
+])
+def test_status_detail_level(client, containers, container, expected):
+    containers.append(container)
+
+    assert client.get("/status/detail").json() == {"a": expected}
+
+
+def test_status_detail_prefers_the_running_container(client, containers):
+    containers.append(FakeContainer("slam", "exited", exit_code=1))
+    containers.append(FakeContainer("slam", "running", oneoff=True))
+
+    detail = client.get("/status/detail").json()["slam"]
+
+    assert detail["state"] == "running" and detail["level"] == "ok"
+    assert client.get("/status").json() == {"slam": "running"}

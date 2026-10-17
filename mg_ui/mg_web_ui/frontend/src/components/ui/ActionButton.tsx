@@ -35,7 +35,7 @@ export default function ActionButton({
     <button
       onClick={onClick}
       disabled={disabled || loading}
-      className={`${VARIANT_CLASS[variant]} ${SIZE_CLASS[size]} disabled:opacity-50 rounded font-medium`}
+      className={`${VARIANT_CLASS[variant]} ${SIZE_CLASS[size]} disabled:opacity-50 rounded font-medium text-white`}
     >
       {label}
     </button>

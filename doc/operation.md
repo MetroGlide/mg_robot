@@ -79,7 +79,7 @@ slam_toolbox による SLAM (`make slam`) もある。GNSS を使わない場合
 
 ```bash
 make navigation                 # 自己位置推定 + Nav2 + ウェイポイントシーケンサ
-make ui-all                     # Web UI (foxglove-bridge・system-manager・web-ui・diagnostics)
+make ui-all                     # Web UI (foxglove-bridge・system-manager・web-ui)
 ```
 
 - ブラウザで `http://<ロボットの IP>:8080` を開く。操作は [mg_ui の README](../mg_ui/README.md)。

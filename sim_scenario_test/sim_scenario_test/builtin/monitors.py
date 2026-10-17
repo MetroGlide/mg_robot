@@ -166,10 +166,20 @@ class ObstacleClearanceSpec:
     radius: Optional[float] = None
     # 姿勢を評価するタイミングの元になるトピック (受信するたびに評価する)
     topic: str = "/odom"
+    # 全期間の最小距離 (障害物が動いた分を含む) がこの値 [m] 以内まで近づいたことを要求する。
+    # 障害物に出会わないまま PASS する (タイミングのずれ、速度の変更など) のを検出する。省略時は要求しない
+    require_within: Optional[float] = None
+    # ロボットの姿勢の取り方。tf: 自己位置推定 (map -> base)。sim: シミュレータ上の真の姿勢
+    # (地図にない障害物で自己位置推定がずれる配置でも、実際に当たったかを測る)
+    pose_source: str = "tf"
 
     def validate(self, where: str) -> None:
         if not self.obstacles:
             raise ScenarioValidationError(f"{where}: 'obstacles' must not be empty")
+        if self.pose_source not in ("tf", "sim"):
+            raise ScenarioValidationError(f"{where}: 'pose_source' must be 'tf' or 'sim'")
+        if self.require_within is not None and self.require_within <= 0.0:
+            raise ScenarioValidationError(f"{where}: 'require_within' must be > 0")
 
 
 def _obstacle_shape(model, radius: Optional[float], name: str):
@@ -195,7 +205,8 @@ class ObstacleClearanceMonitor(TopicMonitor):
     ロボットが走行・旋回 (speed_threshold / angular_threshold 超) で障害物へ寄った場合が対象で、
     停止中のロボットへ障害物が寄る場合や、ロボットが離れていく場合は対象外。
     全期間の最小距離は参考値として出す。
-    ロボットの姿勢は TF (推定値) なので、数 cm の誤差を含む。
+    ロボットの姿勢は、pose_source が tf なら TF (推定値) で、数 cm の誤差を含む。地図にない
+    障害物に囲まれるなどで自己位置推定が大きくずれる配置では、sim (シミュレータ上の真の姿勢) にする。
     """
     MSG_TYPE = Odometry
 
@@ -222,6 +233,9 @@ class ObstacleClearanceMonitor(TopicMonitor):
         self._min_caused: Optional[float] = None
         self._min_caused_info = ("", 0.0, 0.0, (0.0, 0.0))
         self._previous = {}
+        if spec.pose_source == "sim":
+            # 真の姿勢を出せないバックエンドなら、ここで ScenarioError にする
+            ctx.backend.entity_pose(ctx.profile.sim.robot_entity)
 
     def _obstacle_pose(self, name: str) -> Optional[Pose]:
         world_pose = self._ctx.entity_poses.get(name)
@@ -238,11 +252,22 @@ class ObstacleClearanceMonitor(TopicMonitor):
                 robot_polygon, transform_polygon(rectangle_vertices(*box), obstacle))
         return polygon_circle_distance(robot_polygon, (obstacle.x, obstacle.y), radius)
 
+    def _robot_pose(self) -> Optional[Pose]:
+        if self._spec.pose_source == "sim":
+            world_pose = self._ctx.backend.entity_pose(self._ctx.profile.sim.robot_entity)
+            if world_pose is None:
+                return None
+            return self._ctx.poses.to_map(PoseSpec(
+                "world", world_pose.x, world_pose.y, world_pose.z, world_pose.yaw))
+        try:
+            return self._ctx.poses.robot.get()
+        except ScenarioError:
+            return None
+
     def _on_msg(self, msg) -> None:
         self._received += 1
-        try:
-            robot = self._ctx.poses.robot.get()
-        except ScenarioError:
+        robot = self._robot_pose()
+        if robot is None:
             return
         twist = msg.twist.twist
         speed = math.hypot(twist.linear.x, twist.linear.y)
@@ -279,6 +304,12 @@ class ObstacleClearanceMonitor(TopicMonitor):
                 "", ResultStatus.ERROR,
                 f"obstacle(s) {self._spec.obstacles} were never observed")
         reference = f"overall min {self._min_all:.2f} m"
+        required = self._spec.require_within
+        if required is not None and self._min_all > required:
+            return CheckResult(
+                "", ResultStatus.FAILED,
+                f"obstacles never came within {required} m of the robot "
+                f"({reference}): the scenario did not meet the obstacle")
         if self._min_caused is None:
             return CheckResult(
                 "", ResultStatus.PASSED, f"robot never approached obstacles ({reference})")
@@ -404,9 +435,16 @@ class MaxStopDurationSpec:
     # 区間内で、少なくともこの秒数の連続した停止があること (一時停止の確認用。0 なら確認しない)
     min_stop_sec: float = 0.0
     speed_threshold: float = 0.05
+    # true なら、その場の回転 (角速度が turn_threshold 以上) も動いているとみなし、停止に数えない
+    # (resume_within の include_turning と同じ考え方)
+    include_turning: bool = False
+    turn_threshold: float = 0.1
     # 監視区間: from_goal_started 番目のゴールの開始から、until_goal_reached 番目のゴールの到達まで
     from_goal_started: int = 0
     until_goal_reached: int = 0
+    # 指定すると、このタイムライン項目 (timeline[].name) が発火してから区間を始める
+    # (障害物を出してからの停止を測る)
+    after_timeline: Optional[str] = None
     topic: str = "/odom"
 
 
@@ -424,6 +462,9 @@ class MaxStopDurationMonitor(TopicMonitor):
 
     def _in_window(self) -> bool:
         events = self._ctx.events
+        if (self._spec.after_timeline is not None
+                and events.find("timeline_fired", entry=self._spec.after_timeline) is None):
+            return False
         return (events.find("goal_started", index=self._spec.from_goal_started) is not None
                 and events.find("goal_reached", index=self._spec.until_goal_reached) is None)
 
@@ -434,7 +475,9 @@ class MaxStopDurationMonitor(TopicMonitor):
         self._observed = True
         v = msg.twist.twist.linear
         now = self._ctx.clock.now()
-        if math.hypot(v.x, v.y) < self._spec.speed_threshold:
+        turning = (self._spec.include_turning
+                   and abs(msg.twist.twist.angular.z) >= self._spec.turn_threshold)
+        if math.hypot(v.x, v.y) < self._spec.speed_threshold and not turning:
             if self._stop_since is None:
                 self._stop_since = now
             self._longest = max(self._longest, now - self._stop_since)
@@ -452,3 +495,74 @@ class MaxStopDurationMonitor(TopicMonitor):
             "", status,
             f"longest stop {self._longest:.1f} s "
             f"(max {self._spec.max_stop_sec}, min {self._spec.min_stop_sec})")
+
+
+@dataclass
+class ResumeWithinSpec:
+    # このタイムライン項目 (timeline[].name) が発火してから、走り出すまでの時間を測る
+    after_timeline: str
+    # これ (sim 時間 [s]) を超えても走り出さなければ FAILED
+    max_sec: float
+    speed_threshold: float = 0.05
+    # この時間 (sim 時間 [s]) 続けて speed_threshold 以上なら走り出したとみなす
+    # (障害物の除去や首振りの直後の一瞬の速度で誤判定しない)。走り出した時刻は、続き始めた時刻
+    min_moving_sec: float = 0.5
+    # true なら、その場の回転 (角速度が turn_threshold 以上) も走り出しとみなす
+    # (向きを直してから進むコントローラーで、再開を回転の開始から数える)
+    include_turning: bool = False
+    turn_threshold: float = 0.1
+    topic: str = "/odom"
+
+
+@register_monitor("resume_within", ResumeWithinSpec)
+class ResumeWithinMonitor(TopicMonitor):
+    """障害物の除去などのタイムライン項目から、ロボットが走り出すまでの時間を判定する。"""
+    MSG_TYPE = Odometry
+
+    def __init__(self, ctx: "ScenarioContext", spec: ResumeWithinSpec):
+        super().__init__(ctx, spec.topic)
+        self._spec = spec
+        self._delay: Optional[float] = None
+        self._moving_since: Optional[float] = None
+        # include_turning が false のときの参考の値: 回転を始めた時刻
+        # (その場の回転で走り出しが遅れて見える場合の切り分け用)
+        self._turn_delay: Optional[float] = None
+
+    def _on_msg(self, msg) -> None:
+        if self._delay is not None:
+            return
+        fired = self._ctx.events.find("timeline_fired", entry=self._spec.after_timeline)
+        if fired is None:
+            return
+        now = self._ctx.clock.now()
+        turning = abs(msg.twist.twist.angular.z) >= self._spec.turn_threshold
+        if self._turn_delay is None and turning:
+            self._turn_delay = now - fired.time
+        v = msg.twist.twist.linear
+        moving = math.hypot(v.x, v.y) >= self._spec.speed_threshold or (
+            self._spec.include_turning and turning)
+        if not moving:
+            self._moving_since = None
+            return
+        if self._moving_since is None:
+            self._moving_since = now
+        if now - self._moving_since >= self._spec.min_moving_sec:
+            self._delay = self._moving_since - fired.time
+
+    def _evaluate(self) -> CheckResult:
+        if self._ctx.events.find("timeline_fired", entry=self._spec.after_timeline) is None:
+            return CheckResult(
+                "", ResultStatus.ERROR,
+                f"timeline entry '{self._spec.after_timeline}' never fired")
+        if self._delay is None:
+            return CheckResult(
+                "", ResultStatus.FAILED,
+                f"did not move after '{self._spec.after_timeline}'")
+        status = (ResultStatus.PASSED if self._delay <= self._spec.max_sec
+                  else ResultStatus.FAILED)
+        turn = ("" if self._turn_delay is None or self._spec.include_turning
+                else f", started turning {self._turn_delay:.1f} s after")
+        return CheckResult(
+            "", status,
+            f"moved {self._delay:.1f} s after '{self._spec.after_timeline}' "
+            f"(max {self._spec.max_sec} s){turn}")

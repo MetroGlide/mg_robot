@@ -72,7 +72,7 @@ export default function GpsMapOverlay({
 
   return (
     <div
-      className="rounded-lg overflow-hidden border border-gray-600/50 shadow-lg"
+      className="overflow-hidden rounded-lg border border-line shadow-card"
       style={{ position: "relative", width: mapWidth, height: mapHeight }}
     >
       <Map
@@ -111,8 +111,8 @@ export default function GpsMapOverlay({
         </svg>
       )}
       {!hasFix && (
-        <div className="absolute inset-0 bg-gray-900/60 flex items-center justify-center pointer-events-none">
-          <span className="text-xs text-gray-400 font-mono">NO FIX</span>
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-surface/60">
+          <span className="font-mono text-xs text-muted">NO FIX</span>
         </div>
       )}
     </div>

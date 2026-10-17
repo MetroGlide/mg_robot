@@ -1,19 +1,25 @@
 from __future__ import annotations
 
 import subprocess
+import threading
 import urllib.parse
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, List, Optional
+
+from rclpy.qos import qos_profile_sensor_data
+from tf2_msgs.msg import TFMessage
 
 from sim_scenario_test.errors import ScenarioError
-from sim_scenario_test.geometry import Pose, quaternion_from_yaw
+from sim_scenario_test.geometry import Pose, quaternion_from_yaw, yaw_from_quaternion
 from sim_scenario_test.registry import register_backend
-from sim_scenario_test.sim.base import SimulationBackend
+from sim_scenario_test.sim.base import NodeSpec, SimulationBackend
 from sim_scenario_test.sim.model import ModelSpec
 
 if TYPE_CHECKING:
     import rclpy.node
 
 _FUEL_BASE_URL = "https://fuel.gazebosim.org/1.0"
+# launch_actions の中継が出す、エンティティの真の姿勢 (ワールド座標)
+ENTITY_POSES_TOPIC = "/sim_scenario_test/entity_poses"
 
 
 @register_backend("gazebo_fortress")
@@ -35,6 +41,35 @@ class GazeboFortressBackend(SimulationBackend):
     ):
         super().__init__(node, world_name)
         self._timeout_ms = timeout_ms
+        self._poses: Dict[str, Pose] = {}
+        self._poses_lock = threading.Lock()
+        self._pose_sub = node.create_subscription(
+            TFMessage, ENTITY_POSES_TOPIC, self._on_poses, qos_profile_sensor_data)
+
+    @staticmethod
+    def companion_nodes(world_name: str) -> List[NodeSpec]:
+        # 動く (static でない) エンティティの真の姿勢を ROS に中継する。名前は child_frame_id に入る
+        return [NodeSpec(
+            package="ros_gz_bridge",
+            executable="parameter_bridge",
+            name="sim_scenario_test_entity_poses",
+            arguments=(_pose_bridge_argument(world_name),),
+            remappings=((_pose_topic(world_name), ENTITY_POSES_TOPIC),),
+        )]
+
+    def entity_pose(self, name: str) -> Optional[Pose]:
+        with self._poses_lock:
+            return self._poses.get(name)
+
+    def _on_poses(self, msg) -> None:
+        poses = {}
+        for t in msg.transforms:
+            r = t.transform.rotation
+            poses[t.child_frame_id] = Pose(
+                t.transform.translation.x, t.transform.translation.y,
+                t.transform.translation.z, yaw_from_quaternion(r.x, r.y, r.z, r.w))
+        with self._poses_lock:
+            self._poses.update(poses)
 
     def is_ready(self) -> bool:
         try:
@@ -114,6 +149,14 @@ class GazeboFortressBackend(SimulationBackend):
                 f"gz service {service} failed: {result.stderr.strip()}")
         if result.stdout.strip() == "data: false":
             raise ScenarioError(f"gz service {service} returned false")
+
+
+def _pose_topic(world_name: str) -> str:
+    return f"/world/{world_name}/dynamic_pose/info"
+
+
+def _pose_bridge_argument(world_name: str) -> str:
+    return f"{_pose_topic(world_name)}@tf2_msgs/msg/TFMessage[ignition.msgs.Pose_V"
 
 
 def _pose_fields(pose: Pose) -> str:

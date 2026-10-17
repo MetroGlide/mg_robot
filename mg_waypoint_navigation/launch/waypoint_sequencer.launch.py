@@ -22,6 +22,9 @@ def generate_launch_description():
     publish_status_arg = launch_argument_creator.create(
         "publish_waypoint_status", default="true"
     )
+    publish_activity_arg = launch_argument_creator.create(
+        "publish_activity", default="true"
+    )
 
     return LaunchDescription(
         [
@@ -38,6 +41,7 @@ def generate_launch_description():
                         "initial_planning_map": ParameterValue(
                             initial_planning_map_arg.launch_config, value_type=str),
                         "publish_waypoint_status": publish_status_arg.launch_config,
+                        "publish_activity": publish_activity_arg.launch_config,
                     }
                 ],
                 output="screen",

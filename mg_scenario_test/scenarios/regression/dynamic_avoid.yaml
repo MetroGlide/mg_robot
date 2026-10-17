@@ -1,14 +1,15 @@
 version: "2.0"
 name: dynamic_avoid
 description: >
-  ロボットの進路を歩行者 (移動する障害物, 0.6m/s) が横切る。ロボットが 1m 進んだ時点で歩行者が進路の脇から
-  反対側へ歩き出す。ロボット自身の動きでフットプリントが歩行者に接触せず、
-  停止・回避してゴールへ到達できることを確認する。歩行者の初期位置は seed で再現できる乱数で揺らす。
+  ロボットの進路を歩行者 (移動する障害物, 0.6m/s) が横切る。ロボットが交差点の手前に着いた時点で、歩行者が
+  進路の脇に現れて反対側へ歩き出す。ロボット自身の動きでフットプリントが歩行者に接触せず、
+  停止・回避してゴールへ到達できることを確認する。歩行者がロボットに近づかないまま PASS しないことも判定する。
 profile: mg01
 world: warehouse
 # 歩行者は set_pose で動かすので物理的に押し返されず、ロボットを通り抜ける。
 # obstacle_clearance は、ロボット自身の動きで近づいた場合だけを接触として数える。
-# collision_monitor の PolygonSlowdown (側方・後方を含む広い範囲) と PolygonApproach (フットプリント基準) が効く。
+# collision_monitor の polygon を有効にしているときは、PolygonSlowdown (側方・後方を含む広い範囲) と
+# PolygonApproach (自車の箱の大きさ) が、RPP の後ろ盾になる。
 tags: [full, dynamic_obstacle, avoid, nav2_goals]
 seed: 1
 
@@ -22,20 +23,20 @@ obstacles:
 
 setup:
   - respawn: { pose: { x: 0.0, y: 0.0, yaw: 0.0 }, settle_sec: 3.0 }
+  # 歩行者は走行範囲から離れた待避位置に置き、横切る時に teleport で出す
+  - spawn: { obstacle: pedestrian, pose: { frame: map, x: -30.0, y: -30.0, z: 0.85 } }
 
 run:
   nav2_goals:
+    behavior_tree: "pkg://mg_waypoint_navigation/behavior_trees/mg_navigate_to_pose.xml"
     goals:
       - pose: { x: 5.0, y: 2.0, yaw: 0.0 }
 
 timeline:
   - name: pedestrian_crosses
-    when: { robot_travelled: { distance: 1.0 } }
+    when: { robot_near: { x: 1.8, y: 0.7, radius: 0.5 } }
     do:
-      - spawn:
-          obstacle: pedestrian
-          pose: { frame: map, x: 3.0, y: -1.5, z: 0.85 }
-          jitter: 0.2
+      - teleport: { entity: pedestrian, pose: { frame: map, x: 3.0, y: 0.3, z: 0.85 }, jitter: 0.2 }
       - move_obstacle:
           obstacle: pedestrian
           to: { frame: map, x: 3.0, y: 3.5, z: 0.85 }
@@ -44,7 +45,8 @@ timeline:
 monitors:
   # 歩行者は set_pose で動かすので物理的に押し返されず、停止中のロボットを通り抜ける。
   # LiDAR の測距ではロボットが当てたのか区別できないため、ロボットが動いている間の距離だけを見る。
-  - obstacle_clearance: { obstacles: [pedestrian], min_clearance: 0.0 }
+  # require_within: 歩行者に出会わないまま PASS しない (速度の変更などで交差点を先に通り過ぎた場合)
+  - obstacle_clearance: { obstacles: [pedestrian], min_clearance: 0.0, require_within: 2.0 }
 
 expect:
   - reached_all

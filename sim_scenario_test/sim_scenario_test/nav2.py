@@ -33,8 +33,10 @@ class Nav2Interface:
         self._node = node
         self._spec = spec
         self._frames = frames
-        self._initialpose_pub = node.create_publisher(
-            PoseWithCovarianceStamped, spec.initialpose_topic, 10)
+        self._initialpose_pubs = [
+            node.create_publisher(PoseWithCovarianceStamped, topic, 10)
+            for topic in spec.initialpose_topics
+        ]
         self._clear_clients = [
             node.create_client(ClearEntireCostmap, name)
             for name in spec.clear_costmap_services
@@ -54,7 +56,8 @@ class Nav2Interface:
         msg.pose.covariance[0] = self._spec.initialpose_cov_xy
         msg.pose.covariance[7] = self._spec.initialpose_cov_xy
         msg.pose.covariance[35] = self._spec.initialpose_cov_yaw
-        self._initialpose_pub.publish(msg)
+        for pub in self._initialpose_pubs:
+            pub.publish(msg)
 
     def clear_costmaps(self, timeout_sec: float = 5.0) -> None:
         for client in self._clear_clients:

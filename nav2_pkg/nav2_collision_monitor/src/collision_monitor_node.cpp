@@ -417,6 +417,19 @@ void CollisionMonitor::process(const Velocity & cmd_vel_in)
   // Polygon causing robot action (if any)
   std::shared_ptr<Polygon> action_polygon;
 
+  // Stop the robot, if the data of a source marked with stop_on_timeout is missing or stale.
+  // It does not depend on polygons: the robot can not see obstacles without the data
+  for (std::shared_ptr<Source> source : sources_) {
+    if (source->getEnabled() && source->getStopOnTimeout() && source->isDataStale(curr_time)) {
+      robot_action.polygon_name = "source_timeout:" + source->getName();
+      robot_action.action_type = STOP;
+      robot_action.req_vel.x = 0.0;
+      robot_action.req_vel.y = 0.0;
+      robot_action.req_vel.tw = 0.0;
+      break;
+    }
+  }
+
   for (std::shared_ptr<Polygon> polygon : polygons_) {
     if (!polygon->getEnabled()) {
       continue;
@@ -545,10 +558,17 @@ void CollisionMonitor::notifyActionState(
   const Action & robot_action, const std::shared_ptr<Polygon> action_polygon) const
 {
   if (robot_action.action_type == STOP) {
-    RCLCPP_INFO(
-      get_logger(),
-      "Robot to stop due to %s polygon",
-      action_polygon->getName().c_str());
+    if (action_polygon) {
+      RCLCPP_INFO(
+        get_logger(),
+        "Robot to stop due to %s polygon",
+        action_polygon->getName().c_str());
+    } else {
+      RCLCPP_WARN(
+        get_logger(),
+        "Robot to stop due to %s",
+        robot_action.polygon_name.c_str());
+    }
   } else if (robot_action.action_type == SLOWDOWN) {
     RCLCPP_INFO(
       get_logger(),

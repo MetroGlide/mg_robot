@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import sys
 import xml.etree.ElementTree as ET
+from datetime import datetime
 
 import pytest
 
@@ -120,10 +121,12 @@ def test_progress_file_tracks_each_run(tmp_path):
     assert [e["status"] for e in data["entries"]] == ["PENDING", "PENDING"]
     assert data["entries"][0]["result_dir"] == "a"
     assert data["finished"] is False
+    assert datetime.fromisoformat(data["started_at"]).tzinfo is not None
 
     progress.start(0, str(results / "a_retry1"), 1)
     entry = read()["entries"][0]
     assert (entry["status"], entry["result_dir"], entry["attempt"]) == ("RUNNING", "a_retry1", 1)
+    assert datetime.fromisoformat(entry["started_at"]).tzinfo is not None
 
     progress.finish(0, RunRecord("a", ResultStatus.FAILED, "boom", 12.34, "", []))
     entry = read()["entries"][0]

@@ -3,8 +3,10 @@
 Nav2 の起動と設定、自己位置推定の補助ノード (AMCL の初期化・監視・入/切の調停)。
 `mg_bringup` の `bringup_navigation.launch.py` から `bringup.launch.py` が起動される ([mg_bringup](../mg_bringup/README.md))。
 
-- Nav2 の構成と設定: [doc/nav2_config.md](./doc/nav2_config.md)
+- Nav2 の構成 (ノード、速度指令の経路、コントローラ): [doc/architecture.md](./doc/architecture.md)
+- コストマップ、プランナ、衝突の防止 (`collision_monitor`): [doc/costmap_and_collision.md](./doc/costmap_and_collision.md)
 - 自己位置推定 (AMCL・GNSS・EKF の融合、監視と復旧): [doc/localization.md](./doc/localization.md)
+- RPP (経路追従) のパラメータの意味と調整の考え方: [doc/rpp_tuning.md](./doc/rpp_tuning.md)
 
 ## ノード
 
@@ -24,13 +26,25 @@ Nav2 の起動と設定、自己位置推定の補助ノード (AMCL の初期�
 | `costmap_for_bag_play` | rosbag の再生で、コストマップだけを動かす (`bag_play.launch.py` から起動) |
 | `waypoint_navigator_node` | 旧ウェイポイント追従。どの launch からも起動されない ([注意](#注意)) |
 
+### BT プラグイン
+
+`bt_navigator` が読み込む (`params/nav2_params.yaml` の `plugin_lib_names`)。`mg_waypoint_navigation` の BT で使う。使い方と BT 全体の動きは [mg_waypoint_navigation](../mg_waypoint_navigation/README.md#behavior-tree)。
+
+| BT ノード | ライブラリ | 内容 |
+| :--- | :--- | :--- |
+| `IsPathClear` (Condition) | `mg_is_path_clear_condition_bt_node` | リカバリーの間に、RPP が衝突判定なしで走り出せる状態になったかを判定する。塞がっていた経路が空いたら SUCCESS |
+| `IsPathBlocked` (Condition) | `mg_is_path_blocked_condition_bt_node` | 走行中に、経路の近くが塞がっているかを判定する。塞がっていると確定したときだけ SUCCESS。定期的な再計画を止めるゲートに使う |
+| `CommitPath` (Action) | `mg_commit_path_action_bt_node` | 計画の結果 (`candidate`) が今のゴールへの経路なら `path` に反映する。計画が失敗しても、今のゴールへの経路があれば保つ。なければ `path` を空にして FAILURE |
+
+判定の仕様、ポート、ログは [doc/bt_plugins.md](./doc/bt_plugins.md)。
+
 ## launch
 
 | ファイル | 内容 |
 | :--- | :--- |
 | `bringup.launch.py` | 下の 3 つを束ねる。RViz2 と rosbag の収録も起動できる |
 | `localization_launch.py` | `map_server`、`amcl`、`amcl_publish_controller_node`、`amcl_gate_arbiter`、初期化・監視ノード (遅れて起動) |
-| `navigation_launch.py` | Nav2 のノード ([doc/nav2_config.md](./doc/nav2_config.md)) |
+| `navigation_launch.py` | Nav2 のノード ([doc/architecture.md](./doc/architecture.md)) |
 | (他パッケージの launch) | `mg_waypoint_navigation/waypoint_sequencer.launch.py` (ウェイポイントシーケンサ) |
 | `bag_play.launch.py` | rosbag の再生中に、コストマップを動かして確認する (`costmap_for_bag_play`。引数: `simulation`、`rviz`、`map`、`planning_map`) |
 | `record_bag.launch.py` | rosbag の収録。`mg_utils` の同名の launch と別のファイル |
@@ -40,26 +54,26 @@ Nav2 の起動と設定、自己位置推定の補助ノード (AMCL の初期�
 
 `mg_bringup` の `bringup_navigation.launch.py` から、同じ名前で伝わる。
 
-| 引数 | 既定値 | 内容 |
-| :--- | :--- | :--- |
-| `simulation` | `$SIMULATION` | `use_sim_time` |
-| `localization_map` | `map/map.yaml` | 測位用の地図 (`mg_bringup` から渡される) |
-| `planning_map` | `map/map.yaml` | 計画用の地図 (同上) |
-| `params_file` | `params/nav2_params.yaml` | Nav2 (AMCL を含む) のパラメータ (`mg_bringup` では `nav2_params_file`) |
-| `global_planner` | `smac_lattice` | `smac_lattice` / `navfn` |
-| `use_navigation` | `true` | `false` で、`map_server` と AMCL などの自己位置推定だけを起動する (rosbag の再生評価用) |
-| `use_waypoints_follower` | `true` | ウェイポイントシーケンサの起動 (`use_navigation` も `true` のとき) |
-| `waypoints_load_path` | `$WAYPOINT_PATH` | ウェイポイントのファイル |
-| `use_gnss_amcl_initializer` | `true` | GNSS から AMCL の初期姿勢を与えるノード |
-| `localization_monitor` | `watchdog` | 自己位置の監視ノード: `none` / `watchdog` / `supervisor` |
-| `supervisor_params_file` | `params/localization_supervisor.yaml` | 監督ノードのパラメータ |
-| `rviz` | `$USE_RVIZ` | RViz2 の起動 |
-| `record_bag` | `false` | rosbag の収録 |
-| `namespace`、`use_namespace` | 空、`false` | 名前空間 |
-| `autostart` | `true` | ライフサイクルノードの自動起動 |
-| `use_composition` | `False` | コンポーネントとして起動 |
-| `use_respawn` | `false` | 落ちたノードの再起動 |
-| `log_level` | `info` | ログのレベル |
+| 引数 | 内容 |
+| :--- | :--- |
+| `simulation` | `use_sim_time` |
+| `localization_map` | 測位用の地図 (`mg_bringup` から渡される) |
+| `planning_map` | 計画用の地図 (同上) |
+| `params_file` | Nav2 (AMCL を含む) のパラメータ (`mg_bringup` では `nav2_params_file`) |
+| `global_planner` | プランナの選択: `smac_lattice` / `navfn` |
+| `use_navigation` | `false` で、`map_server` と AMCL などの自己位置推定だけを起動する (rosbag の再生評価用) |
+| `use_waypoints_follower` | ウェイポイントシーケンサの起動 (`use_navigation` も `true` のとき) |
+| `waypoints_load_path` | ウェイポイントのファイル |
+| `use_gnss_amcl_initializer` | GNSS から AMCL の初期姿勢を与えるノード |
+| `localization_monitor` | 自己位置の監視ノード: `none` / `watchdog` / `supervisor` |
+| `supervisor_params_file` | 監督ノードのパラメータ |
+| `rviz` | RViz2 の起動 |
+| `record_bag` | rosbag の収録 |
+| `namespace`、`use_namespace` | 名前空間 |
+| `autostart` | ライフサイクルノードの自動起動 |
+| `use_composition` | コンポーネントとして起動 |
+| `use_respawn` | 落ちたノードの再起動 |
+| `log_level` | ログのレベル |
 
 ## パラメータ
 
@@ -98,13 +112,23 @@ make rviz2-navigation                         # (別端末) RViz2
 make test pkg=mg_navigation   # 監督ノードの判定・状態遷移、調停ノード
 ```
 
+BT プラグインの判定 (gtest) は、develop コンテナで colcon test を使う。
+
+```bash
+colcon build --packages-select mg_navigation
+colcon test --packages-select mg_navigation --ctest-args -R test_ && colcon test-result --verbose
+```
+
 ## 依存
 
-`mg_msgs`、`mg_utils`、`mg_waypoint_navigation`、`navigation2`、`nav2_bringup`、`python3-numpy`、`python3-scipy`。コストマップとコリジョンモニタは、リポジトリ内の修正版 ([nav2_pkg](../nav2_pkg/README.md))。
+`mg_msgs`、`mg_utils`、`mg_waypoint_navigation`、`navigation2`、`nav2_bringup`、`python3-numpy`、`python3-scipy`。BT プラグインは `behaviortree_cpp_v3`、`nav2_behavior_tree`、`nav2_costmap_2d`、`nav2_util`。コストマップとコリジョンモニタは、リポジトリ内の修正版 ([nav2_pkg](../nav2_pkg/README.md))。
 
 ## ドキュメント
 
 | ファイル | 内容 |
 | :--- | :--- |
 | [doc/localization.md](./doc/localization.md) | 自己位置推定の構成、AMCL の調停・初期化・監視、監督ノードの検知と復旧 |
-| [doc/nav2_config.md](./doc/nav2_config.md) | Nav2 のノード、速度指令の経路、コストマップ、プランナ、コントローラ、衝突の防止 |
+| [doc/architecture.md](./doc/architecture.md) | Nav2 のノード、速度指令の経路、コントローラ、BT、アンカーの規則 |
+| [doc/costmap_and_collision.md](./doc/costmap_and_collision.md) | コストマップ、グローバルプランナ、衝突の防止 (`collision_monitor`) |
+| [doc/bt_plugins.md](./doc/bt_plugins.md) | `IsPathClear`・`IsPathBlocked`・`CommitPath` の判定とポート |
+| [doc/rpp_tuning.md](./doc/rpp_tuning.md) | RPP のパラメータの意味、値の関係、調整の進め方、症状と対処 |

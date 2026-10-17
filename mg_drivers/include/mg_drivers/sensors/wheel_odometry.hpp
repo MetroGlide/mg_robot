@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "mg_drivers/base/serial_communicator2.hpp"
+#include "mg_drivers/base/serial_device.hpp"
 
 namespace mg_drivers
 {
@@ -18,17 +19,12 @@ struct OdometryData
   double vx, vy, vth;
   std::vector<uint8_t> raw;
 
-  SerialError error;
+  SerialError error = SerialError::NO_ERROR;
 };
 
-class WheelOdometry
+class WheelOdometry : public SerialDevice
 {
 private:
-  std::string device_name_;
-
-  // SerialCommunicator serial_;
-  SerialCommunicator2 serial_;
-
   const int sleep_usec_ = 40000;  // usec
 
   int get_odom_ret_size_ = 19;
@@ -40,12 +36,11 @@ public:
   explicit WheelOdometry(std::string device_name);
   virtual ~WheelOdometry() {};
 
-  void reset_serial();
-
   OdometryData get_data();
   SerialError send_zero_reset(int retry = 1);
   OdometryData decode(std::vector<uint8_t> ret);
 
-  bool is_alive();
+  // オドメトリを 1 回読んで、接続を確かめる
+  SerialError probe() override;
 };
 }  // namespace mg_drivers

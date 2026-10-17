@@ -3,12 +3,7 @@
 using namespace std;
 using namespace mg_drivers;
 
-WheelOdometry::WheelOdometry(string device_name) : device_name_(device_name), serial_(device_name)
-{
-  if (!serial_.is_open_serial_) {
-    printf("Serial Fail: cound not open %s", device_name_.c_str());
-  }
-}
+WheelOdometry::WheelOdometry(string device_name) : SerialDevice(device_name) {}
 
 OdometryData WheelOdometry::decode(std::vector<uint8_t> ret)
 {
@@ -37,8 +32,6 @@ OdometryData WheelOdometry::decode(std::vector<uint8_t> ret)
 
   return odom;
 }
-
-void WheelOdometry::reset_serial() { serial_.reset_serial(); }
 
 OdometryData WheelOdometry::get_data()
 {
@@ -84,4 +77,4 @@ SerialError WheelOdometry::send_zero_reset(int retry)
   return SerialError::OTHER_ERROR;
 }
 
-bool WheelOdometry::is_alive() { return serial_.is_open_serial_; }
+SerialError WheelOdometry::probe() { return get_data().error; }

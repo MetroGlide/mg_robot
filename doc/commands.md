@@ -3,6 +3,21 @@
 `Makefile` のターゲットと、`compose.yaml` のサービスの対応表。
 すべてリポジトリのルートで実行する。
 
+`make` (引数なし) または `make help` でターゲット一覧、`make help-args` で共通の引数を表示する。
+`Makefile` はエントリポイントで、ターゲットは分類ごとに `make/` 配下へ分けている。各ターゲットの引数は、そのターゲットの上のコメントに書いてある。
+
+| ファイル | 内容 |
+| :--- | :--- |
+| `make/common.mk` | 共通の変数・関数 (`COMPOSE` の解決、`USE_GPU`、`.env` の読み取り) |
+| `make/run.mk` | 実行 (実機・シミュレーション・再生・RViz2・Web UI) |
+| `make/build.mk` | ビルド (Docker イメージ) |
+| `make/container.mk` | コンテナ操作 (シェル・ログ・状態・停止) |
+| `make/test.mk` | テスト (pytest・UI 検査・シナリオテスト) |
+| `make/tools.mk` | ツール (rosbag の解析・可視化・評価) |
+| `make/help.mk` | ヘルプ |
+
+ターゲットを追加するときは、行末に `## 1 行説明 [主な引数]` を付けると `make help` に載る。カテゴリ見出しは `##@ 見出し`。
+
 ## 共通オプション
 
 | オプション | 使えるターゲット | 内容 |
@@ -52,9 +67,8 @@
 | `make web-ui` | `web-ui` | ビルド済みの Web UI を配信 (8080) |
 | `make web-ui-dev` | `web-ui-dev` | Vite 開発サーバ (5173) |
 | `make system-manager` | `system-manager` | 管理 API (8001) |
-| `make diagnostics` | `diagnostics` | `mg_diagnostics` の診断ノード |
-| `make ui-all` | `system-manager`・`web-ui`・`foxglove-bridge`・`diagnostics` | 本番用に一式を起動 |
-| `make ui-dev-all` | `system-manager`・`web-ui-dev`・`foxglove-bridge`・`diagnostics` | 開発用に一式を起動 |
+| `make ui-all` | `system-manager`・`web-ui`・`foxglove-bridge` | 本番用に一式を起動 |
+| `make ui-dev-all` | `system-manager`・`web-ui-dev`・`foxglove-bridge` | 開発用に一式を起動 |
 | `make ui-lint` | `web-ui-dev` | フロントエンドの型チェックと lint |
 | `make ui-test` | `web-ui-dev` と `develop` | フロントエンド (vitest) と system_manager (pytest) のテスト |
 
@@ -81,7 +95,12 @@ Gazebo とナビゲーションを起動して合否を判定する。詳細は 
 | `make develop` | develop コンテナをバックグラウンドで起動する (`ATTACH=1` でアタッチ) |
 | `make shell-develop` | develop コンテナの bash に入る (未起動なら起動する) |
 | `make shell svc=<名前>` | 起動中のコンテナの bash に入る |
-| `make logs svc=<名前>` | ログを追う |
+| `make logs svc=<名前> [TAIL=] [SINCE=]` | ログを追う ([docker.md](./docker.md#ログ)) |
+| `make logs-all [TAIL=] [SINCE=]` | 全サービスのログをまとめて追う |
+| `make log-collector` | 全サービスのログを `${HOME}/ros2_data/logs/<サービス>/<日付>.log` に常時書き出す `log-collector` を起動する ([docker.md](./docker.md#ホストへの常時書き出し-log-collector)) |
+| `make logs-export [svc=<名前>] [OUT_DIR=]` | コンテナのログを `${HOME}/ros2_data/logs/<日時>/` に書き出す (手動。`down` の前に実行する) |
+| `make logs-clean [DAYS=14]` | 古いログ (ROS のファイルログ `${HOME}/ros2_data/ros_log` と、書き出したログ) を削除する |
+| `make log-events [LOGS= BAG= SINCE= LEVEL= DOMAIN= TZ= OUT=]` | イベントログ (`evt=`) を、コンテナのログと rosbag から集めて時刻順の表にする ([tools の README](../tools/README.md)) |
 | `make ps` | 起動中のコンテナを表示する |
 | `make restart svc=<名前>` | サービスを再起動する |
 | `make down` | すべてのサービスを止める |
@@ -90,14 +109,15 @@ Gazebo とナビゲーションを起動して合否を判定する。詳細は 
 
 - `make test` は Python のテストだけを実行する。C++ の gtest は `colcon test` で実行する ([mg_drivers の README](../mg_drivers/README.md) など)。
 - Web UI のテストは `make ui-test`。
+- 文書のリンクとアンカー、コードから文書への参照の検査は `make test pkg=tools OPTS="-k docs_links"` ([書き方の規約](./documentation_guide.md))。
 
 ## ビルド
 
 | コマンド | 内容 |
 | :--- | :--- |
-| `make build-robot` (`build-real`) | 実機向け: `slam`・`develop`・`web-ui` のイメージ |
-| `make build-robot-no-cache` (`build-real-no-cache`) | 同上、キャッシュ無効 |
-| `make build-sim` (`build-all`) | 上記 + `gazebo-simulation` |
+| `make build-robot` | 実機向け: `slam`・`develop`・`web-ui` のイメージ。`log-collector` のイメージも取得する |
+| `make build-robot-no-cache` | 同上、キャッシュ無効 |
+| `make build-sim` | 上記 + `gazebo-simulation` |
 | `make build svc=<名前>` | 指定したサービスのイメージ |
 | `make build-no-cache svc=<名前>` | 同上、キャッシュ無効 |
 

@@ -12,6 +12,8 @@
 """
 
 import rclpy
+from diagnostic_msgs.msg import DiagnosticStatus
+from diagnostic_updater import DiagnosticStatusWrapper, DiagnosticTask, Updater
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, ReliabilityPolicy
@@ -19,9 +21,29 @@ from std_srvs.srv import SetBool
 
 from mg_msgs.msg import GateArbiterState
 
-from .arbiter import GateArbiter
+from mg_utils.event_log import EventLog
+
+from .arbiter import GateArbiter, gate_health
 
 REQUESTERS = ('waypoint', 'supervisor')
+
+_LEVELS = {'ok': DiagnosticStatus.OK, 'warn': DiagnosticStatus.WARN}
+
+
+class GateTask(DiagnosticTask):
+    """診断 `gate`: AMCL の出力の要求が、ゲートに反映できているか。"""
+
+    def __init__(self, arbiter: GateArbiter) -> None:
+        super().__init__('gate')
+        self._arbiter = arbiter
+
+    def run(self, stat: DiagnosticStatusWrapper) -> DiagnosticStatusWrapper:
+        level, message, values = gate_health(
+            self._arbiter.desired, self._arbiter.applied, self._arbiter.holders)
+        stat.summary(_LEVELS[level], message)
+        for key, value in values.items():
+            stat.add(key, value)
+        return stat
 
 
 class AmclGateArbiterNode(Node):
@@ -31,6 +53,10 @@ class AmclGateArbiterNode(Node):
         self.declare_parameter('period_sec', 1.0)
 
         self._arbiter = GateArbiter(REQUESTERS)
+        self._events = EventLog(self.get_logger())
+        self._updater = Updater(self)
+        self._updater.setHardwareID('amcl_gate')
+        self._updater.add(GateTask(self._arbiter))
         self._gate_client = self.create_client(
             SetBool, self.get_parameter('gate_service').value)
         self._pending = False
@@ -47,17 +73,21 @@ class AmclGateArbiterNode(Node):
                 lambda request, response, who=name: self._on_request(who, request, response))
         # 反映に失敗したとき・ゲートが後から起動したときのために、定期的に合わせ直す
         self.create_timer(self.get_parameter('period_sec').value, self._reconcile)
-        self.get_logger().info(f'AMCL gate arbiter started (requesters: {", ".join(REQUESTERS)})')
+        self._events.info('node.started', name='amcl_gate_arbiter', requesters=','.join(REQUESTERS))
 
     def _on_request(self, who, request, response):
         before = self._arbiter.desired
+        before_holders = self._arbiter.holders
         self._arbiter.request(who, request.data)
         after = self._arbiter.desired
         holders = self._arbiter.holders
-        self.get_logger().info(
-            f'{who}: {"attach" if request.data else "detach"} -> AMCL output '
-            f'{"attached" if after else "detached"}'
-            + (f' (held by: {", ".join(holders)})' if holders else ''))
+        if before != after or before_holders != holders:
+            fields = dict(
+                requester=who, attached=after, holders=','.join(holders))
+            if 'supervisor' in holders:
+                self._events.warn('gate.changed', **fields)
+            else:
+                self._events.info('gate.changed', **fields)
         response.success = True
         response.message = 'attached' if after else f'detached (held by: {", ".join(holders)})'
         self._publish_state()

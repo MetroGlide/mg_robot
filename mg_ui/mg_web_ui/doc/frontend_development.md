@@ -16,15 +16,20 @@ frontend/src/
   hooks/        通信層を React から使うフック (useFoxgloveClient、useTopicSubscriber、useServiceCaller など)
   contexts/     設定・状態の Provider
   components/
-    layout/     ページの骨格 (NavBar、RobotPageLayout、SideAccordion、SectionCard)
+    layout/     旧 UI のページの骨格 (LegacyLayout、NavBar、RobotPageLayout、SideAccordion、SectionCard)
+    shell/      新 UI (/ops) の枠 (AppShell、TopBar、ConnectionBanner)
+    operate/    新 UI の運用ビューの部品 (地図、KPI、進捗、状態、操作、コンテナ、SLAM-GNSS-2D の地図)
+    work/       新 UI の作業ビュー (地図を使わず、表とフォームが中心) の枠 (WorkLayout、Panel)
+    sensors/    新 UI のセンサビューの部品
     panels/     計器・ログなどの表示パネル
     status/     コンテナの状態・サービス操作のカード
     sections/   複数の操作をまとめた節 (rosbag の再生など)
-    scenario/   シナリオテストのページの部品
+    scenario/   シナリオテストの部品と、画面の本体 (ScenarioWorkspace)
     waypoint-actions/  ウェイポイントナビの「Actions」(AMCL・GNSS の入/切、地図の切り替え、任意のサービス・トピック)
     ros-viewer/ three.js による 2D/3D のビューワー (hooks/ と layers/)
     ui/         ボタンなどの汎用の部品
-  pages/        ルーティングされるページ
+  pages/        ルーティングされるページ (旧 UI のページ)
+  pages/ops/    新 UI のページ (運用ビューのユースケース、センサ、システム)
   utils/、types/
 ```
 
@@ -42,10 +47,13 @@ App.tsx
 
 ### Context
 
-`App.tsx` が、次の 4 つの Provider で全体を包む。
+`App.tsx` が、次の 4 つの Provider で全体を包む。`ThemeProvider` だけは `main.tsx` で `App` を包む。
 
 | Context | フック | 用途 |
 | :--- | :--- | :--- |
+| `ThemeContext` | `useTheme()` | テーマ (light / dark / system) と低負荷モード。**端末ごとに** localStorage へ保存する (他の設定は system_manager 経由で全端末に共有されるが、これは共有しない) |
+| `RobotProfileContext` | `useRobotProfile()` | ロボットの名前。画面の見出しとタブのタイトルに使う。system_manager の設定 `robot.name` に保存し、全端末で共有する。設定の「全般」タブで変える |
+| `GnssSourceContext` | `useGnssSource()` | KPI の GNSS と詳細が購読するトピック(`navpvt` か `navsatfix`)。system_manager の設定 `gnss.source` に保存し、全端末で共有する。設定の「全般」タブで変える。GPS のミニ地図と衛星画像は、この設定によらず NavSatFix を使う |
 | `SimulationContext` | `useSimulation()` | `isSimulation` で、シミュレーションと実機の表示を切り替える |
 | `RosbagReplayContext` | (`RosbagReplayProvider`) | rosbag の再生の状態 |
 | `VisualizationContext` | `useVisualization()` | 3D ビューワーのレイヤーとオーバーレイの表示の切り替え |
@@ -120,7 +128,7 @@ const { call, loading, error } = useServiceCaller(client)
 const result = await call(SERVICES.MY_SERVICE, { key: 'value' })
 ```
 
-`call()` は、タイムアウト 10000 ms で `Promise<unknown>` を返す。
+`call()` は、タイムアウト付きで `Promise<unknown>` を返す。
 
 ### トピックに publish する
 
@@ -131,7 +139,81 @@ const result = await call(SERVICES.MY_SERVICE, { key: 'value' })
 client.publish(TOPICS.MY_TOPIC, 'pkg/msg/MyMessage', { value: 1, label: 'hello' })
 ```
 
+## 新 UI (`/ops`)
+
+地図を全面に置き、計器と操作を重ねる新しい UI。旧ページ (`/waypoint` など) とは別のレイアウトで、移行が終わるまで両方を残す
+(移行の状況は [ui_migration_todo.md](./ui_migration_todo.md))。
+
+| パス | 内容 | 実装 |
+| :--- | :--- | :--- |
+| `/ops/:useCase` | ユースケースごとのビュー (`waypoint`、`slam`、`slam-gnss-2d` は地図を使う運用ビュー。`scenario-test` は地図を使わない作業ビュー) | `pages/ops/OperatePage.tsx` が `pages/ops/useCases.ts` から選ぶ |
+| `/ops/sensors` | RViz ライクなセンサビュー (全レイヤー、2D/3D) | `pages/ops/SensorsPage.tsx` |
+| `/ops/system` | サービスの操作・診断の木・イベント・ログ (作業ビュー) | `pages/ops/SystemOpsPage.tsx` (`SystemPage` を `WorkLayout` に置く) |
+
+`App.tsx` は、旧 UI の枠 (`LegacyLayout`) と新 UI の枠 (`AppShell`) を、別のレイアウトルートにしている。旧ページの URL は変わらない。
+
+### ユースケースを足す
+
+1. `pages/ops/MyOperate.tsx` を作る。`{ client, sysManager }` を受け取り、`OperateLayout` のスロット (`map`、`topLeft`、`toolbar`、`topRight`、`notice`、`bottomLeft`、`bottomRight`) に、`components/operate/` の部品を置く。地図は `OperateMap` (ユースケース固有の描画は `sceneChildren`)。地図を使わず表とフォームが中心なら、`WorkLayout` と `Panel` (`components/work/`) に置く。
+   コンテナの操作は `ContainerControl`、ジョイスティックと GPS のミニ地図は `MapOverlays` が使える。
+2. `pages/ops/useCases.ts` の `USE_CASES` に 1 行足す (`id` は `sensors`、`system` と重ねない)。上部バーには自動で出る。
+
+操作のロジックは、画面から切り離してフックにする (例: `hooks/useWaypointControl.ts`)。旧ページと新 UI の両方が使える。
+
+### 操作状態の保持
+
+運用の画面は、ルートを切り替える (センサビューへ移って戻る) とコンポーネントが破棄される。**追従・カードの開閉・タブの選択・入力値のように、戻ったときに残っていてほしい状態は、`useState` ではなく `useOpsValue(key, 既定値)` に持つ** (`hooks/useOpsValue.ts`、実体は `utils/opsViewStore.ts`)。
+
+- 値は端末の localStorage にも保存するので、再読み込みでも残る。全端末で共有される `settingsApi` は使わない。
+- key は `"<ユースケースや部品>.<項目>"` (例: `waypoint.follow`、`health.view`、`actions.map`)。値は JSON にできるものに限る。
+- 地図のカメラ (位置・拡大・向き) は、`OperateMap` の `viewKey` で、画面を離れるときに保存する (メモリのみ。再読み込みでは残さない)。
+- 走行に関わる操作の状態 (姿勢・ゴールの指定モードなど) は、誤操作を避けるため保持しない。
+- `ui/Disclosure.tsx` は、開閉を `useOpsValue` で保持する節。
+
+### 1 画面での表示
+
+走行中は操作しない運用を想定し、運用ビューは状態の表示を 1 画面 (1366×768 以上) に収める。
+
+- 診断は `DiagnosticsBoard` (Waypoint・SLAM・SLAM+GNSS の右下) に、区分 (ドライバ・自己位置・ナビ・システム・その他) を並べて出す。スクロールなしで全体を見渡せる。「全表示」は全項目 (表示名はタスク名で、意味のないメッセージは出さない)、「簡易」は OK の項目を `OK 数/全体` にまとめて異常な項目だけを出す。選択は保持され、「詳細」で `DiagnosticsTreePanel` (値まで見られる木) を重ねて開く。
+- 操作のカード (`ActionsCard`) は節ごとに閉じられ、開閉は保持される。閉じておけば、状態の表示だけが残る。
+- カードは地図の上に重ね、右端のツールバーを避けて置く (`OperateLayout`)。
+- **パネルの表示切り替え**: パネル (右側のロボットの詳細・GNSS の詳細・診断と、Waypoint の左側の操作・Waypoint 走行) は、`TogglePanel` (`components/operate/TogglePanel.tsx`) で包む。閉じている間は、パネルの代わりに専用のアイコン (小さな四角) を同じ位置に出し、押すとパネルが開く。開いている間はアイコンを出さず、閉じるにはパネルの × を使う (`children` の関数が受け取る `close` を × に渡す)。各列に縦に積んでいるので、閉じたパネルは下のパネルが詰め、アイコンはそのパネルが出る位置に残る。アイコンの列は地図ツールバーの左で、ツールバーは右端の縦中央のまま (1 列) にする。
+- 切り替えられるパネルの定義は `components/operate/operatePanels.ts` の `PANELS` に集め、表示状態は `usePanelVisible(id)` で読む (ビューをまたいで共有し、端末ごとに保持する。既定は GNSS の詳細だけ非表示)。パネルを足すときは `PANELS` に 1 つ足し、ビューで `TogglePanel` に包む。KPI の GNSS タイルも同じ状態を操作する。閉じたパネルは描画も購読もしない (ただし診断・GNSS は KPI や上部バーも購読するので、実機への購読は残る)。
+- **パネルの透明度**: 地図ツールバーの末尾のボタン (`OpacityControl`) から開くスライダーで、運用ビューの全パネルの背景の不透明度を変える (`usePanelOpacity`、端末ごとに保持)。`OperateLayout` が `--panel-alpha` を与え、`Card` の背景 (`.panel-surface`、`index.css`) とその中の塗り (`bg-surface-sunken` など) に効く。文字と枠線は不透明のまま。操作の部品や警告 (地図ツールバー、パネルのアイコン、通知) は `<Card solid>` にして透かさない。運用ビューの外の `Card` は変数が未設定で、従来の不透明度のまま。
+
+### テーマ (色のトークン)
+
+- 色は `index.css` の CSS 変数 (`--surface`、`--text`、`--accent`、`--ok`、`--warn`、`--error` など。値は `R G B`) で定義し、`tailwind.config.js` で `bg-surface`、`text-content`、`text-muted`、`bg-accent`、`text-ok` などの名前にしている。**新 UI の部品は、`gray-*` や色名を直接書かず、このトークンを使う**。
+- ライトは `:root`、ダークは `.dark` に値を定義する。`ThemeProvider` が `<html>` に `dark` クラスを付ける。
+- 旧ページの枠 (`LegacyLayout`) は、`dark` クラスを付けて、トークンを常に濃色にしている。旧ページの `gray-*` の直書きは、テーマの影響を受けない。
+- 新旧で共有する部品 (`components/waypoint-actions/` など) は、トークンで色を書く。旧ページでは `dark` の中なので、従来どおり濃色に見える。
+- 地図の配色は `gridColors.ts` のパレット (`map` が旧ビューワー、`mapLight` / `mapDark` が新 UI のライト / ダーク)。
+
+### 負荷を抑えるルール (新 UI の部品)
+
+- **運用ビューでは、高頻度のトピック (scan、costmap、点群、画像) を、既定では購読しない**。そうした表示は、センサビューに置く。運用ビューが購読するのは、地図・経路・TF のほかは、低頻度の状態のトピックだけ。例外は、地図ツールバーの「センサ表示」ボタン (`useSensorsVisible`。再読み込みでは残さない)。オンにしたときだけ `SensorLayers` が描かれ、そのレイヤー (LiDAR・コストマップ・点群など) の ON/OFF は、センサビューのレイヤーパネルの設定に従う。オフに戻すと購読を止める。画像は運用ビューに出さない。
+- GNSS は、設定で選んだ 1 トピック(NavPVT か NavSatFix)だけを `useGnss` で購読する(間引く)。KPI の GNSS タイルか、閉じているときのパネルのアイコンを押すと、右側のカードの列(ロボットの詳細の下)に詳細カード(緯度経度、UTM、精度、PDOP、高さ)が開く。詳細カードは開いている間だけ購読する。UTM 変換と表示用の文言は `utils/gnssReading.ts` (測位の良し悪しは判定せず、診断のレベルに従う)。
+### 状態とイベントの表示 (新 UI)
+
+規約は [doc/monitoring.md](../../../doc/monitoring.md)。
+
+- **UI は判定しない**。色は、`/diagnostics_agg` の診断のレベルと、system_manager `GET /status/detail` の `level` で決める。しきい値を UI に書かない。UI が自分で判定してよいのは、通信路が新しいかどうか (`useFreshness`、`useDiagnosticsAgg` の鮮度) だけ。
+- 診断は `hooks/useDiagnosticsAgg.ts` で `/diagnostics_agg` を受け、`utils/diagnosticsTree.ts` で木にする。個別に参照するパスは `ros/diagnosticPaths.ts` だけに書く (aggregator との公開契約)。区分・グループごとの表示内容 (表示名、メッセージの省略、簡易表示の畳み込み) は `hooks/healthSummary.ts` (React に依存しない)。Hz を数えるためにトピックを購読しない。
+- イベントは `contexts/EventStreamContext.tsx` が `/events` (`rcl_interfaces/Log`、transient_local) を 1 か所で購読し、上限つきのバッファに持つ。トップバーの未読バッジと `EventLogPanel` が同じ状態を読む。本文は `utils/logfmt.ts` で解析する。接続し直したときに履歴を受けるため、`foxglove-bridge` は `max_qos_depth:=500` で起動する。
+- 旧 UI (`LegacyLayout`) は、生の `/diagnostics` (`useDiagnosticsMap`) のままにする。`SystemPage` の `diagnosticsSlot` / `eventsSlot` を渡す新 UI だけが、診断の木とイベント一覧を出す。
+- 人が読むだけの値 (速度、GNSS など) は `useThrottledTopic(client, topic, schema, maxHz)` で、再描画を間引く。間引いても最後の値は必ず反映される。**E-Stop や FSM の状態のように、変化を見逃せない値は間引かず `useTopicSubscriber` を使う**。
+- 値には鮮度を付ける。`useFreshness(client, topic, maxAgeSec)` は、最後の受信 (ブラウザの時計) からの経過秒を返す。古くなった値は `StatTile` が `--` と経過秒の表示にする。Wi-Fi の瞬断で、古い値が現在値に見えないようにするため。
+- 切断中は `ConnectionBanner` を出し、送信系のボタンを無効にする (`client.status !== "connected"`)。
+- WebGL のキャンバスの上のカードでは、`backdrop-filter` (ぼかし) を使わない。キャンバスが更新されるたびに再合成が走る。半透明の単色と影にする (`components/ui/Card.tsx`)。パネルの透明度の調整は、背景色の不透明度の値を変えるだけで、合成の負荷は変わらない。アニメーションは transform と opacity に限る。
+- 地図の上の色は `components/ros-viewer/sceneColors.ts` (テーマ別) にまとめる。LiDAR の点とウェイポイントのピンは画面上の px で大きさを決め、ズームしても小さくならない。縁取りの色で、地図の明暗によらず見えるようにする。
+- `OperateMap` は描画の間隔と解像度を抑えている。`RenderTicker` の間隔は `intervalMs` で指定できる。
+- 上部バーの「低負荷」(`ThemeContext.lowLoad`。設定のタブにもある) で、影とトランジションを切る。
+- 地図の上に重ねる GPS のミニ地図 (`overlays.gpsMap`) は、地図タイルを読み込み、GNSS を購読するので、既定はオフ。ツールバーのボタンで、使うときだけオンにする。
+- Nav2 のライフサイクルは、定期的に呼ばず、ロボットの詳細カードの「確認」を押したときだけ調べる (`useNav2LifecycleCheck`)。
+
 ## ページを足す
+
+(旧 UI のページ。新しい運用の画面は、上の「新 UI」に足す。)
 
 ロボットの操作系のページは `RobotPageLayout` を使い、左のサイドバー (`SideAccordion`) と右のビューワーを並べる。
 
@@ -177,12 +259,11 @@ export default function MyPage({ client, sysManager }: { client: FoxgloveClientH
 | :--- | :--- |
 | `map` | 占有格子の地図 |
 | `globalCostmap` / `localCostmap` | グローバル / ローカルのコストマップ |
-| `lidarTop` / `lidarFront` | 上 (シアン) / 前 (緑) の LiDAR のスキャン |
+| `lidarTop` | LiDAR のスキャン |
 | `robotPose` | ロボットの位置 (矢印) |
 | `particleCloud` | AMCL のパーティクル |
 | `planPath` / `actualPath` | 計画した経路 (赤) / 走った経路 (紫) |
 | `waypointMarkers` | ウェイポイントのマーカー |
-| `collisionPolygons` | 衝突判定のポリゴン |
 | `pointCloud` | 3D 点群 |
 | `colorImage` / `depthImage` | カラー / 深度の画像 (ビューワーの下に表示) |
 
@@ -206,7 +287,7 @@ export default function MyLayer({ client, tfBuffer }: { client: FoxgloveClientHa
 
 - レイヤーは `@react-three/fiber` の `Canvas` の中で描画されるので、戻り値は three.js のプリミティブ (`<mesh>`、`<points>` など)。
 - `tfBuffer.lookupTransform(targetFrame, sourceFrame)` で、`THREE.Matrix4 | null` が得られる。
-- `components/ros-viewer/hooks/` に、専用のフック (`useLaserScan`、`useOccupancyGrid`、`usePath`、`usePointCloud2`、`useMarkerArray`、`useParticleCloud`、`usePolygonStamped`、`useTfBuffer`) がある。あれば使う。
+- `components/ros-viewer/hooks/` に、専用のフック (`useLaserScan`、`useOccupancyGrid`、`usePath`、`usePointCloud2`、`useMarkerArray`、`useParticleCloud`、`useTfBuffer`) がある。あれば使う。
 
 ## 定義の参照先
 

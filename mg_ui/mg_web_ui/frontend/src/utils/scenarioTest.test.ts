@@ -4,10 +4,18 @@ import {
   collectGroups,
   collectTags,
   countProgress,
+  currentEntry,
+  descriptionsByName,
+  elapsedSinceSec,
+  failedEntries,
   filterScenarios,
   formatElapsed,
+  formatRunTime,
+  summarizeScenarioNames,
   isValidRobotAddress,
   runPhase,
+  segmentsFromCounts,
+  segmentsFromEntries,
 } from "./scenarioTest";
 
 function scenario(name: string, group: string, tags: string[]): ScenarioInfo {
@@ -94,6 +102,96 @@ describe("formatElapsed", () => {
   });
 });
 
+function progressEntry(
+  name: string,
+  status: ProgressEntry["status"],
+): ProgressEntry {
+  return {
+    name,
+    file: `${name}.yaml`,
+    result_dir: name,
+    status,
+    message: "",
+    elapsed_sec: 0,
+    attempt: 0,
+  };
+}
+
+describe("descriptionsByName", () => {
+  it("maps scenario names to descriptions", () => {
+    const map = descriptionsByName([
+      { name: "a", group: "g", tags: [], description: "説明 A" },
+    ]);
+    expect(map.get("a")).toBe("説明 A");
+    expect(map.get("x")).toBeUndefined();
+  });
+});
+
+describe("currentEntry / failedEntries", () => {
+  const entries = [
+    progressEntry("a", "PASSED"),
+    progressEntry("b", "FAILED"),
+    progressEntry("c", "RUNNING"),
+    progressEntry("d", "ERROR"),
+    progressEntry("e", "PENDING"),
+  ];
+
+  it("finds the running entry and its position", () => {
+    expect(currentEntry(entries)?.index).toBe(2);
+    expect(currentEntry(entries)?.entry.name).toBe("c");
+    expect(currentEntry([progressEntry("a", "PASSED")])).toBeNull();
+  });
+
+  it("lists failed and errored entries", () => {
+    expect(failedEntries(entries).map((e) => e.name)).toEqual(["b", "d"]);
+  });
+});
+
+describe("segments", () => {
+  it("follows the order of the entries", () => {
+    const segments = segmentsFromEntries([
+      progressEntry("a", "PASSED"),
+      progressEntry("b", "RUNNING"),
+    ]);
+    expect(segments).toEqual([
+      { status: "PASSED", label: "a" },
+      { status: "RUNNING", label: "b" },
+    ]);
+  });
+
+  it("builds from counts, filling the rest as pending", () => {
+    const statuses = segmentsFromCounts({ PASSED: 2, FAILED: 1 }, 5).map(
+      (s) => s.status,
+    );
+    expect(statuses).toEqual([
+      "PASSED",
+      "PASSED",
+      "FAILED",
+      "PENDING",
+      "PENDING",
+    ]);
+  });
+});
+
+describe("elapsedSinceSec", () => {
+  const now = Date.parse("2026-10-11T03:00:30+00:00");
+
+  it("is independent of the writer's time zone", () => {
+    expect(elapsedSinceSec("2026-10-11T03:00:00+00:00", now)).toBe(30);
+    expect(elapsedSinceSec("2026-10-11T12:00:00+09:00", now)).toBe(30);
+  });
+
+  it("returns null for missing or unreadable values", () => {
+    expect(elapsedSinceSec(undefined, now)).toBeNull();
+    expect(elapsedSinceSec("", now)).toBeNull();
+    expect(elapsedSinceSec("not a date", now)).toBeNull();
+  });
+
+  it("never goes negative when the clocks differ", () => {
+    expect(elapsedSinceSec("2026-10-11T03:01:00+00:00", now)).toBe(0);
+  });
+});
+
 describe("runPhase", () => {
   const run = {
     run_id: "r",
@@ -134,5 +232,27 @@ describe("isValidRobotAddress", () => {
     expect(isValidRobotAddress("mg-robot.local")).toBe(true);
     expect(isValidRobotAddress("1.2.3.4;id")).toBe(false);
     expect(isValidRobotAddress(" 1.2.3.4")).toBe(false);
+  });
+});
+
+describe("formatRunTime", () => {
+  it("UTC の run_id を JST にする", () => {
+    expect(formatRunTime("20261011_140234")).toBe("2026/10/11 23:02:34");
+  });
+
+  it("日をまたぐ", () => {
+    expect(formatRunTime("20261231_150000")).toBe("2027/01/01 00:00:00");
+  });
+
+  it("日時でない id はそのまま返す", () => {
+    expect(formatRunTime("exp_stock1")).toBe("exp_stock1");
+  });
+});
+
+describe("summarizeScenarioNames", () => {
+  it("本数で表現を変える", () => {
+    expect(summarizeScenarioNames([])).toBe("");
+    expect(summarizeScenarioNames(["a"])).toBe("a");
+    expect(summarizeScenarioNames(["a", "b", "c"])).toBe("a ほか 2 本");
   });
 });

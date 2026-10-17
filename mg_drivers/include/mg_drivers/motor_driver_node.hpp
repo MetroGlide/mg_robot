@@ -19,11 +19,12 @@
 #include <string>
 
 // mg_drivers
+#include "mg_drivers/base/serial_driver_node.hpp"
 #include "mg_drivers/devices/motor_driver.hpp"
 
 namespace mg_drivers
 {
-class MotorDriverNode : public rclcpp::Node
+class MotorDriverNode : public SerialDriverNode
 {
 public:
   explicit MotorDriverNode(rclcpp::NodeOptions options);
@@ -36,6 +37,7 @@ private:
   void twist_sub_cb(const geometry_msgs::msg::Twist::SharedPtr msg);
 
   void emergency_stop_sub_cb(const std_msgs::msg::Bool::SharedPtr msg);
+  void produce_emergency_stop_diagnostics(diagnostic_updater::DiagnosticStatusWrapper & stat);
 
   std::shared_ptr<mg_drivers::MotorDriver> motor_driver_;
 
@@ -50,7 +52,7 @@ private:
   double wheel_pitch_;  // [m]
   double max_speed_;    // [m/s]
 
-  bool emergency_stop_;
+  bool emergency_stop_ = false;
 
   SpeedParameter create_speed_parameter(const geometry_msgs::msg::Twist::SharedPtr msg);
   MotorDriverResponse send_speed_command(const SpeedParameter param);

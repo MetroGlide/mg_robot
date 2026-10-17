@@ -9,6 +9,7 @@ mode="slam"
 output_arg=""
 topics_file=""
 use_sim_time=false
+record_monitoring=true
 
 show_help() {
     cat << EOF
@@ -19,12 +20,13 @@ show_help() {
 オプション:
   -m <mode>     記録モードを選択します (デフォルト: slam)
                 slam | a : 軽量版 (SLAMGNSS2D & TF のみ、約0.28GB/30分)
-                all  | c : 全センサ版 (SLAMGNSS2D & TF & RealSense RGB/Depth/IMU、約39GB/30分)
+                all  | c : 全センサ版 (SLAMGNSS2D & TF & RealSense RGB/Depth/IMU、約17GB/30分)
   -o <output>   出力ファイル/ディレクトリ名
                 相対パス指定時は ROSBAG_PATH 配下に保存されます。
                 未指定時は ROSBAG_PATH 配下に record_<mode>_YYYYMMDD_HHMMSS が生成されます。
   -f <file>     カスタムのトピックリストファイルを指定
   -s            シミュレーション時間 (--use-sim-time) を使用
+  -n            状態監視とイベントのトピック (mg_utils/params/record_topics_monitoring.txt) を加えない
   -h            このヘルプを表示
 
 環境変数:
@@ -34,7 +36,7 @@ EOF
 }
 
 # コマンドライン引数の解析
-while getopts ":m:o:f:sh" opt; do
+while getopts ":m:o:f:snh" opt; do
   case $opt in
     m)
       mode="$OPTARG"
@@ -47,6 +49,9 @@ while getopts ":m:o:f:sh" opt; do
       ;;
     s)
       use_sim_time=true
+      ;;
+    n)
+      record_monitoring=false
       ;;
     h)
       show_help
@@ -112,16 +117,40 @@ else
     output_path="${base_dir}/record_${mode}_${timestamp}"
 fi
 
-# トピックリストの読み込み (空行・コメント行を除外)
+# トピックリストの読み込み (空行・コメント行を除外。既に入っているトピックは重複させない)
 topics=()
-while IFS= read -r line || [ -n "$line" ]; do
-    # 行前後の空白を除去
-    trimmed=$(echo "$line" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
-    # 空行または # から始まる行をスキップ
-    if [ -n "$trimmed" ] && [[ ! "$trimmed" =~ ^# ]]; then
-        topics+=("$trimmed")
+read_topics() {
+    local file="$1" line trimmed topic duplicate
+    while IFS= read -r line || [ -n "$line" ]; do
+        # 行前後の空白を除去
+        trimmed=$(echo "$line" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+        # 空行または # から始まる行をスキップ
+        if [ -z "$trimmed" ] || [[ "$trimmed" =~ ^# ]]; then
+            continue
+        fi
+        duplicate=false
+        for topic in "${topics[@]}"; do
+            if [ "$topic" = "$trimmed" ]; then
+                duplicate=true
+                break
+            fi
+        done
+        if [ "$duplicate" = false ]; then
+            topics+=("$trimmed")
+        fi
+    done < "$file"
+}
+read_topics "$topics_file"
+
+# 状態監視とイベントのトピック (診断・/rosout・/events・状態)。どのモードにも加える
+monitoring_file="${SCRIPT_DIR}/../../mg_utils/params/record_topics_monitoring.txt"
+if [ "$record_monitoring" = true ]; then
+    if [ ! -f "$monitoring_file" ]; then
+        echo "エラー: 監視用のトピックファイルが見つかりません: $monitoring_file" >&2
+        exit 1
     fi
-done < "$topics_file"
+    read_topics "$monitoring_file"
+fi
 
 if [ ${#topics[@]} -eq 0 ]; then
     echo "エラー: 記録対象のトピックが存在しません: $topics_file" >&2

@@ -94,6 +94,10 @@ bt_navigator:
       - nav2_planner_selector_bt_node
       - nav2_controller_selector_bt_node
       - nav2_goal_checker_selector_bt_node
+      # mg_navigation の BT プラグイン (mg_waypoint_navigation の BT で使う)
+      - mg_is_path_clear_condition_bt_node
+      - mg_is_path_blocked_condition_bt_node
+      - mg_commit_path_action_bt_node
 
 # behavior_server: BackUp/Spin/Wait/DriveOnHeading等のリカバリー動作を実行するノード。
 # cmd_velはcollision_monitorを経由せず直接publishするため、後退・回転中の衝突回避は
@@ -126,9 +130,13 @@ behavior_server:
     # バックアップ/スピン実行中に衝突予測のためシミュレートする時間。値が短すぎると
     # 急な後方障害物の検知が間に合わない可能性があるため要検証。
     simulate_ahead_time: 2.0
-    max_rotational_vel: 1.0
+    # Spin の旋回の速さ [rad/s] (全 Spin に共通)。リカバリーの首振りは障害物の近くで回るので、
+    # ゆっくり回る値にする。min_rotational_vel 以上にする (test_nav2_params_consistency.py が検査する)
+    max_rotational_vel: 0.5
     min_rotational_vel: 0.4
-    rotational_acc_lim: 3.2
+    # 旋回の加速度 [rad/s²]。RPP の max_angular_accel と velocity_smoother の旋回の max_accel / max_decel も同じ値にする。
+    # アンカー (&名前 / *名前) はスカラー専用。リストや辞書に置くと Nav2 が起動しない (test_nav2_params_consistency.py が検査する)
+    rotational_acc_lim: &w_acc 1.5
 
 controller_server:
   ros__parameters:
@@ -139,8 +147,9 @@ controller_server:
     min_theta_velocity_threshold: 0.001
     # controller が有効な速度を出せない状態 (前方に障害物、進捗なし等) を許容する時間 [s]。
     # この間は速度 0 を出して待ち、超えると FollowPath が失敗して BT のリカバリー (Wait/BackUp) に入る。
-    # 一時的な障害物なら消えるまで待つだけで再開できるよう、progress_checker の
-    # movement_time_allowance と同じ 5.0 にしている (0.5 だと出現から 1 秒足らずでリカバリーに入る)。
+    # 障害物の前で待つ時間はこの値で決まる。一時的な障害物なら消えるまで待つだけで再開できる長さにする
+    # (0.5 だと出現から 1 秒足らずでリカバリーに入る)。progress_checker の movement_time_allowance は
+    # これより長くする。
     # -1 (無期限) にはしないこと: progress_checker の「進捗なし」の失敗まで無視され、詰まっても
     # FollowPath が失敗せず、リカバリーにも入れず永久に停止する (Gazebo で確認)。
     failure_tolerance: 5.0
@@ -152,12 +161,14 @@ controller_server:
 
     # Progress checker parameters
     # movement_time_allowance: 「一定時間進まなければ詰まりとみなしFollowPathを失敗させる」タイムアウト。
-    # 衝突検知後の待機時間としても機能する（初期値は旧collision_behavior_nodeのstop_wait_timeを踏襲）。
-    # 現地/Gazebo検証で最終値を確定すること。
+    # 停止した地点から数え始め、障害物が去っても required_movement_radius 進むまでは止まらない。
+    # failure_tolerance と同じだと、待っている途中で障害物が去っても、再開して進みきる前に失敗する。
+    # そのため failure_tolerance に、再開して required_movement_radius 進む時間 (collision_monitor の
+    # 減速を含む) を足した値より長くする。待つ時間は failure_tolerance だけで決まる。
     progress_checker:
       plugin: "nav2_controller::SimpleProgressChecker"
       required_movement_radius: 0.5
-      movement_time_allowance: 5.0
+      movement_time_allowance: 8.0
 
     general_goal_checker:
       stateful: True
@@ -166,27 +177,39 @@ controller_server:
       yaw_goal_tolerance: 0.25
 
     # RPP parameters
+    # 各パラメータの意味と調整の考え方は ../doc/rpp_tuning.md
     FollowPath:
       plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
-      desired_linear_vel: 1.0
-      lookahead_dist: 1.6
-      min_lookahead_dist: 1.3
-      max_lookahead_dist: 1.9
-      lookahead_time: 1.5
+      # 巡航速度 [m/s]。velocity_smoother の max_velocity (x) も同じ値にする
+      desired_linear_vel: &v_max 0.6
+      # 先読み距離は「現在速度 × lookahead_time」を min〜max に収めた値 (use_velocity_scaled_lookahead_dist)。
+      # 巡航速度 × lookahead_time が min と max の間に入るようにする。min に張り付くと速度連動が効かない
+      # (test_nav2_params_consistency.py が検査する)。lookahead_dist は速度連動を使う間は参照されないので置かない
+      lookahead_time: 1.6
+      min_lookahead_dist: 0.8
+      max_lookahead_dist: 1.8
       rotate_to_heading_angular_vel: 0.8
+      max_angular_accel: *w_acc
       transform_tolerance: 0.1
       use_velocity_scaled_lookahead_dist: true
       min_approach_linear_velocity: 0.05
       approach_velocity_scaling_dist: 1.0
       use_collision_detection: true
-      max_allowed_time_to_collision_up_to_carrot: 1.0
+      # 経路上の carrot までの衝突の確認の時間。collision_monitor の PolygonApproach の time_before_collision より長くして、
+      # RPP が先に減速・停止する (collision_monitor は通常の走行では発動しない後ろ盾)
+      max_allowed_time_to_collision_up_to_carrot: 1.5
       use_regulated_linear_velocity_scaling: true
       use_cost_regulated_linear_velocity_scaling: true
       regulated_linear_scaling_min_radius: 0.9
       regulated_linear_scaling_min_speed: 0.25
-      cost_scaling_dist: 0.3
+      # コストによる減速は、ロボットの原点から障害物までの距離 (原点のセルのコストから逆算) が
+      # cost_scaling_dist 未満のときに効く。距離はフットプリントの内接半径以上でしか求まらないので、
+      # cost_scaling_dist は内接半径 (footprint_padding を含む) より大きくする。以下だと減速が一切効かない
+      cost_scaling_dist: 0.6
       cost_scaling_gain: 1.0
-      inflation_cost_scaling_factor: 1.0
+      # コストから距離を逆算するための値。local_costmap の inflation_layer.cost_scaling_factor と同じ値にする
+      # (アンカーで共有する。アンカーはスカラー専用)。違うと距離を誤って求め、コストによる減速がずれる
+      inflation_cost_scaling_factor: &inflation_cost_scaling_factor 3.0
 
 local_costmap:
   local_costmap:
@@ -201,17 +224,16 @@ local_costmap:
       height: 8
       resolution: 0.05
 
-      footprint: "[[0.4, 0.3], [0.4, -0.3], [-0.2, -0.3], [-0.2, 0.3]]"
-      # 膨張レイヤーの内接半径は「フットプリントの原点から最も近い辺までの距離」で決まる。
-      # このフットプリントは原点が後端寄り (後端 0.2m) なので、半幅 (0.3m) より小さい 0.2m になり、
-      # 幅 0.5m 未満の隙間 (例: 間隔 0.8m のコーン) が致死扱いにならず、プランナ (NavFn) が
-      # 通れると誤認してその隙間へ経路を引く。RPP は実フットプリントで衝突と判定して進めず、
-      # 詰まって失敗する。0.1 の余白で内接半径を 0.3m (= 半幅) にして、通れない隙間を塞ぐ。
-      footprint_padding: 0.1
+      # footprint と footprint_padding は global_costmap と同じ値 (アンカーで共有する。スカラー専用)
+      # 前側 (半幅 0.25m) を後側 (半幅 0.3m) より狭くした台形。原点は後端寄り (後端 0.2m)。
+      # 膨張レイヤーの内接半径は「原点から最も近い辺までの距離 + footprint_padding」で、後端までの
+      # 0.2m で決まり半幅より小さい。点ロボットとして計画する NavFn に戻す場合は、車体より狭い隙間
+      # (例: 間隔 0.8m のコーン) へ経路を引くので、内接半径を半幅に合わせる padding (0.1) を検討する。
+      footprint: &robot_footprint "[[0.4, 0.25], [0.4, -0.25], [-0.2, -0.3], [-0.2, 0.3]]"
+      footprint_padding: &footprint_padding 0.01
 
       plugins: [
           "top_obstacle_layer",
-          # "obstacle_layer",
           # "depth_voxel_layer",
           "obstacle_stvl_layer",
           # "denoise_layer",
@@ -225,30 +247,26 @@ local_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         # 膨張の計算量は半径内のセル数に比例するので、半径を小さくすると負荷が減る。
-        # 半径はフットプリントの外接半径 (padding 込みで約 0.64m) 以上にすること (Smac の衝突判定の高速化の条件)。
+        # 半径はフットプリントの外接半径 (padding 込みで約 0.48m) 以上にすること (Smac の衝突判定の高速化の条件)。
         # NavFn に戻す場合 (global_planner:=navfn) は、従来の inflation_radius: 2.5 / cost_scaling_factor: 1.0 も検討する。
         inflation_radius: 0.8
-        cost_scaling_factor: 3.0
-      obstacle_layer:
-        plugin: "nav2_costmap_2d::ObstacleLayer"
-        enabled: True
-        observation_sources: scan
-        scan:
-          topic: /scan_front_lidar
-          max_obstacle_height: 2.0
-          clearing: True
-          marking: True
-          data_type: "LaserScan"
+        # RPP の inflation_cost_scaling_factor と同じ値 (アンカーで共有)
+        cost_scaling_factor: *inflation_cost_scaling_factor
       top_obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: True
         observation_sources: scan
         scan:
-          topic: /scan_top_lidar
+          # 近距離のノイズと自車の点を落とした scan (mg_drivers の laser_filters)
+          topic: /scan_filtered/scan_top_lidar
           max_obstacle_height: 2.0
           clearing: True
           marking: True
           data_type: "LaserScan"
+          raytrace_max_range: 4.0
+          raytrace_min_range: 0.0
+          obstacle_max_range: 3.5
+          obstacle_min_range: 0.0
       depth_voxel_layer:
         plugin: "nav2_costmap_2d::VoxelLayer"
         enabled: True
@@ -316,13 +334,8 @@ global_costmap:
       robot_base_frame: base_footprint
       use_sim_time: False
 
-      footprint: "[[0.4, 0.3], [0.4, -0.3], [-0.2, -0.3], [-0.2, 0.3]]"
-      # 膨張レイヤーの内接半径は「フットプリントの原点から最も近い辺までの距離」で決まる。
-      # このフットプリントは原点が後端寄り (後端 0.2m) なので、半幅 (0.3m) より小さい 0.2m になり、
-      # 幅 0.5m 未満の隙間 (例: 間隔 0.8m のコーン) が致死扱いにならず、プランナ (NavFn) が
-      # 通れると誤認してその隙間へ経路を引く。RPP は実フットプリントで衝突と判定して進めず、
-      # 詰まって失敗する。0.1 の余白で内接半径を 0.3m (= 半幅) にして、通れない隙間を塞ぐ。
-      footprint_padding: 0.1
+      footprint: *robot_footprint
+      footprint_padding: *footprint_padding
 
       resolution: 0.05
       track_unknown_space: true
@@ -330,7 +343,6 @@ global_costmap:
       plugins: [
           "static_layer",
           "top_obstacle_layer",
-          # "obstacle_layer",
           "obstacle_stvl_layer",
           # "denoise_layer",
           "inflation_layer",
@@ -343,7 +355,7 @@ global_costmap:
         enabled: True
         observation_sources: scan
         scan:
-          topic: /scan_top_lidar
+          topic: /scan_filtered/scan_top_lidar
           max_obstacle_height: 2.0
           clearing: True
           marking: True
@@ -351,21 +363,6 @@ global_costmap:
           raytrace_max_range: 6.0
           raytrace_min_range: 0.0
           obstacle_max_range: 5.5
-          obstacle_min_range: 0.0
-
-      obstacle_layer:
-        plugin: "nav2_costmap_2d::ObstacleLayer"
-        enabled: True
-        observation_sources: scan
-        scan:
-          topic: /scan_front_lidar
-          max_obstacle_height: 2.0
-          clearing: True
-          marking: True
-          data_type: "LaserScan"
-          raytrace_max_range: 3.0
-          raytrace_min_range: 0.0
-          obstacle_max_range: 2.5
           obstacle_min_range: 0.0
 
       depth_voxel_layer:
@@ -477,42 +474,17 @@ costmap_filter_info_server:
     base: 100.0
     multiplier: -0.6
 
-collision_detector:
-  ros__parameters:
-    use_sim_time: False
-    base_frame_id: "base_footprint"
-    odom_frame_id: "odom"
-    state_topic: "collision_detector_state"
-    transform_tolerance: 0.5
-    source_timeout: 3.0
-    base_shift_correction: True
-    polygons: ["PolygonFront", "PolygonRear"]
-
-    PolygonFront:
-      type: "polygon"
-      points: [0.6, 0.3, 0.6, -0.3, 0.3, -0.3, 0.3, 0.3]
-      action_type: "none"
-      min_points: 4
-      visualize: True
-      polygon_pub_topic: "~/polygon_front"
-    PolygonRear:
-      type: "polygon"
-      points: [-0.2, 0.3, -0.2, -0.3, -0.4, -0.3, -0.4, 0.3]
-      action_type: "none"
-      min_points: 4
-      visualize: True
-      polygon_pub_topic: "~/polygon_rear"
-
-    observation_sources: ["scan_top", "scan_front"]
-    scan_top:
-      type: "scan"
-      topic: "scan_top_lidar"
-      enabled: True
-    scan_front:
-      type: "scan"
-      topic: "scan_front_lidar"
-      enabled: False
-
+# collision_monitor: RPP (コストマップと経路に基づく衝突の確認) の後ろ盾になる、最後の安全層。
+# 生の scan (前処理済み) だけで判定するので、コストマップの更新の遅れ (5 Hz) に依存しない。
+# 障害物を主に避けるのは RPP とコストマップなので、通常の走行では発動しないように作る:
+#   Approach の時間 (1.0 秒) は RPP の衝突の確認 (max_allowed_time_to_collision_up_to_carrot 1.5 秒) より短くする。
+#   Stop は制動距離ぶんだけ (velocity_smoother の max_decel から決める)。
+# polygon の形は、LiDAR の前処理 (mg_drivers の top_laser_filter.yaml) が自車の点を消す箱
+# (x -0.25〜0.45, y ±0.35 = footprint + 5 cm) の外に置く。箱の中の点は消えているので、
+# polygon が箱の中に入ると、そこでは何も検出できない。
+# 値の関係は mg_navigation の test_nav2_params_consistency.py が検査する。
+# 3 つの polygon はすべて無効にしている (enabled: False)。有効にしたときに上記の考え方で働く。
+# scan の途絶による停止 (scan_top.stop_on_timeout) は polygon の enabled によらず効く。
 collision_monitor:
   ros__parameters:
     use_sim_time: False
@@ -522,21 +494,21 @@ collision_monitor:
     cmd_vel_out_topic: "cmd_vel_collision" # velocity_smoother へ渡す
     state_topic: "collision_monitor_state" # TUI/診断での観測用
     transform_tolerance: 0.5
-    source_timeout: 3.0
+    # LiDAR は 10 Hz (rosbag の実測で最大の間隔 0.2 秒)。それを十分に超える時間だけ待つ
+    source_timeout: 1.0
     base_shift_correction: True
     # 順序重要: STOPを先に評価させる（polygons.cpp のロジック上、STOPが決まった時点で
     # それ以降のpolygonはスキップされるため、より優先度の高いSTOPを先に置く）
     polygons: ["PolygonStop", "PolygonSlowdown", "PolygonApproach"]
-    # polygons: []
 
-    # 即時の緊急停止（速度ゼロ）。現地チューニングで enabled を false にする、
-    # あるいは approach のみで十分と判断できればブロックごと削除してよい。
+    # 即時の緊急停止（速度ゼロ）。箱の前端 (x 0.45) から 0.15 m。
+    # 制動距離 v²/(2·|max_decel|) = 0.6²/(2·2.0) = 0.09 m に、scan と制御の遅れ 0.1 秒ぶん (0.06 m) を足した値。
     # enabled は動的パラメータのため ros2 param set での即時切替も可能。
     PolygonStop:
       type: "polygon"
-      points: [0.6, 0.3, 0.6, -0.3, 0.3, -0.3, 0.3, 0.3]
+      points: [0.6, 0.35, 0.6, -0.35, 0.45, -0.35, 0.45, 0.35]
       action_type: "stop"
-      min_points: 4
+      min_points: 5
       enabled: False
       visualize: True
       polygon_pub_topic: "~/polygon_stop"
@@ -550,23 +522,21 @@ collision_monitor:
       type: "polygon"
       points: [1.4, 0.8, 1.4, -0.8, -0.3, -0.8, -0.3, 0.8]
       action_type: "slowdown"
-      slowdown_ratio: 0.3
+      slowdown_ratio: 0.5
       min_points: 4
       enabled: False
       visualize: True
       polygon_pub_topic: "~/polygon_slowdown"
 
-    # points を指定せず footprint_topic を使う: 現在の速度 (旋回を含む) でフットプリント全体を前方へ
-    # シミュレートし、time_before_collision 以内に接触するなら減速する。旋回中の側面接触も対象になる。
-    # 従来の固定の前方の箱に戻す場合は、footprint_topic を消して次の points を有効にする:
-    #   points: [0.6, 0.3, 0.6, -0.3, 0.3, -0.3, 0.3, 0.3]
-    # 実機の注意: footprint は padding (0.1m) を含むので、LiDAR が車体の一部を検出する配置だと、
-    # 常に接触と判定して止まる。実機では、scan に車体の点が入っていないか確認すること。
+    # 箱と同じ大きさの形 (footprint + 5 cm) を、現在の速度 (旋回を含む) で前方へシミュレートし、
+    # time_before_collision 以内に接触するなら減速する。旋回中の側面の接触も対象になる。
+    # footprint_topic (local_costmap/published_footprint) は使わない: 形が footprint_padding で変わり、
+    # 自車除去の箱とずれる。箱より大きいと、箱の外の自車の点や狭い隙間で止まってしまう。
     PolygonApproach:
       type: "polygon"
-      footprint_topic: "local_costmap/published_footprint"
+      points: [0.45, 0.35, 0.45, -0.35, -0.25, -0.35, -0.25, 0.35]
       action_type: "approach"
-      time_before_collision: 2.0
+      time_before_collision: 1.0
       simulation_time_step: 0.1
       min_points: 4
       visualize: True
@@ -576,28 +546,35 @@ collision_monitor:
     observation_sources: ["scan_top"]
     scan_top:
       type: "scan"
-      topic: "scan_top_lidar"
+      # costmap と同じ前処理済みの scan (近距離のノイズと自車の点を落としたもの)
+      topic: "scan_filtered/scan_top_lidar"
       enabled: True
+      # True: このソースのデータが source_timeout 以上途絶えた (まだ届いていない場合を含む) とき、
+      # ポリゴンの enabled によらず速度 0 にする (state の polygon_name は "source_timeout:scan_top")。
+      # LiDAR や前処理が止まったまま走り続けるのを防ぐ。
+      # 動的パラメータ: ros2 param set /collision_monitor scan_top.stop_on_timeout false
+      stop_on_timeout: True
 
 # https://docs.nav2.org/configuration/packages/configuring-velocity-smoother.html
-# collision_monitor/PolygonStopによる急停止からの復帰時に速度が滑らかに立ち上がるよう、
-# 加減速リミットを明示的に設定する（以前はパッケージデフォルト依存だった）。
-# 値はNav2標準デフォルト相当。Gazebo/実機で、急停止からの復帰が唐突にならないか、
-# かつ停止までの制動距離が安全か、両面を検証したうえで最終確定すること。
-# NOTE: 以前コメントアウトされていたmax_velocity: [0.65, 0.0, 3.0]は、FollowPathの
-# desired_linear_vel: 1.0と整合しない（0.65に頭打ちされてしまう）ため、そのまま有効化せず
-# 意図する巡航速度に合わせて別途決定すること。
+# 速度指令の最後の段 (cmd_vel_collision -> cmd_vel)。最終的な速度の上限と加減速をここで決める。
+# 上限は FollowPath の desired_linear_vel (アンカー &v_max) と同じ値にする。モータドライバ側にも
+# 上限があるので (mg_drivers の motor_driver.max_speed)、そちらは v_max 以上にする。
+# 加速は穏やかに、減速は大きめにする (collision_monitor の PolygonStop の奥行きは、この max_decel から決めている)。
+# 旋回の加速度は、behavior_server の rotational_acc_lim と RPP の max_angular_accel (アンカー &w_acc) と同じ値にする。
+# OPEN_LOOP なので、実機のモータが max_decel どおりに減速できるかは別に確認が要る。
 velocity_smoother:
   ros__parameters:
     use_sim_time: False
     smoothing_frequency: 20.0
-    scale_velocities: false
+    # 加速度の制限で並進と旋回の比が崩れて曲率がずれるのを防ぐ
+    scale_velocities: true
     # feedback: OPEN_LOOP時はOdomSmoother(odom_topic/odom_duration)は生成・参照されない。
     # 実測速度から滑らかに追従させたい場合はCLOSED_LOOPに変更しodom_topic/odom_durationを
     # 追加すること（挙動が変わるため今回は変更しない）。
     feedback: "OPEN_LOOP"
-    max_accel: [2.5, 0.0, 3.2]
-    max_decel: [-2.5, 0.0, -3.2]
+    max_velocity: [*v_max, 0.0, 1.2] # x, y, theta
+    min_velocity: [-0.3, 0.0, -1.2]
+    max_accel: [1.0, 0.0, *w_acc]
+    max_decel: [-2.0, 0.0, -1.5]
     deadband_velocity: [0.0, 0.0, 0.0]
     velocity_timeout: 1.0
-    # max_velocity: [0.65, 0.0, 3.0] # x, y, theta. default: [0.5, 0.0, 2.0]

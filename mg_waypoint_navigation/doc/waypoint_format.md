@@ -42,7 +42,7 @@ waypoints:
 
 ```yaml
 - type: service
-  service: /front_lidar_publish_controller_node/change_publish_state
+  service: /amcl_gate_arbiter/waypoint/change_publish_state
   srv_module: std_srvs.srv
   srv_class: SetBool
   request:
@@ -102,9 +102,9 @@ waypoints:
   countdown_ms: 3000
 ```
 
-| フィールド     | 型  | デフォルト | 説明          |
-| -------------- | --- | ---------- | ------------- |
-| `countdown_ms` | int | 3000       | 待機時間 [ms] |
+| フィールド | 型 | デフォルト | 説明 |
+| :--- | :--- | :--- | :--- |
+| `countdown_ms` | int | 3000 | 待機時間 [ms] |
 
 ### type: wait_trigger — 外部トリガー待ち
 
@@ -124,9 +124,9 @@ waypoints:
   mode: queue_wait
 ```
 
-| フィールド | 型     | デフォルト | 説明                                                             |
-| ---------- | ------ | ---------- | ---------------------------------------------------------------- |
-| `mode`     | string | `normal`   | `normal` / `queue_wait`。以降のゴールで使う BT と global_costmap の障害物レイヤーを切り替える |
+| フィールド | 型 | デフォルト | 説明 |
+| :--- | :--- | :--- | :--- |
+| `mode` | string | `normal` | `normal` / `queue_wait`。以降のゴールで使う BT と global_costmap の障害物レイヤーを切り替える |
 
 ---
 
@@ -154,7 +154,7 @@ waypoints:
       is_through_point: false
     on_reached_actions:
       - type: service
-        service: /front_lidar_publish_controller_node/change_publish_state
+        service: /amcl_gate_arbiter/waypoint/change_publish_state
         srv_module: std_srvs.srv
         srv_class: SetBool
         request: {data: false}
@@ -165,7 +165,7 @@ waypoints:
         countdown_ms: 3000
       - type: amcl_reset
       - type: service
-        service: /front_lidar_publish_controller_node/change_publish_state
+        service: /amcl_gate_arbiter/waypoint/change_publish_state
         srv_module: std_srvs.srv
         srv_class: SetBool
         request: {data: true}
@@ -250,8 +250,6 @@ ros2 run mg_waypoint_navigation migrate_waypoints.py input.yaml output_v2.yaml
 
 | v1 文字列                     | v2 type       | 備考                                                                   |
 | ----------------------------- | ------------- | ---------------------------------------------------------------------- |
-| `front_lidar_off`             | `service`     | `/front_lidar_publish_controller_node/change_publish_state` data=false |
-| `front_lidar_on`              | `service`     | 同 data=true                                                           |
 | `amcl_on`                     | `service`     | `/amcl_gate_arbiter/waypoint/change_publish_state` data=true (AMCL の出力を EKF に入れる) |
 | `amcl_off`                    | `service`     | `/amcl_gate_arbiter/waypoint/change_publish_state` data=false        |
 | `gps_on`                      | `service`     | `/slam_gnss_nav_bridge/change_publish_state` data=true (`/odom/gps` の配信) |

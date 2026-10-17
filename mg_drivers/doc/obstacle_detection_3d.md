@@ -13,7 +13,7 @@ RealSense D435i の点群 (`points`) を `base_link` に変換し、2.5D グリ�
 
 - 出力は、検出ゼロのフレームでも必ず publish する (Nav2 のコストマップがクリアされるように)。
 - クラスタの点数に上限はない (大きな障害物も欠落しない)。
-- `use_sensor_data_qos` (既定 `false`) で、入出力の QoS を `SensorDataQoS` に切り替える。`false` のときは、depth 10 の reliable。
+- `use_sensor_data_qos` で、入出力の QoS を `SensorDataQoS` に切り替える。`false` のときは、reliable の QoS。
 
 ## パイプライン
 
@@ -45,7 +45,7 @@ RealSense D435i の点群 (`points`) を `base_link` に変換し、2.5D グリ�
 
 ## 処理速度の確認 (統計ログ)
 
-`publish_stats: true` (既定) のとき、`stats_period` 秒ごとに次のログが出る。
+`publish_stats: true` のとき、`stats_period` 秒ごとに次のログが出る。
 
 ```
 stats [5.9 fps, 6 frames] time avg/max [ms]: tf 0.02/0.02 accumulate 0.76/0.89 judge 0.00/0.00
@@ -65,11 +65,11 @@ stats [5.9 fps, 6 frames] time avg/max [ms]: tf 0.02/0.02 accumulate 0.76/0.89 j
 ros2 launch mg_drivers obstacle_detection_3d.launch.py
 ```
 
-| 引数 | 既定値 | 内容 |
-| :--- | :--- | :--- |
-| `use_sim_time` | `false` | シミュレーション時刻を使うか |
-| `use_sensor_data_qos` | `false` | QoS の切り替え |
-| `param_file` | `params/obstacle_detection.yaml` | パラメータの YAML |
+| 引数 | 内容 |
+| :--- | :--- |
+| `use_sim_time` | シミュレーション時刻を使うか |
+| `use_sensor_data_qos` | QoS の切り替え |
+| `param_file` | パラメータの YAML |
 
 ## rosbag でのリプレイ確認
 
@@ -100,12 +100,12 @@ make obstacle-detection-replay
 `make obstacle-detection-replay` は、`ros2 launch mg_drivers obstacle_detection_replay.launch.py` を実行する。
 引数は `OPTS` で渡す (例: `make obstacle-detection-replay OPTS="rviz:=false use_color:=true"`)。
 
-| 引数 | 既定値 | 内容 |
-| :--- | :--- | :--- |
-| `use_color` | `false` | カラー付きの点群を復元するか。RGB は RViz2 の Image 表示で確認できるので、既定は無効 |
-| `param_file` | `params/obstacle_detection.yaml` | 障害物検出のパラメータ YAML。調整用の別ファイルを指定して比べられる |
-| `rviz` | `true` | RViz2 を起動するか |
-| `rviz_config` | `rviz/obstacle_detection_replay.rviz` | RViz2 の設定ファイル |
+| 引数 | 内容 |
+| :--- | :--- |
+| `use_color` | カラー付きの点群を復元するか。RGB は RViz2 の Image 表示で確認できる |
+| `param_file` | 障害物検出のパラメータ YAML。調整用の別ファイルを指定して比べられる |
+| `rviz` | RViz2 を起動するか |
+| `rviz_config` | RViz2 の設定ファイル |
 
 RViz2 (`rviz/obstacle_detection_replay.rviz`、Fixed Frame は `base_link`) には、次を表示する。
 

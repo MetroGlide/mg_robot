@@ -43,7 +43,7 @@ robot:
 
 nav2:
   navigate_to_pose_action: navigate_to_pose
-  initialpose_topic: /initialpose
+  initialpose_topics: [/initialpose]   # すべてに同じ初期位置を出す。融合側 (EKF) の set_pose なども加える
   initialpose_cov_xy: 0.25
   initialpose_cov_yaw: 0.0685
   clear_costmap_services:         # コストマップのクリアに呼ぶサービス

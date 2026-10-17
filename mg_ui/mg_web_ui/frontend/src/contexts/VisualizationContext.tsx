@@ -15,13 +15,11 @@ export type LayerKey =
   | "globalCostmap"
   | "localCostmap"
   | "lidarTop"
-  | "lidarFront"
   | "robotPose"
   | "particleCloud"
   | "planPath"
   | "actualPath"
   | "waypointMarkers"
-  | "collisionPolygons"
   | "pointCloud"
   | "colorImage"
   | "depthImage";
@@ -42,13 +40,11 @@ const DEFAULT_LAYERS: Record<LayerKey, boolean> = {
   globalCostmap: false,
   localCostmap: false,
   lidarTop: true,
-  lidarFront: true,
   robotPose: true,
   particleCloud: false,
   planPath: true,
   actualPath: true,
   waypointMarkers: true,
-  collisionPolygons: false,
   pointCloud: false,
   colorImage: false,
   depthImage: false,
@@ -59,7 +55,7 @@ const DEFAULT_OVERLAYS: Record<OverlayKey, boolean> = {
   velocityGauge: true,
   systemMetrics: true,
   gpsStatus: true,
-  gpsMap: true,
+  gpsMap: false,
 };
 
 interface VisualizationContextType {
@@ -111,7 +107,18 @@ export function VisualizationProvider({ children }: { children: ReactNode }) {
         | undefined;
       if (!v) return;
       if (typeof v.enabled === "boolean") setEnabledState(v.enabled);
-      if (v.layers) setLayers({ ...DEFAULT_LAYERS, ...v.layers });
+      if (v.layers) {
+        // 廃止したレイヤーの設定が残っていても、状態に持ち込まない
+        const saved = v.layers;
+        setLayers(
+          Object.fromEntries(
+            (Object.keys(DEFAULT_LAYERS) as LayerKey[]).map((key) => [
+              key,
+              typeof saved[key] === "boolean" ? saved[key] : DEFAULT_LAYERS[key],
+            ]),
+          ) as Record<LayerKey, boolean>,
+        );
+      }
       if (v.overlays) setOverlays({ ...DEFAULT_OVERLAYS, ...v.overlays });
       if (
         v.gpsMapSize === "default" ||

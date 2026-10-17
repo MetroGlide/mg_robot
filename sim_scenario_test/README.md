@@ -74,12 +74,12 @@ ros2 run sim_scenario_test scenario_cli.py run-all scenarios/ --tags smoke  # �
 |---|---|
 | `--profile NAME` | シナリオの `profile:` を上書きする |
 | `--scenario-dir DIR` | ファイルの代わりに名前 (`<name>` → `<name>.yaml`) を渡したとき、DIR 配下 (再帰) から探す。複数指定可。ディレクトリを渡すと配下 (再帰。`data/` は除く) のシナリオを集める |
-| `--gui` | シミュレータの GUI を表示する (既定はヘッドレス) |
+| `--gui` | シミュレータの GUI を表示する |
 | `--attach` | 起動済みのシミュレータ・スタックに接続して実行する (起動は行わない) |
 | `--remote-stack URL` | ナビゲーションスタックを別のマシン (実機PCなど) に起動させ、シミュレータはローカルで起動する ([doc/remote_stack.md](doc/remote_stack.md))。`--attach` とは併用できない |
-| `--results-dir DIR` | 結果の保存先 (既定 `~/.ros/scenario_results/<日時>`) |
-| `--timeout SEC` | 1 本あたりの壁時計の上限 (既定 1800 秒)。超えると ERROR |
-| `--infra-retries N` | シミュレータの起動失敗など、シナリオの内容と無関係な ERROR (準備完了のタイムアウト、結果が出ない、sim 時計の停止) のとき、その走行を N 回まで再実行する (既定 1)。テスト内容による ERROR や FAILED は再実行しない。再実行の結果は `<シナリオ名>_retryN/` に保存 |
+| `--results-dir DIR` | 結果の保存先 |
+| `--timeout SEC` | 1 本あたりの壁時計の上限。超えると ERROR |
+| `--infra-retries N` | シミュレータの起動失敗など、シナリオの内容と無関係な ERROR (準備完了のタイムアウト、結果が出ない、sim 時計の停止) のとき、その走行を N 回まで再実行する。テスト内容による ERROR や FAILED は再実行しない。再実行の結果は `<シナリオ名>_retryN/` に保存 |
 | `--tags a,b` / `--exclude-tags a,b` / `--repeat N` | いずれかのタグを持つものに絞り込み / いずれかのタグを持つものを除外 / 各シナリオを N 回繰り返す |
 | `--seed N` | シナリオの seed を上書きする (繰り返しごとに +1) |
 
@@ -96,7 +96,7 @@ Web UI などから監視するためのものです。
 
 | キー | 内容 |
 |---|---|
-| `started_at` / `options` | 開始時刻、実行時のオプション (`attach`・`gui`・`remote_stack`・`repeat`・`tags` など) |
+| `started_at` / `options` | 開始時刻 (タイムゾーン付きの ISO 8601。各エントリの `started_at` も同じ)、実行時のオプション (`attach`・`gui`・`remote_stack`・`repeat`・`tags` など) |
 | `entries[]` | 実行予定の走行ごとに `name`・`file`・`result_dir` (`<results-dir>` からの相対パス)・`status` (`PENDING` → `RUNNING` → `PASSED` / `FAILED` / `ERROR`)・`message`・`elapsed_sec`・`attempt` (インフラ再試行の回数) |
 | `finished` / `exit_code` | 全体が終わったか、終了コード。途中で強制終了されると `finished` は `false` のまま残る |
 

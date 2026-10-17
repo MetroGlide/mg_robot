@@ -83,6 +83,13 @@ class EndpointCache:
         return future.result()
 
 
+class ActionFailed(Exception):
+    """アクションが失敗した。メッセージは action.failed のイベントに出る。
+
+    実行側 (ActionExecutor) は、失敗しても次のアクションへ進む。
+    """
+
+
 class BaseAction(abc.ABC):
     """on_reached_actions の各アクションが実装するインターフェース"""
 
@@ -102,7 +109,7 @@ class BaseAction(abc.ABC):
 
     @abc.abstractmethod
     def execute(self) -> None:
-        """アクションを実行する。同期的に完了すること。"""
+        """アクションを実行する。同期的に完了すること。失敗したら ActionFailed を投げる。"""
         ...
 
     def _call_service(
@@ -111,8 +118,12 @@ class BaseAction(abc.ABC):
         name: str,
         request: Any,
         timeout_sec: float = 5.0,
-    ) -> Optional[Any]:
-        return self._endpoints.call_service(srv_type, name, request, timeout_sec)
+    ) -> Any:
+        """サービスを呼ぶ。応答が得られなければ ActionFailed を投げる。"""
+        response = self._endpoints.call_service(srv_type, name, request, timeout_sec)
+        if response is None:
+            raise ActionFailed(f"service {name} did not respond")
+        return response
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(type={self._config.type})"

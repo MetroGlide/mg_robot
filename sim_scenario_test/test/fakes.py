@@ -31,6 +31,11 @@ class FakeBackend(SimulationBackend):
     def __init__(self, fail_spawn: bool = False):
         self.calls: List[tuple] = []
         self.fail_spawn = fail_spawn
+        # シミュレータ上の真の姿勢 (entity_pose が返す)
+        self.true_poses = {}
+
+    def entity_pose(self, name):
+        return self.true_poses.get(name)
 
     def is_ready(self) -> bool:
         return True

@@ -57,6 +57,7 @@ sequencer が `ERROR` になったら FAILED です。
 | 型 | パラメータ | 判定 |
 |---|---|---|
 | `collision_monitor_action` | `action` (`STOP` / `SLOWDOWN` / `APPROACH`), `expect`=occurs (`occurs`/`never`), `topic`=/collision_monitor_state | `nav2_msgs/CollisionMonitorState` (`nav2_pkg/nav2_msgs` の型。新しい collision monitor と一緒に取り込んだもの) で、collision_monitor がその action を発動した回数から判定 |
+| `navigation_activity` | `code` (`mg_msgs/NavigationActivity` の code。例 `paused` / `trigger_wait` / `action` / `recovery` / `obstacle_stop`), `expect`=occurs (`occurs`/`never`), `topic`=/waypoint_sequencer_node/activity | シーケンサの「いまの活動」がその code になった回数から判定。シーケンサ経由の走行 (`mg_sequencer`) でだけ出る (`nav2_goals` は対象外) |
 
 ## waypoint 形式 `mg`
 
@@ -73,6 +74,5 @@ sequencer が `ERROR` になったら FAILED です。
 
 ## 実機のセンサ故障の注入
 
-コアの `call_set_bool` で、`lidar_publish_controller_node` などの `~/change_publish_state` を呼べば、
-センサの配信停止・復旧を再現できます。ただしシミュレーションでは前方 LiDAR (`front_lidar_publish_controller_node`)
-が何も配信しないため、意味のあるシナリオにはなりません (確認済み)。
+コアの `call_set_bool` で、公開制御ノード (例: `amcl_publish_controller_node`) の `~/change_publish_state` を呼べば、
+配信の停止・復旧を再現できます。シミュレーションには LiDAR などセンサの公開制御ノードが無いので、センサ自体の故障は再現できません。

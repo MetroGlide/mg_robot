@@ -16,7 +16,12 @@ run:
       - pose: { x: 5.0, y: 2.0, yaw: 0.0 }
 
 monitors:
-  - max_speed: { limit: 1.2 }          # 目標速度 (desired_linear_vel) は 1.0 m/s
+  - max_speed: { limit: 1.0 }          # 巡航速度 (nav2_params.yaml のアンカー &v_max) より大きい上限
+  # nav2_goals はシーケンサを通らないゴールなので、外部のゴールの走行として出る
+  - navigation_activity: { code: external_goal }
+  # collision_monitor は RPP の後ろ盾なので、障害物のない通常の走行では停止まで発動しない。
+  # polygon を無効にしていても、scan の途絶による停止 (stop_on_timeout) は数えるので、判定は残す
+  - collision_monitor_action: { action: STOP, expect: never }
 
 expect:
   - reached_all

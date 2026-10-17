@@ -12,11 +12,10 @@ MG-01 のノードとデータの流れ、座標系 (TF)、センサの取り付
 │ (ホイール)      │─────►│ wheel_odometry_node│─ /odom/raw ─► wheel_odom_corrector ─ /odom ─┼─► EKF (ekf_global_node)
 ├────────────────┤       ├───────────────────┤                                            │      ▲ ▲ ▲
 │ RPLiDAR S2 (上) │─────►│ rplidar_node       │─ /scan_top_lidar ───────────► AMCL ─ /amcl_pose ┘ │ │
-│ RPLiDAR A1 (前) │─────►│ rplidar_node       │─ /scan_front_lidar ─► (障害物回避)                 │ │
 ├────────────────┤       ├───────────────────┤                                                   │ │
 │ u-blox GNSS     │─────►│ ublox_gps_node     │─ /navpvt ─► slam_gnss_nav_bridge ─ /odom/gps ─────┘ │
 ├────────────────┤       ├───────────────────┤                                                     │
-│ RealSense D435i │─────►│ realsense2_camera  │─ 点群 ─► depth_postprocess ─► obstacle_detection_3d  │
+│ RealSense D435i │─────►│ realsense2_camera  │─ 点群 ─► obstacle_detection_3d ──────────────────────│
 └────────────────┘       └───────────────────┘                                                     │
                                                                                                     ▼
  EKF ─► map→odom TF ─► Nav2 (planner / controller / bt_navigator) ─ /cmd_vel_nav ─► collision_monitor
@@ -38,7 +37,7 @@ mg_bringup/navigation/bringup_navigation.launch.py   (make navigation)
 ├─ mg_bringup/common/bringup_common.launch.py
 │   ├─ mg_drivers/bringup.launch.py                  センサ・前処理・補正ノード (実機のみ sensors)
 │   │   ├─ bringup_sensors      (実機のみ) wheel_odometry / rplidar / GNSS / RealSense
-│   │   ├─ bringup_postprocess  odom 補正・TF・scan の公開制御・点群の後処理・障害物検出
+│   │   ├─ bringup_postprocess  odom 補正・TF・LiDAR の前処理 (laser_filters)・点群の後処理・障害物検出
 │   │   ├─ bringup_common       PC のリソース配信
 │   │   └─ bringup_hardware     motor_driver_node (実機のみ)
 │   └─ mg_description/bringup.launch.py              robot_state_publisher
@@ -66,19 +65,18 @@ URDF (`mg_description/urdf/`) から抽出した固定リンクの構成。`map�
 
 ```
 map ─(EKF)─► odom ─(odometry_tf_broadcaster)─► base_footprint
-base_footprint ─► base_link (z=0.15)
-base_link ─► left_wheel_link  (y=+0.25, 半径 0.15)
-          ─► right_wheel_link (y=-0.25, 半径 0.15)
-          ─► caster_link      (x=-0.45, z=-0.1)
-          ─► gps_link         (0.26, -0.13, 0.33)
-          ─► top_frame_link   (0.23, 0, 0.45)
-                 ─► top_lrf_link (上 LiDAR。0, 0, 0.03。yaw=π)
-                 ─► livox_lidar_link (0, 0, 0.06)
-                 ─► camera_link_base (D435i。0.02, 0, -0.23。pitch=0.27)
+base_footprint ─► base_link
+base_link ─► left_wheel_link
+          ─► right_wheel_link
+          ─► caster_link
+          ─► gps_link
+          ─► top_frame_link
+                 ─► top_lrf_link (上 LiDAR)
+                 ─► livox_lidar_link
+                 ─► camera_link_base (D435i)
 ```
 
-- 車輪間隔は 0.5 m。
-- 前方 LiDAR (`front_lrf_link`) は URDF の定義がコメントアウトされている。ただし `/scan_front_lidar` は、Nav2 の設定・診断・シミュレータのブリッジから参照され続けている。
+取り付け位置・向き・車輪の寸法は [mg_description の URDF](../mg_description/README.md) が正。
 - Livox は URDF のリンクがあるだけで、ドライバは起動していない。
 
 ## センサとデバイス
@@ -87,7 +85,6 @@ base_link ─► left_wheel_link  (y=+0.25, 半径 0.15)
 | :--- | :--- | :--- | :--- |
 | ホイール (モータドライバ) | 自作 `motor_driver_node` / `wheel_odometry_node` | `/cmd_vel` (入力)、`/odom/raw` または `/odom` | `/dev/ttyRobot-motordriver` / `/dev/ttyRobot-odom` |
 | 上 LiDAR RPLiDAR S2 | `rplidar_ros` | `/scan_top_lidar` | `/dev/ttyRobot-toplidar` |
-| 前 LiDAR RPLiDAR A1M8 | `rplidar_ros` | `/scan_front_lidar_origin` → (公開制御) → `/scan_front_lidar` | `/dev/ttyRobot-frontlidar` |
 | GNSS u-blox | `ublox_gps_node` (UBX) または `nmea_navsat_driver` (NMEA) | `/gps/fix`、`/navpvt` | `/dev/ttyRobot-gps` |
 | RealSense D435i | `realsense2_camera` | `/camera/camera/depth/color/points` ほか | USB |
 

@@ -1,17 +1,25 @@
 version: "2.0"
 name: dynamic_persistent_recovery
 description: >
-  進路の正面 1.2m に幅 5m の壁が出現して居座る (迂回できない配置)。待機時間
-  (failure_tolerance 5 秒) を超えると FollowPath が失敗し、BT のリカバリー (BackUp) が動くこと、
-  壁の除去後にゴールへ到達できることを確認する。
-  障害物が人 (幅が狭い) だと、ロボットが経路を変えて迂回してしまいリカバリーが起きないため、壁にしている。
+  走行中のロボットの前後左右 1.2m に壁が出現して囲い込み、居座る (迂回できない配置)。待機時間
+  (failure_tolerance) を超えると FollowPath が失敗し、BT のリカバリーで引き直しがどれも通らないので、
+  後退と首振りまで進むこと、後退をくり返しても囲いの壁に当たらないこと、壁の除去後にゴールへ
+  到達できることを確認する。
+  壁は地図に載らず、コストマップにはセンサで見えた範囲しか載らないため、正面に長い壁を置くだけでは、
+  見えている端を回る経路が引けて迂回し、リカバリーが起きないことがある。囲い込めば全体が見え、計画は必ず失敗する。
 profile: mg01
 world: warehouse
 tags: [full, dynamic_obstacle, recovery, nav2_goals]
 
 obstacles:
-  wall:
-    model: { type: primitive, shape: box, size: { x: 0.3, y: 5.0, z: 1.5 }, static: true }
+  wall_front:
+    model: { type: primitive, shape: box, size: { x: 0.3, y: 3.0, z: 1.5 }, static: true }
+  wall_back:
+    model: { type: primitive, shape: box, size: { x: 0.3, y: 3.0, z: 1.5 }, static: true }
+  wall_left:
+    model: { type: primitive, shape: box, size: { x: 3.4, y: 0.3, z: 1.5 }, static: true }
+  wall_right:
+    model: { type: primitive, shape: box, size: { x: 3.4, y: 0.3, z: 1.5 }, static: true }
 
 setup:
   - respawn: { pose: { x: 0.0, y: 0.0, yaw: 0.0 }, settle_sec: 3.0 }
@@ -23,15 +31,31 @@ run:
       - pose: { x: 10.0, y: 6.0, yaw: 1.57 }
 
 timeline:
-  - name: wall_blocks_then_leaves
+  # 置いている間もロボットは少し進むので、左右の壁を長くして角で重ねる
+  - name: walls_enclose_then_leave
     when: { robot_travelled: { distance: 2.0 } }
     do:
-      - spawn: { obstacle: wall, pose: { frame: robot, x: 1.2, y: 0.0, z: 0.75 } }
+      - spawn: { obstacle: wall_front, pose: { frame: robot, x: 1.2, y: 0.0, z: 0.75 } }
+      - spawn: { obstacle: wall_left, pose: { frame: robot, x: 0.0, y: 1.2, z: 0.75 } }
+      - spawn: { obstacle: wall_right, pose: { frame: robot, x: 0.0, y: -1.2, z: 0.75 } }
+      - spawn: { obstacle: wall_back, pose: { frame: robot, x: -1.2, y: 0.0, z: 0.75 } }
       - delay: { sec: 25.0 }
-      - despawn: { obstacle: wall }
+      - despawn: { obstacle: wall_front }
+      - despawn: { obstacle: wall_left }
+      - despawn: { obstacle: wall_right }
+      - despawn: { obstacle: wall_back }
 
 monitors:
   - bt_node: { node: BackUp, status: RUNNING, expect: occurs }
+  - bt_node: { node: Spin, status: RUNNING, expect: occurs }
+  - navigation_activity: { code: recovery }
+  # 後退・首振りは collision_monitor を経由しない。behavior_server の衝突の確かめで、壁の手前で止まること。
+  # 地図にない壁に囲まれると自己位置推定が大きくずれるので、シミュレータ上の真の姿勢で測る
+  - obstacle_clearance:
+      obstacles: [wall_front, wall_back, wall_left, wall_right]
+      min_clearance: 0.0
+      require_within: 1.5
+      pose_source: sim
 
 expect:
   - reached_all

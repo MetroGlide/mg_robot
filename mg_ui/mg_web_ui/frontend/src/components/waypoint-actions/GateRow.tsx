@@ -10,7 +10,7 @@ const LABEL_CLASS: Record<GateLabel, string> = {
   ON: "bg-green-600",
   OFF: "bg-red-600",
   PENDING: "bg-yellow-600",
-  UNKNOWN: "bg-gray-600",
+  UNKNOWN: "bg-muted",
 };
 
 interface GateRowProps {
@@ -53,7 +53,7 @@ export default function GateRow({
           onClick={() => onSet(false)}
         />
         {view.detail && (
-          <span className="text-xs text-gray-400">{view.detail}</span>
+          <span className="text-xs text-muted">{view.detail}</span>
         )}
       </div>
       <ActionResultText result={result} />

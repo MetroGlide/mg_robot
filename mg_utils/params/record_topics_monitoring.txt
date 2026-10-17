@@ -1,0 +1,26 @@
+# 状態監視とイベントのトピック (doc/monitoring.md)。どの記録でも、これを加える。数十 KB/s 以下
+# - 生の /diagnostics を残せば、後から aggregator にかけ直して、集約を作り直せる
+# - /rosout と /events にイベント (evt=...) が入る。make log-events で時系列にできる
+
+# 診断
+/diagnostics
+/diagnostics_agg
+
+# ログとイベント
+/rosout
+/events
+
+# 型付きの状態 (制御と解析が使う)
+/localization/status
+/amcl_gate_arbiter/state
+/slam_gnss_nav_bridge/publish_state
+/waypoint_sequencer_node/status
+/waypoint_sequencer_node/activity
+/waypoint_sequencer_node/pause_request
+/motor_driver_node/connected
+/wheel_odometry_node/connected
+/motor_driver_node/emergency_stop
+
+# PC の資源
+/cpu_usage
+/memory_usage

@@ -5,7 +5,7 @@ Nav2 (ROS 2 Humble) のパッケージのうち、**リポジトリに取り込�
 
 | パッケージ | `package.xml` のバージョン | 使うもの |
 | :--- | :--- | :--- |
-| `nav2_collision_monitor` | 1.2.0 | 衝突の防止 (`collision_monitor`) と検知 (`collision_detector`)。[mg_navigation](../mg_navigation/doc/nav2_config.md#衝突の防止-collision_monitor) |
+| `nav2_collision_monitor` | 1.2.0 | 衝突の防止 (`collision_monitor`)。上流の `collision_detector` のソースも含むが、このプロジェクトでは起動しない。[mg_navigation](../mg_navigation/doc/costmap_and_collision.md#衝突の防止-collision_monitor) |
 | `nav2_costmap_2d` | 1.1.20 | コストマップ (レイヤー、フィルタ) |
 | `nav2_msgs` | 1.1.19 | Nav2 のメッセージ・サービス・アクション |
 
@@ -20,14 +20,14 @@ Nav2 (ROS 2 Humble) のパッケージのうち、**リポジトリに取り込�
 | `fc65fa9` | 2023-10-26 | 新しい Nav2 の `nav2_collision_monitor` と、それが使う `nav2_msgs` を取り込む (`CollisionMonitorState`、`CollisionDetectorState`、`state_topic` を含む) |
 | `959982b` | 2023-10-29 | `nav2_msgs` の action と msg の一部を、削除・変更する (`BackUp`、`Spin`、`FollowPath`、`NavigateToPose` など) |
 | `7f53f6d` | 2025-10-17 | `nav2_msgs` に、`Route`、`RouteNode`、`RouteEdge`、`EdgeCost` の msg、`DynamicEdges`、`SetInitialPose`、`SetRouteGraph` の srv、`ComputeRoute`、`ComputeAndTrackRoute` の action を足す。バージョンを 1.1.12 から 1.1.19 に上げる |
+| (`feature/driver-recovery`) | 2026-10-10 | `nav2_collision_monitor` に、ソースごとの `stop_on_timeout` (既定 `false`) を足す。`true` のソースのデータが `source_timeout` 以上途絶えた (届いていない場合を含む) とき、ポリゴンによらず停止する。`Source::isDataStale()` を足した |
 | `9f4ad5b` | 2025-11-24 | `nav2_costmap_2d` (1.1.20) 全体をコピーして取り込む (コミットメッセージ: 「SpeedFilter をローカルにコピーしてワーニングを抑制」) |
 
 ## このリポジトリが依存しているもの
 
 | 使う側 | 使うもの |
 | :--- | :--- |
-| `mg_navigation` | `collision_monitor`・`collision_detector` (`navigation_launch.py`、`nav2_params.yaml`)、`nav2_costmap_2d` のレイヤーとフィルタ、`nav2_msgs` |
-| `mg_diagnostics` | `nav2_msgs/CollisionDetectorState` |
+| `mg_navigation` | `collision_monitor` (`navigation_launch.py`、`nav2_params.yaml`)、`nav2_costmap_2d` のレイヤーとフィルタ、`nav2_msgs` |
 | `mg_scenario_test` | `nav2_msgs/CollisionMonitorState` (`collision_monitor_action` の monitor。[mg_plugins.md](../mg_scenario_test/doc/mg_plugins.md)) |
 | `mg_waypoint_navigation`、`sim_scenario_test` | `nav2_msgs` |
 

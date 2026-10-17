@@ -4,7 +4,7 @@
 すべての要求元が入れてよいときだけ AMCL の出力を通す。
 """
 
-from typing import Dict, Optional
+from typing import Dict, List, Optional, Tuple
 
 
 class GateArbiter:
@@ -41,3 +41,18 @@ class GateArbiter:
     def mark_unknown(self) -> None:
         """ゲートのノードが再起動したかもしれないときなど、反映済みかどうか分からなくする。"""
         self._applied = None
+
+
+def gate_health(
+    desired: bool, applied: bool, holders: List[str],
+) -> Tuple[str, str, Dict[str, str]]:
+    """診断 `gate` の内容 (レベル 'ok' / 'warn'、メッセージ、values)。
+
+    - ゲートに反映済みなら ok (止めている要求元がいても、意図どおりなので ok)
+    - 要求がゲートに反映できていない (ゲートのノードがいない、失敗した) あいだは warn
+    """
+    state = 'attached' if desired else f'detached (held by: {", ".join(holders)})'
+    values = {'desired': str(desired), 'applied': str(applied), 'holders': ','.join(holders)}
+    if applied:
+        return 'ok', state, values
+    return 'warn', f'not applied: {state}', values

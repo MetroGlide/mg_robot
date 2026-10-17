@@ -11,6 +11,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/PauseRequest.msg"
   "msg/WaypointInfo.msg"
   "msg/SequencerStatus.msg"
+  "msg/NavigationActivity.msg"
   "msg/WaypointList.msg"
   "msg/PoseGraphDiff.msg"
   "msg/LocalizationStatus.msg"

@@ -8,12 +8,23 @@ class FakeContainer:
     status: str = "running"
     project: str = "mg"
     oneoff: bool = False
+    health: str = ""        # healthy / unhealthy / health: starting (HEALTHCHECK が無ければ空)
+    exit_code: int = 0
     stopped_with: list = field(default_factory=list)
     removed: bool = False
 
     @property
     def name(self) -> str:
         return f"{self.project}-{self.service}-1"
+
+    @property
+    def status_text(self) -> str:
+        """docker ps の STATUS 列にあたる文字列。"""
+        if self.status == "running":
+            return "Up 5 minutes" + (f" ({self.health})" if self.health else "")
+        if self.status == "exited":
+            return f"Exited ({self.exit_code}) 1 hour ago"
+        return self.status.capitalize()
 
     @property
     def id(self) -> str:
@@ -71,7 +82,8 @@ class FakeLowLevelApi:
         self.calls += 1
         labels = (filters or {}).get("label", [])
         return [
-            {"Labels": c.labels, "State": c.status, "Names": [f"/{c.name}"]}
+            {"Labels": c.labels, "State": c.status, "Status": c.status_text,
+             "Names": [f"/{c.name}"]}
             for c in self._containers
             if (all or c.status == "running") and _labels_match(c.labels, labels)
         ]

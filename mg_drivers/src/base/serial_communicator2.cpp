@@ -54,7 +54,8 @@ void SerialCommunicator2::open_serial(string device_name)
   options.c_oflag &= ~OPOST;
 
   if (tcsetattr(serial_fd, TCSANOW, &options)) {
-    // close();
+    close(serial_fd);
+    this->is_open_serial_ = false;
     return;
   }
 
@@ -106,11 +107,23 @@ void SerialCommunicator2::open_serial(string device_name)
   }
 }
 
-void SerialCommunicator2::reset_serial()
+void SerialCommunicator2::close_serial()
 {
   if (this->is_open_serial_) {
     close(this->fd1_);
   }
+  this->fd1_ = -1;
+  this->is_open_serial_ = false;
+}
+
+bool SerialCommunicator2::is_device_present() const
+{
+  return access(this->device_name_.c_str(), F_OK) == 0;
+}
+
+void SerialCommunicator2::reset_serial()
+{
+  this->close_serial();
   this->open_serial(this->device_name_);
 }
 
@@ -167,6 +180,7 @@ vector<uint8_t> SerialCommunicator2::serial_read(int sleep_usec)
 
   uint8_t retbuf[64] = {0};
   int ret = read(this->fd1_, retbuf, sizeof(retbuf));
+  if (ret < 0) return vector<uint8_t>();
 
   return vector<uint8_t>(retbuf, retbuf + ret);
 }

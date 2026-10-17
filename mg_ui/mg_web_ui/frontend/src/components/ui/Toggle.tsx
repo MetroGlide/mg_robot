@@ -14,11 +14,11 @@ export default function Toggle({
       onClick={onChange}
       disabled={disabled}
       className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-50 ${
-        value ? "bg-blue-600" : "bg-gray-600"
+        value ? "bg-accent" : "bg-muted"
       }`}
     >
       <span
-        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+        className={`inline-block h-4 w-4 transform rounded-full bg-surface-elevated transition-transform ${
           value ? "translate-x-6" : "translate-x-1"
         }`}
       />

@@ -1,10 +1,14 @@
 import { useMemo, useState } from "react";
+import { useOpsValue } from "../../hooks/useOpsValue";
 import type { ScenarioInfo } from "../../types/scenarioTest";
 import {
   collectGroups,
   collectTags,
   filterScenarios,
 } from "../../utils/scenarioTest";
+
+/** 回帰テストの区分を表すタグ(ショートカットボタンの対象) */
+const TIER_TAGS = ["smoke", "full"];
 
 interface ScenarioSelectorProps {
   scenarios: readonly ScenarioInfo[];
@@ -24,6 +28,10 @@ export default function ScenarioSelector({
   const [group, setGroup] = useState("");
   const [tag, setTag] = useState("");
   const [showKnownIssues, setShowKnownIssues] = useState(false);
+  const [showDescriptions, setShowDescriptions] = useOpsValue<boolean>(
+    "scenario.showDescriptions",
+    true,
+  );
 
   const groups = useMemo(() => collectGroups(scenarios), [scenarios]);
   const tags = useMemo(() => collectTags(scenarios), [scenarios]);
@@ -39,12 +47,37 @@ export default function ScenarioSelector({
     onChange(next);
   };
 
+  // 説明の全文を開いているシナリオ(名前)
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  const toggleExpanded = (name: string) => {
+    const next = new Set(expanded);
+    if (next.has(name)) next.delete(name);
+    else next.add(name);
+    setExpanded(next);
+  };
+
+  // タグで絞り込み、known_issue を除いた該当シナリオだけを選択する(それまでの選択は置き換える)
+  const selectTier = (tierTag: string) => {
+    setGroup("");
+    setTag(tierTag);
+    setShowKnownIssues(false);
+    onChange(
+      new Set(
+        filterScenarios(scenarios, {
+          group: "",
+          tag: tierTag,
+          showKnownIssues: false,
+        }).map((s) => s.name),
+      ),
+    );
+  };
+
   const selectVisible = () => {
     onChange(new Set([...selected, ...visible.map((s) => s.name)]));
   };
 
   const selectClass =
-    "bg-gray-700 text-gray-100 text-xs rounded px-2 py-1 disabled:opacity-50";
+    "bg-surface-sunken text-content text-xs rounded px-2 py-1 disabled:opacity-50";
 
   return (
     <div className="space-y-2">
@@ -73,7 +106,7 @@ export default function ScenarioSelector({
             </option>
           ))}
         </select>
-        <label className="flex items-center gap-1 text-xs text-gray-300 select-none">
+        <label className="flex items-center gap-1 text-xs text-content select-none">
           <input
             type="checkbox"
             checked={showKnownIssues}
@@ -81,6 +114,30 @@ export default function ScenarioSelector({
           />
           known_issue も表示
         </label>
+        <label className="flex items-center gap-1 text-xs text-content select-none">
+          <input
+            type="checkbox"
+            checked={showDescriptions}
+            onChange={(e) => setShowDescriptions(e.target.checked)}
+          />
+          説明を表示
+        </label>
+      </div>
+
+      <div className="flex items-center gap-2 text-xs">
+        <span className="text-muted">ショートカット:</span>
+        {TIER_TAGS.map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => selectTier(t)}
+            disabled={disabled || !tags.includes(t)}
+            title={`${t} タグで絞り込み、該当するシナリオだけを選択する(known_issue は除く)`}
+            className="rounded bg-surface-sunken px-2 py-0.5 font-semibold text-accent hover:opacity-80 disabled:opacity-50"
+          >
+            {t} を選択
+          </button>
+        ))}
       </div>
 
       <div className="flex items-center gap-3 text-xs">
@@ -88,7 +145,7 @@ export default function ScenarioSelector({
           type="button"
           onClick={selectVisible}
           disabled={disabled || visible.length === 0}
-          className="text-blue-300 hover:text-blue-200 disabled:opacity-50"
+          className="text-accent hover:opacity-80 disabled:opacity-50"
         >
           表示中をすべて選択
         </button>
@@ -96,33 +153,30 @@ export default function ScenarioSelector({
           type="button"
           onClick={() => onChange(new Set())}
           disabled={disabled || selected.size === 0}
-          className="text-gray-300 hover:text-white disabled:opacity-50"
+          className="text-content hover:text-content disabled:opacity-50"
         >
           選択を解除
         </button>
         <button
           type="button"
           onClick={onReload}
-          className="text-gray-300 hover:text-white"
+          className="text-content hover:text-content"
         >
           一覧を再読み込み
         </button>
-        <span className="ml-auto text-gray-400">{selected.size} 件選択</span>
+        <span className="ml-auto text-muted">{selected.size} 件選択</span>
       </div>
 
-      <ul className="max-h-80 overflow-y-auto divide-y divide-gray-700 rounded bg-gray-900">
+      <ul className="max-h-80 overflow-y-auto divide-y divide-line rounded bg-surface-sunken">
         {visible.length === 0 && (
-          <li className="px-2 py-3 text-xs text-gray-500">
+          <li className="px-2 py-3 text-xs text-muted">
             シナリオがありません(system_manager
             に接続できているか確認してください)
           </li>
         )}
         {visible.map((s) => (
           <li key={`${s.group}/${s.name}`}>
-            <label
-              className="flex items-start gap-2 px-2 py-1.5 hover:bg-gray-800 cursor-pointer"
-              title={s.description || s.error}
-            >
+            <label className="flex items-start gap-2 px-2 py-1.5 hover:bg-surface-sunken cursor-pointer">
               <input
                 type="checkbox"
                 className="mt-0.5"
@@ -131,29 +185,51 @@ export default function ScenarioSelector({
                 disabled={disabled}
               />
               <span className="min-w-0 flex-1">
-                <span className="block text-sm text-gray-100 break-all">
+                <span className="block text-sm text-content break-all">
                   {s.name}
-                  <span className="ml-2 text-[10px] text-gray-500">
+                  <span className="ml-2 text-[10px] text-muted">
                     {s.group}
                   </span>
                 </span>
                 {s.error ? (
-                  <span className="block text-[10px] text-red-400">
+                  <span className="block text-[10px] text-error">
                     YAML を読めません: {s.error}
                   </span>
                 ) : (
-                  <span className="flex flex-wrap gap-1 mt-0.5">
-                    {s.tags.map((t) => (
+                  <>
+                    {showDescriptions && s.description && (
                       <span
-                        key={t}
-                        className="rounded bg-gray-700 px-1 text-[10px] text-gray-300"
+                        className={`block whitespace-pre-line text-xs text-muted ${
+                          expanded.has(s.name) ? "" : "line-clamp-2"
+                        }`}
                       >
-                        {t}
+                        {s.description}
                       </span>
-                    ))}
-                  </span>
+                    )}
+                    <span className="flex flex-wrap gap-1 mt-0.5">
+                      {s.tags.map((t) => (
+                        <span
+                          key={t}
+                          className="rounded bg-surface-sunken px-1 text-[10px] text-content"
+                        >
+                          {t}
+                        </span>
+                      ))}
+                    </span>
+                  </>
                 )}
               </span>
+              {showDescriptions && s.description && (
+                <button
+                  type="button"
+                  aria-expanded={expanded.has(s.name)}
+                  title={expanded.has(s.name) ? "説明を閉じる" : "説明の全文を開く"}
+                  onClick={() => toggleExpanded(s.name)}
+                  className="px-1 text-xs text-muted hover:text-content"
+                >
+                  {expanded.has(s.name) ? "▾" : "▸"}
+                </button>
+              )}
             </label>
           </li>
         ))}

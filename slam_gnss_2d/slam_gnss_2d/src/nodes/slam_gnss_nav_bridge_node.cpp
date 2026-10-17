@@ -3,9 +3,12 @@
 #include <fstream>
 #include <memory>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <yaml-cpp/yaml.h>
 
+#include <diagnostic_msgs/msg/diagnostic_status.hpp>
+#include <diagnostic_updater/diagnostic_updater.hpp>
 #include <geometry_msgs/msg/quaternion.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -95,10 +98,28 @@ class SlamGnssNavBridgeNode : public rclcpp::Node {
     quality_.single_scale = get_parameter("single_scale").as_double();
     quality_.accept_single = get_parameter("accept_single").as_bool();
 
+    // GNSS を地図に使えているか (使えない理由つき) を、診断とイベントで知らせる。
+    // 変換ファイルが読めずにノードが動かない場合も、診断に出す
+    adoption_timeout_sec_ = declare_parameter("adoption_timeout_sec", 5.0);
+    // 使える測位が無いときの診断のレベル。停止中は方位を求められないなど、無いのが正常な環境では ok にする
+    const std::string not_adopting_level = declare_parameter("not_adopting_level", std::string("warn"));
+    if (not_adopting_level == "warn") {
+      not_adopting_level_ = diagnostic_msgs::msg::DiagnosticStatus::WARN;
+    } else if (not_adopting_level == "ok") {
+      not_adopting_level_ = diagnostic_msgs::msg::DiagnosticStatus::OK;
+    } else {
+      throw std::invalid_argument("not_adopting_level は warn か ok: " + not_adopting_level);
+    }
+    updater_ = std::make_unique<diagnostic_updater::Updater>(this);
+    updater_->setHardwareID("slam_gnss_nav_bridge");
+    updater_->add("adoption", this, &SlamGnssNavBridgeNode::produce_adoption_diagnostics);
+    adoption_timer_ = create_wall_timer(std::chrono::seconds(1), [this]() { check_adoption(); });
+
     if (!load_transform()) {
       RCLCPP_ERROR(get_logger(), "Failed to load GNSS transform. Node will not publish.");
       return;
     }
+    transform_loaded_ = true;
 
     transformer_ = gnss::UtmTransformer{utm_zone_, utm_hemisphere_ == "north"};
 
@@ -185,6 +206,57 @@ class SlamGnssNavBridgeNode : public rclcpp::Node {
   std::optional<double> last_pub_y_;
 
   bool publish_enabled_{true};
+
+  // GNSS の採用の状態
+  double adoption_timeout_sec_{5.0};
+  unsigned char not_adopting_level_{diagnostic_msgs::msg::DiagnosticStatus::WARN};
+  bool transform_loaded_{false};
+  std::optional<rclcpp::Time> last_adopted_;
+  std::string last_reject_reason_{"no GNSS data yet"};
+  std::optional<bool> adopting_;
+  std::unique_ptr<diagnostic_updater::Updater> updater_;
+  rclcpp::TimerBase::SharedPtr adoption_timer_;
+
+  // 地図に使える測位が、adoption_timeout_sec_ 以内にあったか
+  bool is_adopting() {
+    return last_adopted_.has_value() &&
+           (now() - *last_adopted_).seconds() < adoption_timeout_sec_;
+  }
+  void mark_adopted() { last_adopted_ = now(); }
+  void reject(const std::string& reason) { last_reject_reason_ = reason; }
+
+  // 採用の有無が変わったときだけ、イベント (evt=gnss.adoption_changed) を出す。
+  // 書式は doc/monitoring.md (このパッケージは mg_utils に依存しないので、同じ書式を自分で守る)
+  void check_adoption() {
+    const bool adopting = is_adopting();
+    const bool changed = adopting_.has_value() && *adopting_ != adopting;
+    adopting_ = adopting;
+    if (!changed) {
+      return;
+    }
+    if (adopting) {
+      RCLCPP_INFO(get_logger(), "evt=gnss.adoption_changed adopting=true");
+    } else {
+      RCLCPP_WARN(
+          get_logger(), "evt=gnss.adoption_changed adopting=false reason=\"%s\"",
+          last_reject_reason_.c_str());
+    }
+  }
+
+  void produce_adoption_diagnostics(diagnostic_updater::DiagnosticStatusWrapper& stat) {
+    using diagnostic_msgs::msg::DiagnosticStatus;
+    if (!transform_loaded_) {
+      stat.summary(DiagnosticStatus::ERROR, "GNSS transform not loaded");
+    } else if (!publish_enabled_) {
+      stat.summary(DiagnosticStatus::OK, "publishing disabled");
+    } else if (is_adopting()) {
+      stat.summary(DiagnosticStatus::OK, "adopting GNSS");
+    } else {
+      stat.summary(not_adopting_level_, "not adopting GNSS: " + last_reject_reason_);
+    }
+    stat.add("publish_enabled", publish_enabled_);
+    stat.add("last_reject_reason", last_reject_reason_);
+  }
 
   std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
@@ -297,6 +369,7 @@ class SlamGnssNavBridgeNode : public rclcpp::Node {
 
   void on_navpvt(const ublox_msgs::msg::NavPVT::SharedPtr msg) {
     if (!(msg->flags & 0x01) || msg->fix_type < 2) {
+      reject("no fix");
       return;
     }
 
@@ -304,6 +377,7 @@ class SlamGnssNavBridgeNode : public rclcpp::Node {
     const auto variance = gnss::PositionVariance(
         quality_, gnss::CarrierFromFlags(msg->flags), hacc);
     if (!variance.has_value()) {
+      reject("low quality (not RTK or accuracy too low)");
       return;
     }
 
@@ -314,6 +388,7 @@ class SlamGnssNavBridgeNode : public rclcpp::Node {
     if (last_pub_x_.has_value()) {
       double pub_dist = std::hypot(map_x - *last_pub_x_, map_y - *last_pub_y_);
       if (pub_dist < min_pub_dist_) {
+        mark_adopted();
         return;
       }
     }
@@ -329,6 +404,7 @@ class SlamGnssNavBridgeNode : public rclcpp::Node {
     }
 
     if (!heading.has_value()) {
+      reject("heading unavailable");
       return;
     }
 
@@ -336,6 +412,7 @@ class SlamGnssNavBridgeNode : public rclcpp::Node {
     header.stamp = measurement_stamp();
     header.frame_id = gps_frame_id_;
 
+    mark_adopted();
     publish_odom(header, map_x, map_y, *heading, *variance);
     last_pub_x_ = map_x;
     last_pub_y_ = map_y;
@@ -343,6 +420,7 @@ class SlamGnssNavBridgeNode : public rclcpp::Node {
 
   void on_navsatfix(const sensor_msgs::msg::NavSatFix::SharedPtr msg) {
     if (msg->status.status < 0) {
+      reject("no fix");
       return;
     }
 
@@ -353,6 +431,7 @@ class SlamGnssNavBridgeNode : public rclcpp::Node {
     const double h_acc = std::sqrt(msg->position_covariance[0]);
     const auto variance = gnss::PositionVariance(quality_, carrier, h_acc);
     if (!variance.has_value()) {
+      reject("low quality (not RTK or accuracy too low)");
       return;
     }
 
@@ -361,17 +440,20 @@ class SlamGnssNavBridgeNode : public rclcpp::Node {
     if (last_pub_x_.has_value()) {
       double pub_dist = std::hypot(map_x - *last_pub_x_, map_y - *last_pub_y_);
       if (pub_dist < min_pub_dist_) {
+        mark_adopted();
         return;
       }
     }
 
     auto heading = compute_heading(map_x, map_y);
     if (!heading.has_value()) {
+      reject("heading unavailable");
       return;
     }
 
     std_msgs::msg::Header header = msg->header;
     header.stamp = rclcpp::Time(msg->header.stamp) - rclcpp::Duration::from_seconds(time_offset_sec_);
+    mark_adopted();
     publish_odom(header, map_x, map_y, *heading, *variance);
     last_pub_x_ = map_x;
     last_pub_y_ = map_y;

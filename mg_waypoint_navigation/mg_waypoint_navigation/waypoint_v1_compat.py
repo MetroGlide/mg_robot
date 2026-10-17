@@ -6,20 +6,6 @@ from geometry_msgs.msg import Point, PoseStamped, Quaternion
 from mg_waypoint_navigation.waypoint import ActionConfig, NavigationConfig, Waypoint
 
 _V1_ACTION_MAP = {
-    "front_lidar_off": lambda: ActionConfig(
-        type="service",
-        service="/front_lidar_publish_controller_node/change_publish_state",
-        srv_module="std_srvs.srv",
-        srv_class="SetBool",
-        request={"data": False},
-    ),
-    "front_lidar_on": lambda: ActionConfig(
-        type="service",
-        service="/front_lidar_publish_controller_node/change_publish_state",
-        srv_module="std_srvs.srv",
-        srv_class="SetBool",
-        request={"data": True},
-    ),
     "amcl_on": lambda: ActionConfig(
         type="service",
         service="/amcl_gate_arbiter/waypoint/change_publish_state",

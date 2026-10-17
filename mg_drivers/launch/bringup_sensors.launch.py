@@ -17,6 +17,10 @@ def generate_launch_description():
     launch_argument_creator = LaunchArgumentCreator()
 
     # Launch arguments
+    # true のとき、ドライバのプロセスが終了したら起動し直す (機器が繋がるまで繰り返す)
+    respawn_drivers_arg = launch_argument_creator.create(
+        "respawn_drivers", default="true")
+
     use_odom_arg = launch_argument_creator.create(
         "use_odom", default="true")
     odom_port_arg = launch_argument_creator.create(
@@ -27,9 +31,6 @@ def generate_launch_description():
 
     use_lidar_arg = launch_argument_creator.create(
         "use_lidar", default="true")
-    front_rplidar_port_arg = launch_argument_creator.create(
-        "front_rplidar_port", default="/dev/ttyRobot-frontlidar"
-    )
     top_rplidar_port_arg = launch_argument_creator.create(
         "top_rplidar_port", default="/dev/ttyRobot-toplidar"
     )
@@ -47,6 +48,12 @@ def generate_launch_description():
         "use_rs_d435", default="false")
     use_rs_imu_arg = launch_argument_creator.create(
         "use_rs_imu", default="true")
+    # 深度をカラーへ位置合わせした画像 (aligned_depth_to_color)。使うノードがないため既定では無効
+    use_rs_align_depth_arg = launch_argument_creator.create(
+        "use_rs_align_depth", default="false")
+    # カラー画像の <幅>x<高さ>x<fps>。カラーは目視の確認用で処理に使わないため、低い解像度にする
+    rs_color_profile_arg = launch_argument_creator.create(
+        "rs_color_profile", default="640x360x6")
 
     pkg_name = "mg_drivers"
     pkg_share = get_package_share_directory(pkg_name)
@@ -60,6 +67,8 @@ def generate_launch_description():
                 executable="wheel_odometry_node",
                 name="wheel_odometry_node",
                 output="screen",
+                respawn=respawn_drivers_arg.launch_config,
+                respawn_delay=2.0,
                 parameters=[{
                     "odometry.device_name": odom_port_arg.launch_config,
 
@@ -90,31 +99,14 @@ def generate_launch_description():
                     use_odom_arg.launch_config),
             ),
 
-            # RPLidar front
-            Node(
-                package="rplidar_ros",
-                executable="rplidar_node",
-                name="front_rplidar_node",
-                output="screen",
-                parameters=[{
-                    "serial_port": front_rplidar_port_arg.launch_config,
-                    "serial_baudrate": 115200,
-                    "frame_id": "front_lrf_link",
-                    "inverted": False,
-                    "angle_compensate": True,
-                }],
-                # remappings=[("scan", "scan_front_lidar")],
-                remappings=[("scan", "scan_front_lidar_origin")],
-                condition=launch.conditions.IfCondition(
-                    use_lidar_arg.launch_config),
-            ),
-
             # RPLidar top
             Node(
                 package="rplidar_ros",
                 executable="rplidar_node",
                 name="top_rplidar_node",
                 output="screen",
+                respawn=respawn_drivers_arg.launch_config,
+                respawn_delay=2.0,
                 parameters=[{
                     "serial_port": top_rplidar_port_arg.launch_config,
                     "serial_baudrate": 1000000,
@@ -135,6 +127,8 @@ def generate_launch_description():
                 executable="nmea_topic_serial_reader",
                 name="gps_driver",
                 output="screen",
+                respawn=respawn_drivers_arg.launch_config,
+                respawn_delay=2.0,
                 parameters=[{
                     "port": gps_port_arg.launch_config,
                     "baud": 38400,
@@ -154,6 +148,8 @@ def generate_launch_description():
                 executable="ublox_gps_node",
                 name="ublox_gps_node",
                 output="screen",
+                respawn=respawn_drivers_arg.launch_config,
+                respawn_delay=2.0,
                 parameters=[{
                     "device": gps_port_arg.launch_config,
                     "frame_id": "gps_link",
@@ -161,6 +157,19 @@ def generate_launch_description():
                     os.path.join(pkg_share, "params", "ublox_ubx_gps.yaml"),
                 ],
                 remappings=[("/fix", "/gps/fix")],
+                condition=launch.conditions.IfCondition(
+                    launch.substitutions.AndSubstitution(
+                        use_gps_arg.launch_config,
+                        use_ubx_protocol_arg.launch_config,
+                    )
+                ),
+            ),
+            # 測位の品質 (RTK が Fixed か) の診断。navpvt は UBX プロトコルのときだけ出る
+            Node(
+                package="mg_drivers",
+                executable="gnss_diagnostics_node.py",
+                name="gnss_diagnostics_node",
+                output="screen",
                 condition=launch.conditions.IfCondition(
                     launch.substitutions.AndSubstitution(
                         use_gps_arg.launch_config,
@@ -177,7 +186,7 @@ def generate_launch_description():
                 ),
                 launch_arguments={
                     "serial_no": "",
-                    "align_depth.enable": "true",
+                    "align_depth.enable": use_rs_align_depth_arg.launch_config,
                     "pointcloud.enable": "true",
 
                     "enable_gyro": use_rs_imu_arg.launch_config,
@@ -185,7 +194,7 @@ def generate_launch_description():
                     "unite_imu_method": "1",
 
                     "depth_module.depth_profile": "848x480x6",
-                    "rgb_camera.color_profile": "1280x720x6",
+                    "rgb_camera.color_profile": rs_color_profile_arg.launch_config,
                     "publish_tf": "false",
 
                 }.items(),

@@ -1,6 +1,5 @@
 /odom
 /nmea_sentence
-/scan_front_lidar
 /scan_top_lidar
 
 /actual_path

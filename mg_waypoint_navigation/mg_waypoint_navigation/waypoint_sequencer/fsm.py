@@ -11,6 +11,7 @@ import rclpy.node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, ReliabilityPolicy
 from std_msgs.msg import String
 
+from mg_utils.event_log import EventLog
 from mg_waypoint_navigation.waypoint import (
     NAVIGATION_MODES,
     NavigationConfig,
@@ -23,6 +24,7 @@ from mg_waypoint_navigation.waypoint_sequencer.navigator import (
     NavigationResult,
     WaypointNavigator,
 )
+from mg_waypoint_navigation.waypoint_sequencer.progress_monitor import ProgressStatus
 from mg_waypoint_navigation.waypoint_sequencer.states import (
     ALLOWED_TRANSITIONS,
     CommandResult,
@@ -32,6 +34,13 @@ from mg_waypoint_navigation.waypoint_sequencer.states import (
 
 # 手動ゴールの BT。ウェイポイントの navigation_mode に、Nav2 既定の BT を加えたもの
 MANUAL_GOAL_MODES = NAVIGATION_MODES + (DEFAULT_BT_MODE,)
+
+# 走行中ではない状態 (ここから IDLE に戻っても、走行の終了とはしない)
+_INACTIVE_STATES = frozenset({
+    SequencerState.IDLE,
+    SequencerState.GOAL_REACHED,
+    SequencerState.ERROR,
+})
 
 # 手動ゴールを受け付けるシーケンスの状態 (走行中・停止待ちなどは拒否する)
 MANUAL_GOAL_STATES = frozenset({
@@ -123,6 +132,7 @@ class WaypointSequencerFSM:
 
     def __init__(self, node: rclpy.node.Node):
         self._node = node
+        self._events = EventLog(node.get_logger())
         self._navigator = WaypointNavigator(node)
         self._executor = ActionExecutor(node)
 
@@ -143,6 +153,8 @@ class WaypointSequencerFSM:
         self._publish_navigation_mode()
         # UI などから送った手動ゴールが実行中か (ウェイポイントの走行とは独立に扱う)
         self._manual_goal_active: bool = False
+        # wait_trigger で IDLE に止まっているか (未開始の IDLE と区別する)
+        self._waiting_trigger: bool = False
 
         self._countdown_timer = CountdownTimer(self._on_starting_done)
         self._pause_manager = PauseSlotManager()
@@ -178,6 +190,28 @@ class WaypointSequencerFSM:
         return self._navigator.distance_remaining
 
     @property
+    def waiting_trigger(self) -> bool:
+        return self._waiting_trigger
+
+    @property
+    def current_action(self) -> str:
+        """実行中の到着後アクションの type。実行していなければ空文字。"""
+        return self._executor.current_action
+
+    @property
+    def manual_goal_active(self) -> bool:
+        return self._manual_goal_active
+
+    @property
+    def has_live_nav_goal(self) -> bool:
+        """シーケンサが送った Nav2 ゴールが、結果が返るまでの間にあるか。"""
+        return self._navigator.has_live_goal
+
+    def navigation_progress(self) -> Optional[ProgressStatus]:
+        """Nav2 のゴールを走行中なら、位置が進んでいない時間とリカバリー回数。"""
+        return self._navigator.progress_status()
+
+    @property
     def map_loader(self):
         return self._executor.map_loader
 
@@ -199,6 +233,7 @@ class WaypointSequencerFSM:
         with self._lock:
             self._waypoints = waypoints
             self._current_index = 0
+            self._waiting_trigger = False
 
     def set_next_index(self, index: int) -> bool:
         """IDLE / SUSPENDED 時のみインデックスを変更できる"""
@@ -208,6 +243,7 @@ class WaypointSequencerFSM:
             if index < 0 or index >= self._waypoints.get_size():
                 return False
             self._current_index = index
+            self._waiting_trigger = False
             return True
 
     def reload_waypoints(self, waypoints: WaypointList) -> CommandResult:
@@ -218,6 +254,7 @@ class WaypointSequencerFSM:
             if self._state not in allowed:
                 return CommandResult(False, f"Cannot reload in state {self._state.value}")
             self._waypoints = waypoints
+            self._waiting_trigger = False
             size = waypoints.get_size()
             if size == 0:
                 self._current_index = 0
@@ -379,7 +416,8 @@ class WaypointSequencerFSM:
                 self._navigation_mode = getattr(action, "mode", "normal")
                 self._publish_navigation_mode()
         self._transition(SequencerState.ON_ARRIVING)
-        self._executor.execute(actions, self._on_arriving_done)
+        self._executor.execute(
+            actions, self._on_arriving_done, waypoint_index=self._current_index)
 
     # ------------------------------------------------------------------
     # 内部完了コールバック
@@ -395,7 +433,7 @@ class WaypointSequencerFSM:
     def _on_manual_goal_result(self, result: NavigationResult) -> None:
         with self._lock:
             self._manual_goal_active = False
-        self._node.get_logger().info(f"Manual goal finished: {result.value}")
+        self._events.info('sequencer.manual_goal_finished', result=result.value)
 
     def _on_navigation_result(self, result: NavigationResult) -> None:
         with self._lock:
@@ -406,13 +444,13 @@ class WaypointSequencerFSM:
                 return
 
             if result not in (NavigationResult.SUCCEEDED, NavigationResult.PASSED):
-                self._node.get_logger().error(
-                    f"Navigation to waypoint {self._current_index} failed"
-                )
                 self._transition(SequencerState.ERROR)
                 return
 
             waypoint = self._waypoints.get(self._current_index)
+            self._events.info(
+                'sequencer.waypoint_reached', index=self._current_index,
+                total=self._waypoints.get_size(), result=result.value)
             if waypoint.on_reached_actions:
                 self._enter_on_arriving(waypoint.on_reached_actions)
             else:
@@ -447,6 +485,7 @@ class WaypointSequencerFSM:
         if any(a.type == "wait_trigger" for a in waypoint.on_reached_actions):
             self._navigator.cancel()
             self._transition(SequencerState.IDLE)
+            self._waiting_trigger = self._state == SequencerState.IDLE
             return
 
         if self._pause_manager.is_active:
@@ -493,4 +532,36 @@ class WaypointSequencerFSM:
             return
         old = self._state
         self._state = new_state
-        self._node.get_logger().info(f"FSM: {old.value} -> {new_state.value}")
+        self._waiting_trigger = False
+        fields = dict(
+            from_=old.value, to=new_state.value, index=self._current_index,
+            total=self._waypoints.get_size())
+        if new_state == SequencerState.ERROR:
+            self._events.error('sequencer.state_changed', **fields)
+        elif new_state == SequencerState.SUSPENDED:
+            self._events.warn('sequencer.state_changed', **fields)
+        else:
+            self._events.info('sequencer.state_changed', **fields)
+        self._log_run_events(old, new_state)
+
+    def _log_run_events(self, old: SequencerState, new_state: SequencerState) -> None:
+        """走行の開始・終了と、一時停止・再開のイベント。"""
+        if new_state == SequencerState.ON_STARTING and old != SequencerState.SUSPENDED:
+            self._events.info(
+                'sequencer.run_started', index=self._current_index,
+                total=self._waypoints.get_size())
+        elif new_state == SequencerState.GOAL_REACHED:
+            self._events.info(
+                'sequencer.run_finished', result='goal_reached', index=self._current_index)
+        elif new_state == SequencerState.ERROR:
+            self._events.error(
+                'sequencer.run_finished', result='error', index=self._current_index)
+        elif new_state == SequencerState.IDLE and old not in _INACTIVE_STATES:
+            self._events.info(
+                'sequencer.run_finished', result='stopped', index=self._current_index)
+        if new_state == SequencerState.SUSPENDED:
+            self._events.warn(
+                'sequencer.paused', index=self._current_index,
+                requesters=','.join(self._pause_manager.requesters))
+        elif old == SequencerState.SUSPENDED and new_state != SequencerState.IDLE:
+            self._events.info('sequencer.resumed', index=self._current_index)

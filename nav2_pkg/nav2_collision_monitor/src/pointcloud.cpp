@@ -65,6 +65,11 @@ void PointCloud::configure()
     std::bind(&PointCloud::dataCallback, this, std::placeholders::_1));
 }
 
+bool PointCloud::isDataStale(const rclcpp::Time & curr_time) const
+{
+  return data_ == nullptr || sourceTimedOut(data_->header.stamp, curr_time);
+}
+
 void PointCloud::getData(
   const rclcpp::Time & curr_time,
   std::vector<Point> & data) const

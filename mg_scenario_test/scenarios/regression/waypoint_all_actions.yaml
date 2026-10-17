@@ -24,6 +24,12 @@ run:
   mg_sequencer:
     waypoints_file: "pkg://mg_scenario_test/scenarios/data/actions_waypoints.yaml"
     waypoint_timeout_sec: 120
+    hooks:
+      # wait_trigger の IDLE は auto_start だとすぐ抜け、~/activity (2 Hz) に出る前に終わる。
+      # 外部の ~/start を待つ状態を、activity の配信周期より長く保つ。
+      2:
+        before:
+          - delay: { sec: 2.0 }
 
 monitors:
   - topic_received: { topic: /scenario_marker, type: String, data: wp0_published }
@@ -31,6 +37,9 @@ monitors:
   - topic_received: { topic: /planning_map, type: OccupancyGrid }
   # queue_wait モードの BT (Wait のみ) と normal モードのリカバリー (BackUp) が、平時に動かないこと
   - bt_node: { node: BackUp, status: RUNNING, expect: never }
+  # 到着後のアクションの実行中と、wait_trigger での待ちが、「いまの活動」に出ること
+  - navigation_activity: { code: action }
+  - navigation_activity: { code: trigger_wait }
 
 expect:
   - reached_all

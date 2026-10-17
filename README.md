@@ -86,9 +86,9 @@ make scenario-test-all TIER=smoke   # シミュレータでの回帰テスト (�
 | [mg_navigation](./mg_navigation/README.md) | Nav2 の設定、自己位置推定の補助ノード |
 | [mg_waypoint_navigation](./mg_waypoint_navigation/README.md) | ウェイポイントシーケンサ |
 | [slam_gnss_2d](./slam_gnss_2d/README.md) | GNSS 拘束付き 2D SLAM (C++)、GNSS ブリッジ |
-| [mg_slam](./mg_slam/README.md) | slam_toolbox の launch、地図プレビュー |
+| [mg_slam](./mg_slam/README.md) | slam_toolbox の launch、地図プレビュー、rosbag の収録 |
 | [mg_ui](./mg_ui/README.md) | Web UI と system_manager |
-| [mg_diagnostics](./mg_diagnostics/README.md) | `/diagnostics` への診断の配信 |
+| [mg_diagnostics](./mg_diagnostics/README.md) | 診断の集約 (`/diagnostics_agg`)、第三者のノードの監視、イベントの中継 (`/events`) |
 | [mg_msgs](./mg_msgs/README.md) | メッセージ・サービスの定義 |
 | [mg_utils](./mg_utils/README.md) | launch 引数の補助、点群の変換、rosbag の収録 launch |
 | [mg_simulation](./mg_simulation/README.md) | Gazebo Fortress のワールドと launch |
@@ -96,6 +96,7 @@ make scenario-test-all TIER=smoke   # シミュレータでの回帰テスト (�
 | [mg_scenario_test](./mg_scenario_test/README.md) | MG-01 用のシナリオテスト |
 | [sim_scenario_test](./sim_scenario_test/README.md) | ロボットに依存しない、Gazebo + Nav2 のシナリオテスト基盤 |
 | [nav2_pkg](./nav2_pkg/README.md) | 修正を加えた Nav2 のパッケージ |
+| [geometry2_pkg](./geometry2_pkg/README.md) | apt の版の不具合を避けるため、修正済みの上流の版を取り込んだ geometry2 のパッケージ (`tf2`) |
 | [tools](./tools/README.md) | rosbag の解析・可視化、評価のスクリプト |
 | `docker/` | Dockerfile と、ビルド補助のスクリプト ([doc/docker.md](./doc/docker.md)) |
 | `doc/` | プロジェクト全体のドキュメント |
@@ -109,5 +110,6 @@ make scenario-test-all TIER=smoke   # シミュレータでの回帰テスト (�
 | [doc/commands.md](./doc/commands.md) | make ターゲットと compose サービスの一覧 |
 | [doc/environment.md](./doc/environment.md) | `.env` の変数、地図の指定、データの置き場 |
 | [doc/docker.md](./doc/docker.md) | Docker イメージの構成、ビルド、GPU |
+| [doc/documentation_guide.md](./doc/documentation_guide.md) | 文書の種類、値を書かない規約、置き場所 |
 
 各パッケージの README から、そのパッケージの `doc/` へたどれる。

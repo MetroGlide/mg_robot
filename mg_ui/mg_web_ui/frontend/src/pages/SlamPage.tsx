@@ -105,7 +105,7 @@ export default function SlamPage({
               </div>
               <button
                 onClick={() =>
-                  call("/map/save", { map_dir: mapDir, map_name: mapName })
+                  call("/map/common/save", { map_dir: mapDir, map_name: mapName })
                 }
                 disabled={loading}
                 className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 px-4 py-2 rounded font-medium text-sm"
@@ -123,10 +123,12 @@ export default function SlamPage({
             id: "simulation",
             label: "Simulation",
             children: (
-              <SimulationPoseSection
-                onResetRobot={(pose) => call("/simulation/reset-pose", pose)}
-                loading={loading}
-              />
+              <SectionCard title="Pose Reset">
+                <SimulationPoseSection
+                  onResetRobot={(pose) => call("/simulation/reset-pose", pose)}
+                  loading={loading}
+                />
+              </SectionCard>
             ),
           },
         ]
@@ -137,7 +139,9 @@ export default function SlamPage({
             id: "rosbag-replay",
             label: "Rosbag Replay",
             children: (
-              <RosbagReplaySection client={client} sysManager={sysManager} />
+              <SectionCard>
+                <RosbagReplaySection client={client} sysManager={sysManager} />
+              </SectionCard>
             ),
           },
         ]

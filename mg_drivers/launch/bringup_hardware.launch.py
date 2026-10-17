@@ -17,6 +17,9 @@ def generate_launch_description():
     # Launch arguments
     device_name_arg = launch_argument_creator.create(
         "device_name", default="/dev/ttyRobot-motordriver")
+    # true のとき、プロセスが終了したら起動し直す
+    respawn_drivers_arg = launch_argument_creator.create(
+        "respawn_drivers", default="true")
 
     pkg_name = "mg_drivers"
     pkg_share = get_package_share_directory(pkg_name)
@@ -29,6 +32,8 @@ def generate_launch_description():
                 executable="motor_driver_node",
                 name="motor_driver_node",
                 output="screen",
+                respawn=respawn_drivers_arg.launch_config,
+                respawn_delay=2.0,
                 remappings=[
                     ("cmd_vel", "cmd_vel"),
                 ],

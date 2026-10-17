@@ -1,0 +1,38 @@
+# ナビゲーションのスタックで、自分で診断を出せないノードを外から調べる。
+# LiDAR・odom・モータの途絶は driver_watchdog_node が、シーケンサの進捗は waypoint_sequencer_node が
+# 自分の診断として出すので、ここでは調べない (doc/monitoring.md)。
+topic_monitor_node:
+  ros__parameters:
+    # 受信頻度が 期待する周期 × hz_warn_ratio を下回ったら WARN
+    hz_warn_ratio: 0.5
+    # 起動直後は、初回のメッセージが無くても異常にしない
+    startup_grace_sec: 30.0
+
+    # ROS のグラフにいるかを調べるノード。名前空間を含めた形で書く
+    monitored_nodes:
+      - /waypoint_sequencer_node
+      - /amcl
+      - /bt_navigator
+      - /controller_server
+      - /planner_server
+      - /collision_monitor
+      - /top_laser_filter
+
+    # 受信頻度を調べるトピック。ここに ID を足し、下に同じ ID の設定を書く。
+    # 設定のキーは mg_utils.monitoring.topic_source_config の docstring を参照
+    monitored_sources: [amcl_pose, cmd_vel]
+
+    # amcl_pose は動いて更新されたときだけ、cmd_vel は走行中だけ出る。止まっているのが正常なので、
+    # 観測のみ (fault_level: ok)。値と途絶の時間は診断に出るが、レベルは上げない。
+    # AMCL の更新の遅れは amcl_watchdog_node が、走行中の cmd_vel の途絶は driver_watchdog_node が判定する。
+    amcl_pose:
+      topic: amcl_pose
+      type: geometry_msgs/msg/PoseWithCovarianceStamped
+      expected_hz: 1.0
+      fault_level: ok
+    cmd_vel:
+      topic: cmd_vel
+      type: geometry_msgs/msg/Twist
+      expected_hz: 10.0
+      qos: best_effort
+      fault_level: ok
