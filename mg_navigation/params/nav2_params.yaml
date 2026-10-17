@@ -181,7 +181,7 @@ controller_server:
     FollowPath:
       plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
       # 巡航速度 [m/s]。velocity_smoother の max_velocity (x) も同じ値にする
-      desired_linear_vel: &v_max 0.8
+      desired_linear_vel: &v_max 0.6
       # 先読み距離は「現在速度 × lookahead_time」を min〜max に収めた値 (use_velocity_scaled_lookahead_dist)。
       # 巡航速度 × lookahead_time が min と max の間に入るようにする。min に張り付くと速度連動が効かない
       # (test_nav2_params_consistency.py が検査する)。lookahead_dist は速度連動を使う間は参照されないので置かない
@@ -225,13 +225,12 @@ local_costmap:
       resolution: 0.05
 
       # footprint と footprint_padding は global_costmap と同じ値 (アンカーで共有する。スカラー専用)
-      footprint: &robot_footprint "[[0.4, 0.3], [0.4, -0.3], [-0.2, -0.3], [-0.2, 0.3]]"
-      # 膨張レイヤーの内接半径は「フットプリントの原点から最も近い辺までの距離」で決まる。
-      # このフットプリントは原点が後端寄り (後端 0.2m) なので、半幅 (0.3m) より小さい 0.2m になり、
-      # 幅 0.5m 未満の隙間 (例: 間隔 0.8m のコーン) が致死扱いにならず、プランナ (NavFn) が
-      # 通れると誤認してその隙間へ経路を引く。RPP は実フットプリントで衝突と判定して進めず、
-      # 詰まって失敗する。0.1 の余白で内接半径を 0.3m (= 半幅) にして、通れない隙間を塞ぐ。
-      footprint_padding: &footprint_padding 0.1
+      # 前側 (半幅 0.25m) を後側 (半幅 0.3m) より狭くした台形。原点は後端寄り (後端 0.2m)。
+      # 膨張レイヤーの内接半径は「原点から最も近い辺までの距離 + footprint_padding」で、後端までの
+      # 0.2m で決まり半幅より小さい。点ロボットとして計画する NavFn に戻す場合は、車体より狭い隙間
+      # (例: 間隔 0.8m のコーン) へ経路を引くので、内接半径を半幅に合わせる padding (0.1) を検討する。
+      footprint: &robot_footprint "[[0.4, 0.25], [0.4, -0.25], [-0.2, -0.3], [-0.2, 0.3]]"
+      footprint_padding: &footprint_padding 0.01
 
       plugins: [
           "top_obstacle_layer",
@@ -248,7 +247,7 @@ local_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         # 膨張の計算量は半径内のセル数に比例するので、半径を小さくすると負荷が減る。
-        # 半径はフットプリントの外接半径 (padding 込みで約 0.64m) 以上にすること (Smac の衝突判定の高速化の条件)。
+        # 半径はフットプリントの外接半径 (padding 込みで約 0.48m) 以上にすること (Smac の衝突判定の高速化の条件)。
         # NavFn に戻す場合 (global_planner:=navfn) は、従来の inflation_radius: 2.5 / cost_scaling_factor: 1.0 も検討する。
         inflation_radius: 0.8
         # RPP の inflation_cost_scaling_factor と同じ値 (アンカーで共有)
@@ -336,11 +335,6 @@ global_costmap:
       use_sim_time: False
 
       footprint: *robot_footprint
-      # 膨張レイヤーの内接半径は「フットプリントの原点から最も近い辺までの距離」で決まる。
-      # このフットプリントは原点が後端寄り (後端 0.2m) なので、半幅 (0.3m) より小さい 0.2m になり、
-      # 幅 0.5m 未満の隙間 (例: 間隔 0.8m のコーン) が致死扱いにならず、プランナ (NavFn) が
-      # 通れると誤認してその隙間へ経路を引く。RPP は実フットプリントで衝突と判定して進めず、
-      # 詰まって失敗する。0.1 の余白で内接半径を 0.3m (= 半幅) にして、通れない隙間を塞ぐ。
       footprint_padding: *footprint_padding
 
       resolution: 0.05
@@ -489,6 +483,8 @@ costmap_filter_info_server:
 # (x -0.25〜0.45, y ±0.35 = footprint + 5 cm) の外に置く。箱の中の点は消えているので、
 # polygon が箱の中に入ると、そこでは何も検出できない。
 # 値の関係は mg_navigation の test_nav2_params_consistency.py が検査する。
+# 3 つの polygon はすべて無効にしている (enabled: False)。有効にしたときに上記の考え方で働く。
+# scan の途絶による停止 (scan_top.stop_on_timeout) は polygon の enabled によらず効く。
 collision_monitor:
   ros__parameters:
     use_sim_time: False
@@ -505,15 +501,15 @@ collision_monitor:
     # それ以降のpolygonはスキップされるため、より優先度の高いSTOPを先に置く）
     polygons: ["PolygonStop", "PolygonSlowdown", "PolygonApproach"]
 
-    # 即時の緊急停止（速度ゼロ）。箱の前端 (x 0.45) から 0.25 m。
-    # 制動距離 v²/(2·|max_decel|) = 0.8²/(2·2.0) = 0.16 m に、scan と制御の遅れ 0.1 秒ぶん (0.08 m) を足した値。
+    # 即時の緊急停止（速度ゼロ）。箱の前端 (x 0.45) から 0.15 m。
+    # 制動距離 v²/(2·|max_decel|) = 0.6²/(2·2.0) = 0.09 m に、scan と制御の遅れ 0.1 秒ぶん (0.06 m) を足した値。
     # enabled は動的パラメータのため ros2 param set での即時切替も可能。
     PolygonStop:
       type: "polygon"
-      points: [0.7, 0.35, 0.7, -0.35, 0.45, -0.35, 0.45, 0.35]
+      points: [0.6, 0.35, 0.6, -0.35, 0.45, -0.35, 0.45, 0.35]
       action_type: "stop"
-      min_points: 4
-      enabled: True
+      min_points: 5
+      enabled: False
       visualize: True
       polygon_pub_topic: "~/polygon_stop"
 
@@ -528,14 +524,14 @@ collision_monitor:
       action_type: "slowdown"
       slowdown_ratio: 0.5
       min_points: 4
-      enabled: True
+      enabled: False
       visualize: True
       polygon_pub_topic: "~/polygon_slowdown"
 
     # 箱と同じ大きさの形 (footprint + 5 cm) を、現在の速度 (旋回を含む) で前方へシミュレートし、
     # time_before_collision 以内に接触するなら減速する。旋回中の側面の接触も対象になる。
-    # footprint_topic (local_costmap/published_footprint) は使わない: padding 0.1 m を含んで幅 0.8 m になり、
-    # 自車除去の箱より大きいので、箱の外の自車の点や、狭い隙間 (間隔 0.8 m のコーンなど) で止まってしまう。
+    # footprint_topic (local_costmap/published_footprint) は使わない: 形が footprint_padding で変わり、
+    # 自車除去の箱とずれる。箱より大きいと、箱の外の自車の点や狭い隙間で止まってしまう。
     PolygonApproach:
       type: "polygon"
       points: [0.45, 0.35, 0.45, -0.35, -0.25, -0.35, -0.25, 0.35]
@@ -544,7 +540,7 @@ collision_monitor:
       simulation_time_step: 0.1
       min_points: 4
       visualize: True
-      enabled: True
+      enabled: False
       polygon_pub_topic: "~/polygon_approach"
 
     observation_sources: ["scan_top"]

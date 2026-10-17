@@ -18,7 +18,7 @@ Nav2 の他の部分は [architecture.md](./architecture.md)。値は `params/na
 - `obstacle_stvl_layer` (`spatio_temporal_voxel_layer`): 3D 障害物検出の出力 (`/obstacle_detection_3d_node/points_obstacle`、[mg_drivers](../../mg_drivers/doc/obstacle_detection_3d.md)) を記録する。`voxel_decay` は、障害物を覚えている時間で、local は短く、global は長い。
 - 深度カメラの `depth_voxel_layer`、`denoise_layer` は、定義だけが残り、`plugins` からは外れている。
 - `speed_filter` (`filters`) は、定義だけがあり、`filters` はコメントアウトされている。
-- **`footprint_padding` の理由**: 膨張レイヤーの内接半径は、フットプリントの原点から最も近い辺までの距離で決まる。このフットプリントは原点が後端寄りで、そのままでは半幅より小さくなる。車体の幅より狭い隙間 (例: 間隔 0.8 m のコーン) が致死扱いにならず、プランナが通れると誤認して経路を引き、RPP が詰まって失敗する。余白で内接半径を半幅にして、通れない隙間を塞ぐ。
+- **`footprint_padding` と内接半径**: 膨張レイヤーの内接半径は、フットプリントの原点から最も近い辺までの距離 (`footprint_padding` を含む) で決まる。このフットプリントは原点が後端寄りで、`footprint_padding` が小さいと内接半径は半幅より小さい。点ロボットとして計画するプランナ (NavFn) では、車体の幅より狭い隙間 (例: 間隔 0.8 m のコーン) が致死扱いにならず、通れると誤認して経路を引き、RPP が詰まって失敗する。NavFn を使うときは、余白で内接半径を半幅にして、通れない隙間を塞ぐ。
 - Smac から NavFn に戻すときは、`inflation_radius` と `cost_scaling_factor` と、この余白も確認する (`planner_navfn.yaml` のコメント)。
 - 膨張の `cost_scaling_factor` は、RPP のコストによる減速と同じ値にする ([rpp_tuning.md](./rpp_tuning.md))。
 
@@ -46,7 +46,7 @@ Nav2 の他の部分は [architecture.md](./architecture.md)。値は `params/na
 | `PolygonApproach` | 接近 (`time_before_collision`) | 自車の箱と同じ大きさの形を、現在の速度 (旋回を含む) で前方にシミュレートし、その時間以内に接触するなら減速する。旋回中の側面の接触も対象 |
 
 - `PolygonApproach` の時間は、RPP の衝突の確認 (`max_allowed_time_to_collision_up_to_carrot`) より短くする。RPP が先に減速・停止する。
-- `PolygonApproach` は `footprint_topic` (`local_costmap/published_footprint`) を使わない。`footprint_padding` を含んで自車の箱より大きくなり、箱の外の自車の点や、狭い隙間 (間隔 0.8 m のコーンなど) で止まる。
+- `PolygonApproach` は `footprint_topic` (`local_costmap/published_footprint`) を使わない。形が `footprint_padding` で変わり、自車の箱とずれる。箱より大きいと、箱の外の自車の点や、狭い隙間 (間隔 0.8 m のコーンなど) で止まる。
 - 3 つの形は、自車の箱の外に置く (箱の中の点は前処理で消えている)。値の関係は `test/test_nav2_params_consistency.py` が検査する。
 - 上流の `collision_detector` (指令には介入せず、状態だけを出す) は、使っていないので起動しない。
 - 状態は `collision_monitor_state` に出る (観測用。`waypoint_sequencer_node` の `~/activity` の入力にもなる。`slowdown` と `approach` は `obstacle_slowdown`)。

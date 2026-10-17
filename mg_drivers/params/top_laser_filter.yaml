@@ -9,11 +9,11 @@ top_laser_filter:
       type: laser_filters/LaserScanRangeFilter
       params:
         use_message_range_limits: false
-        lower_threshold: 0.1
+        lower_threshold: 0.25
         upper_threshold: 30.0
 
     # 自車の点 (支柱・ケーブルなど) を落とす。base_footprint 基準で、nav2_params.yaml の footprint
-    # (x -0.2〜0.4, y ±0.3) に 5 cm の余白を足した箱。箱は footprint と、collision_monitor の
+    # (x -0.2〜0.4, y は最大 ±0.3) に 5 cm の余白を足した箱。箱は footprint と、collision_monitor の
     # PolygonApproach の points に揃える (mg_navigation の test_nav2_params_consistency.py が検査する)
     filter2:
       name: self_box
