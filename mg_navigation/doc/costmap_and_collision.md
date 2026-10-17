@@ -35,7 +35,7 @@ Nav2 の他の部分は [architecture.md](./architecture.md)。値は `params/na
 
 ## 衝突の防止 (`collision_monitor`)
 
-**RPP の後ろ盾になる、最後の安全層。** 障害物を主に避けるのは RPP とコストマップ (経路に基づく衝突の確認、コストによる減速) で、`collision_monitor` は生の scan だけで判定する。コストマップの更新の遅れに依存しないが、通常の走行では発動しないように作る (障害物のない走行と、静止した障害物を避ける走行で、`STOP` と `APPROACH` が 0 回であることを、シナリオテストで確認している)。
+**RPP の後ろ盾になる、最後の安全層。** 障害物を主に避けるのは RPP とコストマップ (経路に基づく衝突の確認、コストによる減速) で、`collision_monitor` は生の scan だけで判定する。コストマップの更新の遅れに依存しないが、通常の走行では発動しないように作る (障害物のない走行と、静止した障害物を避ける走行で、`STOP` が 0 回であることを、シナリオテストで確認している。ポリゴンを無効にしていても、データの途絶による停止は数える)。
 
 入力は、前処理済みの上 LiDAR (`/scan_filtered/scan_top_lidar`。コストマップと同じ。近距離のノイズと、自車の箱 (footprint に余白を足したもの) の中の点を落としたもの。[mg_drivers](../../mg_drivers/doc/laser_filters.md))。次の 3 つを、この順に評価する (`stop` が決まったら、以降を飛ばす)。すべて `min_points` で孤立した点を無視する。
 
@@ -51,6 +51,7 @@ Nav2 の他の部分は [architecture.md](./architecture.md)。値は `params/na
 - 上流の `collision_detector` (指令には介入せず、状態だけを出す) は、使っていないので起動しない。
 - 状態は `collision_monitor_state` に出る (観測用。`waypoint_sequencer_node` の `~/activity` の入力にもなる。`slowdown` と `approach` は `obstacle_slowdown`)。
 - 各ポリゴンは、`enabled` を動的パラメータ (`ros2 param set /collision_monitor PolygonStop.enabled false` など) で切り替えられる。走行が不安定なときの切り分けに使える。
+- ポリゴンをすべて無効にしている間は、障害物を避けるのは RPP とコストマップだけになり、`collision_monitor` が速度を変えるのは、次のデータの途絶のときだけになる。各ポリゴンの形と値の関係は、有効にしたときの前提として保ち、`test_nav2_params_consistency.py` が検査する (`enabled` の値は検査しない)。
 - **データの途絶での停止 (`scan_top.stop_on_timeout: True`)**: scan のデータが `source_timeout` 以上途絶えた、またはまだ届いていないときに、ポリゴンの `enabled` によらず速度 0 にする。`source_timeout` は、LiDAR の周期と実測の最大の間隔より十分長くする。`collision_monitor_state` の `polygon_name` は `source_timeout:scan_top`。LiDAR や前処理 (`top_laser_filter`) が止まったまま走り続けるのを防ぐ。シーケンサの走行は、`driver_watchdog_node` が先に一時停止する ([mg_drivers](../../mg_drivers/doc/driver_watchdog.md))。`ros2 param set /collision_monitor scan_top.stop_on_timeout false` で切り替えられる。
 - **保護の外**: Web UI のジョイスティックなどの手動操作は `/cmd_vel` に直接出すので、`collision_monitor` と `velocity_smoother` を通らない。`behavior_server` (後退・旋回) も通らない。後退・旋回の安全は、`behavior_server` がローカルコストマップとフットプリントで先読みする衝突の確かめ (致死・未知のセルで中止) だけに頼る。ごく近い物 (前処理で落とす自車の箱の中) と LiDAR の面より低い物は見えないので、実機では、上 LiDAR から後方が台車の陰なく見えていることを確かめる。
 - **急に現れた障害物の前で止まる余裕**: 目の前に人が出たとき、止まるまでに進む距離は、検出と制御の遅れのあいだ巡航速度で進む距離と、`max_decel` からの制動距離の和で、巡航速度で決まる。シミュレーションでは、飛び出した人の前で止まる余裕が小さい ([mg_scenario_test の既知の問題](../../mg_scenario_test/scenarios/README.md#既知の問題))。実機で、走行中に前方へ人が出たときに止まる位置を測り、余裕が足りなければ巡航速度 (アンカー `&v_max`) を下げる。

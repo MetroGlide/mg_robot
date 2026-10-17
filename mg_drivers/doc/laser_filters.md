@@ -34,4 +34,4 @@ rosbag の再生では、`mg_navigation` の `bag_play.launch.py` が、bag の�
 
 - 落ちたら自動で起動し直す (`respawn`)。起動直後に TF が無くて失敗した場合も、起動し直して直る。
 - 前処理が止まると、`collision_monitor` は `stop_on_timeout` で速度 0 にする ([衝突の防止](../../mg_navigation/doc/costmap_and_collision.md#衝突の防止-collision_monitor))。止まったことは、`mg_diagnostics` のトピック監視 (`/top_laser_filter`) と、ウェイポイントの `~/activity` で分かる。
-- 実機で、静止しているときに `collision_monitor` が発動しないこと (自車の点が消えていること) を確認する。RViz で、生のスキャンと前処理後のスキャンを重ねると分かる。
+- `collision_monitor` の polygon を有効にするときは、実機で、静止しているときに発動しないこと (自車の点が消えていること) を確認する。RViz で、生のスキャンと前処理後のスキャンを重ねると分かる。
