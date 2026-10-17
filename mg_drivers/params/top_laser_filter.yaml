@@ -9,7 +9,7 @@ top_laser_filter:
       type: laser_filters/LaserScanRangeFilter
       params:
         use_message_range_limits: false
-        lower_threshold: 0.1
+        lower_threshold: 0.25
         upper_threshold: 30.0
 
     # 自車の点 (支柱・ケーブルなど) を落とす。base_footprint 基準で、nav2_params.yaml の footprint
