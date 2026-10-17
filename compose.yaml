@@ -112,7 +112,7 @@ x-simulation-base: &simulation-base
     args:
       ROS_DISTRO: humble
     target: simulation
-    network: host
+    # network: host
   image: mg_simulation
   entrypoint: ["/app/docker/ros_entrypoint.sh"]
   privileged: true
