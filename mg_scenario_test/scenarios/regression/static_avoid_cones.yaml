@@ -37,7 +37,8 @@ run:
 monitors:
   # 上部 LiDAR の最小測距 (コーンへの接触の近似検出)
   - min_scan_range: { min_range: 0.1, topic: /scan_top_lidar }
-  # collision_monitor は RPP の後ろ盾なので、静止した障害物を避ける通常の走行では停止まで発動しない
+  # collision_monitor は RPP の後ろ盾なので、静止した障害物を避ける通常の走行では停止まで発動しない。
+  # polygon を無効にしていても、scan の途絶による停止 (stop_on_timeout) は数えるので、判定は残す
   - collision_monitor_action: { action: STOP, expect: never }
 
 expect:

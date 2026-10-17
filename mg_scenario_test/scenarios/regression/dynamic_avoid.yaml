@@ -8,7 +8,8 @@ profile: mg01
 world: warehouse
 # 歩行者は set_pose で動かすので物理的に押し返されず、ロボットを通り抜ける。
 # obstacle_clearance は、ロボット自身の動きで近づいた場合だけを接触として数える。
-# collision_monitor の PolygonSlowdown (側方・後方を含む広い範囲) と PolygonApproach (自車の箱の大きさ) が、RPP の後ろ盾になる。
+# collision_monitor の polygon を有効にしているときは、PolygonSlowdown (側方・後方を含む広い範囲) と
+# PolygonApproach (自車の箱の大きさ) が、RPP の後ろ盾になる。
 tags: [full, dynamic_obstacle, avoid, nav2_goals]
 seed: 1
 

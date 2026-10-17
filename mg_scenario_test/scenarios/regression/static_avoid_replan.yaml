@@ -31,7 +31,8 @@ timeline:
 
 monitors:
   - min_scan_range: { min_range: 0.1, topic: /scan_top_lidar }
-  # collision_monitor は RPP の後ろ盾なので、静止した障害物を避ける通常の走行では停止まで発動しない
+  # collision_monitor は RPP の後ろ盾なので、静止した障害物を避ける通常の走行では停止まで発動しない。
+  # polygon を無効にしていても、scan の途絶による停止 (stop_on_timeout) は数えるので、判定は残す
   - collision_monitor_action: { action: STOP, expect: never }
   # 急に現れた居座る障害物は、まず failure_tolerance の間待つ (壁を出してから測り、迂回路へ向き直る
   # その場の回転は停止に数えない。failure_tolerance より少し短い下限)
