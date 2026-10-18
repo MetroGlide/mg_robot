@@ -40,6 +40,7 @@ scenarios/
 | `full_lap_sequencer` | シミュレーション用 waypoint 9 個 (通過点と wait_trigger の停止点) を 1 周する |
 | `localization_gnss_denied` | 走行中に GNSS の配信を止めても (ブリッジの `change_publish_state`)、AMCL とホイールオドメトリだけでゴールへ到達し、停止位置の誤差が 0.5m 以内 |
 | `localization_kidnap_recovery` | 1 つ目のゴールに着いたあとロボットを別の場所へ移して (`teleport`。自己位置推定には通知しない) 止まったまま待つと、自己位置の監督が異常を確認して AMCL と EKF を初期化し直し (状態が `RECOVERING` を経て `NORMAL` に戻る。`localization_state`)、2 つ目のゴールへ到達する。到達はシミュレータ上の真の位置で判定する。監視は監督 (`localization_monitor: supervisor`。既定)。停止中の AMCL は更新されない(静止中は AMCL との比較が判定できない)ので、検知は走り出した後になる。所要は約 2.5 分 |
+| `keepout_escape` | 計画用地図にだけある進入禁止の領域 (`data/keepout/planning.yaml`。ウェアハウスの計画用地図の原点の周りの 2m 四方を進入禁止にしたもので、`tools/scripts/add_keepout_to_map.py` で作る。実際の世界には何もない) の中でスタートしても、自己位置が信頼できる (監督の状態が `NORMAL`) ので、BT のリカバリーの `EscapeKeepout` が領域の外の最も近い位置を始点に計画して領域から出て (`FindFreeStart` が SUCCESS)、ゴールへ到達する。監督が起動して状態を配信するまでは待つ。この段階が無いと、プランナが「始点が致死」で計画できず動けない |
 | `narrow_corridor_blocked` | 通れない幅 (0.5m) の狭い回廊へ経路を引かず、壁の外側を迂回して到達する。壁に接触しない (`obstacle_clearance`) |
 | `dynamic_avoid` | 横切る歩行者 (0.6m/s) に、ロボット自身の動きで接触せず (`obstacle_clearance`) 到達する |
 

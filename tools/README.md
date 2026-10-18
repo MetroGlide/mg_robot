@@ -50,6 +50,7 @@ tools/
     ├── loc_dataset.py               # データセット定義 (datasets/localization/) の読込
     ├── compare_localization.py      # 変種ごとの評価結果の比較表
     ├── calib_wheel_odom.py          # ホイールオドメトリのスケール・バイアス・遅れを走行ログから推定
+    ├── add_keepout_to_map.py        # 地図に進入禁止の長方形を足す (計画用地図にだけ進入禁止がある状況のシナリオ用)
     ├── run_slam_variant.sh          # パラメータ変種のオフラインSLAM実行〜評価までを一括実行
     ├── patch_params.py              # コメント付きパラメータ YAML の値を書き換え
     ├── record.sh                    # rosbag 記録 (MCAP。状態監視のトピックも加える。-n で外す)
