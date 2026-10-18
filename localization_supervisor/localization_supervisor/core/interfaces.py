@@ -266,7 +266,12 @@ class _SourcedPlugin(Plugin):
 
 
 class CandidateGenerator(_SourcedPlugin):
-    """復旧の候補を作る。再初期化が要るあいだ、周期ごとに呼ばれる (作れなければ空を返す)。"""
+    """復旧の候補を作る。再初期化が要るあいだ、周期ごとに呼ばれる (作れなければ空を返す)。
+
+    status に、直近の generate の結果の短い理由 (作れたら ok、作れなければその理由) を入れる。
+    候補を選べなかったときのイベントに添える。
+    """
+    status = ''
 
     def generate(self, context: RecoveryContext) -> List[Candidate]:
         raise NotImplementedError

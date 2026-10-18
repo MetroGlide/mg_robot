@@ -30,20 +30,27 @@ class PoseSource(CandidateGenerator):
         p = self.params
         name = self.sources['pose']
         snapshot = context.snapshot
+        if snapshot.pose(name, p['max_age_sec']) is None:
+            self.status = 'no_recent_sample'
+            return []
         aligned = snapshot.pose_aligned(name, p['max_age_sec'])
         if aligned is None:
+            self.status = 'cannot_align'
             return []
         recent = snapshot.pose_history(name).samples()[-p['consecutive']:]
         if len(recent) < p['consecutive']:
+            self.status = 'few_samples'
             return []
         for sample in recent:
             if math.sqrt(max(float(sample.cov[0, 0]), float(sample.cov[1, 1]), 0.0)) > p['max_std_m']:
+                self.status = 'std_too_large'
                 return []
         sample = aligned[0]
         cov = np.array(sample.cov, dtype=float, copy=True)
         cov[0, 0] = max(cov[0, 0], p['min_std_m'] ** 2)
         cov[1, 1] = max(cov[1, 1], p['min_std_m'] ** 2)
         cov[2, 2] = min(cov[2, 2], p['yaw_std_rad'] ** 2) if cov[2, 2] > 0.0 else p['yaw_std_rad'] ** 2
+        self.status = 'ok'
         return [Candidate(sample.pose, cov, self.name)]
 
 
@@ -65,10 +72,12 @@ class AnchorMotion(CandidateGenerator):
         p = self.params
         predicted = predict_from_anchor(context, self.sources['motion'])
         if predicted is None:
+            self.status = 'no_anchor_or_motion'
             return []
         pose, cov, distance = predicted
         cov = grow_covariance(cov, distance, 0.0, p['std_per_m'], p['std_per_rad'], p['min_std_m'],
                               p['min_std_yaw_rad'])
+        self.status = 'ok'
         return [Candidate(pose, cov, self.name, info={'distance_m': distance})]
 
 
@@ -100,25 +109,30 @@ class SubmapMatch(CandidateGenerator):
 
     def generate(self, context: RecoveryContext) -> List[Candidate]:
         p = self.params
-        if context.matcher is None:
-            return []
         predicted = predict_from_anchor(context, self.sources['motion'])
         reference = context.snapshot.reference(self.sources['reference'])
-        if predicted is None or reference.occupancy is None:
+        if predicted is None:
+            self.status = 'no_anchor_or_motion'
+            return []
+        if reference.occupancy is None or context.matcher is None:
+            self.status = 'no_map'
             return []
         center, cov, distance = predicted
         cov = grow_covariance(cov, distance, 0.0, p['std_per_m'], p['std_per_rad'], 0.0, 0.0)
         points = base_points(context, reference, self.sources['motion'], p['min_distance_m'], p['max_points'])
         if points is None:
+            self.status = 'no_scan'
             return []
         field = reference.fields.around(reference.occupancy, center[0], center[1], p['radius_m'])
         if field is None:
+            self.status = 'no_distance_field'
             return []
         range_xy, range_yaw = window_size(cov, p['sigmas'], p['min_range_m'], p['max_range_m'])
         window = SearchWindow(range_xy, p['step_m'], min(range_yaw, p['max_yaw_rad']), p['yaw_step_rad'])
         started = time.monotonic()
         peaks = context.matcher.match(field, points, center, window, p['peaks'])
         elapsed = time.monotonic() - started
+        self.status = 'ok' if peaks else 'no_match'
         result_cov = np.diag([p['result_std_m'] ** 2, p['result_std_m'] ** 2, p['result_std_yaw_rad'] ** 2])
         return [Candidate(
             peak.pose, result_cov.copy(), self.name,

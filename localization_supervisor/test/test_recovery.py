@@ -294,6 +294,26 @@ def test_low_scan_match_is_not_reinitialized():
     assert 'low_score' in reasons or 'all_vetoed' in reasons
 
 
+def test_anchor_agreement_prefers_the_dead_reckoning_prediction():
+    raw = _raw()
+    raw['recovery']['generators'] = {
+        'dr': {'type': 'anchor_motion', 'sources': {'motion': 'odom'}},
+        'gnss': raw['recovery']['generators']['gnss']}
+    raw['recovery']['scorers']['prior'] = {
+        'type': 'anchor_agreement', 'sources': {'motion': 'odom'}, 'weight': 0.5, 'params': {'max_distance_m': 10.0}}
+    raw['recovery']['scorers']['gnss_near'] = {
+        'type': 'source_agreement', 'sources': {'pose': 'gnss'}, 'weight': 0.5}
+    scene = Scene(raw)
+    for _ in scene.run(0, 40):
+        pass
+    scene.amcl_offset = (4.0, 0.0, 0.0)
+    result, directive = _reinit(scene, 40, 80)
+    assert directive is not None
+    by_origin = {c.origin: c for c in result.plan.candidates}
+    assert by_origin['dr'].scores['prior'] > 0.99
+    assert by_origin['gnss'].scores['gnss_near'] > 0.9
+
+
 def test_dead_reckoning_candidates_from_the_anchor():
     raw = _raw()
     raw['recovery']['generators'] = {

@@ -305,7 +305,8 @@ class Supervisor:
             fields.update({f'score_{k}': round(v, 3) for k, v in candidate.scores.items()})
             self._emit('recovery_candidate', 'info', fields)
         common = {'attempt': self._plan_attempts, 'candidates': len(plan.candidates),
-                  'elapsed_ms': round(plan.elapsed_sec * 1000.0)}
+                  'elapsed_ms': round(plan.elapsed_sec * 1000.0),
+                  'generators': ','.join(f'{name}:{status}' for name, status in plan.generators.items())}
         if plan.chosen is None:
             self._emit('reinit_skipped', 'warn', {'reason': plan.reason, **common})
         else:

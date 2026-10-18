@@ -6,7 +6,7 @@ from ..geometry import wrap_angle
 from ..grid import match_ratio, transform_points
 from ..interfaces import Candidate, CandidateScorer, ParamSpec, RecoveryContext, SourceKind
 from ..safety import FootprintChecker
-from .common import base_points
+from .common import base_points, predict_from_anchor
 
 
 class ScanMatch(CandidateScorer):
@@ -58,6 +58,28 @@ class FootprintFree(CandidateScorer):
         if self._checker is None:
             self._checker = FootprintChecker(context.safety)
         return 0.0 if self._checker.check(occupancy, candidate.pose).in_lethal else 1.0
+
+
+class AnchorAgreement(CandidateScorer):
+    """候補が、疑いが始まる前のアンカーに動きを足した姿勢(推測航法の予測)と近いほど 1 に近い (max_distance_m で 0)。
+    スキャンの照合が決めきれない(廊下で進行方向の位置が定まらないなど)とき、動きの事前情報で選ぶ。
+    ロボットが運ばれたときは予測が外れるので、重みを小さくして、スキャンの一致を優先させる。"""
+    SOURCES = {'motion': SourceKind.MOTION}
+    REQUIRES = ('anchors',)
+    PARAMS = {
+        'max_distance_m': ParamSpec(float, 5.0),
+        'yaw_weight_m': ParamSpec(float, 1.0),
+    }
+
+    def score(self, candidate: Candidate, context: RecoveryContext) -> Optional[float]:
+        p = self.params
+        predicted = predict_from_anchor(context, self.sources['motion'])
+        if predicted is None:
+            return None
+        pose = predicted[0]
+        distance = math.hypot(pose[0] - candidate.pose[0], pose[1] - candidate.pose[1])
+        distance += p['yaw_weight_m'] * abs(wrap_angle(pose[2] - candidate.pose[2]))
+        return max(0.0, 1.0 - distance / p['max_distance_m'])
 
 
 class SourceAgreement(CandidateScorer):

@@ -55,6 +55,8 @@ class RecoveryPlan:
     reason: str
     elapsed_sec: float = 0.0
     margin: float = 0.0
+    # 候補を作るものごとの、直近の結果の理由 (作れなければその理由)
+    generators: Dict[str, str] = field(default_factory=dict)
 
 
 class RecoveryPlanner:
@@ -78,13 +80,15 @@ class RecoveryPlanner:
         candidates: List[Candidate] = []
         for generator in self.generators:
             candidates.extend(generator.generate(context))
+        notes = {generator.name: generator.status for generator in self.generators}
         if not candidates:
-            return RecoveryPlan([], None, 'no_candidates', time.monotonic() - started)
+            return RecoveryPlan([], None, 'no_candidates', time.monotonic() - started, generators=notes)
         for candidate in candidates:
             self._score(candidate, context)
         alive = [c for c in candidates if not c.vetoed_by]
         plan = self._select(candidates, alive)
         plan.elapsed_sec = time.monotonic() - started
+        plan.generators = notes
         return plan
 
     def _score(self, candidate: Candidate, context: RecoveryContext) -> None:
