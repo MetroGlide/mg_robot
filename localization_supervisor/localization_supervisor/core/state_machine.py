@@ -41,6 +41,8 @@ class Action(str, enum.Enum):
 @dataclass
 class MachineConfig:
     recovery_enabled: bool = False
+    # recovery_enabled のとき、切り離してから戻すまで、走行を止めてほしいと要求するか
+    request_hold: bool = True
     # 異常がなくなった周期がこの回数続けば、SUSPECT・DEGRADED (通知だけ) から NORMAL に戻る
     clear_ticks: int = 5
     # 切り離してから、初期化し直すまで待つ時間 [s]
@@ -76,7 +78,8 @@ class StateMachine:
     @property
     def hold_requested(self) -> bool:
         """走行を止めてほしい状態か (切り離してから、戻すまで)。"""
-        return self.config.recovery_enabled and self.state in (State.ISOLATED, State.RECOVERING, State.DEGRADED)
+        return (self.config.recovery_enabled and self.config.request_hold
+                and self.state in (State.ISOLATED, State.RECOVERING, State.DEGRADED))
 
     def step(self, now: float, fusion: FusionResult, converged: Optional[bool] = None) -> Decision:
         cfg = self.config

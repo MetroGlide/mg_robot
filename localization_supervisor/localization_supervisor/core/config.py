@@ -287,8 +287,8 @@ def _parse_safety(raw: Mapping[str, Any], sources: Mapping[str, SourceConfig]) -
 
 RECOVERY_KEYS = {'convergence', 'matcher', 'scan_buffer', 'generators', 'scorers', 'selection', 'resetters',
                  'actuators'}
-GENERATOR_KEYS = {'type', 'sources', 'params'}
-SCORER_KEYS = {'type', 'sources', 'params', 'weight', 'veto_below'}
+GENERATOR_KEYS = {'type', 'sources', 'params', 'enabled'}
+SCORER_KEYS = {'type', 'sources', 'params', 'weight', 'veto_below', 'enabled'}
 
 
 def _check_requires(where: str, cls: type, anchors: Optional[AnchorConfig], safety: Optional[SafetyConfig],
@@ -315,7 +315,7 @@ def _parse_recovery(
         _check_keys(body, GENERATOR_KEYS, where)
         type_name, cls, params, bound = _bind_plugin(where, body, CandidateGenerator, STANDARD_GENERATORS, sources)
         _check_requires(where, cls, anchors, safety, bound)
-        generators[name] = GeneratorConfig(name, type_name, cls, bound, params)
+        generators[name] = GeneratorConfig(name, type_name, cls, bound, params, _enabled(body, where))
     scorers: Dict[str, ScorerConfig] = {}
     for name, body in _mapping(recovery.get('scorers'), 'recovery.scorers').items():
         where = f'recovery.scorers.{name}'
@@ -326,12 +326,15 @@ def _parse_recovery(
         veto = body.get('veto_below')
         scorers[name] = ScorerConfig(
             name, type_name, cls, bound, params, weight=_number(body, 'weight', 1.0, where),
-            veto_below=None if veto is None else _number(body, 'veto_below', 0.0, where))
+            veto_below=None if veto is None else _number(body, 'veto_below', 0.0, where),
+            enabled=_enabled(body, where))
     for name, config in {**generators, **scorers}.items():
         try:
             config.cls(name, config.params, config.sources)
         except (ValueError, TypeError) as error:
             raise ConfigError(f'recovery.{name}: {error}') from error
+    generators = {name: g for name, g in generators.items() if g.enabled}
+    scorers = {name: s for name, s in scorers.items() if s.enabled}
 
     selection = _dataclass_from(SelectionConfig, _mapping(recovery.get('selection'), 'recovery.selection'),
                                 'recovery.selection')
@@ -361,6 +364,13 @@ def _parse_recovery(
     return {'generators': generators, 'scorers': scorers, 'selection': selection, 'matcher_cls': matcher_cls,
             'matcher_params': matcher_params, 'scan_buffer': scan_buffer, 'resetters': resetters,
             'actuators': actuators}
+
+
+def _enabled(body: Mapping[str, Any], where: str) -> bool:
+    enabled = body.get('enabled', True)
+    if not isinstance(enabled, bool):
+        raise ConfigError(f'{where}.enabled: expected true or false')
+    return enabled
 
 
 def _plugin_list(raw: Any, where: str) -> List[Dict[str, Any]]:

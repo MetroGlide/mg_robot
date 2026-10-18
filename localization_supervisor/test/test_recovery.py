@@ -8,7 +8,7 @@ from localization_supervisor.core.config import ConfigError, parse_config
 from localization_supervisor.core.interfaces import (
     Candidate, CandidateGenerator, CandidateScorer, ParamSpec, RecoveryContext, SourceKind)
 from localization_supervisor.core.recovery.planner import RecoveryPlanner, ScorerConfig, SelectionConfig
-from localization_supervisor.core.state_machine import State
+from localization_supervisor.core.state_machine import MachineConfig, State, StateMachine
 from localization_supervisor.core.supervisor import Supervisor, make_store
 
 from supervisor_test_helpers import Drive, pose_sample, room_scan, wall_map
@@ -141,6 +141,35 @@ def test_unknown_generator_source_and_scorer_params_are_rejected():
     raw['recovery']['scorers']['scan']['params'] = {'nope': 1}
     with pytest.raises(ConfigError, match='unknown params'):
         parse_config(raw)
+
+
+def test_disabled_generators_and_scorers_are_validated_but_dropped():
+    raw = _raw()
+    raw['recovery']['generators']['gnss']['enabled'] = False
+    raw['recovery']['scorers']['scan']['enabled'] = False
+    raw['state_machine']['recovery_enabled'] = False
+    config = parse_config(raw)
+    assert not config.generators and not config.scorers
+    raw['recovery']['scorers']['scan']['params'] = {'nope': 1}
+    with pytest.raises(ConfigError, match='unknown params'):
+        parse_config(raw)
+
+
+def test_profile_can_switch_off_a_generator():
+    raw = _raw()
+    raw['profiles'] = {}
+    config = parse_config(raw, profile='lean', profiles={'lean': {
+        'recovery': {'generators': {'gnss': {'enabled': False}}}, 'state_machine': {'recovery_enabled': False}}})
+    assert not config.generators and config.scorers
+
+
+def test_request_hold_false_never_asks_to_stop():
+    machine = StateMachine(MachineConfig(recovery_enabled=True, request_hold=False))
+    machine.state = State.RECOVERING
+    assert not machine.hold_requested
+    machine = StateMachine(MachineConfig(recovery_enabled=True))
+    machine.state = State.RECOVERING
+    assert machine.hold_requested
 
 
 def test_resetters_and_actuators_need_a_type():

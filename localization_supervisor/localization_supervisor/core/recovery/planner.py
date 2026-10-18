@@ -22,6 +22,7 @@ class GeneratorConfig:
     cls: type
     sources: Dict[str, str]
     params: Dict[str, Any]
+    enabled: bool = True
 
 
 @dataclass
@@ -34,6 +35,7 @@ class ScorerConfig:
     weight: float = 1.0
     # この値を下回った候補は捨てる (None は捨てない)
     veto_below: Optional[float] = None
+    enabled: bool = True
 
 
 @dataclass
