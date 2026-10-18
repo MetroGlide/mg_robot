@@ -112,7 +112,9 @@ def test_injected_offset_is_detected_and_blamed(map_yaml):
     assert outcome.confirm_after is not None and outcome.confirm_after <= 5.0
     assert outcome.blame == 'amcl'
     assert result.report.false_alarms == 0
-    assert [e['to'] for e in result.events][:2] == ['SUSPECT', 'DEGRADED']
+    changes = [e for e in result.events if e['name'].endswith('.state_changed')]
+    assert [e['to'] for e in changes][:2] == ['SUSPECT', 'DEGRADED']
+    assert any(e['name'].endswith('.check_changed') and e['to'] == 'anomaly' for e in result.events)
 
 
 def _recovery_config():

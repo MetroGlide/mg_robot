@@ -305,6 +305,42 @@ def test_recovery_path_isolates_reinits_and_restores():
     assert d.state == State.NORMAL and d.actions == [Action.RESTORE] and not machine.hold_requested
 
 
+def _recovering(clear_ticks=2):
+    machine = StateMachine(MachineConfig(
+        recovery_enabled=True, isolate_hold_sec=1.0, recover_ok_ticks=2, recover_timeout_sec=10.0,
+        max_reinit_attempts=1, degraded_retry_sec=100.0, clear_ticks=clear_ticks))
+    machine.step(0.0, _fr(suspect=True, anomaly=True))
+    machine.step(1.0, _fr(confirmed=True, suspect=True, anomaly=True, blame='gnss'))
+    assert machine.step(2.0, _fr(anomaly=True)).state == State.RECOVERING
+    return machine
+
+
+def test_recovering_without_reinit_returns_to_normal_when_the_anomaly_clears():
+    # 一時的な外れ値で確認に進んでも、初期化し直す前に異常がなくなれば、初期化せずに戻す(停止し続けない)
+    machine = _recovering()
+    assert machine.step(3.0, _fr(cleared=True)).state == State.RECOVERING
+    d = machine.step(4.0, _fr(cleared=True))
+    assert d.state == State.NORMAL and d.actions == [Action.RESTORE] and d.event == 'cleared'
+    assert not machine.hold_requested
+
+
+def test_recovering_after_reinit_waits_for_convergence_not_for_the_anomaly_to_clear():
+    machine = _recovering()
+    machine.note_reinit()
+    for t in (3.0, 4.0, 5.0):
+        assert machine.step(t, _fr(cleared=True), converged=None).state == State.RECOVERING
+
+
+def test_degraded_with_recovery_returns_to_normal_when_the_anomaly_clears():
+    machine = _recovering()
+    machine.note_reinit()
+    d = machine.step(12.0, _fr(anomaly=True), converged=False)
+    assert d.state == State.DEGRADED and machine.hold_requested
+    machine.step(13.0, _fr(cleared=True))
+    d = machine.step(14.0, _fr(cleared=True))
+    assert d.state == State.NORMAL and d.actions == [Action.RESTORE] and not machine.hold_requested
+
+
 # ---------------------------------------------------------------- anchors
 
 def test_anchor_store_limits_and_lookup():
@@ -358,7 +394,9 @@ def test_supervisor_detects_kidnap_and_blames_amcl():
     assert results[0].state == State.SUSPECT
     assert results[1].state == State.DEGRADED
     assert results[1].fusion.blame == 'amcl'
-    assert [e.name for e in results[0].events] == ['localization.state_changed']
+    assert [e.name for e in results[0].events if e.name.endswith('.state_changed')] == ['localization.state_changed']
+    checks = [e for e in results[0].events if e.name == 'localization.check_changed']
+    assert checks and all(e.fields['to'] == 'anomaly' for e in checks)
     assert supervisor.suspect_since == 10.0
     assert supervisor.anchors.latest_before(10.0).stamp == 9.0
     # 戻れば NORMAL に戻る

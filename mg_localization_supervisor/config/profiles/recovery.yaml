@@ -1,3 +1,0 @@
-# 自動復旧を有効にする (supervision.yaml に重ねる)。判定は基の設定のまま。
-state_machine:
-  recovery_enabled: true

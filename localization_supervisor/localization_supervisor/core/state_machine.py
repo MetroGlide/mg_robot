@@ -14,6 +14,9 @@
                                          │ 時間切れが max_reinit_attempts 回
                                          ▼
                                        DEGRADED (degraded_retry_sec ごとに RECOVERING へ)
+
+    RECOVERING (まだ初期化し直していない) と DEGRADED で、異常がなくなった周期が clear_ticks 回続けば、
+    初期化せずに NORMAL へ戻す (一時的な外れ値だった場合に、走行を止め続けない)
 """
 import enum
 from dataclasses import dataclass, field
@@ -74,6 +77,11 @@ class StateMachine:
         self._reinit_at = 0.0
         self._degraded_at = 0.0
         self._attempts = 0
+        self._reinit_done = False
+
+    def note_reinit(self) -> None:
+        """推定器を初期化し直す指示を出した。これ以降は、収束を確認して戻す (それまでは、異常が消えても戻せる)。"""
+        self._reinit_done = True
 
     @property
     def hold_requested(self) -> bool:
@@ -110,6 +118,10 @@ class StateMachine:
             return Decision(self.state, [], '', self.blame)
 
         if self.state == State.RECOVERING:
+            # まだ初期化し直していないうちに、異常がなくなった (一時的な外れ値だった) なら、初期化せずに戻す。
+            # 初期化し直した後は、推定器が収束したかで戻す (停止中は AMCL が更新されないので、異常の有無は決められない)
+            if not self._reinit_done and self._cleared(fusion):
+                return self._to_normal([Action.RESTORE], 'cleared')
             if converged is False:
                 self._ok_run = 0
             elif converged is True:
@@ -121,9 +133,11 @@ class StateMachine:
                     self._attempts += 1
                     self._reinit_at = now
                     self._ok_run = 0
+                    self._reinit_done = False
                     return Decision(self.state, [Action.REINIT], f'reinit retry {self._attempts}', self.blame)
                 self.state = State.DEGRADED
                 self._degraded_at = now
+                self._clear_run = 0
                 return Decision(self.state, [Action.NOTIFY_DEGRADED], 'degraded', self.blame)
             return Decision(self.state, [], '', self.blame)
 
@@ -132,6 +146,8 @@ class StateMachine:
             if self._cleared(fusion):
                 return self._to_normal([Action.RESTORE], 'cleared')
             return Decision(self.state, [], '', self.blame)
+        if self._cleared(fusion):
+            return self._to_normal([Action.RESTORE], 'cleared')
         if now - self._degraded_at >= cfg.degraded_retry_sec:
             return self._start_recovery(now, 'retry from degraded')
         return Decision(self.state, [], '', self.blame)
@@ -154,4 +170,6 @@ class StateMachine:
         self._reinit_at = now
         self._attempts = 1
         self._ok_run = 0
+        self._clear_run = 0
+        self._reinit_done = False
         return Decision(self.state, [Action.REINIT], event, self.blame)

@@ -95,6 +95,7 @@ class Supervisor:
         self._next_plan = 0.0
         self._plan_attempts = 0
         self._isolated_blame = ''
+        self._check_status: Dict[str, Status] = {}
         self._build(config)
 
     def _build(self, config: SupervisorConfig) -> None:
@@ -121,6 +122,7 @@ class Supervisor:
             if config.sources[source].kind == SourceKind.REFERENCE})
         self._suspect_since = None
         self._reinit_pending = False
+        self._check_status = {}
 
     @staticmethod
     def _make_planner(config: SupervisorConfig) -> Optional[RecoveryPlanner]:
@@ -213,6 +215,7 @@ class Supervisor:
         in_grace = now < self._grace_until
 
         evidences = {name: detector.evaluate(snapshot) for name, detector in self.detectors.items()}
+        self._check_events(evidences)
         fusion = self.fusion.update(evidences, active=not in_grace)
         state_before = self.machine.state
         decision = self.machine.step(now, fusion, self._converged(evidences))
@@ -250,6 +253,20 @@ class Supervisor:
             trusted=trusted, in_grace=in_grace, hold_requested=self.machine.hold_requested, safety=safety,
             isolated_sources=self._isolated(), last_event=self._last_event, events=events,
             directives=directives, plan=plan, blame=self.machine.blame)
+
+    def _check_events(self, evidences: Dict[str, Evidence]) -> None:
+        """判定のインスタンスが、正常と異常の間で変わったとき (判定できない周期は飛ばす) にイベントを出す。
+        異常の原因を、あとから値で確かめられるようにする。"""
+        for name, evidence in evidences.items():
+            if evidence.status == Status.UNKNOWN:
+                continue
+            previous = self._check_status.get(name)
+            self._check_status[name] = evidence.status
+            if previous is None and evidence.status == Status.NORMAL or previous == evidence.status:
+                continue
+            fields: Dict[str, Any] = {'check': name, 'to': evidence.status.value, 'score': round(evidence.score, 3)}
+            fields.update({f'v_{key}': round(value, 3) for key, value in evidence.values.items()})
+            self._emit('check_changed', 'info', fields)
 
     def _directives(self, decision: Decision) -> List[Directive]:
         directives = []
@@ -318,6 +335,7 @@ class Supervisor:
         """推定器を初期化し直す指示を出した後。姿勢が飛ぶので、累積・判定の内部状態を捨てて猶予を置く。
         アンカーとスキャンのバッファは、再試行のために残す。"""
         self._reinit_pending = False
+        self.machine.note_reinit()
         self.fusion.reset()
         for detector in self.detectors.values():
             detector.reset()
