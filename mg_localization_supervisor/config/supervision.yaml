@@ -1,0 +1,119 @@
+# このロボットの、自己位置の監督の構成 (localization_supervisor の設定ファイル)。
+# 情報源 (AMCL・GNSS・EKF・ホイールオドメトリ・地図とスキャン)、判定のインスタンス、総合、状態遷移、アンカー。
+# 書き方は localization_supervisor/doc/parameters.md。オフライン評価 (tools/scripts/eval_localization_offline.py) も
+# このファイルを読む。
+version: 0
+
+sources:
+  amcl:
+    kind: pose
+    input: {type: pose_with_covariance, topic: /amcl_pose_origin}
+  gnss:
+    kind: pose
+    input: {type: odometry, topic: /odom/gps}
+  # EKF は AMCL・GNSS・オドメトリを融合した結果。疑わしい情報源の特定には使わず、出力が汚れているかの判定に使う
+  ekf:
+    kind: pose
+    derived_from: [amcl, gnss, odom]
+    input: {type: odometry, topic: /ekf_global_odom}
+  odom:
+    kind: motion
+    input: {type: odometry, topic: /odom}
+  map_scan:
+    kind: reference
+    input: {type: map_scan, map_topic: /map, scan_topic: /scan_top_lidar, base_frame: base_footprint}
+
+timeline:
+  motion_priority: [odom]
+  horizon_sec: 30.0
+
+# 累積 (cusum) は、score が allowance を超えた分をためる。正常なときの score がしきい値 (1.0) より十分小さい判定は、
+# allowance を 1.0 より下げて、しきい値の手前からためる (少しずつずれる場合に早く気づく)。
+# allowance は、オフライン評価の正常なときの score の分布 (判定ごとの最大値) より上にする
+detectors:
+  # AMCL と GNSS の位置の差のマハラノビス距離の二乗 (2 自由度)。標準偏差が b_max_std_m を超える GNSS は使わない。
+  # 単独測位 (σ 約 1 m) でも、AMCL が数 m ずれれば食い違いとして検知できる
+  amcl_gnss:
+    type: pose_consistency
+    sources: {a: amcl, b: gnss}
+    params: {threshold: 6.0, b_max_std_m: 2.0, extra_std_m: 0.3}
+    allowance: 0.6
+  # EKF と GNSS。EKF が引きずられた (汚れた) かを見る
+  ekf_gnss:
+    type: pose_consistency
+    sources: {a: ekf, b: gnss}
+    params: {threshold: 6.0, b_max_std_m: 2.0, extra_std_m: 0.3}
+    allowance: 0.6
+  # AMCL と EKF の位置の差 [m]。復旧の収束の確認にも使う
+  amcl_ekf:
+    type: pose_consistency
+    sources: {a: amcl, b: ekf}
+    params: {metric: distance, threshold: 1.0}
+    allowance: 0.6
+  # 連続する AMCL の推定が示す map->odom の飛び
+  amcl_jump:
+    type: pose_jump
+    sources: {pose: amcl, motion: odom}
+    params: {threshold_m: 0.6, threshold_rad: 0.35}
+    max_score: 10.0
+  # EKF の姿勢でのスキャンと地図の一致。一致率の絶対値は地図の質や LiDAR の特性で決まる (正しい姿勢でも
+  # 0.3 前後のことがある) ので、正常なときの中央値を基準にする。利得 (ずらしたほうが合う) は、別走行の地図との
+  # 位置合わせのずれで正しい姿勢でも 0.4 前後になるため使わない (gain_threshold 1.0)
+  scan_ekf:
+    type: scan_map
+    sources: {pose: ekf, reference: map_scan}
+    params: {tolerance_m: 0.3, ratio_min: 0.1, ratio_factor: 0.5, gain_threshold: 1.0}
+    decay: 0.9
+  # AMCL の姿勢でのスキャンと地図の一致。AMCL は同じスキャンと地図で推定しているので独立ではない
+  # (誤った場所に収束していても一致率は良く見えやすい) ため、重みを下げる
+  scan_amcl:
+    type: scan_map
+    sources: {pose: amcl, reference: map_scan}
+    params: {tolerance_m: 0.3, ratio_min: 0.1, ratio_factor: 0.5, gain_threshold: 1.0}
+    weight: 0.5
+    decay: 0.9
+  # AMCL の自己申告の共分散 (x・y の分散の和)。watchdog と同じ判定
+  amcl_covariance:
+    type: covariance
+    sources: {pose: amcl}
+    params: {metric: trace_xy, threshold: 2.0}
+    weight: 0.5
+
+fusion:
+  type: cusum
+  params: {suspect_level: 1.0, confirm_level: 4.0, blame_margin: 1.0}
+
+# アンカーを残す条件: 状態が NORMAL で、判定がどれも異常でなく、ここに並べた判定が正常
+trust:
+  require_normal: [scan_ekf]
+
+state_machine:
+  # false: 検知と通知だけ (異常を確認したら DEGRADED、消えたら NORMAL)
+  recovery_enabled: false
+  clear_ticks: 5
+  isolate_hold_sec: 3.0
+  recover_ok_ticks: 5
+  recover_timeout_sec: 30.0
+  max_reinit_attempts: 3
+  degraded_retry_sec: 60.0
+
+recovery:
+  convergence: [amcl_ekf]
+
+anchors:
+  pose: ekf
+  motion: odom
+  min_interval_sec: 1.0
+  max_age_sec: 120.0
+  max_distance_m: 100.0
+
+# 起動直後と復旧直後は、EKF・AMCL が落ち着くまで総合しない [s]
+grace:
+  startup_sec: 30.0
+  after_recovery_sec: 10.0
+
+profiles:
+  # AMCL と GNSS が乖離したら GNSS で引き戻すだけの動作
+  gnss_fallback: profiles/gnss_fallback.yaml
+  # 判定ごとに続けて異常だった回数で判断する (今の監督ノードと同じ判定と回数)
+  consecutive: profiles/consecutive.yaml

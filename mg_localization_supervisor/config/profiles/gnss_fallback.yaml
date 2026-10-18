@@ -1,0 +1,18 @@
+# AMCL と GNSS が乖離したら GNSS で引き戻すだけの動作 (supervision.yaml に重ねる)。
+# 判定は AMCL と GNSS の食い違いだけで、続けて異常だった回数で判断する。
+# 復旧の候補 (精度の良い GNSS の測位が続くのを待って、その位置で初期化する) は、自動復旧の段階で足す。
+enabled_detectors: [amcl_gnss]
+
+detectors:
+  amcl_gnss:
+    options: {suspect_after: 2, confirm_after: 3}
+
+fusion:
+  type: consecutive
+  params: {blame_margin: 1.0}
+
+trust:
+  require_normal: []
+
+recovery:
+  convergence: [amcl_gnss]

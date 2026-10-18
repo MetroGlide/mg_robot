@@ -1,0 +1,18 @@
+# 判定ごとに続けて異常だった回数で判断する (supervision.yaml に重ねる)。
+# 今の監督ノード (supervisor.yaml) と同じ判定・回数で、新しい総合 (cusum) と比べるために使う。
+enabled_detectors: [amcl_gnss, amcl_jump, scan_ekf, amcl_ekf]
+
+detectors:
+  amcl_gnss:
+    options: {suspect_after: 2, confirm_after: 3}
+  # 飛びはすぐ疑い、他の判定が 2 回続けば確認する (単独では確認しない)
+  amcl_jump:
+    options: {suspect_after: 1, confirm_after: 0, corroborate_after: 2}
+  scan_ekf:
+    options: {suspect_after: 5, confirm_after: 10}
+  amcl_ekf:
+    options: {suspect_after: 3, confirm_after: 5}
+
+fusion:
+  type: consecutive
+  params: {blame_margin: 1.0}

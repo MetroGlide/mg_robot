@@ -10,6 +10,8 @@
 | launch | `launch/supervisor.launch.py` | ゲートの調停 (`amcl_gate_arbiter`)・GNSS による初期化・監督ノードを起動する。`mg_navigation` の `localization_launch.py` から include される |
 | ノード | `gnss_amcl_initializer_node.py` | GNSS の位置から、AMCL (`/initialpose`) と EKF (`/set_pose`) の初期姿勢を出す ([下記](#gnss_amcl_initializer_node)) |
 | 設定 | `config/supervisor.yaml` | 監督ノード (`localization_supervisor_node`)。各値の説明はファイルのコメント |
+| 設定 | `config/supervision.yaml` | フレームワークの中核の設定 (情報源・判定のインスタンス・総合・状態遷移・アンカー)。今はオフライン評価で使う ([下記](#監督の構成-supervisionyaml)) |
+| 設定 | `config/profiles/*.yaml` | `supervision.yaml` に重ねるプロファイル |
 | 設定 | `config/gate_arbiter.yaml` | AMCL のゲートの調停 (`amcl_gate_arbiter`) |
 | 設定 | `config/initializer.yaml` | GNSS による初期化 (`gnss_amcl_initializer_node`) |
 
@@ -47,6 +49,36 @@ GNSS による初期化と監督ノードは、他のノードが立ち上がる
 - 地図との照合には、上部 LiDAR のスキャンを使う (`config/supervisor.yaml` の `scan_topic`)。
 - 診断 `localization_supervisor_node: localization` は、集約で `/Robot/Localization/Monitor`。
 
+## 監督の構成 (supervision.yaml)
+
+フレームワークの中核 ([design.md](../localization_supervisor/doc/design.md)) に与える、このロボットの構成。書き方は [parameters.md](../localization_supervisor/doc/parameters.md)、各値の理由はファイルのコメント。
+
+| 情報源 | 種類 | 入力 |
+| :--- | :--- | :--- |
+| `amcl` | pose | `/amcl_pose_origin` (ゲートを通る前の AMCL の推定) |
+| `gnss` | pose | `/odom/gps` (map 座標の GNSS) |
+| `ekf` | pose、融合の結果 (`amcl`・`gnss`・`odom` から) | `/ekf_global_odom` |
+| `odom` | motion | `/odom` (補正したホイールオドメトリ) |
+| `map_scan` | reference | `/map` と上部 LiDAR のスキャン |
+
+判定のインスタンスは、今の監督ノードの判定 (`amcl_gnss`、`amcl_jump`、`scan_ekf`、`amcl_ekf`) に、`ekf_gnss` (EKF が引きずられたか)、`scan_amcl` (AMCL の姿勢での地図との一致。AMCL と独立でないので重みを下げる)、`amcl_covariance` (watchdog と同じ共分散の判定) を加えたもの。総合は `cusum`。
+
+| プロファイル | 内容 |
+| :--- | :--- |
+| `gnss_fallback` | AMCL と GNSS の食い違いだけを、続けて異常だった回数で判断する (AMCL と GNSS が乖離したら GNSS で引き戻すだけの動作に戻す。引き戻しは自動復旧で足す) |
+| `consecutive` | 今の監督ノードと同じ判定・しきい値・回数 (`supervisor.yaml` と同じであることをテストで確かめる)。新しい総合と比べるために使う |
+
+### オフライン評価
+
+再生評価 (`tools/scripts/run_localization_variant.sh`) の記録を使って、判定と総合を実時間を待たずに評価する ([tools の README](../tools/README.md) の `eval_localization_offline.py`)。
+しきい値・重み・`allowance` を変えたら、正常な記録 (誤検知) と故障注入 (検知までの時間・`blame`) で、`consecutive` のプロファイル (今の監督ノード) と同じか、それより良いことを確かめる。
+
+```bash
+# 例: 採用している設定の再生の記録に kidnap を注入し、既定の設定と consecutive を比べる
+tools/scripts/eval_localization_offline.py <評価 bag>/eval_loc/<データセット>/<変種> \
+    --faults tools/datasets/localization/faults/kidnap.yaml --profile '' --profile consecutive
+```
+
 ## gnss_amcl_initializer_node
 
 `/odom/gps` (map 座標の GNSS の位置) の精度が、続けて条件を満たしたとき、`/initialpose` (AMCL) と、`publish_set_pose` が `true` なら `/set_pose` (EKF) に、初期の姿勢を出す。
@@ -74,6 +106,7 @@ make test pkg=mg_localization_supervisor
 
 - `test_config.py`: 設定ファイルが読み込め、起動するノードの名前・ゲートの要求元・監督ノードのゲートのサービス名が互いに合っている
 - `test_event_format.py`: フレームワークが出すイベントが、このプロジェクトのイベントの規約 ([doc/monitoring.md](../doc/monitoring.md)) と同じ書式で、`mg_utils.event_log.parse_event` で読める
+- `test_supervision_config.py`: `supervision.yaml` とすべてのプロファイルがフレームワークの検証を通る、入力のトピックが AMCL の設定と合う、`consecutive` が今の監督ノードと同じしきい値・回数
 
 ## 依存
 
