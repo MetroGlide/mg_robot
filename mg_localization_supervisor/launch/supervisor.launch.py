@@ -27,16 +27,21 @@ def generate_launch_description():
         description='GNSS から AMCL・EKF の初期姿勢を与えるノードを起動するか')
     use_supervisor = arg.create(
         'use_supervisor', default='false', description='自己位置推定の監督ノードを起動するか')
-    supervisor_params_file = arg.create(
-        'supervisor_params_file', default=os.path.join(config_dir, 'supervisor.yaml'),
-        description='監督ノードのパラメータファイル')
+    supervisor_config = arg.create(
+        'supervisor_config', default=os.path.join(config_dir, 'supervision.yaml'),
+        description='監督の設定ファイル (情報源・判定・総合・状態遷移・プロファイル)')
+    localization_profile = arg.create(
+        'localization_profile', default='', description='監督の設定に重ねるプロファイル (空は基の設定)')
 
     def create_nodes(context):
         """TimerAction の中の LaunchConfiguration は、タイマーが発火するとき (include のスコープを抜けた後) に
         評価され、use_sim_time などが既定値になってしまう。値をここ (スコープ内) で確定してから渡す。
         """
+        def value(launch_argument):
+            return context.perform_substitution(launch_argument.launch_config)
+
         def flag(launch_argument):
-            return context.perform_substitution(launch_argument.launch_config).lower() == 'true'
+            return value(launch_argument).lower() == 'true'
 
         sim_time = flag(use_sim_time)
         actions = [
@@ -62,9 +67,11 @@ def generate_launch_description():
                 executable='localization_supervisor_node.py',
                 name='localization_supervisor_node',
                 output='screen',
-                parameters=[
-                    context.perform_substitution(supervisor_params_file.launch_config),
-                    {'use_sim_time': sim_time}],
+                parameters=[{
+                    'config_file': value(supervisor_config),
+                    'profile': value(localization_profile),
+                    'use_sim_time': sim_time,
+                }],
             )]))
         return actions
 

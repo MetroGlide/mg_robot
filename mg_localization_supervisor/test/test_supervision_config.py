@@ -1,5 +1,6 @@
 """このロボットの監督の構成 (config/supervision.yaml) が、フレームワークの検証を通り、他の設定と合っていることを確かめる。"""
 import pathlib
+from unittest.mock import MagicMock
 
 import yaml
 
@@ -8,6 +9,10 @@ from localization_supervisor.core.fusion import ConsecutiveFusion, CusumFusion
 from localization_supervisor.core.interfaces import SourceKind
 from localization_supervisor.core.snapshot import SampleStore
 from localization_supervisor.ros.adapters import AdapterContext, build_adapters
+from localization_supervisor.ros.event_sinks import build_event_sink
+from localization_supervisor.ros.supervisor_node import check_node_supports
+from mg_localization_supervisor.event_sinks.event_log import EventLogSink
+from mg_utils.event_log import parse_event
 
 PACKAGE_DIR = pathlib.Path(__file__).resolve().parents[1]
 REPO_DIR = PACKAGE_DIR.parent
@@ -49,23 +54,37 @@ def test_gnss_fallback_only_compares_amcl_and_gnss():
     assert config.fusion_cls is ConsecutiveFusion
 
 
-def test_consecutive_profile_matches_current_supervisor_thresholds():
-    # 今の監督ノード (supervisor.yaml) と同じ判定のしきい値と回数であること
-    current = _yaml(PACKAGE_DIR / 'config' / 'supervisor.yaml')['localization_supervisor_node']['ros__parameters']
+def test_consecutive_profile_uses_the_counting_fusion():
     config = load_config(SUPERVISION, 'consecutive')
-    detectors = config.enabled_detectors()
-    assert detectors['amcl_gnss'].params['threshold'] == current['gnss_d2_threshold']
-    assert detectors['amcl_gnss'].params['b_max_std_m'] == current['gnss_max_sigma_m']
-    assert detectors['amcl_jump'].params['threshold_m'] == current['jump_threshold_m']
-    assert detectors['amcl_jump'].params['threshold_rad'] == current['jump_threshold_rad']
-    assert detectors['amcl_ekf'].params['threshold'] == current['diff_threshold_m']
-    assert detectors['scan_ekf'].params['ratio_factor'] == current['scan_ratio_factor']
-    options = {name: d.options for name, d in detectors.items()}
-    assert options['amcl_gnss'] == {'suspect_after': current['gnss_suspect_ticks'],
-                                    'confirm_after': current['gnss_isolate_ticks']}
-    assert options['scan_ekf'] == {'suspect_after': current['scan_suspect_ticks'],
-                                   'confirm_after': current['scan_isolate_ticks']}
-    assert options['amcl_ekf'] == {'suspect_after': current['diff_suspect_ticks'],
-                                   'confirm_after': current['diff_isolate_ticks']}
-    assert options['amcl_jump']['corroborate_after'] == current['corroborate_ticks']
-    assert config.machine.clear_ticks == current['clear_ticks']
+    assert config.fusion_cls is ConsecutiveFusion
+    assert sorted(config.enabled_detectors()) == ['amcl_ekf', 'amcl_gnss', 'amcl_jump', 'scan_ekf']
+
+
+def test_node_can_run_every_profile():
+    check_node_supports(load_config(SUPERVISION))
+
+
+def test_safety_footprint_matches_costmap():
+    config = load_config(SUPERVISION)
+    params = _yaml(REPO_DIR / 'mg_navigation' / 'params' / 'nav2_params.yaml')
+    for costmap in ('global_costmap', 'local_costmap'):
+        footprint = yaml.safe_load(params[costmap][costmap]['ros__parameters']['footprint'])
+        assert [tuple(p) for p in footprint] == config.safety.footprint, costmap
+
+
+def test_safety_uses_the_planning_map_of_the_global_costmap():
+    config = load_config(SUPERVISION)
+    params = _yaml(REPO_DIR / 'mg_navigation' / 'params' / 'nav2_params.yaml')
+    global_costmap = params['global_costmap']['global_costmap']['ros__parameters']
+    assert config.sources[config.safety.map].input['topic'] == global_costmap['map_topic']
+    assert config.safety.pose == 'ekf'
+
+
+def test_event_sink_writes_project_events():
+    config = load_config(SUPERVISION)
+    logger = MagicMock()
+    sink = build_event_sink(config.event_sink, logger)
+    assert isinstance(sink, EventLogSink)
+    sink.emit('localization.state_changed', 'error', {'from': 'SUSPECT', 'to': 'DEGRADED'})
+    text = logger.error.call_args.args[0]
+    assert parse_event(text) == ('localization.state_changed', {'from': 'SUSPECT', 'to': 'DEGRADED'})

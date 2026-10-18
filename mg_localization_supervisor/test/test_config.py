@@ -13,7 +13,6 @@ def _load(name):
 
 
 @pytest.mark.parametrize('name, node', [
-    ('supervisor.yaml', 'localization_supervisor_node'),
     ('gate_arbiter.yaml', 'amcl_gate_arbiter'),
     ('initializer.yaml', 'gnss_amcl_initializer_node'),
 ])
@@ -23,11 +22,9 @@ def test_config_has_parameters_for_launched_node(name, node):
     assert isinstance(config[node]['ros__parameters'], dict)
 
 
-def test_supervisor_uses_its_own_requester_of_gate_arbiter():
-    supervisor = _load('supervisor.yaml')['localization_supervisor_node']['ros__parameters']
+def test_gate_arbiter_keeps_a_requester_for_the_supervisor():
     gate = _load('gate_arbiter.yaml')['amcl_gate_arbiter']['ros__parameters']
     assert 'supervisor' in gate['requesters']
-    assert supervisor['amcl_gate_service'] == '/amcl_gate_arbiter/supervisor/change_publish_state'
 
 
 def test_gate_arbiter_accepts_waypoint_requests():

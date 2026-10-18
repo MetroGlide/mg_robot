@@ -1,8 +1,11 @@
 # このロボットの、自己位置の監督の構成 (localization_supervisor の設定ファイル)。
-# 情報源 (AMCL・GNSS・EKF・ホイールオドメトリ・地図とスキャン)、判定のインスタンス、総合、状態遷移、アンカー。
-# 書き方は localization_supervisor/doc/parameters.md。オフライン評価 (tools/scripts/eval_localization_offline.py) も
-# このファイルを読む。
+# 情報源 (AMCL・GNSS・EKF・ホイールオドメトリ・地図とスキャン・計画用地図)、判定のインスタンス、総合、状態遷移、
+# アンカー、安全の信号、出力。書き方は localization_supervisor/doc/parameters.md。
+# オフライン評価 (tools/scripts/eval_localization_offline.py) もこのファイルを読む。
 version: 0
+
+# 判定と総合の周期 [s]
+period_sec: 1.0
 
 sources:
   amcl:
@@ -22,6 +25,10 @@ sources:
   map_scan:
     kind: reference
     input: {type: map_scan, map_topic: /map, scan_topic: /scan_top_lidar, base_frame: base_footprint}
+  # 計画用地図 (グローバルコストマップの静的な層と同じ地図)。安全の信号にだけ使う
+  planning_map:
+    kind: reference
+    input: {type: occupancy_grid, topic: /planning_map}
 
 timeline:
   motion_priority: [odom]
@@ -78,6 +85,30 @@ detectors:
     sources: {pose: amcl}
     params: {metric: trace_xy, threshold: 2.0}
     weight: 0.5
+  # 直近の走行のスキャンを動きで局所地図にまとめ、地図に照合する (5 秒ごと)。1 枚のスキャンより広い範囲を見るので、
+  # GNSS が使えず、AMCL が誤った場所に収束して EKF も引きずられたときに効く。正しい姿勢での一致率 (この地図で
+  # 0.55 以上) より低い ratio_min と、正しい姿勢での利得 (0.4 弱まで) より高い gain_threshold にする
+  submap_ekf:
+    type: submap_map
+    sources: {pose: ekf, motion: odom, reference: map_scan}
+    params: {ratio_min: 0.35, baseline_min_samples: 5, gain_threshold: 0.5}
+    allowance: 0.8
+  submap_amcl:
+    type: submap_map
+    sources: {pose: amcl, motion: odom, reference: map_scan}
+    params: {ratio_min: 0.35, baseline_min_samples: 5, gain_threshold: 0.5}
+    allowance: 0.8
+  # 次の 2 つは、この環境 (屋外。別の走行で作った地図) のオフライン評価で、正しい姿勢でも異常と区別できなかった
+  # ため無効にしている。光線が地図の占有セルを越える割合が正しい姿勢でも 2〜7 割あり (植栽や柵の向こうが見える)、
+  # ずらしたほうが合う向きも、地図の位置合わせのずれで場所ごとに一定の向きにそろう
+  freespace_ekf:
+    type: freespace
+    sources: {pose: ekf, reference: map_scan}
+    enabled: false
+  drift_ekf:
+    type: scan_drift
+    sources: {pose: ekf, reference: map_scan}
+    enabled: false
 
 fusion:
   type: cusum
@@ -107,10 +138,32 @@ anchors:
   max_age_sec: 120.0
   max_distance_m: 100.0
 
-# 起動直後と復旧直後は、EKF・AMCL が落ち着くまで総合しない [s]
+# 安全の信号: EKF の姿勢の footprint が、計画用地図の占有セルにかかっているか。
+# footprint は mg_navigation/params/nav2_params.yaml のコストマップと同じ (テストで確かめている)
+safety:
+  pose: ekf
+  map: planning_map
+  footprint: [[0.4, 0.25], [0.4, -0.25], [-0.2, -0.3], [-0.2, 0.3]]
+
+# 起動直後と復旧直後は、EKF・AMCL が落ち着くまで総合しない [s]。
+# 外からの再初期化・地図の切り替えの後も、after_reset_sec の間は総合しない
 grace:
   startup_sec: 30.0
   after_recovery_sec: 10.0
+  after_reset_sec: 10.0
+
+# 監督以外 (GNSS による初期化、watchdog、人の操作) が推定器を初期化し直したら、人による上書きとして扱う
+external_reinit:
+  topics: [/initialpose, /set_pose]
+
+events:
+  prefix: localization
+  sink: {type: "mg_localization_supervisor.event_sinks.event_log:EventLogSink"}
+
+output:
+  status_topic: /localization/status
+  diagnostic_name: localization
+  hardware_id: localization
 
 profiles:
   # AMCL と GNSS が乖離したら GNSS で引き戻すだけの動作

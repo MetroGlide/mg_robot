@@ -1,5 +1,5 @@
 # 判定ごとに続けて異常だった回数で判断する (supervision.yaml に重ねる)。
-# 今の監督ノード (supervisor.yaml) と同じ判定・回数で、新しい総合 (cusum) と比べるために使う。
+# 以前の監督ノード (判定と状態遷移を固定で持っていた実装) と同じ判定・回数。累積 (cusum) と比べるために使う。
 enabled_detectors: [amcl_gnss, amcl_jump, scan_ekf, amcl_ekf]
 
 detectors:
