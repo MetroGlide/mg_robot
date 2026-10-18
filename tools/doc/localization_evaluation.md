@@ -143,7 +143,8 @@ docker run --rm -v $PWD:/app -v ~/ros2_data:/root/ros2_data mg_develop:latest \
 - `--faults`: 再生評価と同じ書式の故障を、**記録した標本に**注入します (`common/offline_faults.py` で変換)。kidnap と `amcl_drift` は AMCL の標本を、`gnss_bias` は GNSS の標本をずらし、`gnss_drop`・`scan_drop` は標本を欠かします。`odom_scale` は注入できません (記録した推定器の出力がオドメトリをすでに使っているため)
 - `--followers ekf=<割合>`: AMCL のずれに、EKF もその割合だけ引きずられた状態にします (実際の推定器は AMCL に引きずられるため)
 - `--labels`: 記録したときに再生評価で注入されていた故障を、正解としてだけ使います (例: `kidnap_none` の変種の記録)
-- `--profile` を並べると、同じ入力でプロファイルを比べます (`''` は既定の設定。`consecutive` は今の監督ノードと同じ判定と回数)
+- `--profile` を並べると、同じ入力でプロファイルを比べます (`''` は既定の設定。`consecutive` は今の監督ノードと同じ判定と回数。`recovery` は自動復旧を有効にする。`gnss_fallback` は以前の動作)
+- 自動復旧のプロファイルでは、監督が指示した再初期化を評価します。`--apply-reset`(既定 `amcl,ekf`)の姿勢の情報源は、指示の後の標本を、選んだ姿勢に合わせて、復旧して `NORMAL` に戻るまでを真似ます(空なら、指示を記録するだけ)。候補の誤差は、故障を注入する前の記録を真の姿勢として測り(`--truth`。既定は設定の `anchors.pose`)、`--ok-threshold` を超えたものを誤った復旧とします
 
 ```bash
 # 採用している設定の記録 (run_1..N) に kidnap を注入し、既定の設定と今の監督ノード相当を比べる
@@ -155,9 +156,10 @@ tools/scripts/eval_localization_offline.py <評価 bag>/eval_loc/map043837_eval0
     --dataset map043837_eval051635_movingstart
 ```
 
-develop コンテナで実行します (rosbag2_py を使うため)。出力は `<run>/offline/<故障の定義の名前>/<プロファイル>/` の `timeline.jsonl` (周期ごとの状態・総合・判定の値)、`events.jsonl`、`report.md` と、標準出力のプロファイルごとの比較表 (確認した故障の数、疑い・確認までの時間、`blame` の正解、誤検知) です。
+develop コンテナで実行します (rosbag2_py を使うため)。出力は `<run>/offline/<故障の定義の名前>/<プロファイル>/` の `timeline.jsonl` (周期ごとの状態・総合・判定の値)、`events.jsonl`、`report.md` と、標準出力のプロファイルごとの比較表 (確認した故障の数、疑い・確認までの時間、`blame` の正解、誤検知、再初期化の回数・誤り・故障の区間の外・見送り、復旧までの時間) です。
 
 - 検知の対象は姿勢をずらす故障だけです。標本が欠けるだけの故障の区間は、異常がない区間として誤検知を数えます。
 - 誤検知は「故障の区間の外で確認に移った回数」で、記録そのものが崩れていた試行 (`movingstart` の一部) では正しい検知も含みます。真値 (`eval_localization.json` の誤差) と突き合わせてください。
-- 記録済みの推定器の出力を使うので、監督が再初期化した後の挙動は見られません。それは再生評価 (`run_localization_variant.sh`) で見ます。
+- 記録済みの推定器の出力を使うので、監督が再初期化した後の挙動は `--apply-reset` の真似です。実際の推定器の収束は再生評価 (`run_localization_variant.sh`) で見ます。再生評価では、故障の注入が `/initialpose` を使うので、監督の `external_reinit.topics` を空にします (`sup.external_reinit.topics=[]`)。
+- 記録に故障が含まれていた試行 (`--labels`) では、故障を注入する前の記録がないので、候補の誤差は真の姿勢と比べられません。
 - 判定の `allowance` は、正常な記録の `timeline.jsonl` の判定ごとの `score` の分布より上にします。

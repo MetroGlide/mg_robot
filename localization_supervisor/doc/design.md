@@ -1,6 +1,6 @@
 # 設計
 
-自己位置推定の出力を、ほかの情報源や地図と見比べて検証し、ずれたときに知らせる (将来は復旧する) フレームワークの設計。
+自己位置推定の出力を、ほかの情報源や地図と見比べて検証し、ずれたときに知らせ、復旧するフレームワークの設計。
 特定の推定器やセンサを知らない。どの情報源を使い、どう比べ、どう総合するかは、すべて設定ファイル ([parameters.md](./parameters.md)) で宣言する。
 プラグインの約束と追加の手順は [plugins.md](./plugins.md)。
 
@@ -8,8 +8,8 @@
 
 | 層 | 場所 | 内容 |
 | :--- | :--- | :--- |
-| 中核 | `localization_supervisor/core/` | ROS に依存しない (標準ライブラリと numpy・scipy・yaml だけ)。標本の履歴、時刻のそろえ方、判定、総合、状態遷移、アンカー、設定の検証、故障注入、評価の集計 |
-| ROS | `localization_supervisor/ros/` | 入力のアダプタ (メッセージ → 標本)、オフライン評価の実行部、ノード、診断、イベントの出力 |
+| 中核 | `localization_supervisor/core/` | ROS に依存しない (標準ライブラリと numpy・scipy・yaml だけ)。標本の履歴、時刻のそろえ方、判定、総合、状態遷移、アンカー、復旧の候補と照合、設定の検証、故障注入、評価の集計 |
+| ROS | `localization_supervisor/ros/` | 入力のアダプタ (メッセージ → 標本)、再初期化の送り先、対処、オフライン評価の実行部、ノード、診断、イベントの出力 |
 
 中核が ROS に依存しないことは、`test/test_framework_independence.py` で確かめる。オフライン評価も他のロボットでの利用も、中核をそのまま使う。
 
@@ -28,10 +28,13 @@
                                          │
                                      アンカー (信頼できる周期の姿勢と動き)
                                          │
+                                     復旧の計画 (再初期化が要るあいだ。候補 → 評価 → 選ぶ) ─► 指示 (Directive)
+                                         │
                                      安全の信号 (footprint が計画用地図の致死セルにかかっているか)
 ```
 
-`core/supervisor.py` の `Supervisor.step(snapshot)` が、判定から安全の信号までを行う。ノードもオフライン評価も、これを呼ぶ。
+`core/supervisor.py` の `Supervisor.step(snapshot)` が、判定から安全の信号までを行い、推定器や周りへの働きかけを指示 (`Directive`: `isolate`・`reinit`・`restore`) として返す。ノードもオフライン評価も、これを呼ぶ。
+指示を実行するのは ROS 側 (再初期化の送り先と対処。ノード)。中核は何も送らない。
 周期の初めに、判定が使う地図が替わっていないかを見る (後述)。状態のメッセージと診断の中身は、周期の結果から `core/status.py` で作る。
 
 ## 情報源
@@ -99,8 +102,38 @@ map→base(t_to) = map→base(t_from) · [odom→base(t_from)⁻¹ · odom→bas
 `NORMAL` / `SUSPECT` / `ISOLATED` / `RECOVERING` / `DEGRADED` (`core/state_machine.py` の図)。
 
 - `recovery_enabled: false`: 確認したら `DEGRADED` で知らせるだけ。異常がなくなった周期が `clear_ticks` 回続けば `NORMAL` に戻る。
-- `recovery_enabled: true`: 確認したら `blame` を添えて切り離しを求め (`ISOLATED`)、待ってから再初期化し (`RECOVERING`)、`recovery.convergence` のインスタンスがすべて正常な周期が続けば戻す。決めきれない・時間切れが続けば `DEGRADED`。切り離しから戻すまでは `hold_requested` (走行を止めてほしい)。
+- `recovery_enabled: true`: 確認したら `blame` を添えて切り離しを求め (`ISOLATED`。指示 `isolate`)、待ってから再初期化を求め (`RECOVERING`)、`recovery.convergence` のインスタンスがすべて正常な周期が続けば戻す (指示 `restore`)。収束しない・候補を選べない時間切れが続けば `DEGRADED` (一定の間隔で再び `RECOVERING` を試す)。切り離しから戻すまでは `hold_requested` (走行を止めてほしい。`request_hold: false` なら出さない)。
 - `NORMAL` に戻るとき、再初期化を求めるときは、総合の累積を捨てる。
+
+## 復旧
+
+状態が `RECOVERING` になると (`Action.REINIT`)、`Supervisor` は `recovery.selection.retry_sec` ごとに復旧を計画する (`core/recovery/planner.py`)。選べなければ見送って次の周期に再び試し、状態遷移の時間切れ (`recover_timeout_sec`) が来れば再試行か `DEGRADED` になる。
+
+1. **候補を作る** (`CandidateGenerator`。設定の順): 指定した姿勢の情報源の今の姿勢 (`pose_source`。精度の良い標本が続くまで待つ)、アンカーに動きを足した姿勢 (`anchor_motion`。推測航法。動いた距離に比例して共分散を増やす)、その姿勢の周りでスキャンを地図に照合して見つけた姿勢 (`submap_match`。上位の互いに離れたものを複数)。作れなかった理由は `status` に残り、見送りのイベントに添える。
+2. **評価する** (`CandidateScorer`。0〜1): 候補の姿勢でスキャンを地図に重ねた一致率 (`scan_match`)、footprint が計画用地図の致死セルにかからないか (`footprint_free`。`veto_below` で捨てる)、指定した姿勢の情報源との近さ (`source_agreement`)、推測航法の予測との近さ (`anchor_agreement`)。
+3. **選ぶ**: 評価の重み付き平均で順位を付ける。次の場合は再初期化しない。
+   - 最良が `min_score` に届かない (`low_score`)
+   - 最良と、それから `separation_m` 以上離れた次点の差が `ambiguity_margin` 未満 (`ambiguous`。似た場所の取り違え)
+   - 候補がない (`no_candidates`)、すべて捨てられた (`all_vetoed`)
+
+   評価するものがなければ、最初に作られた候補を選ぶ (`unscored`)。
+4. **指示を出す**: 選べたら `reinit` の指示 (姿勢と共分散) を出し、累積・判定の内部状態を捨てて猶予を置く。アンカーとスキャンのバッファは再試行のために残す。
+
+照合 (`core/matcher/`) は差し替えられる。標準の `correlative` は numpy の総当たりで、粗い格子で探して、上位の互いに離れたものを細かい格子で絞り込む。探す範囲は予測の共分散から決め、上限がある。
+スキャンのバッファ (`recovery.scan_buffer`) があれば、動きで直近のスキャンを 1 枚の局所地図にまとめて照合・評価する (1 枚より似た場所の取り違えに強い)。
+
+- スキャンの照合は、廊下のように進行方向の位置が定まらない場所で、似た一致の候補が並ぶ。そのとき、GNSS との近さや推測航法の予測との近さを小さい重みで足して、並んだ候補から選ぶ。
+- ロボットが運ばれた (誘拐) ときは、推測航法の予測が外れる。GNSS のような、運ばれた後の位置を示す情報源の候補が要る。そのようなものがなければ、スキャンの一致が低い候補は退けられ、復旧できずに `DEGRADED` で知らせる。
+- 候補の作り方・評価の重み・選び方は、環境と地図で決まる。オフライン評価 (`apply_reset`・誤った復旧の数) で確かめてから有効にする。
+
+### 指示を実行する側 (ROS)
+
+| 指示 | 実行するもの |
+| :--- | :--- |
+| `reinit` | 再初期化の送り先 (`PoseResetter`) が、選んだ姿勢を推定器に送る。設定の順にすべてに送る |
+| `isolate`・`restore`・状態 | 対処 (`Actuator`) が、周期の結果 (状態・`blame`・`hold_requested`・指示) から、ゲートの開閉・一時停止の要求・サービスの呼び出しをする |
+
+監督が送った再初期化のメッセージ (`/initialpose` など) は、`external_reinit.topics` と同じトピックを使うことがある。送るとき、トピックとヘッダの時刻を覚えておき (`ros/own_messages.py`)、受け取ったときに照らし合わせて、外からの再初期化と取り違えない。
 
 ## アンカー
 
@@ -132,20 +165,19 @@ map→base(t_to) = map→base(t_from) · [odom→base(t_from)⁻¹ · odom→bas
 
 `ros/offline_runner.py` は、rosbag を入力のアダプタで読み、Snapshot を作って、実時間を待たずに `Supervisor` を回す。
 
-- 推定器の出力は記録済みのものを使う。再初期化した後の推定器の挙動は見られない (それは再生評価で見る)。
-- `core/faults.py` で、記録した標本を書き換えて故障を注入する (姿勢のずれ・ドリフト、標本の欠落、スキャンの欠測・間引き)。融合の結果を一定の割合だけ引きずらせることもできる (`followers`)。
-- `core/evaluation.py` で、故障の区間を正解として、確認までの時間・`blame`・判定のインスタンスごとの検知と誤検知率を出す。検知の対象は姿勢をずらす故障だけで、標本が欠けるだけの故障の区間は「異常がない」区間として誤検知を数える。
+- 推定器の出力は記録済みのものを使うので、再初期化した後の挙動は実際には見られない。`--apply-reset` に姿勢の情報源を並べると、再初期化の指示の後のその情報源の標本を、選んだ姿勢に合わせて、復旧して `NORMAL` に戻るまでを真似る (実際の推定器の収束は再生評価で見る)。
+- `core/faults.py` で、記録した標本を書き換えて故障を注入する (姿勢のずれ・ドリフト、標本の欠落、スキャンの欠測・間引き)。融合の結果を一定の割合だけ引きずらせることもできる (`followers`)。故障を注入する前の記録は、再初期化の候補の誤差を測る真の姿勢になる (`--truth`。既定は `anchors.pose`)。
+- `core/evaluation.py` で、故障の区間を正解として、確認までの時間・`blame`・判定のインスタンスごとの検知と誤検知率を出す。検知の対象は姿勢をずらす故障だけで、標本が欠けるだけの故障の区間は「異常がない」区間として誤検知を数える。再初期化は、故障ごとの指示までの時間・候補の誤差・復旧までの時間と、誤った復旧 (候補の誤差が `--ok-threshold` を超えたもの)・故障の区間の外の指示・見送りの数を出す。
 - 記録したときに起きていた故障は、注入せずに正解としてだけ与える (`--labels`)。
 
 ```bash
 ros2 run localization_supervisor offline_runner.py --config <設定> \
     --bag <bag>[:トピック,...] [--bag ...] --map <reference の情報源>=<map.yaml> \
-    [--faults <故障の定義>] [--labels <故障の定義>] [--profile <名前>] [--out <出力先>]
+    [--faults <故障の定義>] [--labels <故障の定義>] [--profile <名前>] [--apply-reset <情報源,...>] [--out <出力先>]
 ```
 
 出力は `timeline.jsonl` (周期ごとの状態・総合・判定の値)、`events.jsonl`、`report.md`。
 
 ## ノード
 
-`localization_supervisor_node` (`ros/supervisor_node.py`) は、設定ファイルの入力のアダプタで購読し、周期ごとに `Supervisor` を回して、状態・診断・イベントを出す ([supervisor_node.md](./supervisor_node.md))。
-今は検知と通知だけを行う (切り離し・再初期化の対処はまだ持たない)。
+`localization_supervisor_node` (`ros/supervisor_node.py`) は、設定ファイルの入力のアダプタで購読し、周期ごとに `Supervisor` を回して、状態・診断・イベントを出し、指示を再初期化の送り先と対処に渡す ([supervisor_node.md](./supervisor_node.md))。

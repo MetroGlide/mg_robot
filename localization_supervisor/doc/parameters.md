@@ -17,7 +17,7 @@
 | `fusion` | 総合の方式 `type` と `params` |
 | `trust.require_normal` | アンカーを残すのに、正常であることを求めるインスタンス |
 | `state_machine` | 状態遷移 (下記) |
-| `recovery.convergence` | 復旧の収束の確認に使うインスタンス (すべて正常な周期を数える) |
+| `recovery` | 復旧 (下記) |
 | `anchors` | アンカー (下記)。書かなければ残さない |
 | `safety` | 安全の信号 (下記)。書かなければ求めない |
 | `grace.startup_sec`、`grace.after_recovery_sec` | 起動直後・復旧直後に総合しない時間 [s] |
@@ -83,12 +83,56 @@ detectors:
 
 | キー | 内容 |
 | :--- | :--- |
-| `recovery_enabled` | `false`: 確認したら `DEGRADED` で知らせるだけ。`true`: 切り離して再初期化する |
+| `recovery_enabled` | `false`: 確認したら `DEGRADED` で知らせるだけ。`true`: 切り離して再初期化する (`recovery.generators` と、ノードでは `recovery.resetters` が要る) |
+| `request_hold` | `recovery_enabled` のとき、切り離してから戻すまで、走行を止めてほしい (`hold_requested`) と要求するか。`false` なら、切り離しても止めない |
 | `clear_ticks` | 異常がなくなった周期がこの回数続けば `NORMAL` に戻る |
 | `isolate_hold_sec` | 切り離してから再初期化するまで待つ時間 [s] |
 | `recover_ok_ticks` | 再初期化の後、収束を確認する回数 |
 | `recover_timeout_sec`、`max_reinit_attempts` | 収束しないときの再試行の間隔と回数 |
 | `degraded_retry_sec` | `DEGRADED` から再試行する間隔 [s] (`recovery_enabled` のとき) |
+
+## recovery
+
+再初期化が要るあいだ (状態が `RECOVERING`)、`selection.retry_sec` ごとに、候補を作り、評価し、選べたら推定器を初期化し直す ([design.md](./design.md#復旧))。
+
+| キー | 内容 |
+| :--- | :--- |
+| `convergence` | 復旧の収束の確認に使うインスタンス (すべて正常な周期を数える) |
+| `scan_buffer` | 復旧のために残すスキャン `{reference, motion, keyframe_distance_m, keyframe_angle_rad, window_distance_m, max_points_per_scan, max_range_m}`。動きでまとめた局所地図に使う。書かなければ、最新の 1 枚だけ使う |
+| `matcher` | 照合 `{type, params}`。書かなければ `correlative` |
+| `generators` | 候補を作るもの (下記) |
+| `scorers` | 候補を評価するもの (下記) |
+| `selection` | 選び方 (下記) |
+| `resetters` | 選んだ姿勢の送り先 `[{type, name?, params?}, ...]` ([plugins.md](./plugins.md#再初期化の送り先-poseresetter))。ノードが使う。オフライン評価は使わない |
+| `actuators` | 対処 `[{type, name?, params?}, ...]` ([plugins.md](./plugins.md#対処-actuator))。ノードが使う |
+
+```yaml
+recovery:
+  generators:
+    <名前>:
+      type: <登録名 | パッケージ.モジュール:クラス>
+      sources: {<引数>: <情報源の名前>, ...}   # 候補を作るものの SOURCES と同じ引数をすべて
+      params: {...}
+      enabled: <true | false>                  # 書かなければ true。プロファイルで外すときに使う
+  scorers:
+    <名前>:
+      type: ...
+      sources: {...}
+      params: {...}
+      weight: <数>          # 評価の重み付き平均での重み
+      veto_below: <数>      # この値を下回った候補は捨てる (書かなければ捨てない)
+      enabled: ...
+```
+
+| `selection` のキー | 内容 |
+| :--- | :--- |
+| `min_score` | 最良の候補の評価 (重み付き平均) がこれに届かなければ、再初期化しない |
+| `ambiguity_margin` | 最良と、それから `separation_m` 以上離れた次点の差がこれ未満なら、再初期化しない (似た場所の取り違えを避ける) |
+| `separation_m` | 互いにこの距離以上離れた候補だけを、別の場所の候補として数える |
+| `retry_sec` | 候補を選べなかったとき、次に計画するまでの間隔 [s] |
+
+候補を作るものが 1 つもなければ、`recovery_enabled` は使えない。評価するものが 1 つもない (または、どれも評価できなかった) ときは、最初に作られた候補を選ぶ。
+`anchor_motion`・`submap_match`・`anchor_agreement` は `anchors` が、`footprint_free` は `safety` が要る。`anchors.motion` と、候補を作るものの `motion` の情報源は同じにする。
 
 ## anchors
 

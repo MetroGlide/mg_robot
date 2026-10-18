@@ -12,6 +12,7 @@
 | 設定 | `config/supervision.yaml` | 監督の設定 (情報源・判定のインスタンス・総合・状態遷移・アンカー・安全の信号・出力)。監督ノードとオフライン評価が読む ([下記](#監督の構成-supervisionyaml)) |
 | 設定 | `config/profiles/*.yaml` | `supervision.yaml` に重ねるプロファイル |
 | 部品 | `mg_localization_supervisor/event_sinks/event_log.py` | 監督のイベントを、このプロジェクトのイベントログ (`mg_utils.event_log`) で出す (`events.sink`) |
+| 部品 | `mg_localization_supervisor/actuators/` | 自動復旧の対処: シーケンサの一時停止の要求 (`pause_request.py`)、再初期化の後のコストマップの消去 (`clear_costmap.py`) |
 | 設定 | `config/gate_arbiter.yaml` | AMCL のゲートの調停 (`amcl_gate_arbiter`) |
 | 設定 | `config/initializer.yaml` | GNSS による初期化 (`gnss_amcl_initializer_node`) |
 
@@ -34,7 +35,7 @@ GNSS による初期化と監督ノードは、他のノードが立ち上がる
 | サービス (SetBool。data=true で入れる) | 要求元 |
 | :--- | :--- |
 | `/amcl_gate_arbiter/waypoint/change_publish_state` | ウェイポイントの `amcl_on` / `amcl_off` |
-| `/amcl_gate_arbiter/supervisor/change_publish_state` | 監督の切り離し・復帰 (自動復旧の対処で使う。今の監督ノードは通知だけなので呼ばない) |
+| `/amcl_gate_arbiter/supervisor/change_publish_state` | 監督の切り離し・復帰 (自動復旧の対処 `gate` が呼ぶ。`recovery_enabled` のとき、AMCL が疑わしいあいだ閉じる) |
 
 - ウェイポイントが切った区間では、監督が復旧しても AMCL は戻らない。監督が切っている間は、`amcl_on` でも戻らない。
 - `amcl_off` の後に `amcl_on` を送るのは、ウェイポイントの作り手の責任 (送り忘れると AMCL は戻らない)。
@@ -44,14 +45,14 @@ GNSS による初期化と監督ノードは、他のノードが立ち上がる
 
 ## 監督ノード (localization_supervisor_node)
 
-パラメータ・入出力・イベントは [localization_supervisor/doc/supervisor_node.md](../localization_supervisor/doc/supervisor_node.md)。今は検知と通知だけを行う。このロボットでの使い方:
+パラメータ・入出力・イベントは [localization_supervisor/doc/supervisor_node.md](../localization_supervisor/doc/supervisor_node.md)。このロボットでの使い方:
 
-- `localization_supervisor:=true` で、既定の監視 (`mg_navigation` の `amcl_watchdog_node`。共分散が大きければ GNSS で初期化し直す) のまま、監督ノードを並行して動かす。状態 `/localization/status` は監督ノードが出す (watchdog は出さない)。実機で通知の質を確かめるときに使う。
-- `localization_monitor:=supervisor` にすると、watchdog の代わりに監督ノードだけを動かす (自動の再初期化はしない)。
+- `localization_supervisor:=true` で、既定の監視 (`mg_navigation` の `amcl_watchdog_node`。共分散が大きければ GNSS で初期化し直す) のまま、監督ノードを並行して動かす。状態 `/localization/status` は監督ノードが出す (watchdog は出さない)。実機で通知の質を確かめるときに使う。`recovery_enabled` のプロファイルは、watchdog と二重に再初期化するので並行しては使わない。
+- `localization_monitor:=supervisor` にすると、watchdog の代わりに監督ノードだけを動かす。自動復旧はプロファイル `recovery` (または `gnss_fallback`) で有効にする。
 - 設定は `supervisor_config`、プロファイルは `localization_profile` で渡す。走行中は `ros2 service call /localization_supervisor_node/set_profile localization_supervisor_msgs/srv/SetProfile "{profile: gnss_fallback}"` で切り替えられる。
 - GNSS による初期化 (`gnss_amcl_initializer_node`)・watchdog・人による `/initialpose`・`/set_pose` は、外からの再初期化として扱う (状態を戻して猶予を置く)。
 - 診断 `localization_supervisor_node: localization` は、集約で `/Robot/Localization/Monitor`。watchdog と並行して動かすときは、watchdog の診断も同じ集約に入る (悪いほうのレベルになる)。Web UI の「自己位置」のタイルに、状態・疑わしい情報源・異常の判定・障害物の中かが出る。
-- シーケンサを通らないゴール (手動のゴール) は、将来の自動復旧の一時停止でも止まらない。
+- シーケンサを通らないゴール (手動のゴール) は、自動復旧の一時停止 (`pause_request`) でも止まらない。
 
 ## 監督の構成 (supervision.yaml)
 
@@ -81,8 +82,25 @@ GNSS による初期化と監督ノードは、他のノードが立ち上がる
 
 | プロファイル | 内容 |
 | :--- | :--- |
-| `gnss_fallback` | AMCL と GNSS の食い違いだけを、続けて異常だった回数で判断する (AMCL と GNSS が乖離したら GNSS で引き戻すだけの動作に戻す。引き戻しは自動復旧で足す) |
+| `recovery` | 自動復旧を有効にする (`recovery_enabled`)。判定は基の設定のまま |
+| `gnss_fallback` | AMCL と GNSS が乖離したら GNSS で引き戻すだけの動作 (以前の watchdog と GNSS による初期化と同じ)。AMCL と GNSS の食い違いだけを、続けて異常だった回数で判断し、候補は精度の良い GNSS が続いたときの位置だけ。評価も切り離しも一時停止もしない |
 | `consecutive` | 以前の監督ノードと同じ判定・しきい値・回数。累積 (`cusum`) と比べるために使う |
+
+### 自動復旧の構成
+
+`supervision.yaml` の `recovery` (理由と値はファイルのコメント)。
+
+| 項目 | 内容 |
+| :--- | :--- |
+| 候補を作るもの | `gnss` (精度の良い測位が続いたら、その位置)、`dead_reckoning` (疑いの前のアンカーにオドメトリを足した位置)、`submap` (その周りでスキャンを地図に照合した位置) |
+| 候補の評価 | スキャンの一致率を主に、GNSS・推測航法との近さを小さい重みで足す。計画用地図の致死セルに footprint がかかる候補は捨てる |
+| 選び方 | 最良が最低の評価に届かない、または離れた次点との差が小さい(似た場所の取り違え)ときは、再初期化せず `DEGRADED` で知らせる |
+| 再初期化の送り先 | AMCL (`/initialpose`) と EKF (`/set_pose`)。監督が送ったものは、外からの再初期化として扱わない |
+| 対処 | AMCL のゲートを閉じる (`gate`。`/amcl_gate_arbiter/supervisor/...`)、シーケンサを一時停止する (`pause_request`)、再初期化の後にグローバルコストマップを消す (`clear_costmap`) |
+
+- 自動復旧が使える状況: GNSS の測位がある(運ばれたときも、その位置へ戻せる)、または、ずれが推測航法とスキャンの照合で直せる範囲(オドメトリのすべり・AMCL の少しずつのずれ)。GNSS がなく運ばれたときは、復旧できず `DEGRADED` で知らせる。
+- 対処はすべて起動時に作る(プロファイルでは変えられない)。戻し方: プロファイル `recovery` を外す、`state_machine.recovery_enabled: false`、`request_hold: false`(止めない)、`localization_monitor:=watchdog`。
+- 部品は `mg_localization_supervisor/actuators/` (`pause_request.py`、`clear_costmap.py`)。
 
 ### オフライン評価
 
@@ -124,6 +142,7 @@ make test pkg=mg_localization_supervisor
 - `test_config.py`: 設定ファイルが読み込め、起動するノードの名前・ゲートの要求元が合っている
 - `test_event_format.py`: フレームワークが出すイベントが、このプロジェクトのイベントの規約 ([doc/monitoring.md](../doc/monitoring.md)) と同じ書式で、`mg_utils.event_log.parse_event` で読める
 - `test_supervision_config.py`: `supervision.yaml` とすべてのプロファイルがフレームワークの検証を通り、監督ノードで動かせる、入力のトピックが AMCL の設定と合う、footprint と計画用地図がコストマップと合う、イベントがプロジェクトのイベントログで出る
+- `test_recovery_config.py`: 自動復旧の構成(候補・評価・送り先・対処)、`pause_request` の変換、`gnss_fallback` が以前の初期化ノードと同じ条件・共分散で、すぐ GNSS の位置で初期化し直す
 
 ## 依存
 

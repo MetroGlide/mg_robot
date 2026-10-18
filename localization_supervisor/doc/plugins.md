@@ -1,11 +1,11 @@
 # プラグインの約束
 
-判定・総合・入力のアダプタ・イベントの出力は、基底クラスを継承したプラグインとして作る。標準のものは登録名で、外部のものは `パッケージ.モジュール:クラス` で、設定ファイルの `type` に書く。
+判定・総合・復旧の候補を作るもの・評価するもの・照合・再初期化の送り先・対処・入力のアダプタ・イベントの出力は、基底クラスを継承したプラグインとして作る。標準のものは登録名で、外部のものは `パッケージ.モジュール:クラス` で、設定ファイルの `type` に書く。
 読み込むときに、パラメータの型と必須、情報源の名前と種類をすべて検証し、合わなければ設定の読み込みで落ちる (`ConfigError`)。
 
 ## 約束の版
 
-版は `core/interfaces.py` の `CONTRACT_VERSION`。版 0 の間は、基底クラス (`core/interfaces.py`、`ros/adapters/base.py`)・`Snapshot`・設定のスキーマを、自動復旧を作り終えるまで変えてよい。
+版は `core/interfaces.py` の `CONTRACT_VERSION`。版 0 の間は、基底クラス (`core/interfaces.py`、`ros/adapters/base.py`、`ros/resetters/base.py`、`ros/actuators/base.py`)・`Snapshot`・設定のスキーマを変えてよい。
 その後、mg ではない設定 (`config/examples/`) のテストが通ることを条件に、版 1 に固定する。約束を変えるときは、`core/interfaces.py` の `CONTRACT_VERSION` と、設定の `version` を上げる。
 
 ## 共通
@@ -75,6 +75,55 @@ class SpeedLimitCheck(Detector):
 
 `update(evidences, active) -> FusionResult` と `reset()` を実装する。`self.instances` (インスタンスの名前ごとの `InstanceInfo`: `subjects`、`weight`、`allowance`、`decay`、`max_score`、`options`)、`self.independent` (独立の情報源)、`self.derived` (融合の結果と、その元) を使える。
 疑わしい情報源の切り分けは、`core/fusion.py` の `attribute` を使い回せる。標準の方式 (`cusum`、`consecutive`) は [design.md](./design.md#総合)。
+
+## 復旧の候補を作るもの (`CandidateGenerator`)
+
+`core/interfaces.py`。再初期化が要るあいだ、周期ごとに `generate(context) -> List[Candidate]` が呼ばれる。作れなければ空を返し、理由を `self.status` に入れる (見送りのイベントに添える)。
+`SOURCES` (引数の名前と種類)、`REQUIRES` (設定に要る項目: `anchors`・`safety`) を宣言する。`Candidate` は姿勢 `pose`、共分散 `cov` (3x3)、作ったもの `origin`、評価 `scores`・`total`。
+`RecoveryContext` から、`snapshot`、`anchors` (`latest_before(疑いの始まり)`)、`scans` (動きでまとめるスキャンのバッファ)、`safety`、`matcher` を使える。
+
+| 登録名 | 引数 (種類) | 内容 |
+| :--- | :--- | :--- |
+| `pose_source` | `pose` | 指定した情報源の今の姿勢。位置の標準偏差が上限以下の標本が指定の回数続くまで待つ。向きを持たない測位の向きの不確かさは、パラメータで与える |
+| `anchor_motion` | `motion` | 疑いが始まる前のアンカーに、その後の動きを足した姿勢 (推測航法)。動いた距離に比例して共分散を増やす |
+| `submap_match` | `motion`, `reference` | 上の姿勢の周りで、スキャン (動きでまとめた局所地図。バッファが足りなければ最新の 1 枚) を地図に照合し、一致の良い互いに離れた姿勢を複数。探す範囲は予測の共分散から決める |
+
+## 復旧の候補を評価するもの (`CandidateScorer`)
+
+`score(candidate, context) -> Optional[float]` (0〜1。大きいほど良い。評価できなければ `None`)。設定で、重みと、下回った候補を捨てる `veto_below` を決める。
+
+| 登録名 | 引数 (種類) | 内容 |
+| :--- | :--- | :--- |
+| `scan_match` | `reference`, `motion` | 候補の姿勢でスキャンを地図に重ねた一致率 (スキャンのバッファが足りれば局所地図、足りなければ最新の 1 枚) |
+| `footprint_free` | `reference` | footprint が地図 (計画用地図) の致死セルにかからなければ 1、かかれば 0。footprint は `safety.footprint` |
+| `source_agreement` | `pose` | 指定した姿勢の情報源の今の姿勢との近さ (位置と、重みを掛けた向きの差) |
+| `anchor_agreement` | `motion` | 推測航法の予測との近さ。スキャンの照合が決めきれないとき、動きの事前情報で選ぶ |
+
+## 照合 (`Matcher`)
+
+`match(field, points_base, center, window, max_peaks) -> List[MatchPeak]`。点群 (base の座標) が地図の距離場に最もよく合う姿勢を、一致の良い順に、互いに離れたものを最大 `max_peaks` 個返す。探す範囲は `SearchWindow` (位置と向きの範囲と刻み)。
+標準は `correlative` (numpy の総当たり)。別の実装 (C++ のマッチャーなど) に差し替えるには、`recovery.matcher.type` に `パッケージ.モジュール:クラス` を書く。
+
+## 再初期化の送り先 (`PoseResetter`)
+
+`ros/resetters/base.py`。`reset(candidate)` で、選んだ姿勢を推定器に送る。コンストラクタは `(名前, パラメータ, ノード, 自分のメッセージの目印)`。
+トピックに送るものは、送るときに `own.add(トピック, 時刻の sec, nanosec)` で目印を残す (`TopicResetter` を継承すれば自動)。目印があるメッセージは、外からの再初期化として扱わない。
+設定の `recovery.resetters` に `[{type, name?, params?}]` を書く。複数あれば、すべてに送る。
+
+| 登録名 | 内容 |
+| :--- | :--- |
+| `amcl` | `PoseWithCovarianceStamped` を AMCL の初期姿勢のトピックに送り、少し待ってから `request_nomotion_update` を呼ぶ (止まっていても、初期化し直した姿勢で粒子を更新させる) |
+| `robot_localization` | 同じメッセージを robot_localization の `set_pose` に送る |
+
+## 対処 (`Actuator`)
+
+`ros/actuators/base.py`。周期ごとに `apply(result)` が、周期の結果 (`state`・`blame`・`hold_requested`・`directives`) を受け取って、外に働きかける。
+状態に応じた働きかけ (ゲート・一時停止) は、毎周期の結果から決めて、変わったときだけ送る (失敗しても次の周期でやり直せる)。設定の `recovery.actuators` に `[{type, name?, params?}]` を書く。
+
+| 登録名 | 内容 |
+| :--- | :--- |
+| `gate` | ゲート (`SetBool` で開閉するサービス。要求元ごとに調停するゲートの調停ノードの窓口) を、`hold_requested` で `blame` が指定のものにあるあいだ閉じ、戻ったら開ける |
+| `service_call` | 指示 (`reinit`・`isolate`・`restore`) が出たとき、サービス (`Empty` または `Trigger`) を、指定の遅れの後に呼ぶ |
 
 ## 入力のアダプタ (`SourceAdapter`)
 
