@@ -2,18 +2,23 @@
 
 監督ノード (localization_supervisor) と同じ形で、自己位置推定の状態を /localization/status と
 診断 `amcl_watchdog_node: localization` に出す (NORMAL / SUSPECT / RECOVERING / DEGRADED)。
-状態の変化と再初期化を、イベントログ (localization.*) に出す。
+判定は共分散の 1 つ (checks の amcl_covariance)。監督ノードを並行して動かすときは、状態の配信を
+監督ノードに任せる (publish_status: false)。状態の変化と再初期化を、イベントログ (localization.*) に出す。
 """
 import time
 import threading
+from typing import Optional
 
 import rclpy
 import rclpy.duration
 from diagnostic_updater import Updater
 from rclpy.node import Node
 from geometry_msgs.msg import PoseWithCovarianceStamped
+from localization_supervisor.core.interfaces import Status
 from localization_supervisor.core.state_machine import State
+from localization_supervisor.core.status import CheckView, StatusView
 from localization_supervisor.ros.diagnostics import LocalizationTask
+from localization_supervisor.ros.status import to_message
 from localization_supervisor_msgs.msg import LocalizationStatus
 from std_srvs.srv import Trigger
 
@@ -35,6 +40,7 @@ class AmclWatchdogNode(Node):
         self._max_retries  = int(self.declare_parameter('max_retries', 3).value)
         self._svc_timeout  = float(self.declare_parameter('initializer.call_timeout_sec', 5.0).value)
         self._min_interval = float(self.declare_parameter('min_interval_between_events', 0.0).value)
+        self._publish_status = bool(self.declare_parameter('publish_status', True).value)
 
         # --- 状態変数 ---
         self._consec       = 0           # 連続超過カウンタ
@@ -44,16 +50,18 @@ class AmclWatchdogNode(Node):
         self._recovery_failed = False    # 再初期化に失敗し、まだ戻っていない
         self._event_text   = ''          # 直近のできごと (配信用の文字列)
         self._state        = State.NORMAL
+        self._last_value: Optional[float] = None   # 直近の共分散の指標
         self._lock         = threading.Lock()
         self._events       = EventLog(self.get_logger())
 
         # --- ROS インターフェース ---
         self._reinit_client = self.create_client(Trigger, 'request_reinit')
         self.subscription = self.create_subscription(PoseWithCovarianceStamped, 'amcl_pose', self._on_pose, 10)
-        self._status_pub = self.create_publisher(LocalizationStatus, '/localization/status', 10)
+        self._status_pub = (self.create_publisher(LocalizationStatus, '/localization/status', 10)
+                            if self._publish_status else None)
         self._updater = Updater(self)
         self._updater.setHardwareID('localization')
-        self._updater.add(LocalizationTask(self._diagnostic_snapshot))
+        self._updater.add(LocalizationTask('localization', self._view))
         self.create_timer(1.0, self._on_timer)
 
         self._events.info(
@@ -64,9 +72,16 @@ class AmclWatchdogNode(Node):
     # 状態の配信
     # ------------------------------------------------------------------ #
 
-    def _diagnostic_snapshot(self):
-        # 判定値は共分散の指標だけ。監督ノードの判定値 (GNSS・スキャンなど) は使えない
-        return (int(self._state), True, self._event_text, {})
+    def _view(self) -> StatusView:
+        # 判定は共分散の指標だけ。監督ノードの判定 (GNSS・スキャンなど) は持たない
+        value = self._last_value
+        if value is None:
+            check = CheckView('amcl_covariance', 'covariance', ['amcl'], Status.UNKNOWN)
+        else:
+            score = value / self._threshold
+            check = CheckView('amcl_covariance', 'covariance', ['amcl'],
+                              Status.ANOMALY if score > 1.0 else Status.NORMAL, score, values={'value': value})
+        return StatusView(self._state, last_event=self._event_text, checks=[check])
 
     def _on_timer(self) -> None:
         state = watchdog_state(self._in_recovery, self._recovery_failed, self._consec)
@@ -80,17 +95,8 @@ class AmclWatchdogNode(Node):
                 self._events.warn('localization.state_changed', **fields)
             self._state = state
 
-        msg = LocalizationStatus()
-        msg.header.stamp = self.get_clock().now().to_msg()
-        msg.state = int(self._state)
-        msg.amcl_attached = True
-        msg.amcl_gnss_d2 = -1.0
-        msg.amcl_jump_m = -1.0
-        msg.amcl_ekf_diff_m = -1.0
-        msg.scan_match_ratio = -1.0
-        msg.scan_match_gain = -1.0
-        msg.last_event = self._event_text
-        self._status_pub.publish(msg)
+        if self._status_pub is not None:
+            self._status_pub.publish(to_message(self._view(), self.get_clock().now().to_msg()))
 
     # ------------------------------------------------------------------ #
     # コールバック
@@ -108,6 +114,7 @@ class AmclWatchdogNode(Node):
             return
 
         self.get_logger().debug(f"{self._metric}={value:.4f}")
+        self._last_value = value
 
         if value <= self._threshold:
             self._recovery_failed = False

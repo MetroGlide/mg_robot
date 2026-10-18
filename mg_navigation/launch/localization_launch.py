@@ -61,9 +61,15 @@ def generate_launch_description():
     localization_monitor = arg.create(
         'localization_monitor', default='watchdog',
         description='自己位置の監視ノード (none | watchdog | supervisor)').launch_config
-    supervisor_params_file = arg.create(
-        'supervisor_params_file', default=os.path.join(supervisor_dir, 'config', 'supervisor.yaml'),
-        description='localization_supervisor_node のパラメータファイル').launch_config
+    localization_supervisor = arg.create(
+        'localization_supervisor', default='false',
+        description='監視が watchdog のとき、監督ノードを並行して通知だけで動かすか '
+                    '(状態 /localization/status は監督ノードが出す)').launch_config
+    supervisor_config = arg.create(
+        'supervisor_config', default=os.path.join(supervisor_dir, 'config', 'supervision.yaml'),
+        description='監督の設定ファイル').launch_config
+    localization_profile = arg.create(
+        'localization_profile', default='', description='監督の設定に重ねるプロファイル').launch_config
 
     lifecycle_nodes = [
         'map_server',
@@ -181,8 +187,10 @@ def generate_launch_description():
         launch_arguments={
             'use_sim_time': use_sim_time,
             'use_gnss_amcl_initializer': use_gnss_amcl_initializer,
-            'use_supervisor': PythonExpression(["'", localization_monitor, "' == 'supervisor'"]),
-            'supervisor_params_file': supervisor_params_file,
+            'use_supervisor': PythonExpression([
+                "'", localization_monitor, "' == 'supervisor' or '", localization_supervisor, "'.lower() == 'true'"]),
+            'supervisor_config': supervisor_config,
+            'localization_profile': localization_profile,
         }.items())
 
     def create_watchdog(context):
@@ -195,6 +203,8 @@ def generate_launch_description():
         if context.perform_substitution(localization_monitor) != 'watchdog':
             return []
         sim_time = context.perform_substitution(use_sim_time).lower() == 'true'
+        # 監督ノードを並行して動かすときは、状態の配信を監督ノードに任せる
+        with_supervisor = context.perform_substitution(localization_supervisor).lower() == 'true'
 
         # AMCL watchdog node: monitor amcl covariance and trigger reinitialization when needed
         amcl_watchdog_node = Node(
@@ -202,7 +212,7 @@ def generate_launch_description():
             executable='amcl_watchdog_node.py',
             name='amcl_watchdog_node',
             output='screen',
-            parameters=[{'use_sim_time': sim_time}],
+            parameters=[{'use_sim_time': sim_time, 'publish_status': not with_supervisor}],
             remappings=remappings + [('amcl_pose', 'amcl_pose_origin'),
                                      ('request_reinit', '/gnss_amcl_initializer_node/request_reinit')]
         )
