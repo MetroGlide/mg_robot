@@ -74,6 +74,15 @@ GNSS を地図に使えているか (採用しているか) を、診断 `slam_g
 - `accept_single: false` にすると、単独測位は使わない。
 - 位置の分散の 2 倍が `max_covariance_threshold` を超える測位は、使わない。
 
+### 外からの分散の倍率
+
+`variance_scale_topic` を設定すると、`std_msgs/Float64` の倍率を購読し、上の分散にかける (倍率は 1 以上 `variance_scale_max` 以下に収める。1 未満は 1 として扱う)。
+GNSS と他の情報源の残差から、GNSS の自己申告より実際の誤差が大きいと分かったとき (地図と GNSS のずれは場所ごとに違うので、一定の補正はせずに信頼度だけを下げる)、自己位置の監督が倍率を出す ([localization_supervisor](../../localization_supervisor/doc/plugins.md#対処-actuator) の `variance_scale`)。
+
+- 最後に受け取ってから `variance_scale_timeout_sec` を過ぎたら、倍率を 1 に戻す (監督が止まったときに、GNSS を弱いままにしない)
+- 診断 `adoption` の値 `variance_scale` に、今の倍率を出す
+- トピックが空 (既定) なら購読しない。止めたいときは、このパラメータを空にする
+
 ### アンテナの位置の補正
 
 `robot_localization` は、Odometry の姿勢について `child_frame_id` を使わない。アンテナの位置のまま渡すと、アンテナのずれ (レバーアーム) が車体の位置として扱われ、車体の向きによって、レバーアームの長さまでの誤差になる。
@@ -109,3 +118,6 @@ TF が無い、または `yaw_max_age_sec` より古いときは、アンテナ�
 | `fix_floor_m` / `float_floor_m` / `single_floor_m` | 解の種類ごとの hAcc の下限 [m] |
 | `fix_scale` / `float_scale` / `single_scale` | 解の種類ごとの、分散にかける係数 |
 | `accept_single` | `false` で単独測位を使わない |
+| `variance_scale_topic` | 位置の分散にかける倍率 (`std_msgs/Float64`) を購読するトピック。空なら購読しない |
+| `variance_scale_timeout_sec` | 倍率を最後に受け取ってから、これを過ぎたら 1 に戻す [s] |
+| `variance_scale_max` | 倍率の上限 |

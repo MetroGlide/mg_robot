@@ -44,5 +44,25 @@ Point2 AntennaToBase(Point2 antenna, double base_yaw, double lever_x, double lev
 // 車体の向きが分からないときに、レバーアームの分だけ位置が不確かになる分散 [m^2] (最悪の場合の二乗)。
 double LeverArmUncertaintyVariance(double lever_x, double lever_y);
 
+// 外から指示された、位置の分散の倍率 (自己位置の監督が、GNSS と他の情報源の残差から求める)。
+// 倍率は 1 以上 max_scale 以下に収め、最後に受け取ってから timeout_sec を過ぎたら 1 に戻す
+// (監督が止まったときに、GNSS を弱いままにしない)。
+class VarianceScale {
+ public:
+  VarianceScale(double timeout_sec, double max_scale);
+  void Update(double scale, double now_sec);
+  double Current(double now_sec) const;
+
+ private:
+  double timeout_sec_;
+  double max_scale_;
+  double scale_{1.0};
+  double received_sec_{0.0};
+  bool received_{false};
+};
+
+// 分散に倍率をかける (倍率が 1 未満なら、かけない)。
+double ApplyVarianceScale(double variance, double scale);
+
 }  // namespace gnss
 }  // namespace slam_gnss_2d
