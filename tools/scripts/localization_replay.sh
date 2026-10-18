@@ -25,7 +25,8 @@
 #   INIT_MODE        gt: 真値を初期姿勢として与える (既定) / gnss: 与えず GNSS による初期化に任せる
 #   EVAL_SKIP        INIT_MODE=gt のとき、評価の先頭から除く秒数 (既定 10。初期姿勢を与えた直後の過渡)
 #   USE_INITIALIZER  GNSS から AMCL の初期姿勢を与えるノードを起動するか (既定: gt なら false、gnss なら true)
-#   MONITOR          自己位置の監視ノード none | watchdog (既定: gt なら none、gnss なら watchdog)
+#   MONITOR          自己位置の監視ノード none | watchdog | supervisor (既定: gt なら none、gnss なら watchdog)
+#   PROFILE          監督の設定に重ねるプロファイル (既定: 基の設定)
 #   BUILD_PKGS       起動前に増分ビルドするパッケージ
 # ROS の setup.bash は未定義の変数を参照するため、set -u は使わない
 set -eo pipefail
@@ -130,7 +131,7 @@ run_once() {
     nav2_params_file:="$VARIANT_DIR/nav2_params.yaml" \
     bridge_params_file:="$VARIANT_DIR/nav_bridge.yaml" \
     odom_corrector_params_file:="$VARIANT_DIR/wheel_odom_corrector.yaml" \
-    supervisor_params_file:="$VARIANT_DIR/localization_supervisor.yaml" \
+    supervisor_config:="$VARIANT_DIR/supervision.yaml" localization_profile:="${PROFILE:-}" \
     > "$run_dir/launch.log" 2>&1 &
   LAUNCH_PID=$!
 

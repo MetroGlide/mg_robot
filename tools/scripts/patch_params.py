@@ -8,15 +8,22 @@ patch_params.py
 ノード名を省略すると、最初に見つかったノードのキーを書き換える。
 複数行にまたがるリスト ([ ... ]) は、`key=[a, b, c]` のように新しい値を 1 行で渡すと、まとめて置き換える。
 
+--plain は、ROS2 パラメータではない YAML (自己位置の監督の設定ファイルなど) を、トップレベルからのパスで
+書き換える。YAML として読み直して書き出すので、フロー形式 ({a: 1}) の中の値も書き換えられるが、コメントは残らない。
+値は YAML として解釈する (`3`、`true`、`[a, b]` など)。
+
 例:
   patch_params.py in.yaml out.yaml deskew.enabled=true deskew.direction=-1
   patch_params.py nav2_params.yaml out.yaml amcl:max_particles=2000 amcl:max_beams=240
+  patch_params.py --plain supervision.yaml out.yaml detectors.amcl_gnss.params.threshold=8.0
 """
 
 import argparse
 import re
 import sys
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+
+import yaml
 
 KEY_LINE = re.compile(r"^(\s*)([A-Za-z0-9_/*]+):(.*)$")
 VALUE_AND_COMMENT = re.compile(r"^\s*([^#]*?)(\s+#.*)?\s*$")
@@ -110,12 +117,29 @@ def patch_lines(lines: List[str], updates: Dict[str, str]) -> Tuple[List[str], L
     return out, sorted(remaining)
 
 
+def patch_plain(data: Any, updates: Dict[str, str]) -> List[str]:
+    """YAML を読んだ辞書の値を、ドット区切りのパスで書き換え、見つからなかったパスを返す。"""
+    unapplied = []
+    for path, text in updates.items():
+        keys = path.split(".")
+        node = data
+        for key in keys[:-1]:
+            node = node.get(key) if isinstance(node, dict) else None
+        if not isinstance(node, dict) or keys[-1] not in node:
+            unapplied.append(path)
+            continue
+        node[keys[-1]] = yaml.safe_load(text)
+    return sorted(unapplied)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="ROS2 パラメータ YAML の値を書き換える")
     parser.add_argument("input", help="入力 YAML")
     parser.add_argument("output", help="出力 YAML")
     parser.add_argument(
         "updates", nargs="*", help="key.path=value (ドット区切り)。ノード指定は node:key.path=value")
+    parser.add_argument("--plain", action="store_true",
+                        help="ROS2 パラメータではない YAML を、トップレベルからのパスで書き換える")
     args = parser.parse_args()
 
     updates: Dict[str, str] = {}
@@ -126,13 +150,22 @@ def main() -> None:
         updates[key] = value
 
     with open(args.input, "r", encoding="utf-8") as f:
-        lines = f.readlines()
-    patched, unapplied = patch_lines(lines, updates)
+        if args.plain:
+            data = yaml.safe_load(f)
+        else:
+            lines = f.readlines()
+    if args.plain:
+        unapplied = patch_plain(data, updates)
+    else:
+        patched, unapplied = patch_lines(lines, updates)
     if unapplied:
         print(f"エラー: 次のキーが見つかりませんでした: {', '.join(unapplied)}", file=sys.stderr)
         sys.exit(1)
     with open(args.output, "w", encoding="utf-8") as f:
-        f.writelines(patched)
+        if args.plain:
+            yaml.safe_dump(data, f, allow_unicode=True, sort_keys=False)
+        else:
+            f.writelines(patched)
 
 
 if __name__ == "__main__":
