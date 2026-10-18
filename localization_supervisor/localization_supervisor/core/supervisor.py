@@ -15,14 +15,18 @@
 """
 import math
 from dataclasses import dataclass, field
-from typing import Any, Dict, Iterable, List, Optional, Set
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
+
+import numpy as np
 
 from .anchors import Anchor, AnchorStore
 from .config import SupervisorConfig
 from .geometry import Pose2
 from .interfaces import (
-    Candidate, Detector, Evidence, FusionResult, FusionStrategy, InstanceInfo, RecoveryContext, SourceKind, Status)
+    Candidate, Detector, Evidence, FusionResult, FusionStrategy, InstanceInfo, PoseSample, RecoveryContext,
+    SourceKind, Status)
 from .recovery.planner import RecoveryPlan, RecoveryPlanner
+from .residuals import ResidualStats, ResidualTracker
 from .safety import FootprintChecker, SafetyResult
 from .scan_buffer import ScanBuffer
 from .snapshot import SampleStore, Snapshot
@@ -68,6 +72,8 @@ class StepResult:
     plan: Optional[RecoveryPlan] = None
     # 異常を確認してから戻るまで保持する blame (切り離す対象を決める)
     blame: str = ''
+    # 残差の統計 (設定の residuals ごと)
+    residuals: Dict[str, ResidualStats] = field(default_factory=dict)
 
 
 def make_store(config: SupervisorConfig) -> SampleStore:
@@ -116,6 +122,8 @@ class Supervisor:
         self.anchors = AnchorStore(config.anchors) if config.anchors is not None else None
         self.safety = FootprintChecker(config.safety) if config.safety is not None else None
         self.scans: Optional[ScanBuffer] = config.scan_buffer.make() if config.scan_buffer is not None else None
+        self.residuals = {name: ResidualTracker(cfg) for name, cfg in config.residuals.items()}
+        self._residual_high: Dict[str, bool] = {name: False for name in config.residuals}
         self.planner = self._make_planner(config)
         self._references = sorted({
             source for d in enabled.values() for source in d.sources.values()
@@ -190,6 +198,8 @@ class Supervisor:
             self.anchors.clear()
         if self.scans is not None:
             self.scans.clear()
+        for tracker in self.residuals.values():
+            tracker.clear()
         if self.planner is not None:
             self.planner.reset()
         self._reinit_pending = False
@@ -245,6 +255,7 @@ class Supervisor:
         trusted = normal and not in_grace and self._trusted(evidences, fusion)
         self._update_anchors(snapshot, trusted)
         safety = self._check_safety(snapshot)
+        residuals = self._update_residuals(snapshot, trusted)
 
         self._state_events(state_before, decision, fusion)
         events, self._pending = self._pending, []
@@ -252,7 +263,31 @@ class Supervisor:
             stamp=now, state=state, decision=decision, fusion=fusion, evidences=evidences,
             trusted=trusted, in_grace=in_grace, hold_requested=self.machine.hold_requested, safety=safety,
             isolated_sources=self._isolated(), last_event=self._last_event, events=events,
-            directives=directives, plan=plan, blame=self.machine.blame)
+            directives=directives, plan=plan, blame=self.machine.blame, residuals=residuals)
+
+    def _update_residuals(self, snapshot: Snapshot, trusted: bool) -> Dict[str, ResidualStats]:
+        """信頼できる周期に、a と b の位置の差 (共分散で正規化) を残し、統計を求める。大きさが変わったらイベントを出す。"""
+        result: Dict[str, ResidualStats] = {}
+        for name, tracker in self.residuals.items():
+            cfg = tracker.config
+            if trusted:
+                a = snapshot.pose_aligned(cfg.a, cfg.max_age_sec)
+                b = snapshot.pose_aligned(cfg.b, cfg.max_age_sec)
+                if a is not None and b is not None:
+                    tracker.add(snapshot.stamp, *_residual_terms(a[0], b[0], cfg.extra_std_m))
+            stats = tracker.update(snapshot.stamp)
+            result[name] = stats
+            high = self._residual_high[name]
+            if not high and stats.scale >= cfg.notify_scale:
+                self._residual_high[name] = True
+            elif high and stats.scale < cfg.notify_scale * 0.8:
+                self._residual_high[name] = False
+            else:
+                continue
+            self._emit('residual_changed', 'warn' if self._residual_high[name] else 'info', {
+                'residual': name, 'high': self._residual_high[name], 'scale': round(stats.scale, 3),
+                'mean_d2': round(stats.mean_d2, 3), 'count': stats.count})
+        return result
 
     def _check_events(self, evidences: Dict[str, Evidence]) -> None:
         """判定のインスタンスが、正常と異常の間で変わったとき (判定できない周期は飛ばす) にイベントを出す。
@@ -421,6 +456,14 @@ class Supervisor:
         self._pending.append(Event(f'{self.config.event_prefix}.state_changed', level, {
             'from': before.name, 'to': decision.state.name, 'reason': decision.event,
             'blame': decision.blame or fusion.blame, 'fusion_level': round(fusion.level, 3)}))
+
+
+def _residual_terms(a: PoseSample, b: PoseSample, extra_std_m: float) -> Tuple[float, float, float]:
+    """a と b の位置の差の二乗と、a の分散、b の分散 + 時刻のずれの分散 (x, y の分散の平均)。"""
+    delta2 = float((a.pose[0] - b.pose[0]) ** 2 + (a.pose[1] - b.pose[1]) ** 2)
+    var_a = float(np.mean(np.diag(np.asarray(a.cov, dtype=float))[:2]))
+    var_b = float(np.mean(np.diag(np.asarray(b.cov, dtype=float))[:2]))
+    return delta2, var_a, var_b + extra_std_m ** 2
 
 
 def _pose_fields(pose: Pose2) -> Dict[str, float]:

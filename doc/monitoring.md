@@ -113,7 +113,7 @@ evt=<domain>.<event> key=value key="空白を含む値" ...
 | `nav` | `goal_sent`、`goal_result` |
 | `driver` | `connected`、`disconnected`、`reconnect_attempt`、`estop_changed` |
 | `watchdog` | `stale`、`recovered`、`restart_requested`、`restart_failed`、`pause_changed` |
-| `localization` | `state_changed`、`recovery_candidate`、`reinit_requested`、`reinit_skipped`、`reinit_result`、`external_reinit`、`map_changed`、`lethal`、`profile_changed`、`detectors_changed` |
+| `localization` | `state_changed`、`check_changed`、`residual_changed`、`recovery_candidate`、`reinit_requested`、`reinit_skipped`、`reinit_result`、`external_reinit`、`map_changed`、`lethal`、`profile_changed`、`detectors_changed` |
 | `gnss` | `fix_changed` (測位の種類の変化。`from`、`to`、`h_acc_m`) |
 | `gate` | `changed` |
 | `health` | `level_changed` (診断のレベルの変化。中継ノードだけが出す) |

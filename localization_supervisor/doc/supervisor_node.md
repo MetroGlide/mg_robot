@@ -66,6 +66,8 @@
 | `<prefix>.lethal` | 入ったら warn、出たら info | `in_lethal`、`fraction`、`depth_m` |
 | `<prefix>.profile_changed` | info | `from`、`to` |
 | `<prefix>.detectors_changed` | info | `disabled` |
+| `<prefix>.check_changed` | info | 判定のインスタンスが正常と異常の間で変わったとき(判定できない周期は飛ばす): `check`、`to` (`normal` / `anomaly`)、`score`、判定の値 `v_<名前>` |
+| `<prefix>.residual_changed` | 大きくなったら warn、戻ったら info | 残差から求めた分散の倍率が `notify_scale` 以上になった・戻った: `residual`、`high`、`scale`、`mean_d2`、`count` |
 | `<prefix>.recovery_candidate` | info | 計画ごと・候補ごとに `origin`、`x`、`y`、`yaw`、`total`、`vetoed_by`、評価ごとの `score_<名前>` |
 | `<prefix>.reinit_requested` | warn | 選んだ候補の `origin`、`x`、`y`、`yaw`、`reason`、`margin`、`blame`、`attempt`、`candidates`、`elapsed_ms`、`generators` (候補を作るものごとの結果の理由) |
 | `<prefix>.reinit_skipped` | warn | 選べなかった `reason` (`no_candidates`・`all_vetoed`・`low_score`・`ambiguous`)、`attempt`、`candidates`、`elapsed_ms`、`generators` |

@@ -276,6 +276,9 @@ def step_record(t_rel: float, result: StepResult) -> Dict[str, Any]:
                           **{k: round(v, 4) for k, v in e.values.items()}}
                    for name, e in result.evidences.items()},
     }
+    if result.residuals:
+        record['residuals'] = {name: {'count': s.count, 'mean_d2': round(s.mean_d2, 3), 'scale': round(s.scale, 3)}
+                               for name, s in result.residuals.items()}
     for directive in result.directives:
         if directive.kind == 'reinit':
             record['reinit'] = {'origin': directive.candidate.origin, 'pose': [round(v, 3) for v in directive.candidate.pose],

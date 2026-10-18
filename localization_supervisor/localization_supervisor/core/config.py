@@ -22,6 +22,7 @@ from .matcher import STANDARD_MATCHERS
 from .plugins import PluginError, resolve, resolve_params
 from .recovery import STANDARD_GENERATORS, STANDARD_SCORERS
 from .recovery.planner import GeneratorConfig, ScorerConfig, SelectionConfig
+from .residuals import ResidualConfig
 from .safety import SafetyConfig
 from .scan_buffer import ScanBufferConfig
 from .state_machine import MachineConfig
@@ -34,7 +35,7 @@ class ConfigError(ValueError):
 
 TOP_LEVEL_KEYS = {
     'version', 'period_sec', 'sources', 'timeline', 'detectors', 'enabled_detectors', 'fusion', 'trust',
-    'state_machine', 'recovery', 'anchors', 'safety', 'grace', 'external_reinit', 'events', 'output',
+    'state_machine', 'recovery', 'anchors', 'safety', 'residuals', 'grace', 'external_reinit', 'events', 'output',
     'extras', 'profiles',
 }
 
@@ -96,6 +97,7 @@ class SupervisorConfig:
     actuators: List[Dict[str, Any]] = field(default_factory=list)
     anchors: Optional[AnchorConfig] = None
     safety: Optional[SafetyConfig] = None
+    residuals: Dict[str, ResidualConfig] = field(default_factory=dict)
     period_sec: float = 1.0
     startup_grace_sec: float = 0.0
     grace_after_recovery_sec: float = 0.0
@@ -388,6 +390,21 @@ def _plugin_list(raw: Any, where: str) -> List[Dict[str, Any]]:
     return result
 
 
+def _parse_residuals(raw: Mapping[str, Any], sources: Mapping[str, SourceConfig]) -> Dict[str, ResidualConfig]:
+    residuals: Dict[str, ResidualConfig] = {}
+    for name, body in raw.items():
+        where = f'residuals.{name}'
+        residual = _dataclass_from(ResidualConfig, _mapping(body, where), where)
+        for key in ('a', 'b'):
+            source = sources.get(getattr(residual, key))
+            if source is None or source.kind != SourceKind.POSE:
+                raise ConfigError(f'{where}.{key}: {getattr(residual, key)!r} is not a pose source')
+        if residual.a == residual.b:
+            raise ConfigError(f'{where}: a and b must differ')
+        residuals[name] = residual
+    return residuals
+
+
 def _detector_names(names: List[str], detectors: Mapping[str, DetectorConfig], where: str) -> List[str]:
     for name in names:
         detector = detectors.get(name)
@@ -495,6 +512,7 @@ def parse_config(
         convergence=_detector_names(
             _names(recovery.get('convergence'), 'recovery.convergence'), detectors, 'recovery.convergence'),
         anchors=anchors, safety=safety, period_sec=period_sec, **recovery_parts,
+        residuals=_parse_residuals(_mapping(merged.get('residuals'), 'residuals'), sources),
         startup_grace_sec=_number(grace, 'startup_sec', 0.0, 'grace'),
         grace_after_recovery_sec=_number(grace, 'after_recovery_sec', 0.0, 'grace'),
         grace_after_reset_sec=_number(grace, 'after_reset_sec', 0.0, 'grace'),

@@ -20,6 +20,7 @@
 | `recovery` | 復旧 (下記) |
 | `anchors` | アンカー (下記)。書かなければ残さない |
 | `safety` | 安全の信号 (下記)。書かなければ求めない |
+| `residuals` | 2 つの姿勢の情報源の残差から求める、分散の倍率 (下記) |
 | `grace.startup_sec`、`grace.after_recovery_sec` | 起動直後・復旧直後に総合しない時間 [s] |
 | `grace.after_reset_sec` | 外からの再初期化・地図の切り替えの後に総合しない時間 [s] |
 | `external_reinit.topics` | 届いたら外からの再初期化として扱うトピック (`geometry_msgs/PoseWithCovarianceStamped`。ノード) |
@@ -152,6 +153,28 @@ recovery:
 | `footprint` | base の座標の多角形 `[[x, y], ...]` (3 点以上)。経路計画のコストマップと同じ形にする |
 | `max_age_sec` | 姿勢の標本の古さの上限 [s] |
 | `depth_range_m` | 食い込みの深さを測る範囲 (footprint の外接円から) [m]。これより深いときは、この値になる |
+
+## residuals
+
+自己位置が信頼できる周期に、2 つの姿勢の情報源 a と b の位置の差を残し、a の自己申告の分散より実際の誤差が大きいとき、a の分散にかける倍率を求める ([design.md](./design.md#残差と分散の倍率))。
+
+```yaml
+residuals:
+  <名前>: {a: <姿勢の情報源>, b: <姿勢の情報源>, ...}
+```
+
+| キー | 内容 |
+| :--- | :--- |
+| `a` / `b` | 倍率をかけたい情報源と、比べる相手 (どちらも `pose`。同じにはできない) |
+| `window_sec` | 統計に使う直近の時間 [s] |
+| `min_samples` | 倍率を更新するのに要る標本の数 |
+| `max_age_sec` | これより古い標本は使わない [s] |
+| `extra_std_m` | 時刻のずれなどによる位置の不確かさ [m] (b の側の分散に足す) |
+| `gain` | 1 回の更新で、求めた倍率へ近づく割合 |
+| `max_scale` | 倍率の上限 |
+| `notify_scale` | 倍率がこれ以上の状態を、イベント `residual_changed` で知らせる (これの 0.8 倍を下回ると戻ったとする) |
+
+倍率は `StepResult.residuals` に出る。出力は対処 `variance_scale` が配信し、受け取る側 (例: GNSS のブリッジ) が a の分散にかける ([plugins.md](./plugins.md#対処-actuator))。
 
 ## profiles
 

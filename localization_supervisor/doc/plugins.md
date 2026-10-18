@@ -124,6 +124,7 @@ class SpeedLimitCheck(Detector):
 | :--- | :--- |
 | `gate` | ゲート (`SetBool` で開閉するサービス。要求元ごとに調停するゲートの調停ノードの窓口) を、`hold_requested` で `blame` が指定のものにあるあいだ閉じ、戻ったら開ける |
 | `service_call` | 指示 (`reinit`・`isolate`・`restore`) が出たとき、サービス (`Empty` または `Trigger`) を、指定の遅れの後に呼ぶ |
+| `variance_scale` | 設定の `residuals` の倍率 (a の実際の誤差が自己申告の何倍か) を、周期ごとに `std_msgs/Float64` で配信する。`blame` が指定の情報源のときは上限。受け取る側が分散にかけ、一定時間届かなければ 1 に戻す |
 
 ## 入力のアダプタ (`SourceAdapter`)
 

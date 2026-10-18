@@ -5,10 +5,12 @@ from ...core.config import ConfigError
 from ...core.plugins import PluginError, resolve, resolve_params
 from .base import Actuator
 from .standard import Gate, ServiceCall
+from .variance_scale import VarianceScale
 
 STANDARD_ACTUATORS = {
     'gate': Gate,
     'service_call': ServiceCall,
+    'variance_scale': VarianceScale,
 }
 
 __all__ = ['Actuator', 'STANDARD_ACTUATORS', 'build_actuators']
