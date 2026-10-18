@@ -46,7 +46,7 @@ def test_footprint_checker_fraction_and_depth():
 
 def _raw(**overrides):
     raw = {
-        'version': 0,
+        'version': 1,
         'sources': {
             'amcl': {'kind': 'pose'}, 'gnss': {'kind': 'pose'}, 'odom': {'kind': 'motion'},
             'map_scan': {'kind': 'reference'}, 'planning': {'kind': 'reference'}},

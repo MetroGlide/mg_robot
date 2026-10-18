@@ -1,6 +1,6 @@
 """プラグインの約束 (外部に公開する基底クラスと値の型)。ROS に依存しない。
 
-約束の版は CONTRACT_VERSION。版 0 の間は変更してよい (doc/plugins.md)。
+約束の版は CONTRACT_VERSION。基底クラスと設定のスキーマを変えるときは、版を上げる (doc/plugins.md)。
 
   情報源の種類
     pose      : 地図座標の絶対の姿勢と共分散 (PoseSample の履歴)
@@ -18,7 +18,7 @@ import numpy as np
 
 from .geometry import Pose2
 
-CONTRACT_VERSION = 0
+CONTRACT_VERSION = 1
 
 
 class SourceKind(str, enum.Enum):

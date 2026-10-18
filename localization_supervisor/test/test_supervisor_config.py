@@ -13,7 +13,7 @@ from supervisor_test_helpers import AlwaysNormal, NeedsExtra
 EXAMPLES = sorted((pathlib.Path(__file__).resolve().parents[1] / 'config' / 'examples').glob('*.yaml'))
 
 BASE = {
-    'version': 0,
+    'version': 1,
     'sources': {'amcl': {'kind': 'pose'}, 'gnss': {'kind': 'pose'}, 'odom': {'kind': 'motion'},
                 'ekf': {'kind': 'pose', 'derived_from': ['amcl', 'gnss', 'odom']}},
     'detectors': {
@@ -46,7 +46,7 @@ def test_parse_fills_defaults():
 
 
 @pytest.mark.parametrize('changes, message', [
-    ({'version': 1}, 'version'),
+    ({'version': 0}, 'version'),
     ({'unknown_key': 1}, 'unknown keys'),
     ({'sources': {'x': {'kind': 'laser'}}}, 'kind'),
     ({'sources': {'x': {'kind': 'pose', 'derived_from': ['y']}}}, 'derived_from'),
@@ -119,7 +119,7 @@ def test_load_config_validates_every_profile(tmp_path):
     (tmp_path / 'bad.yaml').write_text('detectors: {amcl_gnss: {params: {threshold: x}}}\n')
     main = tmp_path / 'main.yaml'
     main.write_text(
-        'version: 0\nsources: {amcl: {kind: pose}, gnss: {kind: pose}}\n'
+        'version: 1\nsources: {amcl: {kind: pose}, gnss: {kind: pose}}\n'
         'detectors: {amcl_gnss: {type: pose_consistency, sources: {a: amcl, b: gnss}, params: {threshold: 6.0}}}\n'
         'profiles: {bad: bad.yaml}\n')
     with pytest.raises(ConfigError, match='expected float'):

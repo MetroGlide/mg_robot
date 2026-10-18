@@ -80,7 +80,7 @@ def test_no_candidates():
 
 def _raw(recovery=None, anchors=True, enabled=True):
     raw = {
-        'version': 0,
+        'version': 1,
         'sources': {'amcl': {'kind': 'pose'}, 'gnss': {'kind': 'pose'}, 'odom': {'kind': 'motion'},
                     'map_scan': {'kind': 'reference'}},
         'timeline': {'motion_priority': ['odom'], 'alignment_std_per_m': 0.0, 'alignment_std_per_rad': 0.0},

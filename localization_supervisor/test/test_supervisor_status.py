@@ -41,7 +41,7 @@ def test_health_values_show_each_check():
 
 def _config(**overrides):
     raw = {
-        'version': 0,
+        'version': 1,
         'sources': {'amcl': {'kind': 'pose'}, 'gnss': {'kind': 'pose'}, 'odom': {'kind': 'motion'}},
         'timeline': {'motion_priority': ['odom'], 'alignment_std_per_m': 0.0, 'alignment_std_per_rad': 0.0},
         'detectors': {

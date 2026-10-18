@@ -5,8 +5,8 @@
 
 ## 約束の版
 
-版は `core/interfaces.py` の `CONTRACT_VERSION`。版 0 の間は、基底クラス (`core/interfaces.py`、`ros/adapters/base.py`、`ros/resetters/base.py`、`ros/actuators/base.py`)・`Snapshot`・設定のスキーマを変えてよい。
-その後、mg ではない設定 (`config/examples/`) のテストが通ることを条件に、版 1 に固定する。約束を変えるときは、`core/interfaces.py` の `CONTRACT_VERSION` と、設定の `version` を上げる。
+版は `core/interfaces.py` の `CONTRACT_VERSION`。基底クラス (`core/interfaces.py`、`ros/adapters/base.py`、`ros/resetters/base.py`、`ros/actuators/base.py`)・`Snapshot`・設定のスキーマは、版 1 に固定した (mg ではない設定 `config/examples/` のテストが通ることを確かめた)。
+プラグインを足すだけなら版は変わらない。既存の約束を変えるときは、`core/interfaces.py` の `CONTRACT_VERSION` と、設定の `version` を上げる。設定の `version` が合わなければ、読み込みで落ちる。
 
 ## 共通
 
