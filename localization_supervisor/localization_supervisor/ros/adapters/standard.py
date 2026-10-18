@@ -3,6 +3,7 @@
   pose_with_covariance : geometry_msgs/PoseWithCovarianceStamped -> pose
   odometry             : nav_msgs/Odometry -> pose (地図座標の推定器の出力) または motion (オドメトリ)
   map_scan             : nav_msgs/OccupancyGrid と sensor_msgs/LaserScan -> reference
+  occupancy_grid       : nav_msgs/OccupancyGrid だけ -> reference (計画用地図など)
 """
 import math
 from typing import List, Optional
@@ -105,8 +106,24 @@ class MapScanAdapter(SourceAdapter):
             msg.angle_increment, msg.range_min, msg.range_max, self._sensor_pose))
 
 
+class OccupancyGridAdapter(SourceAdapter):
+    """地図だけ (スキャンなし)。計画用地図のように、安全の信号にだけ使う地図。"""
+    KINDS = (SourceKind.REFERENCE,)
+    PARAMS = {
+        'topic': ParamSpec(str, None),
+        'occupied_threshold': ParamSpec(int, 65, 'これ以上の値のセルを占有 (致死) とする'),
+    }
+
+    def subscriptions(self) -> List[Subscription]:
+        return [Subscription(self.params['topic'], OccupancyGrid, self._on_map, qos='latched')]
+
+    def _on_map(self, msg: OccupancyGrid) -> None:
+        self.store.set_map(self.source, occupancy_from_msg(msg, self.params['occupied_threshold']))
+
+
 STANDARD_ADAPTERS = {
     'pose_with_covariance': PoseWithCovarianceAdapter,
     'odometry': OdometryAdapter,
     'map_scan': MapScanAdapter,
+    'occupancy_grid': OccupancyGridAdapter,
 }

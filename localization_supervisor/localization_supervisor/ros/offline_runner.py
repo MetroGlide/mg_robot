@@ -237,7 +237,7 @@ def _run(
 
 def step_record(t_rel: float, result: StepResult) -> Dict[str, Any]:
     """周期の結果を JSON にできる形にする。"""
-    return {
+    record = {
         't': round(t_rel, 3), 'state': result.state.name, 'level': round(result.fusion.level, 4),
         'blame': result.fusion.blame, 'contaminated': result.fusion.contaminated,
         'trusted': result.trusted, 'in_grace': result.in_grace,
@@ -246,6 +246,10 @@ def step_record(t_rel: float, result: StepResult) -> Dict[str, Any]:
                           **{k: round(v, 4) for k, v in e.values.items()}}
                    for name, e in result.evidences.items()},
     }
+    if result.safety is not None:
+        record['lethal'] = {'in_lethal': result.safety.in_lethal, 'fraction': round(result.safety.fraction, 4),
+                            'depth_m': round(result.safety.depth_m, 3)}
+    return record
 
 
 def write_outputs(result: OfflineResult, out_dir: str, title: str = '') -> None:

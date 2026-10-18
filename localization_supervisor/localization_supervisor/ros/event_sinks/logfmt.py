@@ -2,10 +2,12 @@
 
     evt=<domain>.<event> key=value key="空白を含む値" ...
 
-    LogfmtEventSink(node.get_logger()).warn('localization.state_changed', from_='NORMAL', to='SUSPECT')
+    LogfmtEventSink('logfmt', {}, node.get_logger()).warn('localization.state_changed', from_='NORMAL', to='SUSPECT')
 """
 import re
-from typing import Any
+from typing import Any, Mapping
+
+from .base import EventSink
 
 EVENT_KEY = 'evt'
 
@@ -49,17 +51,14 @@ def format_event(name: str, /, **fields: Any) -> str:
     return ' '.join(parts)
 
 
-class LogfmtEventSink:
-    """ロガーにイベントを出す。logger は rclpy のロガー (`node.get_logger()`)。"""
+class LogfmtEventSink(EventSink):
+    """ロガーにイベントを出す。"""
 
-    def __init__(self, logger: Any) -> None:
-        self._logger = logger
-
-    def info(self, name: str, /, **fields: Any) -> None:
-        self._logger.info(format_event(name, **fields))
-
-    def warn(self, name: str, /, **fields: Any) -> None:
-        self._logger.warning(format_event(name, **fields))
-
-    def error(self, name: str, /, **fields: Any) -> None:
-        self._logger.error(format_event(name, **fields))
+    def emit(self, name: str, level: str, fields: Mapping[str, Any]) -> None:
+        text = format_event(name, **fields)
+        if level == 'error':
+            self.logger.error(text)
+        elif level == 'warn':
+            self.logger.warning(text)
+        else:
+            self.logger.info(text)

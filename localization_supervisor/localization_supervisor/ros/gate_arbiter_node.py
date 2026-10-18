@@ -58,7 +58,7 @@ class GateArbiterNode(Node):
         period_sec = self.declare_parameter('period_sec', 1.0).value
 
         self._arbiter = GateArbiter(requesters)
-        self._events = LogfmtEventSink(self.get_logger())
+        self._events = LogfmtEventSink('logfmt', {}, self.get_logger())
         self._updater = Updater(self)
         self._updater.setHardwareID(hardware_id)
         self._updater.add(GateTask(self._arbiter))

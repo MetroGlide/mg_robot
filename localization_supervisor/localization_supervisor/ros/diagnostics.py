@@ -1,10 +1,10 @@
-"""localization_health の結果を、diagnostic_updater のタスクとして出す。"""
-from typing import Callable, Dict, Tuple
+"""状態 (StatusView) を、diagnostic_updater のタスクとして出す。"""
+from typing import Callable, Optional
 
 from diagnostic_msgs.msg import DiagnosticStatus
 from diagnostic_updater import DiagnosticStatusWrapper, DiagnosticTask
 
-from ..core.health import localization_health
+from ..core.status import StatusView, localization_health
 
 _LEVELS = {
     'ok': DiagnosticStatus.OK,
@@ -14,14 +14,18 @@ _LEVELS = {
 
 
 class LocalizationTask(DiagnosticTask):
-    """診断 `localization`。snapshot は (状態, AMCL を EKF に入れているか, 直近のできごと, 判定値) を返す。"""
+    """診断 (名前は name)。snapshot は直近の状態を返す (まだ無ければ None)。"""
 
-    def __init__(self, snapshot: Callable[[], Tuple[int, bool, str, Dict[str, float]]]) -> None:
-        super().__init__('localization')
+    def __init__(self, name: str, snapshot: Callable[[], Optional[StatusView]]) -> None:
+        super().__init__(name)
         self._snapshot = snapshot
 
     def run(self, stat: DiagnosticStatusWrapper) -> DiagnosticStatusWrapper:
-        level, message, values = localization_health(*self._snapshot())
+        view = self._snapshot()
+        if view is None:
+            stat.summary(DiagnosticStatus.WARN, 'no status yet')
+            return stat
+        level, message, values = localization_health(view)
         stat.summary(_LEVELS[level], message)
         for key, value in values.items():
             stat.add(key, value)
