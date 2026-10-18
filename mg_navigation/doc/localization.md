@@ -1,7 +1,7 @@
 # 自己位置推定
 
 ホイールオドメトリ・AMCL・GNSS を EKF (`robot_localization` の `ekf_global_node`、world フレーム = `map`) で融合して、`map→odom` を作る。
-launch は `mg_bringup` の `bringup_navigation.launch.py` (EKF と GNSS ブリッジ) と、`mg_navigation` の `localization_launch.py` (map_server、AMCL、初期化、監視、調停)。
+launch は `mg_bringup` の `bringup_navigation.launch.py` (EKF と GNSS ブリッジ) と、`mg_navigation` の `localization_launch.py` (map_server、AMCL、watchdog)。`localization_launch.py` は、調停・初期化・監督ノードを起動する `mg_localization_supervisor` の `supervisor.launch.py` を include する。
 
 ## 構成
 
@@ -24,53 +24,15 @@ EKF の周期は `mg_drivers/params/ekf_global.yaml` の `frequency`。
 | ノード | 役割 |
 | :--- | :--- |
 | `amcl` | LiDAR と地図による自己位置推定。出力は `/amcl_pose_origin` (TF は出さない) |
-| `amcl_gate_arbiter` | AMCL の入/切を、要求元ごとに調停する ([下記](#amcl_gate_arbiter-amcl-の入切の調停))。ゲートを操作するのは、このノードだけ |
+| `amcl_gate_arbiter` | AMCL の入/切を、要求元ごとに調停する ([mg_localization_supervisor](../../mg_localization_supervisor/README.md#amcl-のゲートの調停-amcl_gate_arbiter))。ゲートを操作するのは、このノードだけ |
 | `amcl_publish_controller_node` | `/amcl_pose_origin` を `/amcl_pose` へ中継する (`mg_drivers` の `generic_publish_controller_node.py`)。SetBool で止めると、AMCL が EKF に入らない |
 | `slam_gnss_nav_bridge` | `/navpvt` を、`gnss_transform.yaml` で map 座標に直して `/odom/gps` に出す。アンテナの位置を車体の中心に補正し、測位の質に応じた分散を付ける ([slam_gnss_2d](../../slam_gnss_2d/README.md)) |
-| `gnss_amcl_initializer_node` | 起動時 (と再初期化の要求時) に、精度の良い `/odom/gps` から `/initialpose` (AMCL) と `/set_pose` (EKF) を出して初期化する ([下記](#gnss_amcl_initializer_node)) |
+| `gnss_amcl_initializer_node` | 起動時 (と再初期化の要求時) に、精度の良い `/odom/gps` から `/initialpose` (AMCL) と `/set_pose` (EKF) を出して初期化する ([mg_localization_supervisor](../../mg_localization_supervisor/README.md#gnss_amcl_initializer_node)) |
 | `amcl_watchdog_node` | AMCL の共分散が大きい状態が続いたら、`gnss_amcl_initializer_node` に再初期化を要求する ([下記](#amcl_watchdog_node)) |
-| `localization_supervisor_node` | AMCL のずれを検知して EKF から切り離し、EKF の姿勢で復旧する ([下記](#localization_supervisor_node)) |
+| `localization_supervisor_node` | AMCL のずれを検知して通知する。有効にすると、EKF から切り離して復旧する ([localization_supervisor](../../localization_supervisor/doc/supervisor_node.md)、このロボットでの設定は [mg_localization_supervisor](../../mg_localization_supervisor/README.md#監督ノード-localization_supervisor_node)) |
 | `ekf_global_node` | ホイールオドメトリの速度、AMCL の位置・yaw、GNSS の位置を融合する (`mg_drivers/params/ekf_global.yaml`) |
 
-`gnss_amcl_initializer_node`、`amcl_watchdog_node`、`localization_supervisor_node` は、他のノードが立ち上がるのを待って遅れて起動する (`localization_launch.py` の `TimerAction`。初期化ノードを先に、監視ノードを後に起動する)。
-
-## amcl_gate_arbiter (AMCL の入/切の調停)
-
-ウェイポイントの `amcl_on` / `amcl_off` と監督ノードが、同じゲートを直接切り替えると、互いの意図を上書きする。
-そこで要求元ごとのサービスを設け、**すべての要求元が「入れる」のときだけ**ゲート (`amcl_publish_controller_node`) を開く。
-
-| サービス (SetBool。data=true で入れる) | 要求元 |
-| :--- | :--- |
-| `/amcl_gate_arbiter/waypoint/change_publish_state` | ウェイポイントの `amcl_on` / `amcl_off` |
-| `/amcl_gate_arbiter/supervisor/change_publish_state` | 監督ノードの切り離し・復帰 |
-
-- ウェイポイントが切った区間では、監督ノードが復旧しても AMCL は戻らない。監督ノードが切っている間は、`amcl_on` でも戻らない。
-- 反映に失敗したり、ゲートが後から起動したりしても、一定の周期で合わせ直す。ゲートのノードが落ちて戻ったときも (再起動で開いた状態に戻るため) 送り直す。ただし、合わせ直しの周期より短い間の再起動は検出できない。
-- `amcl_off` の後に `amcl_on` を送るのは、ウェイポイントの作り手の責任 (送り忘れると AMCL は戻らない。自動解除はしない)。
-- 監視ノードの種類 (`none` / `watchdog` / `supervisor`) によらず、常に起動する。負荷はごく小さい。
-- 状態は `/amcl_gate_arbiter/state` (`mg_msgs/GateArbiterState`、transient_local) に、変化したときだけ配信する。`desired` は要求元の意図 (全員が入れてよいとき true)、`applied` はゲートへの反映済みか (ゲートのノードの再起動で不明になったときは false)、`holders` は止めている要求元。Web UI の「Actions」が表示に使う。
-- 診断 `amcl_gate_arbiter: gate`: 要求がゲートに反映できていれば `OK` (止めている要求元がいても、意図どおりなので `OK`)、反映できていないあいだは `WARN` (`not applied: ...`)。集約で `/Robot/Localization/Gate`。
-- イベント `gate.changed` (`requester`、`attached`、`holders`): 全体の意図か、止めている要求元が変わったときに出す。監督ノードが止めているときは WARN、それ以外は INFO ([doc/monitoring.md](../../doc/monitoring.md))。
-- Web UI の「Actions」の AMCL の入/切は、`waypoint` の要求元として呼ぶ。次のウェイポイントのアクションで上書きされる。
-
-## gnss_amcl_initializer_node
-
-`/odom/gps` (map 座標の GNSS の位置) の精度が、続けて条件を満たしたとき、`/initialpose` (AMCL) と、`publish_set_pose` が `true` なら `/set_pose` (EKF) に、初期の姿勢を出す。
-EKF の初期共分散が大きく、AMCL の初期値 (原点) に引かれるので、EKF にも送る。サービス `~/request_reinit` (`std_srvs/Trigger`) で、内部の状態をリセットして、初期化をやり直す。
-
-主なパラメータ。
-
-| パラメータ | 内容 |
-| :--- | :--- |
-| `required_consecutive_good` | 条件を満たす測位が続く回数 |
-| `max_position_std_m` | 使う測位の水平の標準偏差の上限 [m] |
-| `max_vertical_std_m` | 同、鉛直 (`ignore_z_std` が `true` のときは見ない) |
-| `use_fixed_heading` | 向きが得られないとき、固定の向き (`fixed_heading` [rad]) を使う |
-| `override_pose_covariance` / `pose_covariance` | 初期姿勢の共分散を固定の値にする |
-| `max_consecutive_bad` | 条件を満たさない測位がこの回数続いたら、初期化をあきらめる (`request_reinit` でやり直せる) |
-| `odom_age_timeout_sec` / `ignore_odom_age` | 測位の古さの確認 |
-
-launch が上書きする値がある。実際の値は `localization_launch.py` と yaml が正。
+`gnss_amcl_initializer_node`、`amcl_watchdog_node`、`localization_supervisor_node` は、他のノードが立ち上がるのを待って遅れて起動する (`TimerAction`。初期化ノードを先に、監視ノードを後に起動する)。
 
 ## amcl_watchdog_node
 
@@ -79,7 +41,7 @@ AMCL の位置の共分散を監視し、大きい状態が続いたら、`gnss_
 - `amcl_pose_origin` (`PoseWithCovarianceStamped`) を購読し、共分散から指標を計算する。
 - 指標が `threshold` を超える状態が `consecutive_count` 回続くと、異常とする。
 - 異常のとき、`/gnss_amcl_initializer_node/request_reinit` (`Trigger`) を呼ぶ。失敗したら少し待って、最大 `max_retries` 回まで試す。成功したら、`recovery_backoff_sec` の間は、次の再初期化を抑える。
-- 実装は `mg_navigation/amcl_watchdog/` (指標の計算は `metrics.py`、ノードは `node.py`)。起動のラッパーは `scripts/amcl_watchdog/amcl_watchdog_node.py`。
+- 実装は `mg_navigation/amcl_watchdog/` (指標の計算は `metrics.py`、状態の対応づけは `health.py`、ノードは `node.py`)。起動のラッパーは `scripts/amcl_watchdog/amcl_watchdog_node.py`。
 
 | パラメータ | 内容 |
 | :--- | :--- |
@@ -97,7 +59,7 @@ AMCL の位置の共分散を監視し、大きい状態が続いたら、`gnss_
 
 監督ノードと同じ形で、状態を出す。UI や記録は、どちらの監視が動いていても同じに扱える。
 
-- `/localization/status` (`mg_msgs/LocalizationStatus`。一定の周期で配信): `state` は次のとおり。`amcl_attached` は常に `true`、判定の値 (`amcl_gnss_d2` など) は `-1` (使えない)。
+- `/localization/status` (`localization_supervisor_msgs/LocalizationStatus`。一定の周期で配信): `state` は次のとおり。`amcl_attached` は常に `true`、判定の値 (`amcl_gnss_d2` など) は `-1` (使えない)。
 
 | 状態 | 条件 |
 | :--- | :--- |
@@ -108,65 +70,6 @@ AMCL の位置の共分散を監視し、大きい状態が続いたら、`gnss_
 
 - 診断 `amcl_watchdog_node: localization` (NORMAL=OK、DEGRADED=ERROR、その他=WARN。集約で `/Robot/Localization/Monitor`)
 - イベント: `localization.state_changed` (`from`、`to`、`reason`)、`localization.reinit_requested` (`attempt`、`metric`、`value`、`threshold`)、`localization.reinit_result` (`success`、`message`) ([doc/monitoring.md](../../doc/monitoring.md))
-
-## localization_supervisor_node
-
-`amcl_watchdog_node` は、AMCL の自己申告の共分散しか見ないため、AMCL が「自信を持って間違えている」状態を検知できず、検知してもずれた AMCL を EKF に入れ続け、復旧も GNSS の生の値 (進行方向から作った向き) に頼っていた。
-監督ノードは、AMCL とは独立な情報でずれを検知し、切り離してから復旧する。
-
-### 検知 (一定の周期)
-
-| 判定 | 内容 |
-| :--- | :--- |
-| `gnss` | 標準偏差 `gnss_max_sigma_m` 以下の GNSS と AMCL の位置の食い違い (マハラノビス距離の二乗。分散は AMCL と GNSS の両方を使うので、単独測位では、数 m 以上のずれを検知する) |
-| `jump` | 連続する AMCL の推定が示す `map→odom` が、オドメトリの示す動きから飛んだ (`jump_threshold_m` / `_rad`) |
-| `scan` | EKF の姿勢でスキャンを地図に重ね、占有セルから `scan_tolerance_m` 以内の点の割合 (一致率) を見る。**一致率の絶対値は地図や LiDAR で決まる (正しい姿勢でも低いことがある)** ので、正常なときの一致率の中央値の `scan_ratio_factor` 倍 (下限 `scan_ratio_min`) を下回ったら異常とする。姿勢の周り (±`scan_search_range_m`) でずらしたときの一致率の増え方 (利得) も記録するが、別走行の地図との位置合わせのずれで正しい姿勢でも利得が出るため、`scan_gain_threshold` は、判定に使わない値にしてある |
-| `diff` | AMCL と EKF の位置が `diff_threshold_m` 以上離れている |
-
-- どの判定も、使えないとき (GNSS の精度が悪すぎる、スキャンが無いなど) は判定しない (異常とも正常とも数えない)。
-- 判定の値は `LocalizationStatus` に出る (`amcl_gnss_d2`、`amcl_jump_m`、`amcl_ekf_diff_m`、`scan_match_ratio`、`scan_match_gain`)。
-- 起動直後 (`startup_grace_sec`) と復旧直後 (`grace_after_recovery_sec`) は、EKF・AMCL が落ち着くまで判定しない (値の記録だけ行う)。
-
-### 動作モード (`recovery_enabled`)
-
-| 値 | 動作 |
-| :--- | :--- |
-| `false` (yaml の既定) | **検知と通知だけ**。異常を確認したら `DEGRADED` になり (`/localization/status` が `DEGRADED`、診断が ERROR)、異常が消えたら `NORMAL` に戻る。AMCL は切り離さない |
-| `true` | 下の状態遷移どおり、AMCL を切り離して姿勢を選び、再初期化して戻す (実験的) |
-
-既定を `false` にした理由: 再生評価 (kidnap) で、復旧を有効にすると、選んだ姿勢が誤っていた試行で、監視なしよりも誤差が大きく広がった。AMCL は kidnap の後に自力で戻ることも多く、検知に数秒かかる間の誤差は、復旧では防げない。
-
-### 状態遷移 (`state_machine.py`。`recovery_enabled: true` のとき)
-
-```
-NORMAL ─ 異常の疑い ─► SUSPECT ─ 確認 ─► ISOLATED (AMCL を EKF から切り離す)
-   ▲                     │ 異常が消える            │ isolate_hold_sec 待つ
-   └─────────────────────┘                          ▼
-   ▲                                          RECOVERING (姿勢を選んで /initialpose と /set_pose を送る)
-   └──────────── 収束を確認 (AMCL を戻す) ◄──────────┤ recover_timeout_sec を超えて max_reinit_attempts 回続く
-                                                      ▼
-                                                  DEGRADED (通知。degraded_retry_sec ごとに再試行)
-```
-
-- **切り離し**: 調停ノードの `/amcl_gate_arbiter/supervisor/change_publish_state` (SetBool) で `/amcl_pose` を止める。EKF はオドメトリと GNSS だけで動く。
-- **復旧の姿勢**: 次の候補のうち、スキャンが地図に最もよく合うものを選ぶ (比べられなければ GNSS を優先)。
-  1. EKF の姿勢
-  2. **巻き戻し**: 異常が始まる `rollback_margin_sec` 前の `map→odom` に、今のオドメトリの動きを足した姿勢 (AMCL が飛んで EKF が引きずられた場合)
-  3. 精度の良い GNSS の位置 + EKF の向き (`reinit_gnss_max_sigma_m` 以下のとき。初期化の広がりには GNSS の標準偏差を使う)
-- **初期化**: 選んだ姿勢を `/initialpose` (AMCL) と `/set_pose` (EKF) に送る。初期化した直後の AMCL の飛びは異常としない。
-- **DEGRADED**: `action_on_degraded: warn` は通知のみ、`slow` は `/speed_limit` で速度を制限する。
-
-### 出力
-
-- `/localization/status` (`mg_msgs/LocalizationStatus`): 状態、AMCL を EKF に入れているか、判定の値、直近のできごと
-- 診断 `localization_supervisor_node: localization` (NORMAL=OK、DEGRADED=ERROR、その他=WARN。`values` に `amcl_attached`、`last_event` と、使えた判定の値。集約で `/Robot/Localization/Monitor`)
-- イベント: `localization.state_changed` (`from`、`to`、`reason`)、`localization.reinit_requested` (`source`、`x`、`y`、`yaw`、`scan_match`)
-
-パラメータは `params/localization_supervisor.yaml` (各値の説明は、ファイルのコメント)。
-
-### 制約
-
-- `LocalizationStatus.amcl_attached` は、監督ノード自身が要求した状態を表す。ウェイポイントが `amcl_off` で AMCL を止めていても `true` のままになる (実際にゲートが開いているかは、調停ノードの `/amcl_gate_arbiter/state` と診断 `gate` で確認する)。
 
 ## 従来の構成に戻す
 

@@ -73,10 +73,10 @@ docker run --rm -v $PWD:/app -v ~/ros2_data:/root/ros2_data mg_develop:latest \
 | `amcl.` | `mg_navigation/params/nav2_params.yaml` | `amcl` |
 | `bridge.` | `slam_gnss_2d/slam_gnss_2d/params/nav_bridge.yaml` | `slam_gnss_nav_bridge` |
 | `odom.` | `mg_drivers/params/wheel_odom_corrector.yaml` | `wheel_odom_corrector_node` |
-| `sup.` | `mg_navigation/params/localization_supervisor.yaml` | `localization_supervisor_node` |
+| `sup.` | `mg_localization_supervisor/config/supervisor.yaml` | `localization_supervisor_node` |
 
 - 出力: `<評価 bag>/eval_loc/<データセット>/<名前>/{params/, run_N/, summary.md}`。`run_N/eval_localization.md` に試行ごとの評価、`summary.md` に試行をまとめた表が入ります。
-- 起動前に、関連パッケージ (`slam_gnss_2d` `mg_msgs` `mg_bringup` `mg_navigation` `mg_drivers`) をコンテナ内で増分ビルドします。ソースの変更はイメージの再ビルドなしで反映されます。
+- 起動前に、関連パッケージ (`localization_replay.sh` の `BUILD_PKGS`) をコンテナ内で増分ビルドします。ソースの変更はイメージの再ビルドなしで反映されます。
 - 書き換えられるのは既存のキーの値です。複数行にまたがるリスト (`odom0_config` など) も、`ekf.odom0_config="[true, true, ...]"` のように新しい値を 1 行で渡すとまとめて置き換えられます。キーが元のファイルに無い場合はエラーになります。
 - 実機と同じく、ホイールオドメトリは補正ノードを通して `/odom/raw` → `/odom` になります。
 - ROS の通信は `ROS_LOCALHOST_ONLY=1` とランダムな `ROS_DOMAIN_ID` で隔離しており、実機や他のコンテナと混ざりません。複数の変種を並列に実行できます (並列は 4 本まで。6 本並列では、スタックの起動が 180 s を超えて試行が無効になることがあります)。

@@ -6,9 +6,7 @@ MG-01 の独自メッセージ・サービスの定義。ノードは持たな�
 
 | 型 | 内容 | 配信元 | 購読・利用先 |
 | :--- | :--- | :--- | :--- |
-| `GateArbiterState` | AMCL ゲートの調停状態。`desired` (要求元の意図)、`applied` (ゲートへの反映済みか)、`holders` (止めている要求元) | `mg_navigation` の `amcl_gate_arbiter` (トピック `/amcl_gate_arbiter/state`、transient_local) | Web UI |
 | `LoadedMaps` | `waypoint_sequencer` が `map_server` に読み込ませた地図 (測位用・計画用の YAML パス) | `mg_waypoint_navigation` の `map_loader` | Web UI |
-| `LocalizationStatus` | 自己位置推定の監督ノードの状態 (`NORMAL`〜`DEGRADED`) と、判定に使った値 | `mg_navigation` の `localization_supervisor_node` | `tools/common/loc_metrics.py` (評価) |
 | `PauseRequest` | ウェイポイントシーケンサへの一時停止の要求 (要求元・有効か・理由) | Web UI、`mg_scenario_test` | `waypoint_sequencer_node` |
 | `SequencerStatus` | シーケンサの状態 (FSM の状態、現在のウェイポイント、一時停止中か、残りの距離、実行中のアクション、トリガー待ちか) | `waypoint_sequencer_node` (トピック `~/status`) | Web UI、`mg_diagnostics`、`mg_scenario_test` |
 | `NavigationActivity` | 走行の「いまの活動」の要約 (障害物での停止、リカバリー、トリガー待ち、RViz などシーケンサを通らないゴールの走行など)。表示用で、制御の入力にはしない | `waypoint_sequencer_node` (トピック `~/activity`、transient_local) | Web UI、`mg_scenario_test` |
@@ -25,6 +23,8 @@ MG-01 の独自メッセージ・サービスの定義。ノードは持たな�
 | `LoadMaps` | 測位用・計画用の地図を `map_server` に読み込ませる (空文字の側は変更しない) | `waypoint_sequencer_node` (`~/load_map`) | Web UI |
 | `GetPoseGraph` | ポーズグラフ全体を取得する | `mg_slam` の旧 Python 版 | `mg_slam` のプレビュー |
 | `ResetSimRobotPose` | シミュレータのロボットの位置を戻す | なし (どこからも使われていない) | なし |
+
+自己位置推定の監督の状態 (`LocalizationStatus`) とゲートの調停の状態 (`GateState`) は、[localization_supervisor_msgs](../localization_supervisor_msgs/README.md) にある。
 
 ## slam_gnss_2d_msgs との関係
 

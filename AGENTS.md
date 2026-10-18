@@ -83,6 +83,7 @@ source /opt/ros/humble/setup.bash && source /root/ros2_ws/install/setup.bash
 - `nav2_pkg` は**カスタム修正済み**のNav2（アップストリームと差分あり）。`geometry2_pkg` は上流の `tf2` の取り込み（apt が追いついたら削除）。どちらも文書を含めて変更しない。
 - `mg_simulator_client`（Unityシミュレータ用）は現在未使用。
 - `mg_navigation` の自己位置推定の構成は [doc/localization.md](./mg_navigation/doc/localization.md)。
+- `localization_supervisor` (と `localization_supervisor_msgs`) はロボットに依存しないフレームワークで、`mg_*` に依存させない (テストで確かめている)。MG 固有の設定・launch・部品は `mg_localization_supervisor` に置く。
 
 ## 重要なコード規約
 
