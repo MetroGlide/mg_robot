@@ -1,0 +1,95 @@
+# プラグインの約束
+
+判定・総合・入力のアダプタは、基底クラスを継承したプラグインとして作る。標準のものは登録名で、外部のものは `パッケージ.モジュール:クラス` で、設定ファイルの `type` に書く。
+読み込むときに、パラメータの型と必須、情報源の名前と種類をすべて検証し、合わなければ設定の読み込みで落ちる (`ConfigError`)。
+
+## 約束の版
+
+版は `core/interfaces.py` の `CONTRACT_VERSION`。版 0 の間は、基底クラス (`core/interfaces.py`、`ros/adapters/base.py`)・`Snapshot`・設定のスキーマを、自動復旧を作り終えるまで変えてよい。
+その後、mg ではない設定 (`config/examples/`) のテストが通ることを条件に、版 1 に固定する。約束を変えるときは、`core/interfaces.py` の `CONTRACT_VERSION` と、設定の `version` を上げる。
+
+## 共通
+
+| 宣言 | 内容 |
+| :--- | :--- |
+| `PARAMS` | パラメータの名前と `ParamSpec(型, 既定値, 説明)`。既定値が `None` のものは必須。宣言にない名前を設定に書くと誤り。`float` には整数も書ける |
+
+読み込んだパラメータは、既定値を補って `self.params` に入る。インスタンスの名前は `self.name`。
+
+## 判定 (`Detector`)
+
+```python
+from localization_supervisor.core.interfaces import Detector, Evidence, ParamSpec, SourceKind
+
+
+class SpeedLimitCheck(Detector):
+    SOURCES = {'pose': SourceKind.POSE}      # 引数の名前と、求める情報源の種類
+    SUBJECTS = ('pose',)                     # 異常のとき疑いをかける引数 (既定は reference 以外のすべて)
+    EXTRAS = ()                              # Snapshot.extras から読む値の名前
+    PARAMS = {'threshold': ParamSpec(float, None, '...')}
+
+    def evaluate(self, snapshot) -> Evidence:
+        sample = snapshot.pose(self.sources['pose'], max_age=2.0)
+        if sample is None:
+            return Evidence.unknown()
+        value = ...
+        return Evidence.from_score(value / self.params['threshold'], value=value)
+```
+
+| メソッド | 内容 |
+| :--- | :--- |
+| `evaluate(snapshot)` | 周期ごとに呼ばれる。`Evidence` を返す。判定できなければ `Evidence.unknown()` |
+| `after_step(evidence, normal)` | 総合と状態遷移の後に呼ばれる。`normal` はその周期の状態が `NORMAL` か (正常時の基準の学習に使う) |
+| `reset()` | 内部の状態を捨てる (地図の切り替え、外からの再初期化) |
+
+`Evidence.score` は 1.0 が異常のしきい値に当たるよう正規化する (`from_score` は 1.0 を超えれば異常とする)。`values` は記録用の値 (オフライン評価の `timeline.jsonl` に出る)。
+
+### Snapshot から読めるもの
+
+| メソッド | 内容 |
+| :--- | :--- |
+| `pose(name, max_age)` | 最新の姿勢の標本 (時刻は移さない) |
+| `pose_aligned(name, max_age, stamp)` | 最新の姿勢の標本を `stamp` (既定は周期の時刻) に移したものと、元の標本の古さ。移せなければ `None` |
+| `pose_history(name)` | 姿勢の標本の履歴 |
+| `motion_at(name, stamp)` | 動きの情報源の、その時刻の姿勢 (補間) |
+| `reference(name)` | 地図 (`occupancy`)・最新のスキャン (`scan`)・距離場のキャッシュ (`fields`) |
+| `cached(key, compute)` | 同じ周期の中で計算を使い回す |
+| `extras` | 注入した入力のアダプタが入れた追加の値 |
+
+### 標準の判定
+
+| 登録名 | 引数 (種類) | 内容 |
+| :--- | :--- | :--- |
+| `pose_consistency` | `a`, `b` (pose) | 2 つの姿勢を共通の時刻に移した位置の食い違い。`metric` が `mahalanobis` なら両方の共分散を使ったマハラノビス距離の二乗、`distance` なら距離。標準偏差が上限を超える標本は使わない |
+| `pose_jump` | `pose`, `motion` (疑うのは `pose`) | 姿勢と動きが示す `map→odom` の、新しい標本ごとの変化 (飛び)。新しい標本がない周期は判定しない |
+| `covariance` | `pose` | 自己申告の共分散の大きさ (`trace_xy` / `determinant_xy` / `max_eigenvalue_xy`) |
+| `scan_map` | `pose`, `reference` (疑うのは `pose`) | その姿勢でスキャンを地図に重ねた一致率を、正常なときの中央値と比べる。姿勢の周りでずらしたほうが合う量 (利得) も見られる |
+
+推定器が同じスキャンと地図で推定しているとき、その推定器の姿勢での `scan_map` は推定器と独立ではない (誤った場所に収束していても一致率は良く見えやすい)。総合での重みは、この独立性を考えて決める。
+
+## 総合 (`FusionStrategy`)
+
+`update(evidences, active) -> FusionResult` と `reset()` を実装する。`self.instances` (インスタンスの名前ごとの `InstanceInfo`: `subjects`、`weight`、`allowance`、`decay`、`max_score`、`options`)、`self.independent` (独立の情報源)、`self.derived` (融合の結果と、その元) を使える。
+疑わしい情報源の切り分けは、`core/fusion.py` の `attribute` を使い回せる。標準の方式 (`cusum`、`consecutive`) は [design.md](./design.md#総合)。
+
+## 入力のアダプタ (`SourceAdapter`)
+
+`ros/adapters/base.py`。メッセージから標本を作り、`SampleStore` に入れる。ノード (購読) とオフライン評価 (rosbag) の両方で同じものを使う。
+
+| 宣言・メソッド | 内容 |
+| :--- | :--- |
+| `KINDS` | 作れる情報源の種類 |
+| `subscriptions()` | 購読するトピック (`Subscription(topic, msg_type, handler, qos)`)。`qos` は `default` / `sensor` / `latched` |
+| `self.context.lookup(parent, child, stamp)` | TF を引く |
+
+| 登録名 | 種類 | 入力 |
+| :--- | :--- | :--- |
+| `pose_with_covariance` | pose | `geometry_msgs/PoseWithCovarianceStamped` (`topic`) |
+| `odometry` | pose / motion | `nav_msgs/Odometry` (`topic`)。pose なら地図座標の姿勢と共分散、motion ならその座標での姿勢 |
+| `map_scan` | reference | `nav_msgs/OccupancyGrid` (`map_topic`) と `sensor_msgs/LaserScan` (`scan_topic`)。センサの取り付け位置は `sensor_pose` か、TF (`base_frame` → スキャンの frame) |
+
+## 追加の手順
+
+1. 基底クラスを継承し、`PARAMS` と (判定なら) `SOURCES` を宣言する。
+2. 設定ファイルの `type` に `パッケージ.モジュール:クラス` を書く。
+3. 人工の入力でテストする (例: `test/test_supervisor_core.py`)。故障注入を使ったオフライン評価で、検知率・誤検知率を確かめてから有効にする。

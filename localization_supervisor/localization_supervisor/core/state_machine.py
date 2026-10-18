@@ -1,23 +1,28 @@
 """自己位置の監督の状態遷移 (ROS に依存しない)。
 
-判定 (Checks) を 1 秒程度ごとに受け取り、状態と、ノードが行う行動 (Action) を返す。
+総合の結果 (FusionResult) と、復旧の収束の確認 (converged) を周期ごとに受け取り、状態と行動 (Action) を返す。
 
-  (recovery_enabled=False のときは、確認した異常で DEGRADED になり、異常が消えたら NORMAL に戻る。AMCL は切り離さない)
+  recovery_enabled: false (通知だけ)
+    NORMAL ─ 疑い ─► SUSPECT ─ 確認 ─► DEGRADED ─ 異常がなくなる (clear_ticks 回) ─► NORMAL
+                       └─ 異常がなくなる (clear_ticks 回) ─► NORMAL
 
-  NORMAL ─ 異常の疑い ─► SUSPECT ─ 確認 ─► ISOLATED (AMCL を EKF から切り離す)
-     ▲                     │ 異常が消える            │ 一定時間待つ
-     └─────────────────────┘                          ▼
-     ▲                                          RECOVERING (EKF の姿勢で AMCL を初期化し、収束を確認)
-     └──────────── 収束を確認 (AMCL を戻す) ◄──────────┤ 時間切れが続く
-                                                        ▼
-                                                    DEGRADED (復旧できない。一定時間ごとに再試行)
+  recovery_enabled: true
+    NORMAL ─ 疑い ─► SUSPECT ─ 確認 ─► ISOLATED (blame に応じて切り離す)
+                                         │ isolate_hold_sec 待つ
+                                         ▼
+    NORMAL ◄─ 収束を確認 (recover_ok_ticks 回) ─ RECOVERING (再初期化)
+                                         │ 時間切れが max_reinit_attempts 回
+                                         ▼
+                                       DEGRADED (degraded_retry_sec ごとに RECOVERING へ)
 """
-from dataclasses import dataclass
-from enum import Enum, IntEnum
+import enum
+from dataclasses import dataclass, field
 from typing import List, Optional
 
+from .interfaces import FusionResult
 
-class State(IntEnum):
+
+class State(enum.IntEnum):
     """localization_supervisor_msgs/LocalizationStatus の state と対応する。"""
     NORMAL = 0
     SUSPECT = 1
@@ -26,199 +31,124 @@ class State(IntEnum):
     DEGRADED = 4
 
 
-class Action(Enum):
-    ISOLATE = 'isolate'                  # AMCL の出力を EKF に入れない
-    REINIT = 'reinit'                    # 姿勢を選んで AMCL と EKF を初期化し直す
-    ATTACH = 'attach'                    # AMCL の出力を EKF に戻す
-    NOTIFY_DEGRADED = 'notify_degraded'  # 復旧できないことを知らせる
+class Action(str, enum.Enum):
+    ISOLATE = 'isolate'                  # blame の情報源を切り離す
+    REINIT = 'reinit'                    # 候補を選んで推定器を初期化し直す
+    RESTORE = 'restore'                  # 切り離したものを戻す
+    NOTIFY_DEGRADED = 'notify_degraded'  # 異常を確認した (通知だけ、または復旧できない)
 
 
 @dataclass
 class MachineConfig:
-    # 各判定が続けて異常のとき、SUSPECT / ISOLATED にする回数
-    gnss_suspect_ticks: int = 3
-    gnss_isolate_ticks: int = 6
-    scan_suspect_ticks: int = 5
-    scan_isolate_ticks: int = 10
-    diff_suspect_ticks: int = 5
-    diff_isolate_ticks: int = 10
-    # AMCL の飛びが見つかった後、他の判定がこの回数続けば ISOLATED にする
-    corroborate_ticks: int = 2
-    # 異常がこの回数続けてなければ SUSPECT から NORMAL に戻る
+    recovery_enabled: bool = False
+    # 異常がなくなった周期がこの回数続けば、SUSPECT・DEGRADED (通知だけ) から NORMAL に戻る
     clear_ticks: int = 5
-    # 切り離してから、初期化し直すまで待つ時間 [s] (EKF がオドメトリと GNSS だけで落ち着く時間)
+    # 切り離してから、初期化し直すまで待つ時間 [s]
     isolate_hold_sec: float = 3.0
-    # 初期化し直した後、AMCL を戻すまでに正常を確認する回数と、諦めるまでの時間 [s]
+    # 初期化し直した後、戻すまでに収束を確認する回数と、諦めるまでの時間 [s]
     recover_ok_ticks: int = 5
     recover_timeout_sec: float = 30.0
     max_reinit_attempts: int = 3
-    # DEGRADED から再試行する間隔 [s]
+    # DEGRADED から再試行する間隔 [s] (recovery_enabled のとき)
     degraded_retry_sec: float = 60.0
-    # False のときは検知と通知だけを行う (AMCL の切り離しと再初期化はしない)。
-    # 異常を検知したら DEGRADED になり、異常が clear_ticks 回続けてなければ NORMAL に戻る
-    recovery_enabled: bool = False
-
-
-@dataclass
-class Checks:
-    """1 回分の判定。True が異常、False が正常、None が判定できない。"""
-    gnss: Optional[bool] = None   # RTK などの精度の良い GNSS と AMCL の位置が合わない
-    jump: Optional[bool] = None   # AMCL の推定が、オドメトリの示す動きから飛んだ
-    scan: Optional[bool] = None   # EKF の姿勢でスキャンが地図に合わない
-    diff: Optional[bool] = None   # AMCL と EKF の位置が離れている
-    converged: Optional[bool] = None  # AMCL が EKF の近くに収束している (復旧の確認に使う。diff より厳しい)
 
 
 @dataclass
 class Decision:
     state: State
-    actions: List[Action]
+    actions: List[Action] = field(default_factory=list)
     event: str = ''
+    blame: str = ''
 
 
-class SupervisorMachine:
+class StateMachine:
     def __init__(self, config: Optional[MachineConfig] = None) -> None:
         self.config = config or MachineConfig()
         self.state = State.NORMAL
-        self.attached = True
-        self._reset_counters()
+        self.blame = ''
+        self._clear_run = 0
+        self._ok_run = 0
         self._isolated_at = 0.0
         self._reinit_at = 0.0
         self._degraded_at = 0.0
         self._attempts = 0
 
-    def _reset_counters(self) -> None:
-        self._gnss_run = 0
-        self._scan_run = 0
-        self._diff_run = 0
-        self._jump_seen = False
-        self._clear_run = 0
-        self._ok_run = 0
+    @property
+    def hold_requested(self) -> bool:
+        """走行を止めてほしい状態か (切り離してから、戻すまで)。"""
+        return self.config.recovery_enabled and self.state in (State.ISOLATED, State.RECOVERING, State.DEGRADED)
 
-    @staticmethod
-    def _run(count: int, value: Optional[bool]) -> int:
-        """連続して異常だった回数。正常で 0 に戻り、判定できないときは変えない。"""
-        if value is True:
-            return count + 1
-        if value is False:
-            return 0
-        return count
-
-    def _update_runs(self, checks: Checks) -> None:
-        self._gnss_run = self._run(self._gnss_run, checks.gnss)
-        self._scan_run = self._run(self._scan_run, checks.scan)
-        self._diff_run = self._run(self._diff_run, checks.diff)
-        if checks.jump:
-            self._jump_seen = True
-
-    def step(self, now: float, checks: Checks) -> Decision:
+    def step(self, now: float, fusion: FusionResult, converged: Optional[bool] = None) -> Decision:
         cfg = self.config
-        self._update_runs(checks)
-        anomaly = any(v is True for v in (checks.gnss, checks.jump, checks.scan, checks.diff))
-        known = any(v is not None for v in (checks.gnss, checks.jump, checks.scan, checks.diff))
-
         if self.state == State.NORMAL:
-            self._jump_seen = bool(checks.jump)
-            reason = self._suspect_reason(checks)
-            if reason:
+            if fusion.suspect:
                 self.state = State.SUSPECT
                 self._clear_run = 0
-                return Decision(self.state, [], f'suspect: {reason}')
-            return Decision(self.state, [])
+                return Decision(self.state, [], f'suspect: {fusion.reason}', fusion.blame)
+            return Decision(self.state)
 
         if self.state == State.SUSPECT:
-            reason = self._isolate_reason()
-            if reason and not cfg.recovery_enabled:
-                self.state = State.DEGRADED
-                self._clear_run = 0
-                return Decision(self.state, [Action.NOTIFY_DEGRADED], f'alert: {reason}')
-            if reason:
+            if fusion.confirmed:
+                self.blame = fusion.blame or 'unknown'
+                if not cfg.recovery_enabled:
+                    self.state = State.DEGRADED
+                    self._clear_run = 0
+                    return Decision(self.state, [Action.NOTIFY_DEGRADED], f'alert: {fusion.reason}', self.blame)
                 self.state = State.ISOLATED
-                self.attached = False
                 self._isolated_at = now
-                return Decision(self.state, [Action.ISOLATE], f'isolated: {reason}')
-            if known and not anomaly:
-                self._clear_run += 1
-                if self._clear_run >= cfg.clear_ticks:
-                    self.state = State.NORMAL
-                    self._reset_counters()
-                    return Decision(self.state, [], 'cleared')
-            elif anomaly:
-                self._clear_run = 0
-            return Decision(self.state, [])
+                return Decision(self.state, [Action.ISOLATE], f'isolated: {fusion.reason}', self.blame)
+            if self._cleared(fusion):
+                return self._to_normal([], 'cleared')
+            return Decision(self.state, [], '', fusion.blame)
 
         if self.state == State.ISOLATED:
             if now - self._isolated_at >= cfg.isolate_hold_sec:
                 return self._start_recovery(now, 'reinit')
-            return Decision(self.state, [])
+            return Decision(self.state, [], '', self.blame)
 
         if self.state == State.RECOVERING:
-            # 初期化直後は AMCL が飛ぶので、飛びの判定は使わない。
-            # 復旧の確認は「AMCL が EKF の近くに収束し、GNSS とも合う」ことだけを見る
-            # (スキャンの判定は EKF の姿勢を見るもので、AMCL の収束とは関係がない)
-            bad = checks.gnss is True or checks.converged is False
-            if bad:
+            if converged is False:
                 self._ok_run = 0
-            elif checks.converged is True:
+            elif converged is True:
                 self._ok_run += 1
             if self._ok_run >= cfg.recover_ok_ticks:
-                self.state = State.NORMAL
-                self.attached = True
-                self._reset_counters()
-                return Decision(self.state, [Action.ATTACH], 'recovered')
+                return self._to_normal([Action.RESTORE], 'recovered')
             if now - self._reinit_at >= cfg.recover_timeout_sec:
                 if self._attempts < cfg.max_reinit_attempts:
                     self._attempts += 1
                     self._reinit_at = now
                     self._ok_run = 0
-                    return Decision(self.state, [Action.REINIT], f'reinit retry {self._attempts}')
+                    return Decision(self.state, [Action.REINIT], f'reinit retry {self._attempts}', self.blame)
                 self.state = State.DEGRADED
                 self._degraded_at = now
-                return Decision(self.state, [Action.NOTIFY_DEGRADED], 'degraded')
-            return Decision(self.state, [])
+                return Decision(self.state, [Action.NOTIFY_DEGRADED], 'degraded', self.blame)
+            return Decision(self.state, [], '', self.blame)
 
         # DEGRADED
         if not cfg.recovery_enabled:
-            if known and not anomaly:
-                self._clear_run += 1
-                if self._clear_run >= cfg.clear_ticks:
-                    self.state = State.NORMAL
-                    self._reset_counters()
-                    return Decision(self.state, [Action.ATTACH], 'cleared')
-            elif anomaly:
-                self._clear_run = 0
-            return Decision(self.state, [])
+            if self._cleared(fusion):
+                return self._to_normal([Action.RESTORE], 'cleared')
+            return Decision(self.state, [], '', self.blame)
         if now - self._degraded_at >= cfg.degraded_retry_sec:
             return self._start_recovery(now, 'retry from degraded')
-        return Decision(self.state, [])
+        return Decision(self.state, [], '', self.blame)
 
-    def _suspect_reason(self, checks: Checks) -> str:
-        cfg = self.config
-        if checks.jump:
-            return 'amcl_jump'
-        if self._gnss_run >= cfg.gnss_suspect_ticks:
-            return 'amcl_gnss'
-        if self._scan_run >= cfg.scan_suspect_ticks:
-            return 'scan_map'
-        if self._diff_run >= cfg.diff_suspect_ticks:
-            return 'amcl_ekf'
-        return ''
+    def _cleared(self, fusion: FusionResult) -> bool:
+        if fusion.cleared:
+            self._clear_run += 1
+        elif fusion.anomaly:
+            self._clear_run = 0
+        return self._clear_run >= self.config.clear_ticks
 
-    def _isolate_reason(self) -> str:
-        cfg = self.config
-        if self._gnss_run >= cfg.gnss_isolate_ticks:
-            return 'amcl_gnss'
-        if self._scan_run >= cfg.scan_isolate_ticks:
-            return 'scan_map'
-        if self._diff_run >= cfg.diff_isolate_ticks:
-            return 'amcl_ekf'
-        if self._jump_seen and max(self._gnss_run, self._scan_run, self._diff_run) >= cfg.corroborate_ticks:
-            return 'amcl_jump'
-        return ''
+    def _to_normal(self, actions: List[Action], event: str) -> Decision:
+        self.state = State.NORMAL
+        self.blame = ''
+        self._clear_run = 0
+        return Decision(self.state, actions, event)
 
     def _start_recovery(self, now: float, event: str) -> Decision:
         self.state = State.RECOVERING
         self._reinit_at = now
         self._attempts = 1
         self._ok_run = 0
-        return Decision(self.state, [Action.REINIT], event)
+        return Decision(self.state, [Action.REINIT], event, self.blame)

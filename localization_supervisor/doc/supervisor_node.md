@@ -3,7 +3,8 @@
 AMCL・GNSS・EKF・スキャン (と地図) を見比べて、AMCL のずれを検知する。復旧を有効にすると、ずれた AMCL を EKF から切り離し、姿勢を選んで AMCL と EKF を初期化し直す。
 AMCL の自己申告の共分散だけを見る監視では、AMCL が「自信を持って間違えている」状態を検知できないため、AMCL とは独立な情報でずれを検知する。
 
-判定 (`core/geometry.py`、`core/grid.py`) と状態遷移 (`core/state_machine.py`) は ROS に依存しない。ノードは `ros/supervisor_node.py`。
+判定 (`core/geometry.py`、`core/grid.py`) と状態遷移 (`core/legacy_machine.py`) は ROS に依存しない。ノードは `ros/supervisor_node.py`。
+判定を固定の 4 つで持つ実装で、設定で判定を組み合わせる中核 ([design.md](./design.md)) にはまだ移っていない。
 
 ## 入出力
 

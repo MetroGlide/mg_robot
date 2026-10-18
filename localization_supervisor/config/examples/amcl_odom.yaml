@@ -1,0 +1,48 @@
+# 最小の設定の例: GNSS も融合の推定器もなく、AMCL とホイールオドメトリと地図・スキャンだけを持つロボット。
+# 値は例。使うロボットのセンサと地図に合わせて決める。書き方は doc/parameters.md。
+version: 0
+
+sources:
+  amcl:
+    kind: pose
+    input: {type: pose_with_covariance, topic: /amcl_pose}
+  odom:
+    kind: motion
+    input: {type: odometry, topic: /odom}
+  map_scan:
+    kind: reference
+    input: {type: map_scan, map_topic: /map, scan_topic: /scan, base_frame: base_link}
+
+timeline:
+  motion_priority: [odom]
+
+detectors:
+  amcl_jump:
+    type: pose_jump
+    sources: {pose: amcl, motion: odom}
+    max_score: 10.0
+  scan_amcl:
+    type: scan_map
+    sources: {pose: amcl, reference: map_scan}
+    decay: 0.9
+  amcl_covariance:
+    type: covariance
+    sources: {pose: amcl}
+    params: {metric: trace_xy, threshold: 1.0}
+
+fusion:
+  type: cusum
+  params: {suspect_level: 1.0, confirm_level: 5.0}
+
+trust:
+  require_normal: [scan_amcl]
+
+state_machine:
+  recovery_enabled: false
+
+anchors:
+  pose: amcl
+  motion: odom
+
+grace:
+  startup_sec: 10.0

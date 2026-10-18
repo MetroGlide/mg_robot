@@ -37,7 +37,8 @@ from ..core.geometry import Pose2, amcl_gnss_d2, compose, implied_map_odom, pose
 from ..core.grid import (
     LocalDistanceField, OccupancyMap, build_local_distance_field, match_gain, match_ratio,
     scan_points_in_map, search_offsets)
-from ..core.state_machine import Action, Checks, MachineConfig, State, SupervisorMachine
+from ..core.legacy_machine import Action, Checks, MachineConfig, SupervisorMachine
+from ..core.state_machine import State
 from .diagnostics import LocalizationTask
 from .event_sinks.logfmt import LogfmtEventSink
 

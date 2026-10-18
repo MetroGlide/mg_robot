@@ -5,8 +5,8 @@ import pytest
 
 from localization_supervisor.core import geometry as ck
 from localization_supervisor.core import grid as sc
-from localization_supervisor.core.state_machine import (
-    Action, Checks, MachineConfig, State, SupervisorMachine)
+from localization_supervisor.core.legacy_machine import Action, Checks, MachineConfig, SupervisorMachine
+from localization_supervisor.core.state_machine import State
 
 
 # ---------------------------------------------------------------- checks

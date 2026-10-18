@@ -4,6 +4,7 @@ package.xml の依存と、Python の import の両方を見る。
 """
 import ast
 import pathlib
+import sys
 import xml.etree.ElementTree as ET
 
 import pytest
@@ -43,3 +44,15 @@ def test_python_files_exist():
 def test_sources_import_no_robot_specific_package(path):
     imported = [name for name in _imported_modules(path) if name.split('.')[0].startswith(FORBIDDEN_PREFIXES)]
     assert imported == []
+
+
+CORE_ALLOWED = {'numpy', 'scipy', 'yaml'}
+
+
+@pytest.mark.parametrize('path', sorted((PACKAGE_DIR / 'localization_supervisor' / 'core').rglob('*.py')),
+                         ids=lambda p: str(p.relative_to(PACKAGE_DIR)))
+def test_core_does_not_depend_on_ros(path):
+    # 中核は ROS なしで動く (オフライン評価や他のロボットで使う)。標準ライブラリと numpy・scipy・yaml だけを使う
+    imported = {name.split('.')[0] for name in _imported_modules(path)}
+    third_party = {name for name in imported if name not in sys.stdlib_module_names}
+    assert third_party <= CORE_ALLOWED

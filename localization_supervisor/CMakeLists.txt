@@ -9,7 +9,10 @@ ament_python_install_package(${PROJECT_NAME})
 install(PROGRAMS
   scripts/localization_supervisor_node.py
   scripts/gate_arbiter_node.py
+  scripts/offline_runner.py
   DESTINATION lib/${PROJECT_NAME}
 )
+
+install(DIRECTORY config DESTINATION share/${PROJECT_NAME})
 
 ament_package()
