@@ -54,7 +54,8 @@ def test_actuators_and_resetters_are_built_from_the_config():
     config = load_config(SUPERVISION)
     node = MagicMock()
     actuators = build_actuators(config.actuators, node)
-    assert [type(a) for a in actuators][1:] == [PauseRequestActuator, ClearCostmap]
+    assert [type(a) for a in actuators][1:3] == [PauseRequestActuator, ClearCostmap]
+    assert [a.name for a in actuators][3:] == ['variance_scale']
     resetters = build_resetters(config.resetters, node, OwnMessages())
     assert [r.name for r in resetters] == ['amcl', 'robot_localization']
 
@@ -66,6 +67,23 @@ def test_gate_service_matches_the_arbiter_requester():
     requester = gate['params']['service'].split('/')[2]
     assert requester in arbiter['requesters']
     assert gate['params']['service'].startswith('/amcl_gate_arbiter/')
+
+
+def test_variance_scale_topic_matches_the_gnss_bridge_parameters():
+    config = load_config(SUPERVISION)
+    (scale,) = [a for a in config.actuators if a['type'] == 'variance_scale']
+    topic = scale['params']['topic']
+    for path in ('slam_gnss_2d/slam_gnss_2d/params/nav_bridge.yaml', 'mg_simulation/config/nav_bridge_sim.yaml'):
+        with open(PACKAGE_DIR.parent / path, encoding='utf-8') as f:
+            bridge = yaml.safe_load(f)['slam_gnss_nav_bridge']['ros__parameters']
+        assert bridge['variance_scale_topic'] == topic, path
+    # 倍率を求める情報源は、監督の設定にある
+    residual = config.residuals[scale['params']['residual']]
+    assert residual.a == 'gnss' and scale['params']['blame'] == residual.a
+
+
+def test_gnss_fallback_does_not_scale_the_gnss_variance():
+    assert load_config(SUPERVISION, 'gnss_fallback').residuals['gnss_vs_ekf'].max_scale == 1.0
 
 
 def test_pause_request_is_active_only_while_holding(monkeypatch):

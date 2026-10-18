@@ -15,6 +15,10 @@ fusion:
 trust:
   require_normal: []
 
+# GNSS の分散に倍率をかけない (以前の動作には無かった)
+residuals:
+  gnss_vs_ekf: {max_scale: 1.0}
+
 state_machine:
   recovery_enabled: true
   request_hold: false

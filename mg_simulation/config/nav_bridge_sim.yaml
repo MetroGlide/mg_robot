@@ -16,5 +16,7 @@ slam_gnss_nav_bridge:
     single_floor_m: 0.05
     single_scale: 1.0
     accept_single: true
+    # 自己位置の監督が、GNSS と EKF の残差から求めた分散の倍率を受け取る (supervision.yaml の variance_scale と同じトピック)
+    variance_scale_topic: /gnss_variance_scale
     # sim のロボットは停止中だと、ヘディングを変位から求められず測位を採用できない。正常な状態なので、診断を WARN にしない
     not_adopting_level: ok

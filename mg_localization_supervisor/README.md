@@ -47,7 +47,7 @@ GNSS による初期化と監督ノードは、他のノードが立ち上がる
 
 パラメータ・入出力・イベントは [localization_supervisor/doc/supervisor_node.md](../localization_supervisor/doc/supervisor_node.md)。このロボットでの使い方:
 
-- `localization_supervisor:=true` で、既定の監視 (`mg_navigation` の `amcl_watchdog_node`。共分散が大きければ GNSS で初期化し直す) のまま、監督ノードを並行して動かす。状態 `/localization/status` は監督ノードが出す (watchdog は出さない)。実機で通知の質を確かめるときに使う。`recovery_enabled` のプロファイルは、watchdog と二重に再初期化するので並行しては使わない。
+- `localization_supervisor:=true` で、既定の監視 (`mg_navigation` の `amcl_watchdog_node`。共分散が大きければ GNSS で初期化し直す) のまま、監督ノードを並行して動かす。状態 `/localization/status` は監督ノードが出す (watchdog は出さない)。実機で通知の質を確かめるときに使う。watchdog と二重に再初期化しないよう、プロファイルは `notify_only` になる。
 - `localization_monitor:=supervisor` (既定) では、watchdog の代わりに監督ノードだけを動かし、基の設定の自動復旧を使う。watchdog と並行して動かすときは、プロファイル `notify_only` になる (二重に再初期化しない)。
 - 設定は `supervisor_config`、プロファイルは `localization_profile` で渡す。走行中は `ros2 service call /localization_supervisor_node/set_profile localization_supervisor_msgs/srv/SetProfile "{profile: gnss_fallback}"` で切り替えられる。
 - GNSS による初期化 (`gnss_amcl_initializer_node`)・watchdog・人による `/initialpose`・`/set_pose` は、外からの再初期化として扱う (状態を戻して猶予を置く)。
@@ -96,7 +96,13 @@ GNSS による初期化と監督ノードは、他のノードが立ち上がる
 | 候補の評価 | スキャンの一致率を主に、GNSS・推測航法との近さを小さい重みで足す。計画用地図の致死セルに footprint がかかる候補は捨てる |
 | 選び方 | 最良が最低の評価に届かない、または離れた次点との差が小さい(似た場所の取り違え)ときは、再初期化せず `DEGRADED` で知らせる |
 | 再初期化の送り先 | AMCL (`/initialpose`) と EKF (`/set_pose`)。監督が送ったものは、外からの再初期化として扱わない |
-| 対処 | AMCL のゲートを閉じる (`gate`。`/amcl_gate_arbiter/supervisor/...`)、シーケンサを一時停止する (`pause_request`)、再初期化の後にグローバルコストマップを消す (`clear_costmap`) |
+| 対処 | AMCL のゲートを閉じる (`gate`。`/amcl_gate_arbiter/supervisor/...`)、シーケンサを一時停止する (`pause_request`)、再初期化の後にグローバルコストマップを消す (`clear_costmap`)、GNSS の分散の倍率を配信する (`variance_scale`) |
+
+### GNSS の信頼度
+
+地図と GNSS のずれは場所ごとに違う (地図は SLAM から作るため)。`supervision.yaml` の `residuals` が、信頼できる周期の GNSS と EKF の位置の差から、GNSS の自己申告の分散より実際の誤差が大きいかを調べ、分散にかける倍率を出す ([設計](../localization_supervisor/doc/design.md#残差と分散の倍率))。
+対処 `variance_scale` が `/gnss_variance_scale` に配信し、`slam_gnss_nav_bridge` が `/odom/gps` の分散にかける ([nav_bridge.md](../slam_gnss_2d/doc/nav_bridge.md#外からの分散の倍率))。GNSS が `blame` のときは倍率が上限になる。
+倍率が大きい状態が続くと、イベント `localization.residual_changed` で知らせる (`gnss_transform.yaml` を見直すきっかけ)。止めたいときは、`slam_gnss_nav_bridge` の `variance_scale_topic` を空にする (プロファイル `gnss_fallback` は倍率を 1 に固定する)。
 
 - 自動復旧が使える状況: GNSS の測位がある(運ばれたときも、その位置へ戻せる)、または、ずれが推測航法とスキャンの照合で直せる範囲(オドメトリのすべり・AMCL の少しずつのずれ)。GNSS がなく運ばれたときは、復旧できず `DEGRADED` で知らせる。
 - 対処はすべて起動時に作る(プロファイルでは変えられない)。戻し方: プロファイル `notify_only`(通知だけ)、`state_machine.request_hold: false`(止めない)、`gnss_fallback`(以前の GNSS で引き戻すだけの動作)、`localization_monitor:=watchdog`(従来の監視)。
@@ -142,7 +148,7 @@ make test pkg=mg_localization_supervisor
 - `test_config.py`: 設定ファイルが読み込め、起動するノードの名前・ゲートの要求元が合っている
 - `test_event_format.py`: フレームワークが出すイベントが、このプロジェクトのイベントの規約 ([doc/monitoring.md](../doc/monitoring.md)) と同じ書式で、`mg_utils.event_log.parse_event` で読める
 - `test_supervision_config.py`: `supervision.yaml` とすべてのプロファイルがフレームワークの検証を通り、監督ノードで動かせる、入力のトピックが AMCL の設定と合う、footprint と計画用地図がコストマップと合う、イベントがプロジェクトのイベントログで出る
-- `test_recovery_config.py`: 自動復旧の構成(候補・評価・送り先・対処)、`pause_request` の変換、`gnss_fallback` が以前の初期化ノードと同じ条件・共分散で、すぐ GNSS の位置で初期化し直す
+- `test_recovery_config.py`: 自動復旧の構成(候補・評価・送り先・対処)、`pause_request` の変換、`gnss_fallback` が以前の初期化ノードと同じ条件・共分散で、すぐ GNSS の位置で初期化し直す、`variance_scale` のトピックが GNSS のブリッジの設定と合う
 
 ## 依存
 

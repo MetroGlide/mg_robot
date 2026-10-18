@@ -198,6 +198,10 @@ recovery:
     - {type: "mg_localization_supervisor.actuators.pause_request:PauseRequestActuator"}
     # 再初期化の後に、グローバルコストマップを消す
     - {type: "mg_localization_supervisor.actuators.clear_costmap:ClearCostmap"}
+    # GNSS の分散にかける倍率を配信する (GNSS が blame のときは上限)。slam_gnss_2d の nav_bridge.yaml の
+    # variance_scale_topic と同じトピック
+    - type: variance_scale
+      params: {topic: /gnss_variance_scale, residual: gnss_vs_ekf, blame: gnss}
 
 anchors:
   pose: ekf
@@ -212,6 +216,14 @@ safety:
   pose: ekf
   map: planning_map
   footprint: [[0.4, 0.25], [0.4, -0.25], [-0.2, -0.3], [-0.2, 0.3]]
+
+# 残差: 信頼できる周期に、GNSS と EKF の位置の差を残し、GNSS の自己申告の分散より実際の誤差が大きければ、
+# 分散にかける倍率を出す (対処 variance_scale が配信し、GNSS のブリッジが /odom/gps の分散にかける)。
+# 地図と GNSS のずれは場所ごとに違うので、補正せずに信頼度だけを下げる。倍率が大きい状態が続くと、イベント residual_changed で
+# 知らせる (gnss_transform.yaml を見直すきっかけ)。EKF は GNSS を含む融合の結果なので、GNSS を過大に信頼するほど残差は小さく
+# 出る。倍率は、ずれが大きい区間を見つけるための目安
+residuals:
+  gnss_vs_ekf: {a: gnss, b: ekf}
 
 # 起動直後と復旧直後は、EKF・AMCL が落ち着くまで総合しない [s]。
 # 外からの再初期化・地図の切り替えの後も、after_reset_sec の間は総合しない
