@@ -33,6 +33,16 @@ class TickRecord:
 
 
 @dataclass
+class ReinitRecord:
+    """監督が再初期化を指示した 1 回。error_m は、候補と真の姿勢 (故障を注入する前の記録) の距離 (分からなければ None)。"""
+    t: float
+    origin: str
+    error_m: Optional[float] = None
+    error_yaw_rad: Optional[float] = None
+    total: Optional[float] = None
+
+
+@dataclass
 class FaultOutcome:
     type: str
     source: str
@@ -43,6 +53,10 @@ class FaultOutcome:
     blame: str
     instance_after: Dict[str, Optional[float]]
     expected: bool = True   # 検知の対象か (姿勢をずらす故障)
+    # 区間の中で最初に再初期化を指示するまで、その候補の誤差、そのあと NORMAL に戻るまで (開始からの秒)
+    reinit_after: Optional[float] = None
+    reinit_error_m: Optional[float] = None
+    recovered_after: Optional[float] = None
 
 
 @dataclass
@@ -64,6 +78,13 @@ class Report:
     false_alarms: int
     clean_ticks: int
     clean_not_normal_ticks: int
+    reinits: List[ReinitRecord] = field(default_factory=list)
+    # 再初期化の指示のうち、候補の誤差が ok_threshold_m を超えたもの (誤った復旧)
+    wrong_reinits: int = 0
+    # 故障の区間の外での再初期化の指示
+    spurious_reinits: int = 0
+    # 候補を選べず見送った回数 (理由ごと)
+    skipped: Dict[str, int] = field(default_factory=dict)
 
     @property
     def expected(self) -> List[FaultOutcome]:
@@ -78,7 +99,10 @@ def _windows(faults: Sequence[Fault], run_end: float, settle_sec: float):
     return [(f.start, f.label_end(run_end) + settle_sec) for f in faults if f.type in ERROR_FAULTS]
 
 
-def evaluate(records: Sequence[TickRecord], faults: Sequence[Fault], settle_sec: float = 30.0) -> Report:
+def evaluate(
+    records: Sequence[TickRecord], faults: Sequence[Fault], settle_sec: float = 30.0,
+    reinits: Sequence[ReinitRecord] = (), skipped: Optional[Dict[str, int]] = None, ok_threshold_m: float = 1.0,
+) -> Report:
     if not records:
         return Report([], {}, 0, 0, 0)
     run_end = records[-1].t
@@ -95,12 +119,19 @@ def evaluate(records: Sequence[TickRecord], faults: Sequence[Fault], settle_sec:
         for name in names:
             hit = next((r for r in inside if r.statuses.get(name) == Status.ANOMALY), None)
             first[name] = None if hit is None else hit.t - fault.start
+        reinit = next((x for x in reinits if fault.start <= x.t <= end + settle_sec), None)
+        recovered = None
+        if reinit is not None:
+            back = next((r for r in records if r.t > reinit.t and r.state == State.NORMAL), None)
+            recovered = None if back is None else back.t - fault.start
         outcomes.append(FaultOutcome(
             type=fault.type, source=fault.source, start=fault.start, end=end,
             suspect_after=None if suspect is None else suspect.t - fault.start,
             confirm_after=None if confirm is None else confirm.t - fault.start,
             blame='' if confirm is None else confirm.blame, instance_after=first,
-            expected=fault.type in ERROR_FAULTS))
+            expected=fault.type in ERROR_FAULTS,
+            reinit_after=None if reinit is None else reinit.t - fault.start,
+            reinit_error_m=None if reinit is None else reinit.error_m, recovered_after=recovered))
 
     def clean(t: float) -> bool:
         return not any(lo <= t <= hi for lo, hi in windows)
@@ -123,7 +154,10 @@ def evaluate(records: Sequence[TickRecord], faults: Sequence[Fault], settle_sec:
             clean_known_ticks=len(known))
     return Report(
         faults=outcomes, instances=instances, false_alarms=false_alarms, clean_ticks=len(clean_records),
-        clean_not_normal_ticks=sum(1 for r in clean_records if r.state != State.NORMAL))
+        clean_not_normal_ticks=sum(1 for r in clean_records if r.state != State.NORMAL),
+        reinits=list(reinits),
+        wrong_reinits=sum(1 for x in reinits if x.error_m is not None and x.error_m > ok_threshold_m),
+        spurious_reinits=sum(1 for x in reinits if clean(x.t)), skipped=dict(skipped or {}))
 
 
 def _seconds(value: Optional[float]) -> str:
@@ -139,15 +173,23 @@ def format_report(report: Report, title: str = '') -> str:
     if report.clean_ticks:
         lines.append(f'- 故障の区間の外で NORMAL 以外だった周期の割合: '
                      f'{report.clean_not_normal_ticks / report.clean_ticks:.3f} ({report.clean_ticks} 周期中)')
+    if report.reinits or report.skipped:
+        skipped = ', '.join(f'{reason} {count}' for reason, count in sorted(report.skipped.items())) or 'なし'
+        lines.append(f'- 再初期化の指示: {len(report.reinits)} 回 (候補の誤差が大きかったもの {report.wrong_reinits} 回、'
+                     f'故障の区間の外 {report.spurious_reinits} 回)。見送り: {skipped}')
     if report.faults:
         names = sorted(report.instances)
+        recovery = bool(report.reinits)
         lines += ['', '## 故障ごと (開始からの秒。- は区間の中で検知せず)', '',
-                  '| 故障 | 情報源 | 検知の対象 | 開始 [s] | 疑い | 確認 | blame | ' + ' | '.join(names) + ' |',
-                  '|---|---|---|---|---|---|---|' + '---|' * len(names)]
+                  '| 故障 | 情報源 | 検知の対象 | 開始 [s] | 疑い | 確認 | blame | '
+                  + ('再初期化 | 候補の誤差 [m] | 復旧 | ' if recovery else '') + ' | '.join(names) + ' |',
+                  '|---|---|---|---|---|---|---|' + ('---|---|---|' if recovery else '') + '---|' * len(names)]
         for f in report.faults:
+            extra = (f'{_seconds(f.reinit_after)} | {_seconds(f.reinit_error_m)} | {_seconds(f.recovered_after)} | '
+                     if recovery else '')
             lines.append(
                 f'| {f.type} | {f.source} | {"○" if f.expected else "-"} | {f.start:.1f} | {_seconds(f.suspect_after)} | '
-                f'{_seconds(f.confirm_after)} | {f.blame or "-"} | '
+                f'{_seconds(f.confirm_after)} | {f.blame or "-"} | {extra}'
                 + ' | '.join(_seconds(f.instance_after[n]) for n in names) + ' |')
     lines += ['', '## 判定のインスタンスごと', '',
               '| インスタンス | 検知した故障 | 誤検知率 (区間の外で異常と判定した割合) | 区間の外で判定できた周期 |',

@@ -17,13 +17,14 @@
 """
 import math
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Mapping
+from typing import Any, Dict, List, Mapping, Optional
 
 import numpy as np
 
-from .geometry import wrap_angle
+from .geometry import Pose2, wrap_angle
 from .interfaces import MotionSample, PoseSample, ScanSample, SourceKind
 from .snapshot import SampleStore
+from .timeline import History
 
 REQUIRED: Dict[str, List[str]] = {
     'pose_offset': ['source', 'offset'],
@@ -141,17 +142,42 @@ class FaultInjector:
 
 
 class FaultInjectingStore(SampleStore):
-    """標本を入れるときに故障を注入する SampleStore。"""
+    """標本を入れるときに故障を注入する SampleStore (オフライン評価用)。
+
+    故障を注入する前の姿勢を覚えていて (true_pose)、再初期化の指示を受けた推定器のその後の標本を、
+    選んだ姿勢に合わせる (apply_reset。記録済みの推定器の出力は初期化し直されないので、同じ効果を真似る)。
+    """
 
     def __init__(self, injector: FaultInjector, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.injector = injector
+        self._originals: Dict[str, History] = {
+            name: History(history.horizon_sec) for name, history in self.poses.items()}
+        self._corrections: Dict[str, np.ndarray] = {}
+
+    def true_pose(self, name: str, stamp: float) -> Optional[Pose2]:
+        """故障を注入する前の記録の姿勢 (stamp の時刻に移したもの)。"""
+        sample = self._originals[name].latest()
+        aligned = None if sample is None else self.timeline.align(sample, stamp)
+        return None if aligned is None else aligned.pose
+
+    def apply_reset(self, names: List[str], pose: Pose2, stamp: float) -> None:
+        """names の姿勢の、これ以降の標本を、stamp に pose にいたことになるようにずらす。"""
+        for name in names:
+            latest = self.poses[name].latest()
+            aligned = None if latest is None else self.timeline.align(latest, stamp)
+            if aligned is None:
+                continue
+            delta = np.array([pose[0] - aligned.pose[0], pose[1] - aligned.pose[1],
+                              wrap_angle(pose[2] - aligned.pose[2])])
+            self._corrections[name] = self._corrections.get(name, np.zeros(3)) + delta
 
     def add_pose(self, name: str, sample: PoseSample) -> None:
+        self._originals[name].add(sample)
         if self.injector.dropped(name, sample.stamp):
             return
-        offset = self.injector.pose_offset(name, sample.stamp)
-        if offset.any():
+        offset = self.injector.pose_offset(name, sample.stamp) + self._corrections.get(name, 0.0)
+        if np.any(offset):
             pose = (sample.pose[0] + offset[0], sample.pose[1] + offset[1], wrap_angle(sample.pose[2] + offset[2]))
             sample = PoseSample(sample.stamp, pose, sample.cov)
         super().add_pose(name, sample)

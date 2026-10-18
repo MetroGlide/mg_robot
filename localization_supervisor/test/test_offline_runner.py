@@ -5,9 +5,10 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
+import yaml
 from PIL import Image
 
-from localization_supervisor.core.config import load_config
+from localization_supervisor.core.config import load_config, parse_config
 from localization_supervisor.core.faults import parse_faults
 from localization_supervisor.core.state_machine import State
 from localization_supervisor.ros.adapters import AdapterContext
@@ -112,3 +113,42 @@ def test_injected_offset_is_detected_and_blamed(map_yaml):
     assert outcome.blame == 'amcl'
     assert result.report.false_alarms == 0
     assert [e['to'] for e in result.events][:2] == ['SUSPECT', 'DEGRADED']
+
+
+def _recovery_config():
+    with open(EXAMPLE, encoding='utf-8') as f:
+        raw = yaml.safe_load(f)
+    raw['state_machine'] = {'recovery_enabled': True, 'isolate_hold_sec': 2.0, 'recover_ok_ticks': 3}
+    raw['recovery'] = {
+        'convergence': ['scan_amcl'],
+        'scan_buffer': {'reference': 'map_scan', 'motion': 'odom'},
+        'generators': {
+            'dead_reckoning': {'type': 'anchor_motion', 'sources': {'motion': 'odom'}},
+            'submap': {'type': 'submap_match', 'sources': {'motion': 'odom', 'reference': 'map_scan'},
+                       'params': {'peaks': 2, 'min_range_m': 0.6}}},
+        'scorers': {'scan': {'type': 'scan_match', 'sources': {'reference': 'map_scan', 'motion': 'odom'}}},
+        'selection': {'min_score': 0.5}}
+    return parse_config(raw)
+
+
+def test_recovery_is_evaluated_against_the_recorded_pose(map_yaml):
+    faults = parse_faults({'faults': [
+        {'type': 'pose_offset', 'source': 'amcl', 'at': 30.0, 'offset': {'x': 1.5, 'y': 0.0, 'yaw': 0.2}}]})
+    options = OfflineOptions(maps={'map_scan': map_yaml}, faults=faults, apply_reset=['amcl'], truth='amcl')
+    session = OfflineSession(_recovery_config(), options, FixedSensor(), T_START)
+    result = session.run(_messages())
+    report = result.report
+    assert report.reinits and report.wrong_reinits == 0 and report.spurious_reinits == 0
+    assert report.reinits[0].error_m < 0.5
+    outcome = report.faults[0]
+    assert outcome.reinit_after is not None and outcome.recovered_after is not None
+    assert result.records[-1].state == State.NORMAL
+    assert any('reinit' in step for step in result.steps)
+
+
+def test_without_apply_reset_the_directive_is_only_recorded(map_yaml):
+    faults = parse_faults({'faults': [
+        {'type': 'pose_offset', 'source': 'amcl', 'at': 30.0, 'offset': {'x': 1.5, 'y': 0.0, 'yaw': 0.2}}]})
+    options = OfflineOptions(maps={'map_scan': map_yaml}, faults=faults, truth='amcl')
+    result = OfflineSession(_recovery_config(), options, FixedSensor(), T_START).run(_messages())
+    assert result.report.reinits and result.report.reinits[0].error_m < 0.5

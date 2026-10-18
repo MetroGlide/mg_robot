@@ -28,12 +28,12 @@ from rosidl_runtime_py.utilities import get_message
 from tf2_msgs.msg import TFMessage
 
 from ..core.config import SupervisorConfig, load_config
-from ..core.evaluation import Report, TickRecord, evaluate, format_report
+from ..core.evaluation import ReinitRecord, Report, TickRecord, evaluate, format_report
 from ..core.faults import Fault, FaultInjectingStore, FaultInjector, parse_faults, validate_sources
-from ..core.geometry import Pose2
+from ..core.geometry import Pose2, wrap_angle
 from ..core.interfaces import SourceKind
-from ..core.snapshot import SampleStore, Snapshot
-from ..core.supervisor import StepResult, Supervisor, make_store
+from ..core.snapshot import Snapshot
+from ..core.supervisor import StepResult, Supervisor
 from .adapters import AdapterContext, build_adapters
 from .adapters.standard import yaw_from_quaternion
 from .map_io import load_map_yaml
@@ -79,6 +79,13 @@ class OfflineOptions:
     faults: List[Fault] = field(default_factory=list)
     # 正解としてだけ使う故障 (記録したときにすでに起きていたもの。注入しない)
     labels: List[Fault] = field(default_factory=list)
+    # 再初期化の指示を受けたものとして、その後の標本を選んだ姿勢に合わせる姿勢の情報源
+    # (記録済みの推定器の出力は初期化し直されないので、同じ効果を真似る。空なら、指示を記録するだけ)
+    apply_reset: List[str] = field(default_factory=list)
+    # 再初期化の候補の誤差を測る真の姿勢の情報源 (故障を注入する前の記録。空なら、設定の anchors.pose)
+    truth: str = ''
+    # 候補の誤差がこれを超えたら、誤った復旧とする [m]
+    ok_threshold_m: float = 1.0
 
 
 @dataclass
@@ -143,13 +150,13 @@ class OfflineSession:
         self.config = config
         self.options = options
         self.t0 = t0
-        if options.faults:
-            validate_sources(options.faults, config.kinds())
-            self.store: SampleStore = FaultInjectingStore(
-                FaultInjector(options.faults, t0), config.kinds(), tuple(config.motion_priority),
-                config.horizon_sec, config.max_extrapolation_sec, config.alignment)
-        else:
-            self.store = make_store(config)
+        validate_sources(options.faults, config.kinds())
+        for name in options.apply_reset + ([options.truth] if options.truth else []):
+            if config.sources.get(name) is None or config.sources[name].kind != SourceKind.POSE:
+                raise ValueError(f'{name!r}: not a pose source')
+        self.store: FaultInjectingStore = FaultInjectingStore(
+            FaultInjector(options.faults, t0), config.kinds(), tuple(config.motion_priority),
+            config.horizon_sec, config.max_extrapolation_sec, config.alignment)
         adapters = build_adapters(config, self.store, context)
         for name, path in options.maps.items():
             if config.sources.get(name) is None or config.sources[name].kind != SourceKind.REFERENCE:
@@ -207,6 +214,9 @@ def _run(
     records: List[TickRecord] = []
     steps: List[Dict[str, Any]] = []
     events: List[Dict[str, Any]] = []
+    reinits: List[ReinitRecord] = []
+    skipped: Dict[str, int] = {}
+    truth = options.truth or (session.config.anchors.pose if session.config.anchors is not None else '')
     next_tick = start
 
     def tick(stamp: float) -> None:
@@ -219,6 +229,15 @@ def _run(
             {n: e.score for n, e in result.evidences.items()}))
         steps.append(step_record(t_rel, result))
         events.extend({'t': round(t_rel, 3), 'name': e.name, 'level': e.level, **e.fields} for e in result.events)
+        for event in result.events:
+            if event.name.endswith('.reinit_skipped'):
+                reason = str(event.fields.get('reason', ''))
+                skipped[reason] = skipped.get(reason, 0) + 1
+        for directive in result.directives:
+            if directive.kind == 'reinit':
+                reinits.append(reinit_record(store, truth, t_rel, directive.candidate, stamp))
+                if options.apply_reset:
+                    store.apply_reset(options.apply_reset, directive.candidate.pose, stamp)
         if on_step is not None:
             on_step(snapshot, result, t_rel)
 
@@ -232,7 +251,18 @@ def _run(
         for handler in session.routes.get(topic, []):
             handler(msg)
     labels = sorted(options.faults + options.labels, key=lambda f: f.start)
-    return OfflineResult(t0, records, steps, events, evaluate(records, labels))
+    return OfflineResult(t0, records, steps, events, evaluate(
+        records, labels, reinits=reinits, skipped=skipped, ok_threshold_m=options.ok_threshold_m))
+
+
+def reinit_record(store: FaultInjectingStore, truth: str, t_rel: float, candidate, stamp: float) -> ReinitRecord:
+    """再初期化の指示の候補と、真の姿勢 (故障を注入する前の記録) の差。真の姿勢がなければ誤差は None。"""
+    record = ReinitRecord(t_rel, candidate.origin, total=candidate.total)
+    actual = store.true_pose(truth, stamp) if truth else None
+    if actual is not None:
+        record.error_m = math.hypot(candidate.pose[0] - actual[0], candidate.pose[1] - actual[1])
+        record.error_yaw_rad = abs(wrap_angle(candidate.pose[2] - actual[2]))
+    return record
 
 
 def step_record(t_rel: float, result: StepResult) -> Dict[str, Any]:
@@ -246,6 +276,10 @@ def step_record(t_rel: float, result: StepResult) -> Dict[str, Any]:
                           **{k: round(v, 4) for k, v in e.values.items()}}
                    for name, e in result.evidences.items()},
     }
+    for directive in result.directives:
+        if directive.kind == 'reinit':
+            record['reinit'] = {'origin': directive.candidate.origin, 'pose': [round(v, 3) for v in directive.candidate.pose],
+                                'total': directive.candidate.total}
     if result.safety is not None:
         record['lethal'] = {'in_lethal': result.safety.in_lethal, 'fraction': round(result.safety.fraction, 4),
                             'depth_m': round(result.safety.depth_m, 3)}
@@ -285,6 +319,10 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     parser.add_argument('--map', action='append', default=[], help='<reference の情報源>=<map.yaml>')
     parser.add_argument('--faults', help='Snapshot の段階で注入する故障の定義 (YAML)')
     parser.add_argument('--labels', help='正解としてだけ使う故障の定義 (YAML。記録したときに起きていたもの)')
+    parser.add_argument('--apply-reset', default='',
+                        help='再初期化の指示の後、選んだ姿勢に合わせる姿勢の情報源 (カンマ区切り。例: amcl,ekf)')
+    parser.add_argument('--truth', default='', help='候補の誤差を測る真の姿勢の情報源 (既定は anchors.pose)')
+    parser.add_argument('--ok-threshold', type=float, default=1.0, help='候補の誤差がこれを超えたら誤った復旧 [m]')
     parser.add_argument('--period', type=float, default=1.0, help='周期 [s]')
     parser.add_argument('--start', type=float, default=0.0, help='評価の開始 [s]')
     parser.add_argument('--duration', type=float, help='評価の長さ [s]')
@@ -295,7 +333,9 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     maps = dict(item.split('=', 1) for item in args.map)
     result = run_offline(config, args.bag, OfflineOptions(
         period_sec=args.period, start_sec=args.start, duration_sec=args.duration, maps=maps,
-        faults=load_fault_file(args.faults), labels=load_fault_file(args.labels)))
+        faults=load_fault_file(args.faults), labels=load_fault_file(args.labels),
+        apply_reset=[n for n in args.apply_reset.split(',') if n], truth=args.truth,
+        ok_threshold_m=args.ok_threshold))
     text = format_report(result.report, os.path.basename(args.config))
     if args.out:
         write_outputs(result, args.out, os.path.basename(args.config))
