@@ -29,4 +29,6 @@ recovery:
     submap: {enabled: false}
   scorers:
     scan: {enabled: false}
+    gnss_agreement: {enabled: false}
+    dead_reckoning_agreement: {enabled: false}
     free: {enabled: false}

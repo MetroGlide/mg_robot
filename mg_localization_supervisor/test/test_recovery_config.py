@@ -34,7 +34,7 @@ def test_base_config_detects_and_notifies_only():
     config = load_config(SUPERVISION)
     assert not config.machine.recovery_enabled
     assert list(config.generators) == ['gnss', 'dead_reckoning', 'submap']
-    assert list(config.scorers) == ['scan', 'free']
+    assert list(config.scorers) == ['scan', 'gnss_agreement', 'dead_reckoning_agreement', 'free']
     assert config.scorers['free'].veto_below is not None
 
 

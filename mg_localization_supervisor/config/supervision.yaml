@@ -144,7 +144,7 @@ recovery:
     gnss:
       type: pose_source
       sources: {pose: gnss}
-      params: {max_std_m: 1.0, consecutive: 2}
+      params: {max_std_m: 1.0, consecutive: 2, max_age_sec: 3.0}
     # 疑いが始まる前の信頼できた時点 (アンカー) に、その後のオドメトリを足した位置
     dead_reckoning:
       type: anchor_motion
@@ -154,11 +154,22 @@ recovery:
       type: submap_match
       sources: {motion: odom, reference: map_scan}
 
-  # 候補の評価 (0〜1)。重み付き平均で順位を付ける
+  # 候補の評価 (0〜1)。重み付き平均で順位を付ける。
+  # スキャンの照合は、廊下のように進行方向の位置が定まらない場所では、似た一致の候補が並ぶ。
+  # GNSS との近さと、推測航法の予測との近さを、小さい重みで足して、並んだ候補から選ぶ
+  # (GNSS は地図との位置合わせのずれを含み、運ばれたときは推測航法の予測が外れるので、重みを小さくする)
   scorers:
     scan:
       type: scan_match
       sources: {reference: map_scan, motion: odom}
+    gnss_agreement:
+      type: source_agreement
+      sources: {pose: gnss}
+      weight: 0.4
+    dead_reckoning_agreement:
+      type: anchor_agreement
+      sources: {motion: odom}
+      weight: 0.3
     # 計画用地図の致死セルに footprint がかかる候補は捨てる
     free:
       type: footprint_free
