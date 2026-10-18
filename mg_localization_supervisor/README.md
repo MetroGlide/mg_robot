@@ -9,9 +9,9 @@
 | :--- | :--- | :--- |
 | launch | `launch/supervisor.launch.py` | ゲートの調停 (`amcl_gate_arbiter`)・GNSS による初期化・監督ノードを起動する。`mg_navigation` の `localization_launch.py` から include される |
 | ノード | `gnss_amcl_initializer_node.py` | GNSS の位置から、AMCL (`/initialpose`) と EKF (`/set_pose`) の初期姿勢を出す ([下記](#gnss_amcl_initializer_node)) |
-| 設定 | `config/supervisor.yaml` | 監督ノード (`localization_supervisor_node`)。各値の説明はファイルのコメント |
-| 設定 | `config/supervision.yaml` | フレームワークの中核の設定 (情報源・判定のインスタンス・総合・状態遷移・アンカー)。今はオフライン評価で使う ([下記](#監督の構成-supervisionyaml)) |
+| 設定 | `config/supervision.yaml` | 監督の設定 (情報源・判定のインスタンス・総合・状態遷移・アンカー・安全の信号・出力)。監督ノードとオフライン評価が読む ([下記](#監督の構成-supervisionyaml)) |
 | 設定 | `config/profiles/*.yaml` | `supervision.yaml` に重ねるプロファイル |
+| 部品 | `mg_localization_supervisor/event_sinks/event_log.py` | 監督のイベントを、このプロジェクトのイベントログ (`mg_utils.event_log`) で出す (`events.sink`) |
 | 設定 | `config/gate_arbiter.yaml` | AMCL のゲートの調停 (`amcl_gate_arbiter`) |
 | 設定 | `config/initializer.yaml` | GNSS による初期化 (`gnss_amcl_initializer_node`) |
 
@@ -23,8 +23,9 @@ GNSS による初期化と監督ノードは、他のノードが立ち上がる
 | :--- | :--- |
 | `use_sim_time` | シミュレーション・rosbag 再生の時刻を使う |
 | `use_gnss_amcl_initializer` | GNSS による初期化ノードを起動するか |
-| `use_supervisor` | 監督ノードを起動するか (`localization_launch.py` は `localization_monitor:=supervisor` のときに true を渡す) |
-| `supervisor_params_file` | 監督ノードのパラメータファイル |
+| `use_supervisor` | 監督ノードを起動するか (`localization_launch.py` は `localization_monitor:=supervisor` か `localization_supervisor:=true` のときに true を渡す) |
+| `supervisor_config` | 監督の設定ファイル (既定は `config/supervision.yaml`) |
+| `localization_profile` | 監督の設定に重ねるプロファイル (空は基の設定) |
 
 ## AMCL のゲートの調停 (amcl_gate_arbiter)
 
@@ -33,9 +34,9 @@ GNSS による初期化と監督ノードは、他のノードが立ち上がる
 | サービス (SetBool。data=true で入れる) | 要求元 |
 | :--- | :--- |
 | `/amcl_gate_arbiter/waypoint/change_publish_state` | ウェイポイントの `amcl_on` / `amcl_off` |
-| `/amcl_gate_arbiter/supervisor/change_publish_state` | 監督ノードの切り離し・復帰 |
+| `/amcl_gate_arbiter/supervisor/change_publish_state` | 監督の切り離し・復帰 (自動復旧の対処で使う。今の監督ノードは通知だけなので呼ばない) |
 
-- ウェイポイントが切った区間では、監督ノードが復旧しても AMCL は戻らない。監督ノードが切っている間は、`amcl_on` でも戻らない。
+- ウェイポイントが切った区間では、監督が復旧しても AMCL は戻らない。監督が切っている間は、`amcl_on` でも戻らない。
 - `amcl_off` の後に `amcl_on` を送るのは、ウェイポイントの作り手の責任 (送り忘れると AMCL は戻らない)。
 - 監視ノードの種類 (`none` / `watchdog` / `supervisor`) によらず、常に起動する。負荷はごく小さい。
 - 状態 `/amcl_gate_arbiter/state` は、Web UI の「Actions」が表示に使う。Web UI の「Actions」の AMCL の入/切は、`waypoint` の要求元として呼ぶ。次のウェイポイントのアクションで上書きされる。
@@ -43,11 +44,14 @@ GNSS による初期化と監督ノードは、他のノードが立ち上がる
 
 ## 監督ノード (localization_supervisor_node)
 
-検知・状態遷移・復旧は [localization_supervisor/doc/supervisor_node.md](../localization_supervisor/doc/supervisor_node.md)。このロボットでの使い方:
+パラメータ・入出力・イベントは [localization_supervisor/doc/supervisor_node.md](../localization_supervisor/doc/supervisor_node.md)。今は検知と通知だけを行う。このロボットでの使い方:
 
-- `localization_monitor:=supervisor` で起動する (既定の監視は `mg_navigation` の `amcl_watchdog_node`)。
-- 地図との照合には、上部 LiDAR のスキャンを使う (`config/supervisor.yaml` の `scan_topic`)。
-- 診断 `localization_supervisor_node: localization` は、集約で `/Robot/Localization/Monitor`。
+- `localization_supervisor:=true` で、既定の監視 (`mg_navigation` の `amcl_watchdog_node`。共分散が大きければ GNSS で初期化し直す) のまま、監督ノードを並行して動かす。状態 `/localization/status` は監督ノードが出す (watchdog は出さない)。実機で通知の質を確かめるときに使う。
+- `localization_monitor:=supervisor` にすると、watchdog の代わりに監督ノードだけを動かす (自動の再初期化はしない)。
+- 設定は `supervisor_config`、プロファイルは `localization_profile` で渡す。走行中は `ros2 service call /localization_supervisor_node/set_profile localization_supervisor_msgs/srv/SetProfile "{profile: gnss_fallback}"` で切り替えられる。
+- GNSS による初期化 (`gnss_amcl_initializer_node`)・watchdog・人による `/initialpose`・`/set_pose` は、外からの再初期化として扱う (状態を戻して猶予を置く)。
+- 診断 `localization_supervisor_node: localization` は、集約で `/Robot/Localization/Monitor`。watchdog と並行して動かすときは、watchdog の診断も同じ集約に入る (悪いほうのレベルになる)。Web UI の「自己位置」のタイルに、状態・疑わしい情報源・異常の判定・障害物の中かが出る。
+- シーケンサを通らないゴール (手動のゴール) は、将来の自動復旧の一時停止でも止まらない。
 
 ## 監督の構成 (supervision.yaml)
 
@@ -60,18 +64,31 @@ GNSS による初期化と監督ノードは、他のノードが立ち上がる
 | `ekf` | pose、融合の結果 (`amcl`・`gnss`・`odom` から) | `/ekf_global_odom` |
 | `odom` | motion | `/odom` (補正したホイールオドメトリ) |
 | `map_scan` | reference | `/map` と上部 LiDAR のスキャン |
+| `planning_map` | reference (地図だけ) | `/planning_map` (グローバルコストマップの静的な層と同じ計画用地図。安全の信号に使う) |
 
-判定のインスタンスは、今の監督ノードの判定 (`amcl_gnss`、`amcl_jump`、`scan_ekf`、`amcl_ekf`) に、`ekf_gnss` (EKF が引きずられたか)、`scan_amcl` (AMCL の姿勢での地図との一致。AMCL と独立でないので重みを下げる)、`amcl_covariance` (watchdog と同じ共分散の判定) を加えたもの。総合は `cusum`。
+判定のインスタンス (総合は `cusum`):
+
+| インスタンス | 内容 |
+| :--- | :--- |
+| `amcl_gnss`、`amcl_jump`、`scan_ekf`、`amcl_ekf` | 以前の監督ノードの判定 (GNSS との食い違い、飛び、EKF の姿勢での地図との一致、AMCL と EKF の差) |
+| `ekf_gnss` | EKF が引きずられたか |
+| `scan_amcl` | AMCL の姿勢での地図との一致 (AMCL と独立でないので重みを下げる) |
+| `amcl_covariance` | watchdog と同じ共分散の判定 |
+| `submap_ekf`、`submap_amcl` | 直近の走行のスキャンをまとめた局所地図と、地図との照合。GNSS が使えず、AMCL が誤った場所に収束して EKF も引きずられたときに効く |
+| `freespace_ekf`、`drift_ekf` | 定義だけ (無効)。この環境のオフライン評価で、正しい姿勢と区別できなかった (理由はファイルのコメント) |
+
+安全の信号は、EKF の姿勢の footprint と計画用地図で求める。footprint は `mg_navigation/params/nav2_params.yaml` のコストマップと同じ (テストで確かめる)。
 
 | プロファイル | 内容 |
 | :--- | :--- |
 | `gnss_fallback` | AMCL と GNSS の食い違いだけを、続けて異常だった回数で判断する (AMCL と GNSS が乖離したら GNSS で引き戻すだけの動作に戻す。引き戻しは自動復旧で足す) |
-| `consecutive` | 今の監督ノードと同じ判定・しきい値・回数 (`supervisor.yaml` と同じであることをテストで確かめる)。新しい総合と比べるために使う |
+| `consecutive` | 以前の監督ノードと同じ判定・しきい値・回数。累積 (`cusum`) と比べるために使う |
 
 ### オフライン評価
 
 再生評価 (`tools/scripts/run_localization_variant.sh`) の記録を使って、判定と総合を実時間を待たずに評価する ([tools の README](../tools/README.md) の `eval_localization_offline.py`)。
-しきい値・重み・`allowance` を変えたら、正常な記録 (誤検知) と故障注入 (検知までの時間・`blame`) で、`consecutive` のプロファイル (今の監督ノード) と同じか、それより良いことを確かめる。
+しきい値・重み・`allowance` を変えたら、正常な記録 (誤検知) と故障注入 (検知までの時間・`blame`) で、`consecutive` のプロファイル (以前の監督ノード) と同じか、それより良いことを確かめる。
+新しい判定は、まず重み 0 (記録だけ) のプロファイルで、正しい姿勢での値の分布と故障のときの値を比べてから有効にする。
 
 ```bash
 # 例: 採用している設定の再生の記録に kidnap を注入し、既定の設定と consecutive を比べる
@@ -104,9 +121,9 @@ EKF の初期共分散が大きく、AMCL の初期値 (原点) に引かれる�
 make test pkg=mg_localization_supervisor
 ```
 
-- `test_config.py`: 設定ファイルが読み込め、起動するノードの名前・ゲートの要求元・監督ノードのゲートのサービス名が互いに合っている
+- `test_config.py`: 設定ファイルが読み込め、起動するノードの名前・ゲートの要求元が合っている
 - `test_event_format.py`: フレームワークが出すイベントが、このプロジェクトのイベントの規約 ([doc/monitoring.md](../doc/monitoring.md)) と同じ書式で、`mg_utils.event_log.parse_event` で読める
-- `test_supervision_config.py`: `supervision.yaml` とすべてのプロファイルがフレームワークの検証を通る、入力のトピックが AMCL の設定と合う、`consecutive` が今の監督ノードと同じしきい値・回数
+- `test_supervision_config.py`: `supervision.yaml` とすべてのプロファイルがフレームワークの検証を通り、監督ノードで動かせる、入力のトピックが AMCL の設定と合う、footprint と計画用地図がコストマップと合う、イベントがプロジェクトのイベントログで出る
 
 ## 依存
 

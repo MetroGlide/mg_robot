@@ -1,6 +1,6 @@
 # プラグインの約束
 
-判定・総合・入力のアダプタは、基底クラスを継承したプラグインとして作る。標準のものは登録名で、外部のものは `パッケージ.モジュール:クラス` で、設定ファイルの `type` に書く。
+判定・総合・入力のアダプタ・イベントの出力は、基底クラスを継承したプラグインとして作る。標準のものは登録名で、外部のものは `パッケージ.モジュール:クラス` で、設定ファイルの `type` に書く。
 読み込むときに、パラメータの型と必須、情報源の名前と種類をすべて検証し、合わなければ設定の読み込みで落ちる (`ConfigError`)。
 
 ## 約束の版
@@ -64,8 +64,12 @@ class SpeedLimitCheck(Detector):
 | `pose_jump` | `pose`, `motion` (疑うのは `pose`) | 姿勢と動きが示す `map→odom` の、新しい標本ごとの変化 (飛び)。新しい標本がない周期は判定しない |
 | `covariance` | `pose` | 自己申告の共分散の大きさ (`trace_xy` / `determinant_xy` / `max_eigenvalue_xy`) |
 | `scan_map` | `pose`, `reference` (疑うのは `pose`) | その姿勢でスキャンを地図に重ねた一致率を、正常なときの中央値と比べる。姿勢の周りでずらしたほうが合う量 (利得) も見られる |
+| `submap_map` | `pose`, `motion`, `reference` (疑うのは `pose`) | 直近の一定距離のスキャンを、動きで 1 枚の局所地図にまとめ (キーフレームに間引く)、その姿勢で地図に重ねる。一致率と、位置・向きをずらしたほうが合う量 (利得) を見る。照合は `interval_sec` ごとで、間の周期と、走行距離が足りない間は判定しない |
+| `scan_drift` | `pose`, `reference` (疑うのは `pose`) | 新しいスキャンごとに、地図に最もよく合うずらし量を求め、直近の一定時間の平均の長さと向きのそろい方を見る (少しずつずれる場合)。ずらし量が増えていく傾向 (傾き) を条件にもできる |
+| `freespace` | `pose`, `reference` (疑うのは `pose`) | センサから端点までの光線が、地図の占有セルを越えている光線の割合 (見えるはずの壁が見えない)。正常なときの中央値と比べる |
 
-推定器が同じスキャンと地図で推定しているとき、その推定器の姿勢での `scan_map` は推定器と独立ではない (誤った場所に収束していても一致率は良く見えやすい)。総合での重みは、この独立性を考えて決める。
+推定器が同じスキャンと地図で推定しているとき、その推定器の姿勢でのスキャンの判定は推定器と独立ではない (誤った場所に収束していても一致率は良く見えやすい)。総合での重みは、この独立性を考えて決める ([design.md](./design.md#判定と-evidence))。
+スキャンの判定の値の大きさは、地図とセンサと環境で変わる。正しい姿勢での値の分布を、オフライン評価 (重み 0 で記録だけする) で確かめてから有効にする。
 
 ## 総合 (`FusionStrategy`)
 
@@ -87,6 +91,12 @@ class SpeedLimitCheck(Detector):
 | `pose_with_covariance` | pose | `geometry_msgs/PoseWithCovarianceStamped` (`topic`) |
 | `odometry` | pose / motion | `nav_msgs/Odometry` (`topic`)。pose なら地図座標の姿勢と共分散、motion ならその座標での姿勢 |
 | `map_scan` | reference | `nav_msgs/OccupancyGrid` (`map_topic`) と `sensor_msgs/LaserScan` (`scan_topic`)。センサの取り付け位置は `sensor_pose` か、TF (`base_frame` → スキャンの frame) |
+| `occupancy_grid` | reference | `nav_msgs/OccupancyGrid` (`topic`) だけ。計画用地図など、安全の信号にだけ使う地図。`occupied_threshold` 以上のセルを致死とする |
+
+## イベントの出力 (`EventSink`)
+
+`ros/event_sinks/base.py`。`emit(name, level, fields)` を実装する (`level` は `info` / `warn` / `error`)。コンストラクタは `(名前, パラメータ, ロガー)`。
+設定の `events.sink` に `{type: <登録名 | パッケージ.モジュール:クラス>, <パラメータ>...}` を書く。標準は `logfmt` (ロガーに `evt=<name> key=value ...` の 1 行を出す)。
 
 ## 追加の手順
 

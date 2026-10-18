@@ -9,6 +9,7 @@
 | キー | 内容 |
 | :--- | :--- |
 | `version` | 約束の版 ([plugins.md](./plugins.md#約束の版)) |
+| `period_sec` | 判定と総合の周期 [s] (ノード) |
 | `sources` | 情報源 (下記) |
 | `timeline` | 時刻のそろえ方 |
 | `detectors` | 判定のインスタンス (下記) |
@@ -18,8 +19,13 @@
 | `state_machine` | 状態遷移 (下記) |
 | `recovery.convergence` | 復旧の収束の確認に使うインスタンス (すべて正常な周期を数える) |
 | `anchors` | アンカー (下記)。書かなければ残さない |
+| `safety` | 安全の信号 (下記)。書かなければ求めない |
 | `grace.startup_sec`、`grace.after_recovery_sec` | 起動直後・復旧直後に総合しない時間 [s] |
+| `grace.after_reset_sec` | 外からの再初期化・地図の切り替えの後に総合しない時間 [s] |
+| `external_reinit.topics` | 届いたら外からの再初期化として扱うトピック (`geometry_msgs/PoseWithCovarianceStamped`。ノード) |
 | `events.prefix` | イベントの名前の前置き (`<prefix>.state_changed`) |
+| `events.sink` | イベントの出力のプラグイン `{type, パラメータ...}` ([plugins.md](./plugins.md#イベントの出力-eventsink))。書かなければ `logfmt` |
+| `output.status_topic`、`output.diagnostic_name`、`output.hardware_id` | 状態のメッセージのトピック、診断の名前とハードウェア ID (ノード) |
 | `extras` | 注入した入力のアダプタが `Snapshot.extras` に入れる値の名前 (判定の `EXTRAS` はここにあるものに限る) |
 | `profiles` | プロファイルの名前と、重ねる設定 (ファイルのパスは設定ファイルの場所から。または辞書) |
 
@@ -52,7 +58,7 @@ detectors:
     type: <登録名 | パッケージ.モジュール:クラス>
     sources: {<引数>: <情報源の名前>, ...}   # 判定の SOURCES と同じ引数をすべて
     params: {...}                            # 判定の PARAMS
-    weight: <数>      # cusum: 累積の重み (0 で総合に効かない)
+    weight: <数>      # cusum: 累積の重み (0 で総合に効かない。記録のためだけに判定する)
     allowance: <数>   # cusum: score のうち、これを超えた分を累積する
     decay: <数>       # cusum: 前の周期の累積に掛ける (1 未満で古い証拠を忘れる)
     max_score: <数>   # cusum: 1 周期の score の上限 (1 回の大きな異常の効き方を決める)
@@ -93,6 +99,16 @@ detectors:
 | `min_interval_sec` | アンカーの間隔の下限 [s] |
 | `max_age_sec`、`max_distance_m` | 残す時間と走行距離の上限 |
 
+## safety
+
+| キー | 内容 |
+| :--- | :--- |
+| `pose` | footprint を置く姿勢の情報源 |
+| `map` | 計画用地図の `reference` の情報源 (地図だけでよい。入力のアダプタ `occupancy_grid`) |
+| `footprint` | base の座標の多角形 `[[x, y], ...]` (3 点以上)。経路計画のコストマップと同じ形にする |
+| `max_age_sec` | 姿勢の標本の古さの上限 [s] |
+| `depth_range_m` | 食い込みの深さを測る範囲 (footprint の外接円から) [m]。これより深いときは、この値になる |
+
 ## profiles
 
 ```yaml
@@ -101,3 +117,4 @@ profiles:
 ```
 
 プロファイルのファイルは、基の設定と同じキーで、変えるところだけを書く。辞書は再帰的に重ね、リストや値は置き換える。`type` が変わる辞書 (別の総合の方式など) は、重ねずに置き換える。`version` と `profiles` は書けない。
+ノードは、入力のアダプタを起動時に基の設定で作るので、`sources` を変えるプロファイルは起動時に落とす。

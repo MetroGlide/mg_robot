@@ -29,14 +29,15 @@ EKF の周期は `mg_drivers/params/ekf_global.yaml` の `frequency`。
 | `slam_gnss_nav_bridge` | `/navpvt` を、`gnss_transform.yaml` で map 座標に直して `/odom/gps` に出す。アンテナの位置を車体の中心に補正し、測位の質に応じた分散を付ける ([slam_gnss_2d](../../slam_gnss_2d/README.md)) |
 | `gnss_amcl_initializer_node` | 起動時 (と再初期化の要求時) に、精度の良い `/odom/gps` から `/initialpose` (AMCL) と `/set_pose` (EKF) を出して初期化する ([mg_localization_supervisor](../../mg_localization_supervisor/README.md#gnss_amcl_initializer_node)) |
 | `amcl_watchdog_node` | AMCL の共分散が大きい状態が続いたら、`gnss_amcl_initializer_node` に再初期化を要求する ([下記](#amcl_watchdog_node)) |
-| `localization_supervisor_node` | AMCL のずれを検知して通知する。有効にすると、EKF から切り離して復旧する ([localization_supervisor](../../localization_supervisor/doc/supervisor_node.md)、このロボットでの設定は [mg_localization_supervisor](../../mg_localization_supervisor/README.md#監督ノード-localization_supervisor_node)) |
+| `localization_supervisor_node` | AMCL・GNSS・EKF・スキャンと地図を、設定で組み合わせた判定で見比べ、自己位置のずれを検知して通知する。計画用地図の障害物に入っているかも出す ([localization_supervisor](../../localization_supervisor/doc/supervisor_node.md)、このロボットでの設定は [mg_localization_supervisor](../../mg_localization_supervisor/README.md#監督ノード-localization_supervisor_node)) |
 | `ekf_global_node` | ホイールオドメトリの速度、AMCL の位置・yaw、GNSS の位置を融合する (`mg_drivers/params/ekf_global.yaml`) |
 
 `gnss_amcl_initializer_node`、`amcl_watchdog_node`、`localization_supervisor_node` は、他のノードが立ち上がるのを待って遅れて起動する (`TimerAction`。初期化ノードを先に、監視ノードを後に起動する)。
 
 ## amcl_watchdog_node
 
-AMCL の位置の共分散を監視し、大きい状態が続いたら、`gnss_amcl_initializer_node` に再初期化を要求する。従来の監視で、`localization_monitor:=watchdog` で使う。
+AMCL の位置の共分散を監視し、大きい状態が続いたら、`gnss_amcl_initializer_node` に再初期化を要求する。既定の監視 (`localization_monitor:=watchdog`)。
+`localization_supervisor:=true` で、監督ノードを並行して通知だけで動かせる (状態は監督ノードが出す)。
 
 - `amcl_pose_origin` (`PoseWithCovarianceStamped`) を購読し、共分散から指標を計算する。
 - 指標が `threshold` を超える状態が `consecutive_count` 回続くと、異常とする。
@@ -52,6 +53,7 @@ AMCL の位置の共分散を監視し、大きい状態が続いたら、`gnss_
 | `max_retries` | サービスの呼び出しの再試行の回数 |
 | `initializer.call_timeout_sec` | サービスの応答を待つ時間 [s] |
 | `min_interval_between_events` | 異常の検知の最短の間隔 [s] |
+| `publish_status` | 状態 `/localization/status` を出すか (監督ノードを並行して動かすときは `false`。launch が決める) |
 
 この監視は、AMCL の**自己申告の共分散**しか見ない。そのため、AMCL が「自信を持って間違えている」状態は検知できない。
 
@@ -59,7 +61,7 @@ AMCL の位置の共分散を監視し、大きい状態が続いたら、`gnss_
 
 監督ノードと同じ形で、状態を出す。UI や記録は、どちらの監視が動いていても同じに扱える。
 
-- `/localization/status` (`localization_supervisor_msgs/LocalizationStatus`。一定の周期で配信): `state` は次のとおり。`amcl_attached` は常に `true`、判定の値 (`amcl_gnss_d2` など) は `-1` (使えない)。
+- `/localization/status` (`localization_supervisor_msgs/LocalizationStatus`。一定の周期で配信。`publish_status` が `true` のとき): `state` は次のとおり。判定 (`checks`) は共分散の 1 つ (`amcl_covariance`) だけで、`blame` は空、安全の信号は使えない (`lethal_depth_m` が `-1`)。
 
 | 状態 | 条件 |
 | :--- | :--- |
@@ -75,7 +77,8 @@ AMCL の位置の共分散を監視し、大きい状態が続いたら、`gnss_
 
 - `localization_monitor:=watchdog` にすれば、従来の監視。
 - `use_odom_corrector:=false` で、ホイールオドメトリの補正なし ([mg_drivers](../../mg_drivers/doc/wheel_odom_corrector.md))。
-- 監督ノードの負荷は、一定の周期の判定と、間引いたスキャンの照合だけで、ごく小さい。
+- `localization_supervisor:=false` (既定) で、監督ノードを動かさない。
+- 監督ノードの負荷は、一定の周期の判定と、間引いたスキャンの照合 (局所地図の照合は数秒おき) だけで、ごく小さい。
 
 ## 評価
 

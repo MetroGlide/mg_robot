@@ -64,7 +64,9 @@ AMCL の初期化・入/切の調停・監督ノードは [mg_localization_super
 | `waypoints_load_path` | ウェイポイントのファイル |
 | `use_gnss_amcl_initializer` | GNSS から AMCL の初期姿勢を与えるノード |
 | `localization_monitor` | 自己位置の監視ノード: `none` / `watchdog` / `supervisor` |
-| `supervisor_params_file` | 監督ノードのパラメータ (既定は `mg_localization_supervisor` の `config/supervisor.yaml`) |
+| `localization_supervisor` | `true` で、監視が `watchdog` のまま、監督ノードを並行して通知だけで動かす |
+| `supervisor_config` | 監督の設定ファイル (既定は `mg_localization_supervisor` の `config/supervision.yaml`) |
+| `localization_profile` | 監督の設定に重ねるプロファイル |
 | `rviz` | RViz2 の起動 |
 | `record_bag` | rosbag の収録 |
 | `namespace`、`use_namespace` | 名前空間 |
@@ -88,7 +90,7 @@ AMCL の初期化・入/切の調停・監督ノードは [mg_localization_super
 
 ```bash
 make navigation                               # 自己位置推定 + Nav2 + ウェイポイントシーケンサ
-make navigation OPTS="localization_monitor:=supervisor global_planner:=navfn"
+make navigation OPTS="localization_supervisor:=true global_planner:=navfn"
 make rviz2-navigation                         # (別端末) RViz2
 ```
 
