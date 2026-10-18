@@ -191,6 +191,7 @@ class TestRecoveryText:
         ({'SpinLeftAndReplan', 'Spin'}, 'リカバリー: 左へ回転'),
         ({'SpinRightAndReplan'}, 'リカバリー: 右へ回転'),
         ({'BackUpAndReplan', 'BackUp'}, 'リカバリー: 後退'),
+        ({'EscapeKeepout'}, 'リカバリー: 進入禁止の領域から脱出'),
         ({'Replan'}, 'リカバリー: 経路を引き直し'),
         ({'ClearAndReplan', 'Wait'}, 'リカバリー: 障害物の記録を消して引き直し'),
         ({'ClearLocalCostmapAndWait'}, 'リカバリー: 障害物の記録を消して待機'),
