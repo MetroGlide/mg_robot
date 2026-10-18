@@ -119,8 +119,11 @@ trust:
   require_normal: [scan_ekf]
 
 state_machine:
-  # false: 検知と通知だけ (異常を確認したら DEGRADED、消えたら NORMAL)
+  # false: 検知と通知だけ (異常を確認したら DEGRADED、消えたら NORMAL)。
+  # true: 切り離して (対処 gate)、候補を選んで再初期化し、収束したら戻す。プロファイル recovery で有効にする
   recovery_enabled: false
+  # 切り離してから戻すまで、走行を止めてほしいと要求するか (対処 pause_request が一時停止を出す)
+  request_hold: true
   clear_ticks: 5
   isolate_hold_sec: 3.0
   recover_ok_ticks: 5
@@ -129,7 +132,57 @@ state_machine:
   degraded_retry_sec: 60.0
 
 recovery:
+  # 再初期化の後に収束したかを見る判定 (すべて正常な周期が recover_ok_ticks 回続けば戻す)
   convergence: [amcl_ekf]
+
+  # 復旧のために残すスキャン (動きでまとめた局所地図。判定の submap_map のバッファとは別)
+  scan_buffer: {reference: map_scan, motion: odom}
+
+  # 復旧の候補を作るもの。再初期化が要るあいだ、2 秒ごとに計画する
+  generators:
+    # 精度の良い GNSS の測位が続いたら、その位置
+    gnss:
+      type: pose_source
+      sources: {pose: gnss}
+      params: {max_std_m: 1.0, consecutive: 2}
+    # 疑いが始まる前の信頼できた時点 (アンカー) に、その後のオドメトリを足した位置
+    dead_reckoning:
+      type: anchor_motion
+      sources: {motion: odom}
+    # 上の位置の周りで、直近のスキャンを地図に照合して見つけた位置 (GNSS がなくても、少しのずれを直せる)
+    submap:
+      type: submap_match
+      sources: {motion: odom, reference: map_scan}
+
+  # 候補の評価 (0〜1)。重み付き平均で順位を付ける
+  scorers:
+    scan:
+      type: scan_match
+      sources: {reference: map_scan, motion: odom}
+    # 計画用地図の致死セルに footprint がかかる候補は捨てる
+    free:
+      type: footprint_free
+      sources: {reference: planning_map}
+      veto_below: 0.5
+
+  # 最良が min_score に届かない、または、離れた次点との差が ambiguity_margin 未満なら再初期化しない。
+  # min_score は、この地図で正しい姿勢の一致率 (0.55 以上) より低くする
+  selection: {min_score: 0.35, ambiguity_margin: 0.1, separation_m: 1.0, retry_sec: 2.0}
+
+  # 選んだ姿勢の送り先 (AMCL と EKF)。監督が送ったものは、外からの再初期化と見なさない
+  resetters:
+    - {type: amcl}
+    - {type: robot_localization}
+
+  # 対処。いずれも、プロファイルでは変えられない (起動時に作る)
+  actuators:
+    # AMCL の出力 (EKF への入力) を、AMCL が疑わしいあいだ止める (ゲートの調停ノードの、監督用の窓口)
+    - type: gate
+      params: {service: /amcl_gate_arbiter/supervisor/change_publish_state, blames: [amcl, unknown]}
+    # 走行を止めてほしいあいだ、シーケンサを一時停止する
+    - {type: "mg_localization_supervisor.actuators.pause_request:PauseRequestActuator"}
+    # 再初期化の後に、グローバルコストマップを消す
+    - {type: "mg_localization_supervisor.actuators.clear_costmap:ClearCostmap"}
 
 anchors:
   pose: ekf
@@ -170,3 +223,5 @@ profiles:
   gnss_fallback: profiles/gnss_fallback.yaml
   # 判定ごとに続けて異常だった回数で判断する (今の監督ノードと同じ判定と回数)
   consecutive: profiles/consecutive.yaml
+  # 自動復旧を有効にする (判定は基の設定のまま)
+  recovery: profiles/recovery.yaml

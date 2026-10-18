@@ -24,6 +24,12 @@ _ROS2_MODULES = [
     "nav_msgs.msg",
     "sensor_msgs",
     "sensor_msgs.msg",
+    "std_srvs",
+    "std_srvs.srv",
+    "mg_msgs",
+    "mg_msgs.msg",
+    "nav2_msgs",
+    "nav2_msgs.srv",
 ]
 
 for _mod in _ROS2_MODULES:

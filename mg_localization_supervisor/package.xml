@@ -14,7 +14,9 @@
 
   <exec_depend>localization_supervisor</exec_depend>
   <exec_depend>localization_supervisor_msgs</exec_depend>
+  <exec_depend>mg_msgs</exec_depend>
   <exec_depend>mg_utils</exec_depend>
+  <exec_depend>nav2_msgs</exec_depend>
 
   <exec_depend>rclpy</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
