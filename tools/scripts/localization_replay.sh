@@ -48,7 +48,7 @@ else
   USE_INITIALIZER="${USE_INITIALIZER:-true}"
   MONITOR="${MONITOR:-watchdog}"
 fi
-BUILD_PKGS="${BUILD_PKGS:-slam_gnss_2d mg_msgs mg_bringup mg_navigation mg_drivers}"
+BUILD_PKGS="${BUILD_PKGS:-slam_gnss_2d mg_msgs localization_supervisor_msgs localization_supervisor mg_localization_supervisor mg_bringup mg_navigation mg_drivers}"
 
 PLAY_TOPICS="/odom /scan_top_lidar /navpvt /gps/fix"
 RECORD_TOPICS="/tf /odom /odom/raw /ekf_global_odom /amcl_pose /amcl_pose_origin /odom/gps /localization/status /diagnostics"

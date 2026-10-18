@@ -23,7 +23,7 @@
 #   amcl.<key>    mg_navigation/params/nav2_params.yaml の amcl
 #   bridge.<key>  slam_gnss_2d/params/nav_bridge.yaml の slam_gnss_nav_bridge
 #   odom.<key>    mg_drivers/params/wheel_odom_corrector.yaml の wheel_odom_corrector_node
-#   sup.<key>     mg_navigation/params/localization_supervisor.yaml の localization_supervisor_node
+#   sup.<key>     mg_localization_supervisor/config/supervisor.yaml の localization_supervisor_node
 #
 # 例:
 #   tools/scripts/run_localization_variant.sh baseline
@@ -115,7 +115,7 @@ patch "${ODOM_FILE:-mg_drivers/params/wheel_odom_corrector.yaml}" wheel_odom_cor
 patch "${EKF_FILE:-mg_drivers/params/ekf_global.yaml}" ekf_global.yaml "${EKF_UPDATES[@]}"
 patch "${AMCL_FILE:-mg_navigation/params/nav2_params.yaml}" nav2_params.yaml "${AMCL_UPDATES[@]}"
 patch "${BRIDGE_FILE:-slam_gnss_2d/slam_gnss_2d/params/nav_bridge.yaml}" nav_bridge.yaml "${BRIDGE_UPDATES[@]}"
-patch "${SUPERVISOR_FILE:-mg_navigation/params/localization_supervisor.yaml}" localization_supervisor.yaml "${SUPERVISOR_UPDATES[@]}"
+patch "${SUPERVISOR_FILE:-mg_localization_supervisor/config/supervisor.yaml}" localization_supervisor.yaml "${SUPERVISOR_UPDATES[@]}"
 
 OUT_DIR="${BAG}/eval_loc/${DATASET_NAME}/${NAME}"
 IMAGE="${IMAGE:-mg_develop:latest}"

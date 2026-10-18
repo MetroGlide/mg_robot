@@ -12,14 +12,14 @@ import rclpy.duration
 from diagnostic_updater import Updater
 from rclpy.node import Node
 from geometry_msgs.msg import PoseWithCovarianceStamped
-from mg_msgs.msg import LocalizationStatus
+from localization_supervisor.core.state_machine import State
+from localization_supervisor.ros.diagnostics import LocalizationTask
+from localization_supervisor_msgs.msg import LocalizationStatus
 from std_srvs.srv import Trigger
 
 from mg_utils.event_log import EventLog
 
-from ..localization_health import watchdog_state
-from ..localization_supervisor.state_machine import State
-from ..localization_task import LocalizationTask
+from .health import watchdog_state
 from .metrics import compute
 
 

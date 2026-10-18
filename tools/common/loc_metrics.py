@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
-# 自己位置推定の状態 (mg_msgs/LocalizationStatus.state と対応)
+# 自己位置推定の状態 (localization_supervisor_msgs/LocalizationStatus.state と対応)
 STATE_NORMAL = 0
 
 

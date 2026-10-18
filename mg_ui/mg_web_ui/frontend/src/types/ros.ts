@@ -239,21 +239,21 @@ export const ACTIVITY_CODE = {
   ERROR: 'error',
 } as const
 
-/** amcl_gate_arbiter の状態 (mg_msgs/GateArbiterState) */
-export interface GateArbiterState {
+/** amcl_gate_arbiter の状態 (localization_supervisor_msgs/GateState) */
+export interface GateState {
   desired: boolean
   applied: boolean
   holders: string[]
 }
 
-/** localization_supervisor が配信する自己位置推定の状態 (mg_msgs/LocalizationStatus) */
+/** localization_supervisor が配信する自己位置推定の状態 (localization_supervisor_msgs/LocalizationStatus) */
 export interface LocalizationStatus {
   state: number
   amcl_attached: boolean
   last_event: string
 }
 
-/** LocalizationStatus.state の名前。値は mg_msgs/msg/LocalizationStatus.msg に合わせる */
+/** LocalizationStatus.state の名前。値は localization_supervisor_msgs/msg/LocalizationStatus.msg に合わせる */
 export const LOCALIZATION_STATE_NAME: Record<number, string> = {
   0: 'NORMAL',
   1: 'SUSPECT',

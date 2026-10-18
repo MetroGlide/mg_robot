@@ -1,0 +1,10 @@
+amcl_gate_arbiter:
+  ros__parameters:
+    # AMCL の出力 (/amcl_pose) を EKF に入れるかのゲート
+    gate_service: /amcl_publish_controller_node/change_publish_state
+    # 要求元: waypoint (ウェイポイントの amcl_on / amcl_off)、supervisor (監督ノードの切り離し・復帰)
+    requesters: [waypoint, supervisor]
+    # 監督ノードが切り離したときは、異常による切り離しなので warn で出す
+    warn_holders: [supervisor]
+    hardware_id: amcl_gate
+    period_sec: 1.0

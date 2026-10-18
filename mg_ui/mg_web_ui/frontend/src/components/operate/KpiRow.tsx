@@ -34,7 +34,7 @@ export default function KpiRow({ client }: { client: FoxgloveClientHandle }) {
   const loc = useTopicSubscriber<LocalizationStatus>(
     client,
     TOPICS.LOCALIZATION_STATUS,
-    "mg_msgs/msg/LocalizationStatus",
+    "localization_supervisor_msgs/msg/LocalizationStatus",
   );
   const gnss = useGnss(client, GNSS_HZ);
   const diagnostics = useDiagnosticsAgg(client);

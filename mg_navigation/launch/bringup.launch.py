@@ -43,7 +43,8 @@ def generate_launch_description():
         'localization_monitor', default="watchdog")
     supervisor_params_file_arg = launch_argument_creator.create(
         'supervisor_params_file',
-        default=os.path.join(pkg_dir, 'params', 'localization_supervisor.yaml'))
+        default=os.path.join(
+            get_package_share_directory('mg_localization_supervisor'), 'config', 'supervisor.yaml'))
     use_waypoints_follower_arg = launch_argument_creator.create(
         'use_waypoints_follower', default="true")
     waypoints_load_path_arg = launch_argument_creator.create(

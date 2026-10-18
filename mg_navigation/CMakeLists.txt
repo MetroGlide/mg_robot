@@ -158,22 +158,7 @@ ament_python_install_package(${PROJECT_NAME})
 
 
 install(PROGRAMS
-  scripts/gnss_amcl_initializer/gnss_amcl_initializer_node.py
-  DESTINATION lib/${PROJECT_NAME}
-)
-
-install(PROGRAMS
   scripts/amcl_watchdog/amcl_watchdog_node.py
-  DESTINATION lib/${PROJECT_NAME}
-)
-
-install(PROGRAMS
-  scripts/amcl_gate_arbiter/amcl_gate_arbiter_node.py
-  DESTINATION lib/${PROJECT_NAME}
-)
-
-install(PROGRAMS
-  scripts/localization_supervisor/localization_supervisor_node.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

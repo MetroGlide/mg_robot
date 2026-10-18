@@ -97,7 +97,7 @@ def generate_launch_description():
         "localization_monitor", default="watchdog")
     supervisor_params_file_arg = launch_argument_creator.create(
         "supervisor_params_file", default=os.path.join(
-            navigation_pkg_share, "params", "localization_supervisor.yaml"))
+            get_package_share_directory("mg_localization_supervisor"), "config", "supervisor.yaml"))
     nav2_params_file_arg = launch_argument_creator.create(
         "nav2_params_file", default=os.path.join(
             navigation_pkg_share, "params", "nav2_params.yaml"))
