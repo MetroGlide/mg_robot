@@ -89,13 +89,22 @@ def test_event_sink_levels_and_plugin_resolution():
         build_event_sink({'type': 'logfmt', 'unknown': 1}, logger)
 
 
-def test_node_rejects_recovery_and_source_changes_in_profiles():
+GNSS_RECOVERY = {'generators': {'gnss': {'type': 'pose_source', 'sources': {'pose': 'gnss'}}}}
+
+
+def test_node_rejects_recovery_without_resetters_and_source_changes_in_profiles():
     check_node_supports(_config())
-    with pytest.raises(ConfigError, match='recovery_enabled'):
-        check_node_supports(_config(state_machine={'recovery_enabled': True}))
-    config = _config()
+    with pytest.raises(ConfigError, match='recovery.resetters'):
+        check_node_supports(_config(state_machine={'recovery_enabled': True}, recovery=GNSS_RECOVERY))
+    check_node_supports(_config(state_machine={'recovery_enabled': True},
+                                recovery={**GNSS_RECOVERY, 'resetters': [{'type': 'amcl'}]}))
+    config = _config(recovery=GNSS_RECOVERY)
     config.profiles['fix'] = {'state_machine': {'recovery_enabled': True}}
     with pytest.raises(ConfigError, match='profiles.fix'):
+        check_node_supports(config)
+    config = _config(recovery={**GNSS_RECOVERY, 'resetters': [{'type': 'amcl'}]})
+    config.profiles['other_resetter'] = {'recovery': {'resetters': [{'type': 'robot_localization'}]}}
+    with pytest.raises(ConfigError, match='cannot change recovery'):
         check_node_supports(config)
     config = _config()
     config.profiles['other_topic'] = {'sources': {'amcl': {'input': {'type': 'pose_with_covariance',

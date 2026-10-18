@@ -36,9 +36,12 @@ from ..core.geometry import Pose2
 from ..core.status import StatusView, status_view
 from ..core.supervisor import Supervisor, make_store
 from .adapters import AdapterContext, build_adapters
+from .actuators import build_actuators
 from .adapters.standard import yaw_from_quaternion
 from .diagnostics import LocalizationTask
 from .event_sinks import build_event_sink
+from .own_messages import OwnMessages
+from .resetters import build_resetters
 from .status import to_message
 
 WEIGHT_PREFIX = 'weight.'
@@ -67,17 +70,20 @@ class TfContext(AdapterContext):
 def check_node_supports(config: SupervisorConfig) -> None:
     """基の設定とすべてのプロファイルが、このノードで動かせるか。
 
-    - 入力のアダプタは起動時に基の設定で作るので、プロファイルで情報源を変えることはできない
-    - 切り離し・再初期化の対処を持たないので、recovery_enabled は使えない
+    - 入力のアダプタ・再初期化の送り先・対処は起動時に基の設定で作るので、プロファイルで変えることはできない
+    - recovery_enabled には、再初期化の送り先 (recovery.resetters) が要る
     """
     for name in [''] + list(config.profiles):
         profiled = config.with_profile(name)
         where = f'profiles.{name}' if name else 'config'
         if profiled.sources != config.sources:
             raise ConfigError(f'{where}: cannot change sources (adapters are built at startup)')
-        if profiled.machine.recovery_enabled:
-            raise ConfigError(f'{where}: state_machine.recovery_enabled is not supported by this node '
-                              '(it has no actuators to isolate and reinitialize)')
+        if profiled.resetters != config.resetters or profiled.actuators != config.actuators:
+            raise ConfigError(f'{where}: cannot change recovery.resetters or recovery.actuators '
+                              '(they are built at startup)')
+        if profiled.machine.recovery_enabled and not profiled.resetters:
+            raise ConfigError(f'{where}: state_machine.recovery_enabled requires recovery.resetters '
+                              '(where to send the reinitialized pose)')
 
 
 class LocalizationSupervisorNode(Node):
@@ -106,9 +112,12 @@ class LocalizationSupervisorNode(Node):
         for adapter in build_adapters(config, self._store, self._tf).values():
             for sub in adapter.subscriptions():
                 self.create_subscription(sub.msg_type, sub.topic, sub.handler, _QOS[sub.qos])
+        self._own = OwnMessages()
+        self._resetters = build_resetters(config.resetters, self, self._own)
+        self._actuators = build_actuators(config.actuators, self)
         for topic in config.external_reinit_topics:
             self.create_subscription(
-                PoseWithCovarianceStamped, topic, lambda msg, t=topic: self._on_external_reinit(t), 10)
+                PoseWithCovarianceStamped, topic, lambda msg, t=topic: self._on_external_reinit(t, msg), 10)
 
         output = config.output
         self._status_pub = self.create_publisher(LocalizationStatus, output.status_topic, 10)
@@ -126,7 +135,9 @@ class LocalizationSupervisorNode(Node):
     def _now(self) -> float:
         return self.get_clock().now().nanoseconds * 1e-9
 
-    def _on_external_reinit(self, topic: str) -> None:
+    def _on_external_reinit(self, topic: str, msg) -> None:
+        if self._own.consume(topic, msg.header.stamp.sec, msg.header.stamp.nanosec):
+            return
         now = self._now()
         if now > 0.0:
             self._supervisor.external_reinit(now, topic)
@@ -160,6 +171,12 @@ class LocalizationSupervisorNode(Node):
         result = self._supervisor.step(self._store.snapshot(now))
         for event in result.events:
             self._events.emit(event.name, event.level, event.fields)
+        for directive in result.directives:
+            if directive.kind == 'reinit':
+                for resetter in self._resetters:
+                    resetter.reset(directive.candidate)
+        for actuator in self._actuators:
+            actuator.apply(result)
         self._view = status_view(result, self._supervisor.config, self._supervisor.profile)
         self._status_pub.publish(to_message(self._view, self.get_clock().now().to_msg()))
 
