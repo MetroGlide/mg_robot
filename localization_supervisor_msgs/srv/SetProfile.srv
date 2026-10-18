@@ -1,0 +1,7 @@
+# 監督のプロファイルを切り替える (localization_supervisor_node の ~/set_profile)
+
+# プロファイルの名前。空は基の設定
+string profile
+---
+bool success
+string message
