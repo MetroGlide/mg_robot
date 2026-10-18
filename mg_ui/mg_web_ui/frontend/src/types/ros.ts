@@ -246,11 +246,40 @@ export interface GateState {
   holders: string[]
 }
 
+/** 判定のインスタンスの 1 周期分の結果 (localization_supervisor_msgs/LocalizationCheck) */
+export interface LocalizationCheck {
+  name: string
+  detector: string
+  sources: string[]
+  /** LOCALIZATION_CHECK_STATUS の値 */
+  status: number
+  score: number
+  accumulated: number
+  values: DiagnosticKeyValue[]
+}
+
+/** LocalizationCheck.status の値。localization_supervisor_msgs/msg/LocalizationCheck.msg に合わせる */
+export const LOCALIZATION_CHECK_STATUS = {
+  NORMAL: 0,
+  ANOMALY: 1,
+  UNKNOWN: 2,
+} as const
+
 /** localization_supervisor が配信する自己位置推定の状態 (localization_supervisor_msgs/LocalizationStatus) */
 export interface LocalizationStatus {
   state: number
-  amcl_attached: boolean
+  blame: string
+  contaminated: string[]
+  isolated_sources: string[]
+  hold_requested: boolean
+  fusion_level: number
+  trusted: boolean
+  in_grace: boolean
+  footprint_in_lethal: boolean
+  lethal_depth_m: number
+  profile: string
   last_event: string
+  checks: LocalizationCheck[]
 }
 
 /** LocalizationStatus.state の名前。値は localization_supervisor_msgs/msg/LocalizationStatus.msg に合わせる */
