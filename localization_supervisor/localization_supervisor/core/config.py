@@ -9,16 +9,21 @@ enabled_detectors を書くと、そこに並べた判定のインスタンス�
 import copy
 import os
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Mapping, Optional
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 import yaml
 
 from .anchors import AnchorConfig
 from .detectors import STANDARD_DETECTORS
 from .fusion import STANDARD_FUSIONS
-from .interfaces import CONTRACT_VERSION, Detector, FusionStrategy, SourceKind
+from .interfaces import (
+    CONTRACT_VERSION, CandidateGenerator, CandidateScorer, Detector, FusionStrategy, Matcher, SourceKind)
+from .matcher import STANDARD_MATCHERS
 from .plugins import PluginError, resolve, resolve_params
+from .recovery import STANDARD_GENERATORS, STANDARD_SCORERS
+from .recovery.planner import GeneratorConfig, ScorerConfig, SelectionConfig
 from .safety import SafetyConfig
+from .scan_buffer import ScanBufferConfig
 from .state_machine import MachineConfig
 from .timeline import AlignmentConfig
 
@@ -80,6 +85,15 @@ class SupervisorConfig:
     trust_require_normal: List[str] = field(default_factory=list)
     machine: MachineConfig = field(default_factory=MachineConfig)
     convergence: List[str] = field(default_factory=list)
+    generators: Dict[str, GeneratorConfig] = field(default_factory=dict)
+    scorers: Dict[str, ScorerConfig] = field(default_factory=dict)
+    selection: SelectionConfig = field(default_factory=SelectionConfig)
+    matcher_cls: Optional[type] = None
+    matcher_params: Dict[str, Any] = field(default_factory=dict)
+    scan_buffer: Optional[ScanBufferConfig] = None
+    # 推定器への送り先と、対処の設定 (ROS 側のプラグインが読む。形だけここで確かめる)
+    resetters: List[Dict[str, Any]] = field(default_factory=list)
+    actuators: List[Dict[str, Any]] = field(default_factory=list)
     anchors: Optional[AnchorConfig] = None
     safety: Optional[SafetyConfig] = None
     period_sec: float = 1.0
@@ -178,30 +192,40 @@ def _parse_sources(raw: Mapping[str, Any]) -> Dict[str, SourceConfig]:
     return sources
 
 
-def _parse_detector(
-    name: str, body: Mapping[str, Any], sources: Mapping[str, SourceConfig], extras: List[str],
-) -> DetectorConfig:
-    where = f'detectors.{name}'
-    body = _mapping(body, where)
-    _check_keys(body, DETECTOR_KEYS, where)
+def _bind_plugin(
+    where: str, body: Mapping[str, Any], base: type, registry: Mapping[str, type],
+    sources: Mapping[str, SourceConfig],
+) -> Tuple[str, type, Dict[str, Any], Dict[str, str]]:
+    """type・params・sources を検証して、(type, クラス, パラメータ, 引数に結んだ情報源) を返す。"""
     type_name = body.get('type')
     if not isinstance(type_name, str):
         raise ConfigError(f'{where}.type: required')
     try:
-        cls = resolve(type_name, STANDARD_DETECTORS, Detector, where)
+        cls = resolve(type_name, registry, base, where)
         params = resolve_params(cls, _mapping(body.get('params'), f'{where}.params'), f'{where}.params')
     except PluginError as error:
         raise ConfigError(str(error)) from error
+    declared = getattr(cls, 'SOURCES', {})
     bound = _mapping(body.get('sources'), f'{where}.sources')
-    if set(bound) != set(cls.SOURCES):
-        raise ConfigError(f'{where}.sources: expected arguments {sorted(cls.SOURCES)}, got {sorted(bound)}')
-    for arg, kind in cls.SOURCES.items():
+    if set(bound) != set(declared):
+        raise ConfigError(f'{where}.sources: expected arguments {sorted(declared)}, got {sorted(bound)}')
+    for arg, kind in declared.items():
         source = sources.get(bound[arg])
         if source is None:
             raise ConfigError(f'{where}.sources.{arg}: unknown source {bound[arg]!r}')
         if source.kind != kind:
             raise ConfigError(
                 f'{where}.sources.{arg}: {bound[arg]!r} is {source.kind.value}, expected {kind.value}')
+    return type_name, cls, params, bound
+
+
+def _parse_detector(
+    name: str, body: Mapping[str, Any], sources: Mapping[str, SourceConfig], extras: List[str],
+) -> DetectorConfig:
+    where = f'detectors.{name}'
+    body = _mapping(body, where)
+    _check_keys(body, DETECTOR_KEYS, where)
+    type_name, cls, params, bound = _bind_plugin(where, body, Detector, STANDARD_DETECTORS, sources)
     missing = [e for e in cls.EXTRAS if e not in extras]
     if missing:
         raise ConfigError(f'{where}: extras {missing} are not provided (extras: {extras})')
@@ -259,6 +283,99 @@ def _parse_safety(raw: Mapping[str, Any], sources: Mapping[str, SourceConfig]) -
         pose=pose, map=map_name, footprint=[(float(x), float(y)) for x, y in footprint],
         max_age_sec=_number(raw, 'max_age_sec', SafetyConfig.max_age_sec, 'safety'),
         depth_range_m=_number(raw, 'depth_range_m', SafetyConfig.depth_range_m, 'safety'))
+
+
+RECOVERY_KEYS = {'convergence', 'matcher', 'scan_buffer', 'generators', 'scorers', 'selection', 'resetters',
+                 'actuators'}
+GENERATOR_KEYS = {'type', 'sources', 'params'}
+SCORER_KEYS = {'type', 'sources', 'params', 'weight', 'veto_below'}
+
+
+def _check_requires(where: str, cls: type, anchors: Optional[AnchorConfig], safety: Optional[SafetyConfig],
+                    bound: Mapping[str, str]) -> None:
+    available = {'anchors': anchors is not None, 'safety': safety is not None}
+    for required in cls.REQUIRES:
+        if not available[required]:
+            raise ConfigError(f'{where}: requires {required!r} to be configured')
+    if 'anchors' in cls.REQUIRES and anchors is not None and 'motion' in bound and bound['motion'] != anchors.motion:
+        raise ConfigError(
+            f'{where}.sources.motion: {bound["motion"]!r} differs from anchors.motion {anchors.motion!r}')
+
+
+def _parse_recovery(
+    recovery: Mapping[str, Any], sources: Mapping[str, SourceConfig], anchors: Optional[AnchorConfig],
+    safety: Optional[SafetyConfig],
+) -> Dict[str, Any]:
+    """recovery の convergence 以外の項目 (候補を作るもの・評価するもの・選び方・照合・スキャンのバッファ・
+    送り先・対処)。SupervisorConfig の同名のフィールドに入れる辞書を返す。"""
+    generators: Dict[str, GeneratorConfig] = {}
+    for name, body in _mapping(recovery.get('generators'), 'recovery.generators').items():
+        where = f'recovery.generators.{name}'
+        body = _mapping(body, where)
+        _check_keys(body, GENERATOR_KEYS, where)
+        type_name, cls, params, bound = _bind_plugin(where, body, CandidateGenerator, STANDARD_GENERATORS, sources)
+        _check_requires(where, cls, anchors, safety, bound)
+        generators[name] = GeneratorConfig(name, type_name, cls, bound, params)
+    scorers: Dict[str, ScorerConfig] = {}
+    for name, body in _mapping(recovery.get('scorers'), 'recovery.scorers').items():
+        where = f'recovery.scorers.{name}'
+        body = _mapping(body, where)
+        _check_keys(body, SCORER_KEYS, where)
+        type_name, cls, params, bound = _bind_plugin(where, body, CandidateScorer, STANDARD_SCORERS, sources)
+        _check_requires(where, cls, anchors, safety, bound)
+        veto = body.get('veto_below')
+        scorers[name] = ScorerConfig(
+            name, type_name, cls, bound, params, weight=_number(body, 'weight', 1.0, where),
+            veto_below=None if veto is None else _number(body, 'veto_below', 0.0, where))
+    for name, config in {**generators, **scorers}.items():
+        try:
+            config.cls(name, config.params, config.sources)
+        except (ValueError, TypeError) as error:
+            raise ConfigError(f'recovery.{name}: {error}') from error
+
+    selection = _dataclass_from(SelectionConfig, _mapping(recovery.get('selection'), 'recovery.selection'),
+                                'recovery.selection')
+
+    matcher = _mapping(recovery.get('matcher'), 'recovery.matcher')
+    _check_keys(matcher, {'type', 'params'}, 'recovery.matcher')
+    try:
+        matcher_cls = resolve(matcher.get('type', 'correlative'), STANDARD_MATCHERS, Matcher, 'recovery.matcher')
+        matcher_params = resolve_params(
+            matcher_cls, _mapping(matcher.get('params'), 'recovery.matcher.params'), 'recovery.matcher.params')
+    except PluginError as error:
+        raise ConfigError(str(error)) from error
+
+    scan_buffer = None
+    if recovery.get('scan_buffer') is not None:
+        scan_buffer = _dataclass_from(
+            ScanBufferConfig, _mapping(recovery['scan_buffer'], 'recovery.scan_buffer'), 'recovery.scan_buffer')
+        reference = sources.get(scan_buffer.reference)
+        if reference is None or reference.kind != SourceKind.REFERENCE:
+            raise ConfigError(f'recovery.scan_buffer.reference: {scan_buffer.reference!r} is not a reference source')
+        motion = sources.get(scan_buffer.motion)
+        if motion is None or motion.kind != SourceKind.MOTION:
+            raise ConfigError(f'recovery.scan_buffer.motion: {scan_buffer.motion!r} is not a motion source')
+
+    resetters = _plugin_list(recovery.get('resetters'), 'recovery.resetters')
+    actuators = _plugin_list(recovery.get('actuators'), 'recovery.actuators')
+    return {'generators': generators, 'scorers': scorers, 'selection': selection, 'matcher_cls': matcher_cls,
+            'matcher_params': matcher_params, 'scan_buffer': scan_buffer, 'resetters': resetters,
+            'actuators': actuators}
+
+
+def _plugin_list(raw: Any, where: str) -> List[Dict[str, Any]]:
+    """type を持つ辞書の並び (中身は、使う側のプラグインが検証する)。"""
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise ConfigError(f'{where}: expected a list')
+    result = []
+    for i, item in enumerate(raw):
+        item = _mapping(item, f'{where}[{i}]')
+        if not isinstance(item.get('type'), str):
+            raise ConfigError(f'{where}[{i}].type: required')
+        result.append(item)
+    return result
 
 
 def _detector_names(names: List[str], detectors: Mapping[str, DetectorConfig], where: str) -> List[str]:
@@ -320,7 +437,7 @@ def parse_config(
     trust = _mapping(merged.get('trust'), 'trust')
     _check_keys(trust, {'require_normal'}, 'trust')
     recovery = _mapping(merged.get('recovery'), 'recovery')
-    _check_keys(recovery, {'convergence'}, 'recovery')
+    _check_keys(recovery, RECOVERY_KEYS, 'recovery')
 
     anchors = None
     if merged.get('anchors') is not None:
@@ -333,6 +450,10 @@ def parse_config(
     safety = None
     if merged.get('safety') is not None:
         safety = _parse_safety(_mapping(merged['safety'], 'safety'), sources)
+    recovery_parts = _parse_recovery(recovery, sources, anchors, safety)
+    machine = _dataclass_from(MachineConfig, _mapping(merged.get('state_machine'), 'state_machine'), 'state_machine')
+    if machine.recovery_enabled and not recovery_parts['generators']:
+        raise ConfigError('state_machine.recovery_enabled: requires recovery.generators')
 
     grace = _mapping(merged.get('grace'), 'grace')
     _check_keys(grace, {'startup_sec', 'after_recovery_sec', 'after_reset_sec'}, 'grace')
@@ -360,11 +481,10 @@ def parse_config(
             _number(timeline, 'alignment_std_per_rad', AlignmentConfig.std_per_rad, 'timeline')),
         trust_require_normal=_detector_names(
             _names(trust.get('require_normal'), 'trust.require_normal'), detectors, 'trust.require_normal'),
-        machine=_dataclass_from(MachineConfig, _mapping(merged.get('state_machine'), 'state_machine'),
-                                'state_machine'),
+        machine=machine,
         convergence=_detector_names(
             _names(recovery.get('convergence'), 'recovery.convergence'), detectors, 'recovery.convergence'),
-        anchors=anchors, safety=safety, period_sec=period_sec,
+        anchors=anchors, safety=safety, period_sec=period_sec, **recovery_parts,
         startup_grace_sec=_number(grace, 'startup_sec', 0.0, 'grace'),
         grace_after_recovery_sec=_number(grace, 'after_recovery_sec', 0.0, 'grace'),
         grace_after_reset_sec=_number(grace, 'after_reset_sec', 0.0, 'grace'),

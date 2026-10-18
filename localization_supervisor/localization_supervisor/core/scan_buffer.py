@@ -24,6 +24,22 @@ class BufferedScan:
     distance: float       # 最初に残したスキャンからの走行距離 [m]
 
 
+@dataclass
+class ScanBufferConfig:
+    """監督が復旧のために残すスキャンのバッファ (判定の submap_map のバッファとは別)。"""
+    reference: str = ''
+    motion: str = ''
+    keyframe_distance_m: float = 0.5
+    keyframe_angle_rad: float = 0.2
+    window_distance_m: float = 20.0
+    max_points_per_scan: int = 90
+    max_range_m: float = 25.0
+
+    def make(self) -> 'ScanBuffer':
+        return ScanBuffer(self.keyframe_distance_m, self.keyframe_angle_rad, self.window_distance_m,
+                          self.max_points_per_scan, self.max_range_m)
+
+
 class ScanBuffer:
     def __init__(
         self, keyframe_distance_m: float, keyframe_angle_rad: float, window_distance_m: float,

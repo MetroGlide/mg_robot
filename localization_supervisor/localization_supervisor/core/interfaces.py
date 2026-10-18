@@ -192,6 +192,94 @@ class FusionStrategy(Plugin):
         raise NotImplementedError
 
 
+@dataclass
+class SearchWindow:
+    """照合で探す範囲。中心の姿勢の周りを ±range、step 刻みで探す。"""
+    range_xy_m: float
+    step_xy_m: float
+    range_yaw_rad: float = 0.0
+    step_yaw_rad: float = 0.05
+
+
+@dataclass
+class MatchPeak:
+    """照合で見つけた姿勢の候補。ratio は占有セルの近くにある点の割合、mean_distance はその距離の平均。"""
+    pose: Pose2
+    ratio: float
+    mean_distance: float
+
+
+class Matcher(Plugin):
+    """点群を地図に照合する。"""
+
+    def match(
+        self, field: Any, points_base: np.ndarray, center: Pose2, window: SearchWindow, max_peaks: int = 1,
+    ) -> List[MatchPeak]:
+        """points_base (base の座標の点 (N, 2)) が地図 (距離場 field) に最もよく合う姿勢を、一致の良い順に
+        最大 max_peaks 個 (互いに離れたもの) 返す。判断できなければ空。"""
+        raise NotImplementedError
+
+
+@dataclass
+class Candidate:
+    """復旧の候補。cov は x, y, yaw の 3x3 の共分散。scores はスコアラーごとの評価 (0〜1)。"""
+    pose: Pose2
+    cov: np.ndarray
+    origin: str
+    scores: Dict[str, float] = field(default_factory=dict)
+    total: Optional[float] = None
+    vetoed_by: str = ''
+    info: Dict[str, float] = field(default_factory=dict)
+
+
+@dataclass
+class RecoveryContext:
+    """復旧の候補を作る・評価するときの入力。
+
+    snapshot     : 今の周期の Snapshot
+    anchors      : アンカー (信頼できた時点の姿勢と動き)
+    suspect_since: 疑いが始まった時刻 (分からなければ None)
+    scans        : 動きとともに残したスキャン (ScanBuffer。設定がなければ None)
+    safety       : 安全の信号の設定 (SafetyConfig。なければ None)
+    matcher      : 照合
+    """
+    snapshot: 'SnapshotLike'
+    anchors: Any = None
+    suspect_since: Optional[float] = None
+    scans: Any = None
+    safety: Any = None
+    matcher: Optional[Matcher] = None
+
+
+class _SourcedPlugin(Plugin):
+    """引数の名前で情報源を受け取るプラグイン (判定と同じ約束)。"""
+    SOURCES: Mapping[str, SourceKind] = {}
+    # 設定に必要な項目 ('anchors'、'safety')
+    REQUIRES: Sequence[str] = ()
+
+    def __init__(self, name: str, params: Mapping[str, Any], sources: Mapping[str, str]) -> None:
+        super().__init__(name, params)
+        self.sources = dict(sources)
+
+    def reset(self) -> None:
+        """内部の状態を捨てる。"""
+
+
+class CandidateGenerator(_SourcedPlugin):
+    """復旧の候補を作る。再初期化が要るあいだ、周期ごとに呼ばれる (作れなければ空を返す)。"""
+
+    def generate(self, context: RecoveryContext) -> List[Candidate]:
+        raise NotImplementedError
+
+
+class CandidateScorer(_SourcedPlugin):
+    """候補を評価する。"""
+
+    def score(self, candidate: Candidate, context: RecoveryContext) -> Optional[float]:
+        """0〜1 (大きいほど良い)。評価できなければ None。"""
+        raise NotImplementedError
+
+
 class SnapshotLike:
     """Detector が使う Snapshot の窓口 (core/snapshot.py の Snapshot が実装する)。"""
     stamp: float

@@ -20,8 +20,11 @@ from typing import Any, Dict, Iterable, List, Optional, Set
 from .anchors import Anchor, AnchorStore
 from .config import SupervisorConfig
 from .geometry import Pose2
-from .interfaces import Detector, Evidence, FusionResult, FusionStrategy, InstanceInfo, SourceKind, Status
+from .interfaces import (
+    Candidate, Detector, Evidence, FusionResult, FusionStrategy, InstanceInfo, RecoveryContext, SourceKind, Status)
+from .recovery.planner import RecoveryPlan, RecoveryPlanner
 from .safety import FootprintChecker, SafetyResult
+from .scan_buffer import ScanBuffer
 from .snapshot import SampleStore, Snapshot
 from .state_machine import Action, Decision, State, StateMachine
 
@@ -32,6 +35,19 @@ class Event:
     name: str
     level: str
     fields: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class Directive:
+    """推定器や周りへの働きかけの指示 (ROS 側の対処と送り先が実行する)。
+
+      isolate : blame の情報源を切り離す
+      reinit  : candidate の姿勢で推定器を初期化し直す
+      restore : 切り離したものを戻す
+    """
+    kind: str
+    blame: str = ''
+    candidate: Optional[Candidate] = None
 
 
 @dataclass
@@ -48,6 +64,10 @@ class StepResult:
     isolated_sources: List[str] = field(default_factory=list)
     last_event: str = ''
     events: List[Event] = field(default_factory=list)
+    directives: List[Directive] = field(default_factory=list)
+    plan: Optional[RecoveryPlan] = None
+    # 異常を確認してから戻るまで保持する blame (切り離す対象を決める)
+    blame: str = ''
 
 
 def make_store(config: SupervisorConfig) -> SampleStore:
@@ -70,6 +90,11 @@ class Supervisor:
         self._in_lethal = False
         self._last_event = ''
         self._pending: List[Event] = []
+        self._last_scan: Optional[float] = None
+        self._reinit_pending = False
+        self._next_plan = 0.0
+        self._plan_attempts = 0
+        self._isolated_blame = ''
         self._build(config)
 
     def _build(self, config: SupervisorConfig) -> None:
@@ -89,10 +114,22 @@ class Supervisor:
         self.machine = StateMachine(config.machine)
         self.anchors = AnchorStore(config.anchors) if config.anchors is not None else None
         self.safety = FootprintChecker(config.safety) if config.safety is not None else None
+        self.scans: Optional[ScanBuffer] = config.scan_buffer.make() if config.scan_buffer is not None else None
+        self.planner = self._make_planner(config)
         self._references = sorted({
             source for d in enabled.values() for source in d.sources.values()
             if config.sources[source].kind == SourceKind.REFERENCE})
         self._suspect_since = None
+        self._reinit_pending = False
+
+    @staticmethod
+    def _make_planner(config: SupervisorConfig) -> Optional[RecoveryPlanner]:
+        if not config.generators:
+            return None
+        return RecoveryPlanner(
+            [g.cls(name, g.params, g.sources) for name, g in config.generators.items()],
+            [s.cls(name, s.params, s.sources) for name, s in config.scorers.items()],
+            list(config.scorers.values()), config.selection, config.matcher_cls('matcher', config.matcher_params))
 
     def _rebuild(self) -> None:
         self._build(self._base.with_profile(self._profile))
@@ -149,6 +186,11 @@ class Supervisor:
             detector.reset()
         if self.anchors is not None:
             self.anchors.clear()
+        if self.scans is not None:
+            self.scans.clear()
+        if self.planner is not None:
+            self.planner.reset()
+        self._reinit_pending = False
 
     def start_grace(self, now: float, duration: float) -> None:
         self._grace_until = max(self._grace_until or now, now + duration)
@@ -167,6 +209,7 @@ class Supervisor:
         if self._grace_until is None:
             self._grace_until = now + self.config.startup_grace_sec
         self._check_maps(snapshot)
+        self._update_scans(snapshot)
         in_grace = now < self._grace_until
 
         evidences = {name: detector.evaluate(snapshot) for name, detector in self.detectors.items()}
@@ -182,10 +225,15 @@ class Supervisor:
             self.fusion.reset()
         if Action.REINIT in decision.actions:
             self.fusion.reset()
+            self._reinit_pending = True
+            self._next_plan = now
+            self._plan_attempts = 0
         if Action.RESTORE in decision.actions and self.config.grace_after_recovery_sec > 0.0:
             self.start_grace(now, self.config.grace_after_recovery_sec)
         if decision.event:
             self._last_event = decision.event
+        directives = self._directives(decision)
+        plan = self._recover(snapshot, state, directives)
 
         normal = state == State.NORMAL
         for name, detector in self.detectors.items():
@@ -200,7 +248,79 @@ class Supervisor:
         return StepResult(
             stamp=now, state=state, decision=decision, fusion=fusion, evidences=evidences,
             trusted=trusted, in_grace=in_grace, hold_requested=self.machine.hold_requested, safety=safety,
-            isolated_sources=self._isolated(), last_event=self._last_event, events=events)
+            isolated_sources=self._isolated(), last_event=self._last_event, events=events,
+            directives=directives, plan=plan, blame=self.machine.blame)
+
+    def _directives(self, decision: Decision) -> List[Directive]:
+        directives = []
+        if Action.ISOLATE in decision.actions:
+            self._isolated_blame = decision.blame
+            directives.append(Directive('isolate', decision.blame))
+        if Action.RESTORE in decision.actions:
+            directives.append(Directive('restore', self._isolated_blame))
+            self._isolated_blame = ''
+        return directives
+
+    def _update_scans(self, snapshot: Snapshot) -> None:
+        cfg = self.config.scan_buffer
+        if self.scans is None or cfg is None:
+            return
+        scan = snapshot.reference(cfg.reference).scan
+        if scan is None or scan.stamp == self._last_scan:
+            return
+        self._last_scan = scan.stamp
+        motion = snapshot.motion_at(cfg.motion, scan.stamp)
+        if motion is not None:
+            self.scans.add(scan, motion)
+
+    def _recover(self, snapshot: Snapshot, state: State, directives: List[Directive]) -> Optional[RecoveryPlan]:
+        """再初期化が要るあいだ、retry_sec ごとに候補を計画する。選べたら reinit の指示を出す。"""
+        now = snapshot.stamp
+        if state != State.RECOVERING:
+            self._reinit_pending = False
+        if not self._reinit_pending or now < self._next_plan:
+            return None
+        if self.planner is None:
+            self._reinit_pending = False
+            self._emit('reinit_skipped', 'error', {'reason': 'no_generators'})
+            return None
+        self._plan_attempts += 1
+        self._next_plan = now + self.config.selection.retry_sec
+        context = RecoveryContext(
+            snapshot=snapshot, anchors=self.anchors, suspect_since=self._suspect_since, scans=self.scans,
+            safety=self.config.safety)
+        plan = self.planner.plan(context)
+        self._plan_events(plan)
+        if plan.chosen is not None:
+            directives.append(Directive('reinit', self.machine.blame, plan.chosen))
+            self._after_reinit(now)
+        return plan
+
+    def _plan_events(self, plan: RecoveryPlan) -> None:
+        for candidate in plan.candidates:
+            fields: Dict[str, Any] = {
+                'origin': candidate.origin, **_pose_fields(candidate.pose),
+                'total': '' if candidate.total is None else round(candidate.total, 3),
+                'vetoed_by': candidate.vetoed_by}
+            fields.update({f'score_{k}': round(v, 3) for k, v in candidate.scores.items()})
+            self._emit('recovery_candidate', 'info', fields)
+        common = {'attempt': self._plan_attempts, 'candidates': len(plan.candidates),
+                  'elapsed_ms': round(plan.elapsed_sec * 1000.0)}
+        if plan.chosen is None:
+            self._emit('reinit_skipped', 'warn', {'reason': plan.reason, **common})
+        else:
+            self._emit('reinit_requested', 'warn', {
+                'origin': plan.chosen.origin, **_pose_fields(plan.chosen.pose), 'reason': plan.reason,
+                'margin': round(plan.margin, 3), 'blame': self.machine.blame, **common})
+
+    def _after_reinit(self, now: float) -> None:
+        """推定器を初期化し直す指示を出した後。姿勢が飛ぶので、累積・判定の内部状態を捨てて猶予を置く。
+        アンカーとスキャンのバッファは、再試行のために残す。"""
+        self._reinit_pending = False
+        self.fusion.reset()
+        for detector in self.detectors.values():
+            detector.reset()
+        self.start_grace(now, self.config.grace_after_reset_sec)
 
     def _emit(self, event: str, level: str, fields: Dict[str, Any]) -> None:
         self._pending.append(Event(f'{self.config.event_prefix}.{event}', level, fields))
@@ -282,3 +402,7 @@ class Supervisor:
         self._pending.append(Event(f'{self.config.event_prefix}.state_changed', level, {
             'from': before.name, 'to': decision.state.name, 'reason': decision.event,
             'blame': decision.blame or fusion.blame, 'fusion_level': round(fusion.level, 3)}))
+
+
+def _pose_fields(pose: Pose2) -> Dict[str, float]:
+    return {'x': round(pose[0], 3), 'y': round(pose[1], 3), 'yaw': round(pose[2], 3)}
