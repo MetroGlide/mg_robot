@@ -10,6 +10,11 @@
     - {type: gnss_drop, start: 300.0, end: 360.0}
     - {type: odom_scale, start: 400.0, end: 420.0, v: 1.0, w: 1.3}
     - {type: scan_drop, start: 500.0, end: 520.0, sector_deg: [-90.0, 90.0]}
+    - {type: amcl_drift, start: 600.0, end: 660.0, rate: {x: 0.05, y: 0.0, yaw: 0.0}}
+
+amcl_drift は AMCL を少しずつずらす (rate は 1 秒あたりの地図座標でのずれ)。再生評価では interval 秒
+(既定 1.0) ごとに、AMCL の推定を rate * interval だけずらした姿勢を /initialpose に送る。
+オフライン評価 (eval_localization_offline.py) では、AMCL の標本を直接ずらす。
 """
 
 from dataclasses import dataclass, field
@@ -24,6 +29,7 @@ REQUIRED_PARAMS: Dict[str, List[str]] = {
     "gnss_drop": [],
     "odom_scale": ["v", "w"],
     "scan_drop": ["sector_deg"],
+    "amcl_drift": ["rate"],
 }
 INSTANT_TYPES = {"kidnap"}
 

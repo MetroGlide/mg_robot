@@ -1,0 +1,4 @@
+# AMCL の少しずつのずれ: 一定の区間、AMCL の推定を地図座標で一定の速さでずらす。時刻は再生開始からの経過秒。
+# rate は 1 秒あたりのずれ [m]・[rad]。再生評価では interval 秒ごとに /initialpose でずらす。
+faults:
+  - {type: amcl_drift, start: 40.0, end: 100.0, rate: {x: 0.05, y: 0.0, yaw: 0.0}, interval: 1.0}

@@ -22,7 +22,8 @@ tools/
 │   ├── status_timeline.py # 診断のレベルの遷移とイベントの集計・整形 ※ROS 不要 (rosbag_summary.py が使う)
 │   ├── event_timeline.py  # イベントログ (evt=...) の解析・結合・絞り込み・整形 ※ROS 不要。書式の読み取りは mg_utils.event_log
 │   ├── faults.py          # 故障注入定義 (YAML) の読込
-│   └── fault_apply.py     # 故障注入の計算 (numpy のみ。fault_injector.py が使う)
+│   ├── fault_apply.py     # 故障注入の計算 (numpy のみ。fault_injector.py が使う)
+│   └── offline_faults.py  # 故障注入定義を、自己位置の監督のオフライン評価の定義に直す
 ├── datasets/localization/ # 自己位置推定の再生評価のデータセット定義 (地図・評価走行・真値の組)
 ├── doc/                   # ツールごとの詳細 (下の「ドキュメント」)
 ├── test/                  # tools のテスト (make test pkg=tools。[テスト](#テスト))
@@ -45,6 +46,7 @@ tools/
     ├── loc_init_pose.py             # 再生評価で AMCL と EKF の初期姿勢を真値から与える
     ├── loc_recorder.py              # 再生評価の出力をシミュレーション時刻で rosbag2 に記録する
     ├── fault_injector.py            # 再生評価で、センサ入力に故障を注入する (--faults。[doc](./doc/localization_evaluation.md#センサ故障の注入))
+    ├── eval_localization_offline.py # 自己位置の監督を、再生評価の記録でオフライン評価する ([doc](./doc/localization_evaluation.md#監督のオフライン評価))
     ├── loc_dataset.py               # データセット定義 (datasets/localization/) の読込
     ├── compare_localization.py      # 変種ごとの評価結果の比較表
     ├── calib_wheel_odom.py          # ホイールオドメトリのスケール・バイアス・遅れを走行ログから推定
@@ -64,7 +66,7 @@ tools/
 | [doc/bag_tools.md](./doc/bag_tools.md) | `rosbag_summary.py`、`plot_gnss_trajectory.py`、`plot_lidar_scans.py`、`rosbag_modify_base.py`、`bag_to_json.py`、`event_timeline.py`、`diff_bag_list.py`、`record.sh`、`bag_play.sh` |
 | [doc/gnss_transform_tools.md](./doc/gnss_transform_tools.md) | `generate_static_transforms.py`、`make_sim_gnss_transform.py` |
 | [doc/slam_evaluation.md](./doc/slam_evaluation.md) | `eval_slam.py`、`run_slam_variant.sh`、`patch_params.py` |
-| [doc/localization_evaluation.md](./doc/localization_evaluation.md) | `eval_localization.py`、`run_localization_variant.sh`、故障注入 |
+| [doc/localization_evaluation.md](./doc/localization_evaluation.md) | `eval_localization.py`、`run_localization_variant.sh`、故障注入、`eval_localization_offline.py` |
 | [doc/wheel_odom_calibration.md](./doc/wheel_odom_calibration.md) | `calib_wheel_odom.py` |
 | [doc/common_library.md](./doc/common_library.md) | `tools/common/` の共通モジュール |
 
@@ -98,6 +100,7 @@ make test pkg=tools
 | `test_event_timeline.py` | イベントログの解析・結合・絞り込み・整形 (`common/event_timeline.py`) |
 | `test_status_timeline.py` | 診断のレベルの遷移とイベントの集計・整形 (`common/status_timeline.py`) |
 | `test_faults.py`、`test_fault_apply.py` | 故障注入の定義の読込と計算 |
+| `test_offline_faults.py` | 故障注入の定義の、監督のオフライン評価への変換 |
 | `test_pose_graph.py` | `pose_graph.json` の読込・補間 |
 | `test_map_helpers.py` | 地図の読込と `map_list.txt` |
 | `test_compare_localization.py` | 変種の比較表 |

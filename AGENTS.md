@@ -184,6 +184,7 @@ make test pkg=mg_waypoint_navigation
 | `tools/scripts/make_sim_gnss_transform.py` | シミュレータのワールドSDFからGNSSブリッジ用の`gnss_transform.yaml`を生成 |
 | `tools/scripts/eval_localization.py`<br>(`make bag-eval-localization`) | 自己位置推定の評価（滑らかさ・真値との誤差・NEES・AMCL遅延・故障からの復旧） |
 | `tools/scripts/run_localization_variant.sh` | 自己位置推定のパラメータ変種をrosbag再生で評価（センサ故障の注入にも対応）。データセットは`tools/datasets/localization/` |
+| `tools/scripts/eval_localization_offline.py` | 自己位置の監督の判定と総合を、再生評価の記録で実時間を待たずに評価（記録した標本への故障注入、プロファイルの比較） |
 | `tools/scripts/calib_wheel_odom.py` | 走行ログとSLAM出力からホイールオドメトリのスケール・バイアス・遅れを推定 |
 
 ### 解析結果・可視化画像の保存先切り替え

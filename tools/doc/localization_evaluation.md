@@ -109,6 +109,7 @@ docker run --rm -v $PWD:/app -v ~/ros2_data:/root/ros2_data mg_develop:latest \
 | `gnss_drop` | `/navpvt` を止める |
 | `odom_scale` | 生のオドメトリの並進・旋回を拡大する (ホイールのスリップ。生じたずれはその後も残る) |
 | `scan_drop` | LiDAR のスキャンの一部の角度を欠測にする |
+| `amcl_drift` | 区間の中で `interval` 秒ごとに、AMCL の推定を `rate`×`interval` だけずらした姿勢を `/initialpose` に送り、AMCL を少しずつずらす (送るたびに粒子は送った姿勢の周りに撒き直される) |
 
 評価レポートには、故障ごとの最大誤差・復旧までの時間・監督ノードの検知までの時間と、
 **故障のない区間で状態が NORMAL 以外になった回数 (誤検知)** が出ます。
@@ -131,3 +132,30 @@ docker run --rm -v $PWD:/app -v ~/ros2_data:/root/ros2_data mg_develop:latest \
 - **ホイールオドメトリの速度 (twist) が 0 になる不具合**: 051635 の 370〜730 s では、ドライバの速度が 0 のまま姿勢だけが更新されています (043837 は全区間で正常)。EKF は速度を観測として使うので、この区間では速度の共分散を小さくするほど破綻します。補正ノードの `twist_source: pose_diff` (姿勢の差分から速度を求める) で影響を受けなくなります。`odom.twist_source=pose_diff` で試せます。区間を選ぶときは `mg_drivers` の速度と姿勢の差分が一致しているか確認してください。
 - 再生を始める位置は、評価する走行でロボットが**止まっている**時点を選んでください。動いている最中から始めると、初期化直後の収束前に走り出すことになり、実運用より厳しい条件で AMCL が破綻しやすくなります (051635 は 722〜810 s が停止中)。
 - `--init gt` では、初期姿勢を与えた直後の一定時間 (`EVAL_SKIP`) を評価から除きます。
+
+## 監督のオフライン評価
+
+`eval_localization_offline.py` は、自己位置の監督のフレームワーク ([localization_supervisor](../../localization_supervisor/doc/design.md#オフライン評価)) の判定と総合を、再生評価の記録 (`run_N/output`) で実時間を待たずに回します。1 本あたり数秒で終わるので、判定のしきい値・重み・プロファイルを大量の事例で比べられます。
+
+- 入力: 記録した推定器の出力 (AMCL・EKF・GNSS・オドメトリ) と、データセットの評価 bag のスキャン、データセットの地図。設定は `mg_localization_supervisor/config/supervision.yaml` ([mg_localization_supervisor](../../mg_localization_supervisor/README.md#監督の構成-supervisionyaml))
+- `--faults`: 再生評価と同じ書式の故障を、**記録した標本に**注入します (`common/offline_faults.py` で変換)。kidnap と `amcl_drift` は AMCL の標本を、`gnss_bias` は GNSS の標本をずらし、`gnss_drop`・`scan_drop` は標本を欠かします。`odom_scale` は注入できません (記録した推定器の出力がオドメトリをすでに使っているため)
+- `--followers ekf=<割合>`: AMCL のずれに、EKF もその割合だけ引きずられた状態にします (実際の推定器は AMCL に引きずられるため)
+- `--labels`: 記録したときに再生評価で注入されていた故障を、正解としてだけ使います (例: `kidnap_none` の変種の記録)
+- `--profile` を並べると、同じ入力でプロファイルを比べます (`''` は既定の設定。`consecutive` は今の監督ノードと同じ判定と回数)
+
+```bash
+# 採用している設定の記録 (run_1..N) に kidnap を注入し、既定の設定と今の監督ノード相当を比べる
+tools/scripts/eval_localization_offline.py <評価 bag>/eval_loc/map043837_eval051635_short/adopted \
+    --faults tools/datasets/localization/faults/kidnap.yaml --profile '' --profile consecutive
+
+# 故障を注入せず、正常な記録での誤検知だけを見る (データセットを合わせる)
+tools/scripts/eval_localization_offline.py <評価 bag>/eval_loc/map043837_eval051635_movingstart/adopted \
+    --dataset map043837_eval051635_movingstart
+```
+
+develop コンテナで実行します (rosbag2_py を使うため)。出力は `<run>/offline/<故障の定義の名前>/<プロファイル>/` の `timeline.jsonl` (周期ごとの状態・総合・判定の値)、`events.jsonl`、`report.md` と、標準出力のプロファイルごとの比較表 (確認した故障の数、疑い・確認までの時間、`blame` の正解、誤検知) です。
+
+- 検知の対象は姿勢をずらす故障だけです。標本が欠けるだけの故障の区間は、異常がない区間として誤検知を数えます。
+- 誤検知は「故障の区間の外で確認に移った回数」で、記録そのものが崩れていた試行 (`movingstart` の一部) では正しい検知も含みます。真値 (`eval_localization.json` の誤差) と突き合わせてください。
+- 記録済みの推定器の出力を使うので、監督が再初期化した後の挙動は見られません。それは再生評価 (`run_localization_variant.sh`) で見ます。
+- 判定の `allowance` は、正常な記録の `timeline.jsonl` の判定ごとの `score` の分布より上にします。

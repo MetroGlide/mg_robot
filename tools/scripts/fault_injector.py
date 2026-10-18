@@ -10,12 +10,14 @@ rosbag の再生では、注入の対象のトピックを /fault/ 以下へ付�
   /fault/navpvt          -> /navpvt             gnss_bias / gnss_drop
   /fault/scan_top_lidar  -> /scan_top_lidar     scan_drop
 kidnap は、その時刻の推定姿勢 (EKF) をずらした姿勢を /initialpose に送り、AMCL だけをずらす。
+amcl_drift は、区間の中で interval 秒ごとに、AMCL の推定 (/amcl_pose_origin) を rate * interval だけずらした
+姿勢を /initialpose に送り、AMCL を少しずつずらす (送るたびに粒子は送った姿勢の周りに撒き直される)。
 """
 
 import argparse
 import os
 import sys
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import numpy as np
 import rclpy
@@ -53,6 +55,8 @@ class FaultInjector(Node):
         self._t0: Optional[float] = None
         self._logged = set()
         self._kidnap_done = set()
+        self._amcl_pose: Optional[PoseWithCovarianceStamped] = None
+        self._drift_last: Dict[int, float] = {}
         # 注入用のホイールオドメトリの積算。スリップで生じたずれは、その後も残る
         self._odom_integrator = OdomCorrector(1.0, 1.0, 0.0, reset_jump_m=1e9)
         self._tf_buffer = tf2_ros.Buffer()
@@ -67,6 +71,7 @@ class FaultInjector(Node):
         self.create_subscription(Odometry, "/fault/odom", self._on_odom, 10)
         self.create_subscription(NavPVT, "/fault/navpvt", self._on_navpvt, 10)
         self.create_subscription(LaserScan, "/fault/scan_top_lidar", self._on_scan, qos_profile_sensor_data)
+        self.create_subscription(PoseWithCovarianceStamped, "/amcl_pose_origin", self._on_amcl, 10)
         self.create_timer(0.1, self._on_timer)
         self.get_logger().info(
             "fault_injector started: " + ", ".join(f"{f.type}@{f.start:g}" for f in faults))
@@ -135,10 +140,43 @@ class FaultInjector(Node):
             msg.ranges = ranges.astype(np.float32).tolist()
         self._scan_pub.publish(msg)
 
+    def _on_amcl(self, msg: PoseWithCovarianceStamped) -> None:
+        self._amcl_pose = msg
+
+    def _publish_initialpose(self, x: float, y: float, yaw: float) -> None:
+        msg = PoseWithCovarianceStamped()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.header.frame_id = self._map_frame
+        msg.pose.pose.position.x = x
+        msg.pose.pose.position.y = y
+        msg.pose.pose.orientation.z = float(np.sin(yaw / 2.0))
+        msg.pose.pose.orientation.w = float(np.cos(yaw / 2.0))
+        msg.pose.covariance[0] = KIDNAP_POSITION_VARIANCE
+        msg.pose.covariance[7] = KIDNAP_POSITION_VARIANCE
+        msg.pose.covariance[35] = KIDNAP_YAW_VARIANCE
+        self._initialpose_pub.publish(msg)
+
+    def _drift(self, t: float) -> None:
+        for index, fault in enumerate(self._faults):
+            if fault.type != "amcl_drift" or not fa.is_active(fault, t) or self._amcl_pose is None:
+                continue
+            interval = float(fault.params.get("interval", 1.0))
+            if t - self._drift_last.get(index, fault.start - interval) < interval:
+                continue
+            self._drift_last[index] = t
+            rate = fault.params["rate"]
+            pose = self._amcl_pose.pose.pose
+            yaw = yaw_from_quaternion(pose.orientation.z, pose.orientation.w)
+            self._publish_initialpose(
+                pose.position.x + float(rate.get("x", 0.0)) * interval,
+                pose.position.y + float(rate.get("y", 0.0)) * interval,
+                yaw + float(rate.get("yaw", 0.0)) * interval)
+
     def _on_timer(self) -> None:
         t = self._t_rel()
         if t is None:
             return
+        self._drift(t)
         for index, fault in enumerate(self._faults):
             if fault.type != "kidnap" or index in self._kidnap_done or t < fault.start:
                 continue
@@ -149,18 +187,9 @@ class FaultInjector(Node):
             offset = fault.params["offset"]
             tr = transform.transform.translation
             yaw = yaw_from_quaternion(transform.transform.rotation.z, transform.transform.rotation.w)
-            new_yaw = yaw + float(offset.get("yaw", 0.0))
-            msg = PoseWithCovarianceStamped()
-            msg.header.stamp = self.get_clock().now().to_msg()
-            msg.header.frame_id = self._map_frame
-            msg.pose.pose.position.x = tr.x + float(offset.get("x", 0.0))
-            msg.pose.pose.position.y = tr.y + float(offset.get("y", 0.0))
-            msg.pose.pose.orientation.z = float(np.sin(new_yaw / 2.0))
-            msg.pose.pose.orientation.w = float(np.cos(new_yaw / 2.0))
-            msg.pose.covariance[0] = KIDNAP_POSITION_VARIANCE
-            msg.pose.covariance[7] = KIDNAP_POSITION_VARIANCE
-            msg.pose.covariance[35] = KIDNAP_YAW_VARIANCE
-            self._initialpose_pub.publish(msg)
+            self._publish_initialpose(
+                tr.x + float(offset.get("x", 0.0)), tr.y + float(offset.get("y", 0.0)),
+                yaw + float(offset.get("yaw", 0.0)))
             self._kidnap_done.add(index)
             self.get_logger().info(f"kidnap at t={t:.1f}s offset={offset}")
 
