@@ -1,6 +1,7 @@
 """判定で共通に使う計算。"""
 import math
-from typing import Optional, Sequence
+from collections import deque
+from typing import Deque, Optional, Sequence
 
 import numpy as np
 
@@ -28,6 +29,28 @@ def covariance_metric(metric: str, cov: np.ndarray) -> float:
 
 
 COVARIANCE_METRICS: Sequence[str] = ('trace_xy', 'determinant_xy', 'max_eigenvalue_xy')
+
+
+class Baseline:
+    """正常なときの値の、直近 window 個の中央値 (しきい値の基準)。min_samples 個たまるまでは None。"""
+
+    def __init__(self, window: int, min_samples: int) -> None:
+        self.min_samples = min_samples
+        self._values: Deque[float] = deque(maxlen=window)
+
+    def __len__(self) -> int:
+        return len(self._values)
+
+    def add(self, value: float) -> None:
+        self._values.append(value)
+
+    def clear(self) -> None:
+        self._values.clear()
+
+    def median(self) -> Optional[float]:
+        if len(self._values) < self.min_samples:
+            return None
+        return float(np.median(np.asarray(self._values)))
 
 
 def scan_points(

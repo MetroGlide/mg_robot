@@ -18,6 +18,7 @@ from .detectors import STANDARD_DETECTORS
 from .fusion import STANDARD_FUSIONS
 from .interfaces import CONTRACT_VERSION, Detector, FusionStrategy, SourceKind
 from .plugins import PluginError, resolve, resolve_params
+from .safety import SafetyConfig
 from .state_machine import MachineConfig
 from .timeline import AlignmentConfig
 
@@ -27,9 +28,18 @@ class ConfigError(ValueError):
 
 
 TOP_LEVEL_KEYS = {
-    'version', 'sources', 'timeline', 'detectors', 'enabled_detectors', 'fusion', 'trust',
-    'state_machine', 'recovery', 'anchors', 'grace', 'events', 'extras', 'profiles',
+    'version', 'period_sec', 'sources', 'timeline', 'detectors', 'enabled_detectors', 'fusion', 'trust',
+    'state_machine', 'recovery', 'anchors', 'safety', 'grace', 'external_reinit', 'events', 'output',
+    'extras', 'profiles',
 }
+
+
+@dataclass
+class OutputConfig:
+    """ノードの出力の名前。"""
+    status_topic: str = '/localization/status'
+    diagnostic_name: str = 'localization'
+    hardware_id: str = 'localization'
 DETECTOR_KEYS = {'type', 'sources', 'params', 'weight', 'allowance', 'decay', 'max_score', 'enabled', 'options'}
 
 
@@ -71,9 +81,15 @@ class SupervisorConfig:
     machine: MachineConfig = field(default_factory=MachineConfig)
     convergence: List[str] = field(default_factory=list)
     anchors: Optional[AnchorConfig] = None
+    safety: Optional[SafetyConfig] = None
+    period_sec: float = 1.0
     startup_grace_sec: float = 0.0
     grace_after_recovery_sec: float = 0.0
+    grace_after_reset_sec: float = 0.0
+    external_reinit_topics: List[str] = field(default_factory=list)
     event_prefix: str = 'localization'
+    event_sink: Dict[str, Any] = field(default_factory=lambda: {'type': 'logfmt'})
+    output: OutputConfig = field(default_factory=OutputConfig)
     extras: List[str] = field(default_factory=list)
     profile: str = ''
     profiles: Dict[str, Dict[str, Any]] = field(default_factory=dict)
@@ -226,6 +242,25 @@ def _dataclass_from(cls: type, raw: Mapping[str, Any], where: str) -> Any:
     return cls(**values)
 
 
+def _parse_safety(raw: Mapping[str, Any], sources: Mapping[str, SourceConfig]) -> SafetyConfig:
+    _check_keys(raw, {'pose', 'map', 'footprint', 'max_age_sec', 'depth_range_m'}, 'safety')
+    pose, map_name = raw.get('pose'), raw.get('map')
+    if sources.get(pose) is None or sources[pose].kind != SourceKind.POSE:
+        raise ConfigError(f'safety.pose: {pose!r} is not a pose source')
+    if sources.get(map_name) is None or sources[map_name].kind != SourceKind.REFERENCE:
+        raise ConfigError(f'safety.map: {map_name!r} is not a reference source')
+    footprint = raw.get('footprint')
+    if (not isinstance(footprint, list) or len(footprint) < 3
+            or not all(isinstance(p, list) and len(p) == 2
+                       and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in p)
+                       for p in footprint)):
+        raise ConfigError('safety.footprint: expected a list of at least 3 [x, y] points')
+    return SafetyConfig(
+        pose=pose, map=map_name, footprint=[(float(x), float(y)) for x, y in footprint],
+        max_age_sec=_number(raw, 'max_age_sec', SafetyConfig.max_age_sec, 'safety'),
+        depth_range_m=_number(raw, 'depth_range_m', SafetyConfig.depth_range_m, 'safety'))
+
+
 def _detector_names(names: List[str], detectors: Mapping[str, DetectorConfig], where: str) -> List[str]:
     for name in names:
         detector = detectors.get(name)
@@ -295,13 +330,25 @@ def parse_config(
         if sources.get(anchors.motion) is None or sources[anchors.motion].kind != SourceKind.MOTION:
             raise ConfigError(f'anchors.motion: {anchors.motion!r} is not a motion source')
 
+    safety = None
+    if merged.get('safety') is not None:
+        safety = _parse_safety(_mapping(merged['safety'], 'safety'), sources)
+
     grace = _mapping(merged.get('grace'), 'grace')
-    _check_keys(grace, {'startup_sec', 'after_recovery_sec'}, 'grace')
+    _check_keys(grace, {'startup_sec', 'after_recovery_sec', 'after_reset_sec'}, 'grace')
+    external = _mapping(merged.get('external_reinit'), 'external_reinit')
+    _check_keys(external, {'topics'}, 'external_reinit')
     events = _mapping(merged.get('events'), 'events')
-    _check_keys(events, {'prefix'}, 'events')
+    _check_keys(events, {'prefix', 'sink'}, 'events')
     prefix = events.get('prefix', 'localization')
     if not isinstance(prefix, str) or not prefix:
         raise ConfigError('events.prefix: expected a non-empty string')
+    sink = _mapping(events.get('sink', {'type': 'logfmt'}), 'events.sink')
+    if not isinstance(sink.get('type'), str):
+        raise ConfigError('events.sink.type: required')
+    period_sec = _number(merged, 'period_sec', 1.0, 'config')
+    if period_sec <= 0.0:
+        raise ConfigError('period_sec: must be positive')
 
     return SupervisorConfig(
         sources=sources, detectors=detectors, fusion_type=fusion_type, fusion_cls=fusion_cls,
@@ -317,10 +364,14 @@ def parse_config(
                                 'state_machine'),
         convergence=_detector_names(
             _names(recovery.get('convergence'), 'recovery.convergence'), detectors, 'recovery.convergence'),
-        anchors=anchors,
+        anchors=anchors, safety=safety, period_sec=period_sec,
         startup_grace_sec=_number(grace, 'startup_sec', 0.0, 'grace'),
         grace_after_recovery_sec=_number(grace, 'after_recovery_sec', 0.0, 'grace'),
-        event_prefix=prefix, extras=extras, profile=profile, profiles=profiles,
+        grace_after_reset_sec=_number(grace, 'after_reset_sec', 0.0, 'grace'),
+        external_reinit_topics=_names(external.get('topics'), 'external_reinit.topics'),
+        event_prefix=prefix, event_sink=sink,
+        output=_dataclass_from(OutputConfig, _mapping(merged.get('output'), 'output'), 'output'),
+        extras=extras, profile=profile, profiles=profiles,
         raw={k: v for k, v in raw.items() if k != 'profiles'})
 
 

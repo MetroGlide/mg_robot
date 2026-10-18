@@ -1,12 +1,7 @@
 """姿勢の情報源の姿勢で、スキャンを地図に重ねたときの一致。"""
-from collections import deque
-from typing import Deque
-
-import numpy as np
-
 from ..grid import match_gain, search_offsets
 from ..interfaces import Detector, Evidence, ParamSpec, SnapshotLike, SourceKind, Status
-from .common import scan_points
+from .common import Baseline, scan_points
 
 # 一致率が 0 のときに score が無限大にならないための下限
 MIN_RATIO = 1e-3
@@ -45,14 +40,12 @@ class ScanMap(Detector):
         self.reset()
 
     def reset(self) -> None:
-        self._ratios: Deque[float] = deque(maxlen=self.params['baseline_window'])
+        self._ratios = Baseline(self.params['baseline_window'], self.params['baseline_min_samples'])
 
     def ratio_threshold(self) -> float:
         p = self.params
-        threshold = p['ratio_min']
-        if len(self._ratios) >= p['baseline_min_samples']:
-            threshold = max(threshold, p['ratio_factor'] * float(np.median(np.asarray(self._ratios))))
-        return threshold
+        baseline = self._ratios.median()
+        return p['ratio_min'] if baseline is None else max(p['ratio_min'], p['ratio_factor'] * baseline)
 
     def evaluate(self, snapshot: SnapshotLike) -> Evidence:
         p = self.params
@@ -81,4 +74,4 @@ class ScanMap(Detector):
 
     def after_step(self, evidence: Evidence, normal: bool) -> None:
         if normal and evidence.status == Status.NORMAL:
-            self._ratios.append(evidence.values['ratio'])
+            self._ratios.add(evidence.values['ratio'])

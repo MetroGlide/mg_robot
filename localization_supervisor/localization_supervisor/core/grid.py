@@ -5,7 +5,7 @@ AMCL の共分散 (自己申告) とは独立な、自己位置の妥当性の�
 巨大な地図でも扱えるよう、姿勢の周りの局所だけの距離場をそのつど作る。
 """
 import math
-from typing import Optional, Tuple
+from typing import Optional, Sequence, Tuple
 
 import numpy as np
 from scipy import ndimage
@@ -25,6 +25,21 @@ class OccupancyMap:
         self.origin_x = origin_x
         self.origin_y = origin_y
         self.occupied_threshold = occupied_threshold
+
+    def cells(self, points_xy: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """点 (N, 2) のセルの添字 (列, 行) と、地図の中にあるか。"""
+        ix = np.floor((points_xy[:, 0] - self.origin_x) / self.resolution).astype(int)
+        iy = np.floor((points_xy[:, 1] - self.origin_y) / self.resolution).astype(int)
+        height, width = self.data.shape
+        inside = (ix >= 0) & (ix < width) & (iy >= 0) & (iy < height)
+        return ix, iy, inside
+
+    def occupied_at(self, points_xy: np.ndarray) -> np.ndarray:
+        """点 (N, 2) が占有セルにあるか。地図の外は占有でないとする。"""
+        ix, iy, inside = self.cells(points_xy)
+        result = np.zeros(points_xy.shape[0], dtype=bool)
+        result[inside] = self.data[iy[inside], ix[inside]] >= self.occupied_threshold
+        return result
 
 
 class LocalDistanceField:
@@ -89,6 +104,68 @@ def scan_points_in_map(
     px = ranges * np.cos(angles)
     py = ranges * np.sin(angles)
     return np.stack([map_lidar[0] + c * px - s * py, map_lidar[1] + s * px + c * py], axis=1)
+
+
+def transform_points(pose: Pose2, points_xy: np.ndarray) -> np.ndarray:
+    """点 (N, 2) を pose の座標から、その親の座標に移す。"""
+    c, s = math.cos(pose[2]), math.sin(pose[2])
+    return np.stack([pose[0] + c * points_xy[:, 0] - s * points_xy[:, 1],
+                     pose[1] + s * points_xy[:, 0] + c * points_xy[:, 1]], axis=1)
+
+
+def ray_penetration(
+    occupancy: OccupancyMap, origin_xy: Tuple[float, float], endpoints_xy: np.ndarray, margin: float,
+) -> np.ndarray:
+    """origin から各端点への光線が、端点の margin 手前までに通る占有セルの長さ [m] (N,)。
+
+    光線は地図の解像度の間隔で標本を取る。端点の近くは、地図とスキャンの位置のずれで占有にかかるので数えない。
+    """
+    count = endpoints_xy.shape[0]
+    if count == 0:
+        return np.zeros(0)
+    step = occupancy.resolution
+    delta = endpoints_xy - np.asarray(origin_xy, dtype=float)
+    lengths = np.hypot(delta[:, 0], delta[:, 1])
+    usable = np.maximum(lengths - margin, 0.0)
+    steps = int(math.ceil(float(usable.max()) / step)) if usable.max() > 0.0 else 0
+    if steps == 0:
+        return np.zeros(count)
+    t = (np.arange(steps) + 0.5) * step
+    valid = t[None, :] < usable[:, None]
+    unit = delta / np.maximum(lengths, 1e-9)[:, None]
+    xs = origin_xy[0] + unit[:, 0:1] * t[None, :]
+    ys = origin_xy[1] + unit[:, 1:2] * t[None, :]
+    occupied = occupancy.occupied_at(np.stack([xs.ravel(), ys.ravel()], axis=1)).reshape(count, steps)
+    return (occupied & valid).sum(axis=1) * step
+
+
+def best_offset(
+    field: LocalDistanceField, points_xy: np.ndarray, tolerance: float, center: Tuple[float, float],
+    offsets: np.ndarray, yaws: Sequence[float] = (0.0,), min_points: int = 30,
+) -> Optional[Tuple[float, float, Pose2]]:
+    """点を center の周りに yaws だけ回し、offsets だけずらして、最もよく一致するずらし方を探す。
+
+    Returns: (ずらさないときの一致した割合, 最良の一致した割合, 最良のずらし方 (dx, dy, dyaw))。
+    同じ割合なら、距離の平均の小さいほう (tolerance の中でもよく合うほう)、それも同じならずらし量の小さいほうを
+    選ぶ。判断できなければ None。
+    """
+    base = match_ratio(field, points_xy, tolerance, min_points)
+    if base is None:
+        return None
+    best_key, best = (base[0], -base[1], 0.0), (0.0, 0.0, 0.0)
+    relative = points_xy - np.asarray(center, dtype=float)
+    for dyaw in yaws:
+        c, s = math.cos(dyaw), math.sin(dyaw)
+        rotated = np.stack([c * relative[:, 0] - s * relative[:, 1],
+                            s * relative[:, 0] + c * relative[:, 1]], axis=1) + np.asarray(center, dtype=float)
+        for offset in offsets:
+            shifted = match_ratio(field, rotated + offset, tolerance, min_points)
+            if shifted is None:
+                continue
+            key = (shifted[0], -shifted[1], -(math.hypot(offset[0], offset[1]) + abs(dyaw)))
+            if key > best_key:
+                best_key, best = key, (float(offset[0]), float(offset[1]), float(dyaw))
+    return base[0], best_key[0], best
 
 
 def search_offsets(range_m: float, step_m: float) -> np.ndarray:

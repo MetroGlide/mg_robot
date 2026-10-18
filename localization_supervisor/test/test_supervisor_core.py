@@ -222,6 +222,15 @@ def test_cusum_accumulates_small_anomalies_and_decays():
     assert fusion.update({'drift': _ev('anomaly', 5.0)}, False).level == pytest.approx(2.2)
 
 
+def test_cusum_ignores_zero_weight_instances():
+    fusion = CusumFusion('cusum', {'suspect_level': 1.0, 'confirm_level': 3.0, 'blame_margin': 1.0},
+                         _infos(('gnss', ['amcl', 'gnss'], {}), ('observed', ['amcl'], {'weight': 0.0})),
+                         ['amcl', 'gnss'], {})
+    result = fusion.update({'gnss': _ev('normal', 0.1), 'observed': _ev('anomaly', 9.0)}, True)
+    # 重み 0 の異常は、累積にも「異常がなくなった」の判定にも効かない
+    assert result.level == 0.0 and not result.anomaly and result.cleared
+
+
 def test_attribute_blame_uses_independent_sources_only():
     instances = {i.name: i for i in _infos(
         ('amcl_gnss', ['amcl', 'gnss'], {}), ('amcl_jump', ['amcl'], {}), ('scan_ekf', ['ekf'], {}),

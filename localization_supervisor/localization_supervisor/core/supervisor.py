@@ -1,21 +1,27 @@
-"""判定・総合・状態遷移・アンカーを束ねる (ROS に依存しない)。
+"""判定・総合・状態遷移・アンカー・安全の信号を束ねる (ROS に依存しない)。
 
 ノードもオフライン評価も、周期ごとに Supervisor.step(snapshot) を呼ぶ。
 
-  1. 有効な判定のインスタンスごとに Evidence を求める
-  2. 総合する (猶予の間は累積を進めない)
-  3. 状態遷移。復旧の収束の確認には、recovery.convergence のインスタンスを使う
-  4. 信頼できる周期ならアンカーを残す
-  5. イベントを作る
+  1. 判定が使う地図が替わっていたら、判定の内部状態・累積・アンカーを捨てて猶予を置く
+  2. 有効な判定のインスタンスごとに Evidence を求める
+  3. 総合する (猶予の間は累積を進めない)
+  4. 状態遷移。復旧の収束の確認には、recovery.convergence のインスタンスを使う
+  5. 信頼できる周期ならアンカーを残す
+  6. 安全の信号 (footprint が計画用地図の致死セルにかかっているか) を求める
+  7. イベントを作る
+
+外からの再初期化 (人による上書き) は external_reinit で知らせる。プロファイル・判定の有効・無効・重みは、
+走行中に set_profile・set_disabled・set_weight で変えられる。
 """
 import math
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Set
 
 from .anchors import Anchor, AnchorStore
 from .config import SupervisorConfig
 from .geometry import Pose2
-from .interfaces import Detector, Evidence, FusionResult, FusionStrategy, InstanceInfo, Status
+from .interfaces import Detector, Evidence, FusionResult, FusionStrategy, InstanceInfo, SourceKind, Status
+from .safety import FootprintChecker, SafetyResult
 from .snapshot import SampleStore, Snapshot
 from .state_machine import Action, Decision, State, StateMachine
 
@@ -38,6 +44,9 @@ class StepResult:
     trusted: bool
     in_grace: bool
     hold_requested: bool
+    safety: Optional[SafetyResult] = None
+    isolated_sources: List[str] = field(default_factory=list)
+    last_event: str = ''
     events: List[Event] = field(default_factory=list)
 
 
@@ -49,42 +58,92 @@ def make_store(config: SupervisorConfig) -> SampleStore:
 
 class Supervisor:
     def __init__(self, config: SupervisorConfig) -> None:
-        self._build(config)
+        self._base = config
+        self._profile = config.profile
+        self._disabled: Set[str] = set()
+        self._weights: Dict[str, float] = {}
         self._grace_until: Optional[float] = None
         self._suspect_since: Optional[float] = None
         self._odometer = 0.0
         self._last_motion: Optional[Pose2] = None
+        self._map_versions: Dict[str, int] = {}
+        self._in_lethal = False
+        self._last_event = ''
+        self._pending: List[Event] = []
+        self._build(config)
 
     def _build(self, config: SupervisorConfig) -> None:
+        """設定に、無効にした判定と重みの指定を重ねて作る。"""
         self.config = config
-        enabled = config.enabled_detectors()
+        enabled = {name: d for name, d in config.enabled_detectors().items() if name not in self._disabled}
         self.detectors: Dict[str, Detector] = {
             name: d.cls(name, d.params, d.sources) for name, d in enabled.items()}
         infos = [InstanceInfo(
             name=name, subjects=self.detectors[name].subjects(), sources=list(d.sources.values()),
-            weight=d.weight, allowance=d.allowance, decay=d.decay, max_score=d.max_score, options=d.options)
+            weight=self._weights.get(name, d.weight), allowance=d.allowance, decay=d.decay,
+            max_score=d.max_score, options=d.options)
             for name, d in enabled.items()]
         self.fusion: FusionStrategy = config.fusion_cls(
             config.fusion_type, config.fusion_params, infos,
             config.independent_sources(), config.derived_sources())
         self.machine = StateMachine(config.machine)
         self.anchors = AnchorStore(config.anchors) if config.anchors is not None else None
-        self._weights = {name: d.weight for name, d in enabled.items()}
+        self.safety = FootprintChecker(config.safety) if config.safety is not None else None
+        self._references = sorted({
+            source for d in enabled.values() for source in d.sources.values()
+            if config.sources[source].kind == SourceKind.REFERENCE})
+        self._suspect_since = None
+
+    def _rebuild(self) -> None:
+        self._build(self._base.with_profile(self._profile))
 
     @property
     def state(self) -> State:
         return self.machine.state
 
-    def set_profile(self, profile: str) -> None:
-        """プロファイルを切り替える。判定・総合・状態遷移・アンカーは作り直す (状態は NORMAL から)。"""
-        self._build(self.config.with_profile(profile))
-        self._suspect_since = None
+    @property
+    def profile(self) -> str:
+        return self._profile
 
-    def set_weight(self, name: str, weight: float) -> None:
-        self.fusion.instances[name].weight = weight
+    @property
+    def suspect_since(self) -> Optional[float]:
+        return self._suspect_since
+
+    def set_profile(self, profile: str) -> None:
+        """プロファイルを切り替える ('' は基の設定)。判定・総合・状態遷移・アンカーは作り直す (状態は NORMAL から)。"""
+        if profile and profile not in self._base.profiles:
+            raise ValueError(f'unknown profile {profile!r} (profiles: {sorted(self._base.profiles)})')
+        before = self._profile
+        self._profile = profile
+        self._rebuild()
+        self._emit('profile_changed', 'info', {'from': before, 'to': profile})
+
+    def set_disabled(self, names: Iterable[str]) -> None:
+        """名前を並べた判定のインスタンスを無効にする (プロファイルの上に重ねる)。作り直す。"""
+        names = set(names)
+        unknown = sorted(names - set(self._base.detectors))
+        if unknown:
+            raise ValueError(f'unknown detectors {unknown}')
+        if names != self._disabled:
+            self._disabled = names
+            self._rebuild()
+            self._emit('detectors_changed', 'info', {'disabled': ','.join(sorted(names))})
+
+    def set_weight(self, name: str, weight: Optional[float]) -> None:
+        """判定のインスタンスの重み (None は設定の値に戻す)。作り直さずに効く。"""
+        if name not in self._base.detectors:
+            raise ValueError(f'unknown detector {name!r}')
+        if weight is None:
+            self._weights.pop(name, None)
+            configured = self.config.detectors.get(name)
+            weight = configured.weight if configured is not None else 1.0
+        else:
+            self._weights[name] = weight
+        if name in self.fusion.instances:
+            self.fusion.instances[name].weight = weight
 
     def reset(self) -> None:
-        """累積・判定の内部状態・アンカーを捨てる (外からの再初期化、地図の切り替え)。"""
+        """累積・判定の内部状態・アンカーを捨てる。"""
         self.fusion.reset()
         for detector in self.detectors.values():
             detector.reset()
@@ -94,10 +153,20 @@ class Supervisor:
     def start_grace(self, now: float, duration: float) -> None:
         self._grace_until = max(self._grace_until or now, now + duration)
 
+    def external_reinit(self, now: float, topic: str) -> None:
+        """外から推定器が初期化し直された (人による上書き)。復旧をやめて、状態を NORMAL に戻し、捨てて猶予を置く。"""
+        before = self.machine.state
+        self.machine = StateMachine(self.config.machine)
+        self._suspect_since = None
+        self.reset()
+        self.start_grace(now, self.config.grace_after_reset_sec)
+        self._emit('external_reinit', 'warn', {'topic': topic, 'state': before.name})
+
     def step(self, snapshot: Snapshot) -> StepResult:
         now = snapshot.stamp
         if self._grace_until is None:
             self._grace_until = now + self.config.startup_grace_sec
+        self._check_maps(snapshot)
         in_grace = now < self._grace_until
 
         evidences = {name: detector.evaluate(snapshot) for name, detector in self.detectors.items()}
@@ -115,6 +184,8 @@ class Supervisor:
             self.fusion.reset()
         if Action.RESTORE in decision.actions and self.config.grace_after_recovery_sec > 0.0:
             self.start_grace(now, self.config.grace_after_recovery_sec)
+        if decision.event:
+            self._last_event = decision.event
 
         normal = state == State.NORMAL
         for name, detector in self.detectors.items():
@@ -122,15 +193,32 @@ class Supervisor:
 
         trusted = normal and not in_grace and self._trusted(evidences, fusion)
         self._update_anchors(snapshot, trusted)
+        safety = self._check_safety(snapshot)
 
-        events = self._events(state_before, decision, fusion)
+        self._state_events(state_before, decision, fusion)
+        events, self._pending = self._pending, []
         return StepResult(
             stamp=now, state=state, decision=decision, fusion=fusion, evidences=evidences,
-            trusted=trusted, in_grace=in_grace, hold_requested=self.machine.hold_requested, events=events)
+            trusted=trusted, in_grace=in_grace, hold_requested=self.machine.hold_requested, safety=safety,
+            isolated_sources=self._isolated(), last_event=self._last_event, events=events)
 
-    @property
-    def suspect_since(self) -> Optional[float]:
-        return self._suspect_since
+    def _emit(self, event: str, level: str, fields: Dict[str, Any]) -> None:
+        self._pending.append(Event(f'{self.config.event_prefix}.{event}', level, fields))
+        self._last_event = event
+
+    def _check_maps(self, snapshot: Snapshot) -> None:
+        """判定が使う地図が替わったら (最初に届いたときは除く)、捨てて猶予を置く。"""
+        changed = []
+        for name in self._references:
+            version = snapshot.reference(name).map_version
+            previous = self._map_versions.get(name, 0)
+            if previous and version != previous:
+                changed.append(name)
+            self._map_versions[name] = version
+        if changed:
+            self.reset()
+            self.start_grace(snapshot.stamp, self.config.grace_after_reset_sec)
+            self._emit('map_changed', 'info', {'sources': ','.join(changed)})
 
     def _converged(self, evidences: Dict[str, Evidence]) -> Optional[bool]:
         """recovery.convergence のインスタンスが、すべて正常なら True、どれかが異常なら False。"""
@@ -146,6 +234,12 @@ class Supervisor:
             return False
         required = [evidences[name].status for name in self.config.trust_require_normal if name in evidences]
         return all(s == Status.NORMAL for s in required)
+
+    def _isolated(self) -> List[str]:
+        blame = self.machine.blame
+        if self.machine.hold_requested and blame and blame != 'unknown':
+            return [blame]
+        return []
 
     def _update_anchors(self, snapshot: Snapshot, trusted: bool) -> None:
         cfg = self.config.anchors
@@ -164,13 +258,27 @@ class Supervisor:
             return
         self.anchors.add(Anchor(snapshot.stamp, aligned[0], motion, self._odometer))
 
-    def _events(self, before: State, decision: Decision, fusion: FusionResult) -> List[Event]:
-        prefix = self.config.event_prefix
-        events: List[Event] = []
-        if decision.state != before:
-            level = 'info' if decision.state == State.NORMAL else (
-                'error' if decision.state == State.DEGRADED else 'warn')
-            events.append(Event(f'{prefix}.state_changed', level, {
-                'from': before.name, 'to': decision.state.name, 'reason': decision.event,
-                'blame': decision.blame or fusion.blame, 'fusion_level': round(fusion.level, 3)}))
-        return events
+    def _check_safety(self, snapshot: Snapshot) -> Optional[SafetyResult]:
+        cfg = self.config.safety
+        if self.safety is None or cfg is None:
+            return None
+        occupancy = snapshot.reference(cfg.map).occupancy
+        aligned = snapshot.pose_aligned(cfg.pose, cfg.max_age_sec)
+        if occupancy is None or aligned is None:
+            return None
+        result = self.safety.check(occupancy, aligned[0].pose)
+        if result.in_lethal != self._in_lethal:
+            self._in_lethal = result.in_lethal
+            self._emit('lethal', 'warn' if result.in_lethal else 'info', {
+                'in_lethal': result.in_lethal, 'fraction': round(result.fraction, 3),
+                'depth_m': round(result.depth_m, 3)})
+        return result
+
+    def _state_events(self, before: State, decision: Decision, fusion: FusionResult) -> None:
+        if decision.state == before:
+            return
+        level = 'info' if decision.state == State.NORMAL else (
+            'error' if decision.state == State.DEGRADED else 'warn')
+        self._pending.append(Event(f'{self.config.event_prefix}.state_changed', level, {
+            'from': before.name, 'to': decision.state.name, 'reason': decision.event,
+            'blame': decision.blame or fusion.blame, 'fusion_level': round(fusion.level, 3)}))

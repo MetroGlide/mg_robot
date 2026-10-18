@@ -91,6 +91,10 @@ class CusumFusion(FusionStrategy):
                 info = self.instances.get(name)
                 if info is None or evidence.status == Status.UNKNOWN:
                     continue
+                # 重みが 0 のインスタンスは、記録のためだけに判定する (総合に効かない)
+                if info.weight <= 0.0:
+                    self._acc[name] = 0.0
+                    continue
                 known = True
                 anomaly = anomaly or evidence.status == Status.ANOMALY
                 score = min(evidence.score, info.max_score)
