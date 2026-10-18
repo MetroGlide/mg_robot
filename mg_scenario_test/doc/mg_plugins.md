@@ -57,6 +57,7 @@ sequencer が `ERROR` になったら FAILED です。
 | 型 | パラメータ | 判定 |
 |---|---|---|
 | `collision_monitor_action` | `action` (`STOP` / `SLOWDOWN` / `APPROACH`), `expect`=occurs (`occurs`/`never`), `topic`=/collision_monitor_state | `nav2_msgs/CollisionMonitorState` (`nav2_pkg/nav2_msgs` の型。新しい collision monitor と一緒に取り込んだもの) で、collision_monitor がその action を発動した回数から判定 |
+| `localization_state` | `state` (`NORMAL` / `SUSPECT` / `ISOLATED` / `RECOVERING` / `DEGRADED`), `expect`=occurs (`occurs`/`never`), `ends_in`=省略可 (走行後の最後の状態), `topic`=/localization/status | 自己位置の監督の状態 (`localization_supervisor_msgs/LocalizationStatus`) がその状態になった配信の回数から判定。`ends_in` を指定すると、最後に受信した状態がそれであること (復旧して戻ったこと) も判定する。監督ノードを起動するシナリオ (`stack_args` の `localization_monitor: supervisor`) で使う |
 | `navigation_activity` | `code` (`mg_msgs/NavigationActivity` の code。例 `paused` / `trigger_wait` / `action` / `recovery` / `obstacle_stop`), `expect`=occurs (`occurs`/`never`), `topic`=/waypoint_sequencer_node/activity | シーケンサの「いまの活動」がその code になった回数から判定。シーケンサ経由の走行 (`mg_sequencer`) でだけ出る (`nav2_goals` は対象外) |
 
 ## waypoint 形式 `mg`

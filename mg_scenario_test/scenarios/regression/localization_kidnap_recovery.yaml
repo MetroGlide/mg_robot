@@ -1,0 +1,42 @@
+version: "2.0"
+name: localization_kidnap_recovery
+description: >
+  1 つ目のゴールに着いたあとロボットを別の場所へ移して (teleport。自己位置推定には通知しない誘拐の再現)
+  止まったまま待つと、自己位置の監督が異常を確認して AMCL と EKF を初期化し直し (自動復旧)、
+  2 つ目のゴールへ到達できることを確認する。
+  到達の判定はシミュレータ上の真の位置で行うので、自己位置が誤ったまま走って「到達した」と見なした場合は失敗になる。
+  監視は watchdog でなく監督 (localization_monitor:=supervisor) にし、プロファイル recovery で自動復旧を有効にする。
+  監督は、起動の遅れと startup の猶予の間は総合しない。GNSS による初期化も走り出した後に一度だけ姿勢を出し、
+  監督はそれを外からの再初期化として扱って猶予を置く。移す前にそれらが済むよう、走行の前と、移す前に待つ。
+profile: mg01
+world: warehouse
+tags: [localization, kidnap, nav2_goals]
+timeout: 300
+
+stack_args:
+  localization_monitor: supervisor
+  localization_profile: recovery
+
+setup:
+  - respawn: { pose: { x: 0.0, y: 0.0, yaw: 0.0 }, settle_sec: 3.0 }
+  - delay: { sec: 40.0 }
+
+monitors:
+  - localization_state: { state: RECOVERING, expect: occurs, ends_in: NORMAL }
+
+run:
+  nav2_goals:
+    goal_timeout_sec: 120.0
+    goals:
+      - pose: { x: 4.0, y: 2.0, yaw: 0.0 }
+        after:
+          - delay: { sec: 15.0 }
+          - teleport: { pose: { frame: world, x: 5.0, y: 6.0, yaw: 0.0 } }
+          # 止まったまま、監督が異常を確認して復旧するのを待つ
+          - delay: { sec: 40.0 }
+      - pose: { x: 8.0, y: 2.0, yaw: 0.0 }
+
+expect:
+  - reached_all
+  - time_limit: { sec: 300 }
+  - final_pose_error: { x: 8.0, y: 2.0, tolerance: 0.5, frame: world }

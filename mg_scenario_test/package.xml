@@ -15,6 +15,7 @@
   <exec_depend>std_msgs</exec_depend>
   <exec_depend>std_srvs</exec_depend>
   <exec_depend>mg_msgs</exec_depend>
+  <exec_depend>localization_supervisor_msgs</exec_depend>
   <exec_depend>mg_waypoint_navigation</exec_depend>
   <exec_depend>mg_simulation</exec_depend>
   <exec_depend>mg_bringup</exec_depend>
