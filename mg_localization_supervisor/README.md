@@ -48,7 +48,7 @@ GNSS による初期化と監督ノードは、他のノードが立ち上がる
 パラメータ・入出力・イベントは [localization_supervisor/doc/supervisor_node.md](../localization_supervisor/doc/supervisor_node.md)。このロボットでの使い方:
 
 - `localization_supervisor:=true` で、既定の監視 (`mg_navigation` の `amcl_watchdog_node`。共分散が大きければ GNSS で初期化し直す) のまま、監督ノードを並行して動かす。状態 `/localization/status` は監督ノードが出す (watchdog は出さない)。実機で通知の質を確かめるときに使う。`recovery_enabled` のプロファイルは、watchdog と二重に再初期化するので並行しては使わない。
-- `localization_monitor:=supervisor` にすると、watchdog の代わりに監督ノードだけを動かす。自動復旧はプロファイル `recovery` (または `gnss_fallback`) で有効にする。
+- `localization_monitor:=supervisor` (既定) では、watchdog の代わりに監督ノードだけを動かし、基の設定の自動復旧を使う。watchdog と並行して動かすときは、プロファイル `notify_only` になる (二重に再初期化しない)。
 - 設定は `supervisor_config`、プロファイルは `localization_profile` で渡す。走行中は `ros2 service call /localization_supervisor_node/set_profile localization_supervisor_msgs/srv/SetProfile "{profile: gnss_fallback}"` で切り替えられる。
 - GNSS による初期化 (`gnss_amcl_initializer_node`)・watchdog・人による `/initialpose`・`/set_pose` は、外からの再初期化として扱う (状態を戻して猶予を置く)。
 - 診断 `localization_supervisor_node: localization` は、集約で `/Robot/Localization/Monitor`。watchdog と並行して動かすときは、watchdog の診断も同じ集約に入る (悪いほうのレベルになる)。Web UI の「自己位置」のタイルに、状態・疑わしい情報源・異常の判定・障害物の中かが出る。
@@ -82,7 +82,7 @@ GNSS による初期化と監督ノードは、他のノードが立ち上がる
 
 | プロファイル | 内容 |
 | :--- | :--- |
-| `recovery` | 自動復旧を有効にする (`recovery_enabled`)。判定は基の設定のまま |
+| `notify_only` | 検知と通知だけにする (自動復旧しない)。判定は基の設定のまま。watchdog と並行して動かすときの既定 |
 | `gnss_fallback` | AMCL と GNSS が乖離したら GNSS で引き戻すだけの動作 (以前の watchdog と GNSS による初期化と同じ)。AMCL と GNSS の食い違いだけを、続けて異常だった回数で判断し、候補は精度の良い GNSS が続いたときの位置だけ。評価も切り離しも一時停止もしない |
 | `consecutive` | 以前の監督ノードと同じ判定・しきい値・回数。累積 (`cusum`) と比べるために使う |
 
@@ -99,7 +99,7 @@ GNSS による初期化と監督ノードは、他のノードが立ち上がる
 | 対処 | AMCL のゲートを閉じる (`gate`。`/amcl_gate_arbiter/supervisor/...`)、シーケンサを一時停止する (`pause_request`)、再初期化の後にグローバルコストマップを消す (`clear_costmap`) |
 
 - 自動復旧が使える状況: GNSS の測位がある(運ばれたときも、その位置へ戻せる)、または、ずれが推測航法とスキャンの照合で直せる範囲(オドメトリのすべり・AMCL の少しずつのずれ)。GNSS がなく運ばれたときは、復旧できず `DEGRADED` で知らせる。
-- 対処はすべて起動時に作る(プロファイルでは変えられない)。戻し方: プロファイル `recovery` を外す、`state_machine.recovery_enabled: false`、`request_hold: false`(止めない)、`localization_monitor:=watchdog`。
+- 対処はすべて起動時に作る(プロファイルでは変えられない)。戻し方: プロファイル `notify_only`(通知だけ)、`state_machine.request_hold: false`(止めない)、`gnss_fallback`(以前の GNSS で引き戻すだけの動作)、`localization_monitor:=watchdog`(従来の監視)。
 - 部品は `mg_localization_supervisor/actuators/` (`pause_request.py`、`clear_costmap.py`)。
 
 ### オフライン評価

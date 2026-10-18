@@ -39,7 +39,7 @@ scenarios/
 | `dynamic_recovery_resume` | 壁で囲い込んでリカバリーに入れ、待機の段階で壁を除くと、`IsPathClear` が待機を中断して 3 秒以内に走り出し、到達する |
 | `full_lap_sequencer` | シミュレーション用 waypoint 9 個 (通過点と wait_trigger の停止点) を 1 周する |
 | `localization_gnss_denied` | 走行中に GNSS の配信を止めても (ブリッジの `change_publish_state`)、AMCL とホイールオドメトリだけでゴールへ到達し、停止位置の誤差が 0.5m 以内 |
-| `localization_kidnap_recovery` | 1 つ目のゴールに着いたあとロボットを別の場所へ移して (`teleport`。自己位置推定には通知しない) 止まったまま待つと、自己位置の監督が異常を確認して AMCL と EKF を初期化し直し (状態が `RECOVERING` を経て `NORMAL` に戻る。`localization_state`)、2 つ目のゴールへ到達する。到達はシミュレータ上の真の位置で判定する。監視は監督 (`localization_monitor: supervisor`)、プロファイルは `recovery`。停止中の AMCL は更新されない(静止中は AMCL との比較が判定できない)ので、検知は走り出した後になる。所要は約 2.5 分 |
+| `localization_kidnap_recovery` | 1 つ目のゴールに着いたあとロボットを別の場所へ移して (`teleport`。自己位置推定には通知しない) 止まったまま待つと、自己位置の監督が異常を確認して AMCL と EKF を初期化し直し (状態が `RECOVERING` を経て `NORMAL` に戻る。`localization_state`)、2 つ目のゴールへ到達する。到達はシミュレータ上の真の位置で判定する。監視は監督 (`localization_monitor: supervisor`。既定)。停止中の AMCL は更新されない(静止中は AMCL との比較が判定できない)ので、検知は走り出した後になる。所要は約 2.5 分 |
 | `narrow_corridor_blocked` | 通れない幅 (0.5m) の狭い回廊へ経路を引かず、壁の外側を迂回して到達する。壁に接触しない (`obstacle_clearance`) |
 | `dynamic_avoid` | 横切る歩行者 (0.6m/s) に、ロボット自身の動きで接触せず (`obstacle_clearance`) 到達する |
 

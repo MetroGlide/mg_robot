@@ -29,15 +29,15 @@ EKF の周期は `mg_drivers/params/ekf_global.yaml` の `frequency`。
 | `slam_gnss_nav_bridge` | `/navpvt` を、`gnss_transform.yaml` で map 座標に直して `/odom/gps` に出す。アンテナの位置を車体の中心に補正し、測位の質に応じた分散を付ける ([slam_gnss_2d](../../slam_gnss_2d/README.md)) |
 | `gnss_amcl_initializer_node` | 起動時 (と再初期化の要求時) に、精度の良い `/odom/gps` から `/initialpose` (AMCL) と `/set_pose` (EKF) を出して初期化する ([mg_localization_supervisor](../../mg_localization_supervisor/README.md#gnss_amcl_initializer_node)) |
 | `amcl_watchdog_node` | AMCL の共分散が大きい状態が続いたら、`gnss_amcl_initializer_node` に再初期化を要求する ([下記](#amcl_watchdog_node)) |
-| `localization_supervisor_node` | AMCL・GNSS・EKF・スキャンと地図を、設定で組み合わせた判定で見比べ、自己位置のずれを検知して通知する。計画用地図の障害物に入っているかも出す ([localization_supervisor](../../localization_supervisor/doc/supervisor_node.md)、このロボットでの設定は [mg_localization_supervisor](../../mg_localization_supervisor/README.md#監督ノード-localization_supervisor_node)) |
+| `localization_supervisor_node` | AMCL・GNSS・EKF・スキャンと地図を、設定で組み合わせた判定で見比べ、自己位置のずれを検知して、切り離し・再初期化で復旧する(既定の監視)。計画用地図の障害物に入っているかも出す ([localization_supervisor](../../localization_supervisor/doc/supervisor_node.md)、このロボットでの設定は [mg_localization_supervisor](../../mg_localization_supervisor/README.md#監督ノード-localization_supervisor_node)) |
 | `ekf_global_node` | ホイールオドメトリの速度、AMCL の位置・yaw、GNSS の位置を融合する (`mg_drivers/params/ekf_global.yaml`) |
 
 `gnss_amcl_initializer_node`、`amcl_watchdog_node`、`localization_supervisor_node` は、他のノードが立ち上がるのを待って遅れて起動する (`TimerAction`。初期化ノードを先に、監視ノードを後に起動する)。
 
 ## amcl_watchdog_node
 
-AMCL の位置の共分散を監視し、大きい状態が続いたら、`gnss_amcl_initializer_node` に再初期化を要求する。既定の監視 (`localization_monitor:=watchdog`)。
-`localization_supervisor:=true` で、監督ノードを並行して通知だけで動かせる (状態は監督ノードが出す)。
+AMCL の位置の共分散を監視し、大きい状態が続いたら、`gnss_amcl_initializer_node` に再初期化を要求する。従来の監視 (`localization_monitor:=watchdog`)。
+`localization_supervisor:=true` で、監督ノードを並行して通知だけで動かせる (状態は監督ノードが出す。プロファイル `notify_only` になるので、二重に再初期化しない)。
 
 - `amcl_pose_origin` (`PoseWithCovarianceStamped`) を購読し、共分散から指標を計算する。
 - 指標が `threshold` を超える状態が `consecutive_count` 回続くと、異常とする。
@@ -75,10 +75,11 @@ AMCL の位置の共分散を監視し、大きい状態が続いたら、`gnss_
 
 ## 従来の構成に戻す
 
-- `localization_monitor:=watchdog` にすれば、従来の監視。
+- `localization_monitor:=watchdog` にすれば、従来の監視 (共分散による再初期化だけ)。
+- `localization_profile:=gnss_fallback` で、AMCL と GNSS が乖離したら GNSS で引き戻すだけの、以前の動作 (監督ノードのまま)。
+- `localization_profile:=notify_only` で、監督ノードは検知と通知だけ (自動復旧しない)。
 - `use_odom_corrector:=false` で、ホイールオドメトリの補正なし ([mg_drivers](../../mg_drivers/doc/wheel_odom_corrector.md))。
-- `localization_supervisor:=false` (既定) で、監督ノードを動かさない。
-- 監督ノードの負荷は、一定の周期の判定と、間引いたスキャンの照合 (局所地図の照合は数秒おき) だけで、ごく小さい。
+- 監督ノードの負荷は、一定の周期の判定と、間引いたスキャンの照合 (局所地図の照合は数秒おき) だけで、ごく小さい。復旧の計画は異常を確認したときだけで、1 回あたり数十ミリ秒。
 
 ## 評価
 

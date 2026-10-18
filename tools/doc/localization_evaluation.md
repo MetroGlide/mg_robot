@@ -143,7 +143,7 @@ docker run --rm -v $PWD:/app -v ~/ros2_data:/root/ros2_data mg_develop:latest \
 - `--faults`: 再生評価と同じ書式の故障を、**記録した標本に**注入します (`common/offline_faults.py` で変換)。kidnap と `amcl_drift` は AMCL の標本を、`gnss_bias` は GNSS の標本をずらし、`gnss_drop`・`scan_drop` は標本を欠かします。`odom_scale` は注入できません (記録した推定器の出力がオドメトリをすでに使っているため)
 - `--followers ekf=<割合>`: AMCL のずれに、EKF もその割合だけ引きずられた状態にします (実際の推定器は AMCL に引きずられるため)
 - `--labels`: 記録したときに再生評価で注入されていた故障を、正解としてだけ使います (例: `kidnap_none` の変種の記録)
-- `--profile` を並べると、同じ入力でプロファイルを比べます (`''` は既定の設定。`consecutive` は今の監督ノードと同じ判定と回数。`recovery` は自動復旧を有効にする。`gnss_fallback` は以前の動作)
+- `--profile` を並べると、同じ入力でプロファイルを比べます (`''` は既定の設定。`consecutive` は今の監督ノードと同じ判定と回数。`notify_only` は自動復旧しない。`gnss_fallback` は以前の動作)
 - 自動復旧のプロファイルでは、監督が指示した再初期化を評価します。`--apply-reset`(既定 `amcl,ekf`)の姿勢の情報源は、指示の後の標本を、選んだ姿勢に合わせて、復旧して `NORMAL` に戻るまでを真似ます(空なら、指示を記録するだけ)。候補の誤差は、故障を注入する前の記録を真の姿勢として測り(`--truth`。既定は設定の `anchors.pose`)、`--ok-threshold` を超えたものを誤った復旧とします
 
 ```bash

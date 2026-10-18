@@ -30,18 +30,18 @@ def _yaml(name):
         return yaml.safe_load(f)
 
 
-def test_base_config_detects_and_notifies_only():
+def test_base_config_recovers_and_asks_to_stop():
     config = load_config(SUPERVISION)
-    assert not config.machine.recovery_enabled
+    assert config.machine.recovery_enabled and config.machine.request_hold
     assert list(config.generators) == ['gnss', 'dead_reckoning', 'submap']
     assert list(config.scorers) == ['scan', 'gnss_agreement', 'dead_reckoning_agreement', 'free']
     assert config.scorers['free'].veto_below is not None
 
 
-def test_recovery_profile_only_turns_recovery_on():
+def test_notify_only_profile_only_turns_recovery_off():
     base = load_config(SUPERVISION)
-    config = load_config(SUPERVISION, 'recovery')
-    assert config.machine.recovery_enabled and config.machine.request_hold
+    config = load_config(SUPERVISION, 'notify_only')
+    assert not config.machine.recovery_enabled
     assert list(config.enabled_detectors()) == list(base.enabled_detectors())
     assert list(config.generators) == list(base.generators)
 

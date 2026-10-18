@@ -40,7 +40,7 @@ def generate_launch_description():
         'use_gnss_amcl_initializer', default="true")
     # 自己位置の監視ノード (none | watchdog | supervisor)
     localization_monitor_arg = launch_argument_creator.create(
-        'localization_monitor', default="watchdog")
+        'localization_monitor', default="supervisor")
     # 監視が watchdog のとき、監督ノードを並行して通知だけで動かすか
     localization_supervisor_arg = launch_argument_creator.create(
         'localization_supervisor', default="false")

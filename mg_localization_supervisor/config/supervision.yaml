@@ -39,18 +39,22 @@ timeline:
 # allowance は、オフライン評価の正常なときの score の分布 (判定ごとの最大値) より上にする
 detectors:
   # AMCL と GNSS の位置の差のマハラノビス距離の二乗 (2 自由度)。標準偏差が b_max_std_m を超える GNSS は使わない。
-  # 単独測位 (σ 約 1 m) でも、AMCL が数 m ずれれば食い違いとして検知できる
+  # 単独測位 (σ 約 1 m) でも、AMCL が数 m ずれれば食い違いとして検知できる。
+  # max_score を低くして、GNSS の 1 回の外れ値 (この 2 つの判定が同時に反応する) だけでは確認に進まないようにする
+  # (確認には、食い違いが 2 周期以上続く必要がある)
   amcl_gnss:
     type: pose_consistency
     sources: {a: amcl, b: gnss}
     params: {threshold: 6.0, b_max_std_m: 2.0, extra_std_m: 0.3}
     allowance: 0.6
+    max_score: 2.0
   # EKF と GNSS。EKF が引きずられた (汚れた) かを見る
   ekf_gnss:
     type: pose_consistency
     sources: {a: ekf, b: gnss}
     params: {threshold: 6.0, b_max_std_m: 2.0, extra_std_m: 0.3}
     allowance: 0.6
+    max_score: 2.0
   # AMCL と EKF の位置の差 [m]。復旧の収束の確認にも使う
   amcl_ekf:
     type: pose_consistency
@@ -119,9 +123,9 @@ trust:
   require_normal: [scan_ekf]
 
 state_machine:
-  # false: 検知と通知だけ (異常を確認したら DEGRADED、消えたら NORMAL)。
-  # true: 切り離して (対処 gate)、候補を選んで再初期化し、収束したら戻す。プロファイル recovery で有効にする
-  recovery_enabled: false
+  # false: 検知と通知だけ (異常を確認したら DEGRADED、消えたら NORMAL)。プロファイル notify_only で切り替える。
+  # true: 切り離して (対処 gate)、候補を選んで再初期化し、収束したら戻す
+  recovery_enabled: true
   # 切り離してから戻すまで、走行を止めてほしいと要求するか (対処 pause_request が一時停止を出す)
   request_hold: true
   clear_ticks: 5
@@ -234,5 +238,5 @@ profiles:
   gnss_fallback: profiles/gnss_fallback.yaml
   # 判定ごとに続けて異常だった回数で判断する (今の監督ノードと同じ判定と回数)
   consecutive: profiles/consecutive.yaml
-  # 自動復旧を有効にする (判定は基の設定のまま)
-  recovery: profiles/recovery.yaml
+  # 検知と通知だけ (自動復旧しない。watchdog と並行して動かすときに使う)
+  notify_only: profiles/notify_only.yaml

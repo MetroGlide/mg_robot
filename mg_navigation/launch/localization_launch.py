@@ -59,7 +59,7 @@ def generate_launch_description():
         'use_gnss_amcl_initializer', default='true',
         description='GNSS から AMCL の初期姿勢を与えるノードを起動するか').launch_config
     localization_monitor = arg.create(
-        'localization_monitor', default='watchdog',
+        'localization_monitor', default='supervisor',
         description='自己位置の監視ノード (none | watchdog | supervisor)').launch_config
     localization_supervisor = arg.create(
         'localization_supervisor', default='false',
@@ -69,7 +69,13 @@ def generate_launch_description():
         'supervisor_config', default=os.path.join(supervisor_dir, 'config', 'supervision.yaml'),
         description='監督の設定ファイル').launch_config
     localization_profile = arg.create(
-        'localization_profile', default='', description='監督の設定に重ねるプロファイル').launch_config
+        'localization_profile', default='',
+        description='監督の設定に重ねるプロファイル (空は基の設定。監視が watchdog のときは、'
+                    '二重に再初期化しないよう notify_only)').launch_config
+    # watchdog と並行して動かす監督は、通知だけにする (どちらも再初期化すると互いに上書きする)
+    supervisor_profile = PythonExpression([
+        "'notify_only' if '", localization_monitor, "' == 'watchdog' and '", localization_profile,
+        "' == '' else '", localization_profile, "'"])
 
     lifecycle_nodes = [
         'map_server',
@@ -190,7 +196,7 @@ def generate_launch_description():
             'use_supervisor': PythonExpression([
                 "'", localization_monitor, "' == 'supervisor' or '", localization_supervisor, "'.lower() == 'true'"]),
             'supervisor_config': supervisor_config,
-            'localization_profile': localization_profile,
+            'localization_profile': supervisor_profile,
         }.items())
 
     def create_watchdog(context):
