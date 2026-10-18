@@ -33,6 +33,8 @@ AMCL の初期化・入/切の調停・監督ノードは [mg_localization_super
 | `IsPathClear` (Condition) | `mg_is_path_clear_condition_bt_node` | リカバリーの間に、RPP が衝突判定なしで走り出せる状態になったかを判定する。塞がっていた経路が空いたら SUCCESS |
 | `IsPathBlocked` (Condition) | `mg_is_path_blocked_condition_bt_node` | 走行中に、経路の近くが塞がっているかを判定する。塞がっていると確定したときだけ SUCCESS。定期的な再計画を止めるゲートに使う |
 | `CommitPath` (Action) | `mg_commit_path_action_bt_node` | 計画の結果 (`candidate`) が今のゴールへの経路なら `path` に反映する。計画が失敗しても、今のゴールへの経路があれば保つ。なければ `path` を空にして FAILURE |
+| `FindFreeStart` (Action) | `mg_find_free_start_action_bt_node` | ロボットが計画用地図の障害物 (進入禁止の領域) にめり込んでいるとき、その領域の外の最も近い位置を `free_start` に出す。めり込んでいない、出られない、判定できないときは FAILURE |
+| `IsLocalizationHealthy` (Condition) | `mg_is_localization_healthy_condition_bt_node` | 自己位置の監督の状態 (`/localization/status`) が `NORMAL` で新しければ SUCCESS。疑わしいときの走行側の対処を止めるために使う |
 
 判定の仕様、ポート、ログは [doc/bt_plugins.md](./doc/bt_plugins.md)。
 
@@ -129,5 +131,5 @@ colcon test --packages-select mg_navigation --ctest-args -R test_ && colcon test
 | [doc/localization.md](./doc/localization.md) | 自己位置推定の構成、watchdog による監視 |
 | [doc/architecture.md](./doc/architecture.md) | Nav2 のノード、速度指令の経路、コントローラ、BT、アンカーの規則 |
 | [doc/costmap_and_collision.md](./doc/costmap_and_collision.md) | コストマップ、グローバルプランナ、衝突の防止 (`collision_monitor`) |
-| [doc/bt_plugins.md](./doc/bt_plugins.md) | `IsPathClear`・`IsPathBlocked`・`CommitPath` の判定とポート |
+| [doc/bt_plugins.md](./doc/bt_plugins.md) | `IsPathClear`・`IsPathBlocked`・`CommitPath`・`FindFreeStart`・`IsLocalizationHealthy` の判定とポート |
 | [doc/rpp_tuning.md](./doc/rpp_tuning.md) | RPP のパラメータの意味、値の関係、調整の進め方、症状と対処 |

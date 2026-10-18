@@ -45,6 +45,20 @@
         <IsPathClear path="{path}"/>
         <Fallback name="RecoveryLadder">
 
+          <!-- 計画用地図の障害物 (進入禁止の領域) にめり込んでいると、プランナが「始点が致死」で計画できない。
+               自己位置が信頼できる (監督の状態が NORMAL) ときだけ、その領域の外の最も近い位置を始点にして計画し、
+               領域から出る (走行はセンサだけのローカルコストマップが見る)。自己位置が疑わしいときは復旧に任せる。
+               めり込んでいなければ FindFreeStart が失敗して、次の段階へ進む。この段階を外すと脱出しない -->
+          <Sequence name="EscapeKeepout">
+            <IsLocalizationHealthy/>
+            <FindFreeStart free_start="{free_start}"/>
+            <ComputePathToPose goal="{goal}" start="{free_start}" path="{candidate_path}" planner_id="GridBased"/>
+            <CommitPath candidate="{candidate_path}" goal="{goal}" path="{path}"/>
+            <Inverter>
+              <IsPathBlocked path="{path}"/>
+            </Inverter>
+          </Sequence>
+
           <!-- 今のコストマップで引き直す -->
           <Sequence name="Replan">
             <ComputePathToPose goal="{goal}" path="{candidate_path}" planner_id="GridBased"/>

@@ -45,6 +45,39 @@ RPP (Humble 1.1.20 の `RegulatedPurePursuitController`) の衝突判定と同�
 - ログ (bt_navigator): 塞がり始めと解消のときに INFO を出す (`holding periodic replanning` / `resuming periodic replanning`)
 - ポートは `IsPathClear` から `clear_duration` を除いたもの (`path`, `margin`, `controller_node`, `controller_id`, `costmap_node`, `costmap_topic`, `transform_tolerance`)
 
+## FindFreeStart
+
+ロボットが、グローバルコストマップ (計画用地図) の障害物にめり込んでいるとき、その領域の外の最も近い位置を `free_start` に出す。
+計画用地図にだけある進入禁止の領域に入ると、プランナが「始点が致死」で計画できず、リカバリーをくり返す。`ComputePathToPose` の `start` に `free_start` を渡せば、領域の外から計画でき、走行はローカルコストマップ (センサだけ) が見ながら領域から出る。
+
+- 衝突の判定は RPP と同じ (フットプリントのコストが致死以上。`IsPathClear` と同じ `PathClearanceChecker`)。フットプリントとコストマップは `global_costmap` から取得する (設定値は持たない)
+- 探し方: ロボットの姿勢が衝突しているとき、衝突している領域の中だけを通る最短の道のり (ダイクストラ法。8 近傍) で、衝突しない最初の位置を選ぶ。領域の外に出てから進入禁止の線をまたぐことはしない。出口は、`margin` 以内に衝突する位置がない場所にする (出た直後に衝突へ戻らないため)。向きはロボットの今の向きのまま
+- SUCCESS は `free_start` を出したときだけ。ロボットがめり込んでいない (探す必要がない)、`max_distance` 以内に出られない、判定できない (フットプリントの未取得、コストマップが未受信・古い、TF が取れない) ときは FAILURE (`free_start` は変えない)
+- 自己位置が疑わしいときに領域から出ようとしても、誤った場所へ出るだけなので、`IsLocalizationHealthy` と組み合わせて使う
+- ログ (bt_navigator): 最初に見つけたとき INFO (`the robot is inside an obstacle of the global costmap`)、出られないとき WARN
+
+| ポート | 既定値 | 内容 |
+| :--- | :--- | :--- |
+| `free_start` | なし | (出力) 領域の外の最も近い姿勢 |
+| `max_distance` | `3.0` | 出口を探す距離の上限 [m] |
+| `margin` | `0.1` | 出口に求める、衝突からの余裕 [m] |
+| `controller_node` / `controller_id` | `controller_server` / `FollowPath` | `PathClearanceMonitor` の設定取得先 (RPP の設定は判定に使わない) |
+| `costmap_node` / `costmap_topic` | `global_costmap/global_costmap` / `global_costmap/costmap_raw` | コストマップのパラメータの取得先と購読するトピック |
+| `transform_tolerance` | `0.2` | TF の許容時間 [s] |
+
+## IsLocalizationHealthy
+
+自己位置の監督 (`localization_supervisor_node`) の状態 `/localization/status` (`localization_supervisor_msgs/LocalizationStatus`) が `NORMAL` なら SUCCESS。
+自己位置が疑わしいとき (`SUSPECT`・`ISOLATED`・`RECOVERING`・`DEGRADED`) は、復旧に任せて、走行側の対処 (障害物の領域からの脱出など) を止める。
+
+- 状態を受け取っていない、`max_age` 秒より古い (監督がいない、止まっている) ときは FAILURE。つまり、監視が `none` のときや、状態を配信するノードがないときは SUCCESS にならない
+- 状態の変化 (信頼できる ↔ 信頼できない) のときに INFO を出す
+
+| ポート | 既定値 | 内容 |
+| :--- | :--- | :--- |
+| `topic` | `/localization/status` | 状態のトピック |
+| `max_age` | `3.0` | 状態を信頼する古さの上限 [s] |
+
 ## CommitPath
 
 | ポート | 既定値 | 内容 |
