@@ -72,6 +72,7 @@ RPP (Humble 1.1.20 の `RegulatedPurePursuitController`) の衝突判定と同�
 
 - 状態を受け取っていない、`max_age` 秒より古い (監督がいない、止まっている) ときは FAILURE。つまり、監視が `none` のときや、状態を配信するノードがないときは SUCCESS にならない
 - 状態の変化 (信頼できる ↔ 信頼できない) のときに INFO を出す
+- GNSS だけを切り離している間 (`ISOLATED`) も FAILURE になる。将来の拡張: [doc/ideas](../../doc/ideas/localization_pose_trust.md)
 
 | ポート | 既定値 | 内容 |
 | :--- | :--- | :--- |
