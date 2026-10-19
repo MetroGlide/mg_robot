@@ -1,6 +1,6 @@
 # localization_supervisor_msgs
 
-自己位置推定の検証と復旧のフレームワーク [localization_supervisor](../localization_supervisor/README.md) のメッセージとサービス。ノードは持たない。
+自己位置推定の検証と復旧のフレームワーク [localization_supervisor](../README.md) のメッセージとサービス。ノードは持たない。
 
 ## メッセージ (`msg/`)
 

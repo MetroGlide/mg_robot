@@ -87,7 +87,7 @@ make scenario-test-all TIER=smoke   # シミュレータでの回帰テスト (�
 | [mg_localization_supervisor](./mg_localization_supervisor/README.md) | 自己位置推定の監督・ゲートの調停・GNSS による初期化を、MG-01 の構成で使うための設定と launch |
 | [mg_waypoint_navigation](./mg_waypoint_navigation/README.md) | ウェイポイントシーケンサ |
 | [slam_gnss_2d](./slam_gnss_2d/README.md) | GNSS 拘束付き 2D SLAM (C++)、GNSS ブリッジ |
-| [localization_supervisor](./localization_supervisor/README.md) | ロボットに依存しない、自己位置推定の検証と復旧のフレームワーク (メッセージは [localization_supervisor_msgs](./localization_supervisor_msgs/README.md)) |
+| [localization_supervisor](./localization_supervisor/README.md) | ロボットに依存しない、自己位置推定の検証と復旧のフレームワーク (メッセージは [localization_supervisor_msgs](./localization_supervisor/localization_supervisor_msgs/README.md)) |
 | [mg_slam](./mg_slam/README.md) | slam_toolbox の launch、地図プレビュー、rosbag の収録 |
 | [mg_ui](./mg_ui/README.md) | Web UI と system_manager |
 | [mg_diagnostics](./mg_diagnostics/README.md) | 診断の集約 (`/diagnostics_agg`)、第三者のノードの監視、イベントの中継 (`/events`) |

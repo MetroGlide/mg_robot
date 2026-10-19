@@ -28,7 +28,7 @@ import sys
 from typing import Dict, List, Optional, Sequence
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-for path in (REPO_ROOT, os.path.join(REPO_ROOT, "localization_supervisor")):
+for path in (REPO_ROOT, os.path.join(REPO_ROOT, "localization_supervisor", "localization_supervisor")):
     if path not in sys.path:
         sys.path.insert(0, path)
 

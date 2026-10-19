@@ -4,12 +4,14 @@
         scenario-test scenario-test-all scenario-test-attach scenario-validate scenario-env scenario-env-stop
 
 # develop コンテナで pytest を実行する (Python のテストのみ。C++ の gtest は colcon test)。
-#   pkg=<パッケージ>  特定パッケージのテストだけ実行する (例: pkg=mg_waypoint_navigation)
+#   pkg=<パッケージ>  特定パッケージのテストだけ実行する (例: pkg=mg_waypoint_navigation。
+#                     複数のパッケージをまとめたディレクトリの中は、パスで指定する: pkg=localization_supervisor/localization_supervisor)
 #   OPTS="..."        pytest のオプション (例: OPTS="-k test_bag")
+# PYTHONPATH には、直下のディレクトリと、その中のパッケージ (package.xml のあるディレクトリ) を入れる。
 test: ## pytest を実行 [pkg=<パッケージ> OPTS]
 	$(COMPOSE) run --rm --no-deps develop bash -c \
 	  "cd /app && \
-	   PYTHONPATH=\$$(find /app -maxdepth 1 -mindepth 1 -type d | tr '\n' ':') \
+	   PYTHONPATH=\$$(find /app -maxdepth 1 -mindepth 1 -type d | tr '\n' ':')\$$(find /app -mindepth 3 -maxdepth 3 -name package.xml -printf '%h:') \
 	   python3 -m pytest $(if $(pkg),$(pkg)/test/,) -v $(OPTS)"
 
 # mg_ui のフロントエンドの型チェックと lint (node コンテナ内で実行)。

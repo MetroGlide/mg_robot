@@ -3,9 +3,16 @@
 自己位置推定が地図やほかの情報源と合っているかを検証し、ずれたときに復旧するためのフレームワーク。
 特定のロボットに依存しない。ロボットごとのトピック・設定・部品は、使う側のパッケージから与える。
 
-メッセージは [localization_supervisor_msgs](../localization_supervisor_msgs/README.md)。
+## パッケージ
 
-## 構成
+| ディレクトリ | 内容 |
+| :--- | :--- |
+| `localization_supervisor/` | フレームワーク (中核・ノード・標準のプラグイン・オフライン評価の実行部)。`localization_supervisor/`、`config/examples/`、`scripts/`、`test/` |
+| `localization_supervisor_msgs/` | メッセージ・サービスの定義 ([README](./localization_supervisor_msgs/README.md)) |
+
+2 つのパッケージは、このディレクトリごと取り出せる。ロボット固有の設定・launch・部品は、このディレクトリの外 (例: `mg_localization_supervisor`) に置く。
+
+## 構成 (`localization_supervisor/` パッケージ)
 
 | ディレクトリ | 内容 |
 | :--- | :--- |
@@ -28,12 +35,12 @@ launch は持たない。使う側のパッケージが、自分の設定で起�
 
 ## 依存
 
-[package.xml](./package.xml) を参照。ロボット固有のパッケージには依存させない。
+[package.xml](./localization_supervisor/package.xml) を参照。ロボット固有のパッケージには依存させない。
 
 ## テスト
 
 ```bash
-make test pkg=localization_supervisor
+make test pkg=localization_supervisor/localization_supervisor
 ```
 
 - `test_framework_independence.py`: `package.xml` の依存と Python の import に、ロボット固有のパッケージ (`mg_` で始まるもの) が無く、中核が ROS に依存しない

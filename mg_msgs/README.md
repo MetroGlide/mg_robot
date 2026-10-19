@@ -24,7 +24,7 @@ MG-01 の独自メッセージ・サービスの定義。ノードは持たな�
 | `GetPoseGraph` | ポーズグラフ全体を取得する | `mg_slam` の旧 Python 版 | `mg_slam` のプレビュー |
 | `ResetSimRobotPose` | シミュレータのロボットの位置を戻す | なし (どこからも使われていない) | なし |
 
-自己位置推定の監督の状態 (`LocalizationStatus`) とゲートの調停の状態 (`GateState`) は、[localization_supervisor_msgs](../localization_supervisor_msgs/README.md) にある。
+自己位置推定の監督の状態 (`LocalizationStatus`) とゲートの調停の状態 (`GateState`) は、[localization_supervisor_msgs](../localization_supervisor/localization_supervisor_msgs/README.md) にある。
 
 ## slam_gnss_2d_msgs との関係
 
