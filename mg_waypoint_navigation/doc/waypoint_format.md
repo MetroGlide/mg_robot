@@ -56,6 +56,26 @@ waypoints:
 | `srv_class`  | string | サービス型クラス名 (例: `SetBool`)     |
 | `request`    | dict   | リクエストフィールドと値               |
 
+応答に `success` があって false のとき (サービスが拒否したとき) は、失敗として `action.failed` に残る。応答が無いときも失敗になる。どちらも走行は止まらず、次のアクションへ進む。`success` を持たないサービス (`Empty` など) は、呼べれば成功。
+
+#### 例: 自己位置の監督のプロファイルを切り替える
+
+区間によって、自己位置の監督の判定の組み合わせや自動復旧の有無を変えたいときは、監督のサービス `set_profile` を `service` で呼ぶ。`profile` が空なら基の設定に戻る。
+
+```yaml
+- type: service
+  service: /localization_supervisor_node/set_profile
+  srv_module: localization_supervisor_msgs.srv
+  srv_class: SetProfile
+  request:
+    profile: notify_only
+```
+
+- プロファイルの名前は、監督の設定 ([mg_localization_supervisor](../../mg_localization_supervisor/README.md)) で決まる。存在しない名前は拒否され、`action.failed` に残る。
+- 切り替えると、監督は作り直される。状態は NORMAL に戻り、復旧の起点 (アンカー) とスキャンの一致率の基準は捨てられる。止まっているウェイポイントで切り替え、自己位置の復旧中は避ける。
+- プロファイルは、走行が終わっても残る。区間の終わりで、空の `profile` に戻す。`amcl_on` と `amcl_off` のように、切り替えた側が戻す責任を持つ。
+- 監督が起動していない (`localization_monitor:=watchdog` など) ときは、サービスがなく、失敗になる。
+
 ### type: publish — トピックパブリッシュ
 
 ```yaml

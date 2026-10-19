@@ -160,4 +160,4 @@ BT の動きは、シナリオテスト (`dynamic_stop_and_resume`、`dynamic_pe
 | `action.started` / `action.succeeded` / `action.failed` | INFO / INFO / ERROR | 到着時アクションの実行 (`type`、`index`、`duration_sec`、`error`) |
 | `node.started` | INFO | 起動 |
 
-アクションは、失敗したら `ActionFailed` を投げる (`actions/base.py`)。`ActionExecutor` が `action.failed` に出し、次のアクションへ進む。サービスの応答が無かったとき (`BaseAction._call_service`) も失敗になる。
+アクションは、失敗したら `ActionFailed` を投げる (`actions/base.py`)。`ActionExecutor` が `action.failed` に出し、次のアクションへ進む。サービスの応答が無かったとき (`BaseAction._call_service`) と、汎用の `service` アクションで応答の `success` が false のときも失敗になる。
