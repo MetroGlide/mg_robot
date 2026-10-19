@@ -79,11 +79,34 @@ def test_variance_scale_topic_matches_the_gnss_bridge_parameters():
         assert bridge['variance_scale_topic'] == topic, path
     # 倍率を求める情報源は、監督の設定にある
     residual = config.residuals[scale['params']['residual']]
-    assert residual.a == 'gnss' and scale['params']['blame'] == residual.a
+    assert residual.a == 'gnss'
 
 
 def test_gnss_fallback_does_not_scale_the_gnss_variance():
     assert load_config(SUPERVISION, 'gnss_fallback').residuals['gnss_vs_ekf'].max_scale == 1.0
+
+
+def test_a_gnss_that_disagrees_is_only_isolated_and_amcl_is_vouched_for_by_the_submap_check():
+    config = load_config(SUPERVISION)
+    assert config.machine.isolate_only == ['gnss']
+    # AMCL と独立でない scan_amcl は vouch しない
+    assert {name: d.vouch for name, d in config.detectors.items() if d.vouch} == {'submap_amcl': ['amcl']}
+    assert 'submap_amcl' in config.enabled_detectors()
+
+
+def test_every_disabled_actuator_names_an_actuator():
+    base = load_config(SUPERVISION)
+    names = [a.get('name', a['type']) for a in base.actuators]
+    assert names == ['gate', 'pause_request', 'clear_costmap', 'variance_scale']
+    for profile in ['', *base.profiles]:
+        assert set(load_config(SUPERVISION, profile).disabled_actuators) <= set(names)
+    assert base.disabled_actuators == []
+
+
+def test_gnss_fallback_only_keeps_the_actions_the_previous_initializer_had():
+    config = load_config(SUPERVISION, 'gnss_fallback')
+    assert set(config.disabled_actuators) == {'pause_request', 'clear_costmap', 'variance_scale'}
+    assert config.machine.isolate_only == []
 
 
 def test_pause_request_is_active_only_while_holding(monkeypatch):

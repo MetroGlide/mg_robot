@@ -23,9 +23,12 @@ state_machine:
   recovery_enabled: true
   request_hold: false
   isolate_hold_sec: 0.0
+  isolate_only: []
 
 recovery:
   convergence: [amcl_gnss]
+  # 以前の動作には無かった対処は働かせない
+  disabled_actuators: [pause_request, clear_costmap, variance_scale]
   generators:
     gnss:
       params: {max_std_m: 5.0, consecutive: 2, min_std_m: 0.5, yaw_std_rad: 0.26}

@@ -23,8 +23,15 @@ class PauseRequestActuator(Actuator):
         self._pub = node.create_publisher(PauseRequest, self.params['topic'], 10)
 
     def apply(self, result: StepResult) -> None:
+        reason = f'localization {result.state.name} blame={result.blame}' if result.hold_requested else ''
+        self._publish(bool(result.hold_requested), reason)
+
+    def release(self) -> None:
+        self._publish(False, '')
+
+    def _publish(self, active: bool, reason: str) -> None:
         request = PauseRequest()
         request.requester_id = self.params['requester_id']
-        request.active = bool(result.hold_requested)
-        request.reason = f'localization {result.state.name} blame={result.blame}' if result.hold_requested else ''
+        request.active = active
+        request.reason = reason
         self._pub.publish(request)

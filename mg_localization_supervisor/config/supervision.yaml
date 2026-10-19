@@ -2,7 +2,7 @@
 # 情報源 (AMCL・GNSS・EKF・ホイールオドメトリ・地図とスキャン・計画用地図)、判定のインスタンス、総合、状態遷移、
 # アンカー、安全の信号、出力。書き方は localization_supervisor/doc/parameters.md。
 # オフライン評価 (tools/scripts/eval_localization_offline.py) もこのファイルを読む。
-version: 1
+version: 2
 
 # 判定と総合の周期 [s]
 period_sec: 1.0
@@ -97,11 +97,15 @@ detectors:
     sources: {pose: ekf, motion: odom, reference: map_scan}
     params: {ratio_min: 0.35, baseline_min_samples: 5, gain_threshold: 0.5}
     allowance: 0.8
+  # AMCL と GNSS が食い違ったとき、どちらが悪いかの切り分けに使う。これが正常と判定できているあいだは、
+  # AMCL は正しいと見なして、食い違いの疑いを GNSS だけにかける (地図と GNSS の位置合わせのずれなど)。
+  # scan_amcl は AMCL と独立でないので vouch しない。判定できない周期が続くと、AMCL を疑う側に戻る
   submap_amcl:
     type: submap_map
     sources: {pose: amcl, motion: odom, reference: map_scan}
     params: {ratio_min: 0.35, baseline_min_samples: 5, gain_threshold: 0.5}
     allowance: 0.8
+    vouch: [amcl]
   # 次の 2 つは、この環境 (屋外。別の走行で作った地図) のオフライン評価で、正しい姿勢でも異常と区別できなかった
   # ため無効にしている。光線が地図の占有セルを越える割合が正しい姿勢でも 2〜7 割あり (植栽や柵の向こうが見える)、
   # ずらしたほうが合う向きも、地図の位置合わせのずれで場所ごとに一定の向きにそろう
@@ -134,6 +138,10 @@ state_machine:
   recover_timeout_sec: 30.0
   max_reinit_attempts: 3
   degraded_retry_sec: 60.0
+  # GNSS が悪いと判断したときは、GNSS の分散を上限にして使わないようにするだけで、走行を止めず、AMCL と EKF の
+  # 再初期化もしない (AMCL は別の判定で正しいと分かっている)。GNSS の異常がなくなれば戻る。
+  # 地図の歪みによる GNSS のずれは、GNSS の故障ではなく、場所ごとに決まったずれ
+  isolate_only: [gnss]
 
 recovery:
   # 再初期化の後に収束したかを見る判定 (すべて正常な周期が recover_ok_ticks 回続けば戻す)
@@ -195,13 +203,15 @@ recovery:
     - type: gate
       params: {service: /amcl_gate_arbiter/supervisor/change_publish_state, blames: [amcl, unknown]}
     # 走行を止めてほしいあいだ、シーケンサを一時停止する
-    - {type: "mg_localization_supervisor.actuators.pause_request:PauseRequestActuator"}
+    - name: pause_request
+      type: "mg_localization_supervisor.actuators.pause_request:PauseRequestActuator"
     # 再初期化の後に、グローバルコストマップを消す
-    - {type: "mg_localization_supervisor.actuators.clear_costmap:ClearCostmap"}
-    # GNSS の分散にかける倍率を配信する (GNSS が blame のときは上限)。slam_gnss_2d の nav_bridge.yaml の
+    - name: clear_costmap
+      type: "mg_localization_supervisor.actuators.clear_costmap:ClearCostmap"
+    # GNSS の分散にかける倍率を配信する (GNSS を切り離しているあいだは上限)。slam_gnss_2d の nav_bridge.yaml の
     # variance_scale_topic と同じトピック
     - type: variance_scale
-      params: {topic: /gnss_variance_scale, residual: gnss_vs_ekf, blame: gnss}
+      params: {topic: /gnss_variance_scale, residual: gnss_vs_ekf}
 
 anchors:
   pose: ekf
