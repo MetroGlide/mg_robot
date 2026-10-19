@@ -1,5 +1,5 @@
 """対処の組み立て: 設定の recovery.actuators から対処を作る。"""
-from typing import Any, List, Mapping
+from typing import Any, Collection, List, Mapping, Set
 
 from ...core.config import ConfigError
 from ...core.plugins import PluginError, resolve, resolve_params
@@ -13,7 +13,20 @@ STANDARD_ACTUATORS = {
     'variance_scale': VarianceScale,
 }
 
-__all__ = ['Actuator', 'STANDARD_ACTUATORS', 'build_actuators']
+__all__ = ['Actuator', 'STANDARD_ACTUATORS', 'apply_actuators', 'build_actuators']
+
+
+def apply_actuators(actuators: List[Actuator], disabled: Collection[str], released: Set[str], result: Any) -> None:
+    """プロファイルで無効にした対処 (disabled の名前) は働かせない。無効になった周期に、一度だけ release する。
+    released は、release 済みの名前 (呼び出し側が持ち続ける)。"""
+    for actuator in actuators:
+        if actuator.name in disabled:
+            if actuator.name not in released:
+                released.add(actuator.name)
+                actuator.release()
+            continue
+        released.discard(actuator.name)
+        actuator.apply(result)
 
 
 def build_actuators(items: List[Mapping[str, Any]], node: Any) -> List[Actuator]:

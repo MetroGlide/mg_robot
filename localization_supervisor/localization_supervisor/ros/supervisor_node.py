@@ -36,7 +36,7 @@ from ..core.geometry import Pose2
 from ..core.status import StatusView, status_view
 from ..core.supervisor import Supervisor, make_store
 from .adapters import AdapterContext, build_adapters
-from .actuators import build_actuators
+from .actuators import apply_actuators, build_actuators
 from .adapters.standard import yaw_from_quaternion
 from .diagnostics import LocalizationTask
 from .event_sinks import build_event_sink
@@ -115,6 +115,7 @@ class LocalizationSupervisorNode(Node):
         self._own = OwnMessages()
         self._resetters = build_resetters(config.resetters, self, self._own)
         self._actuators = build_actuators(config.actuators, self)
+        self._released = set()
         for topic in config.external_reinit_topics:
             self.create_subscription(
                 PoseWithCovarianceStamped, topic, lambda msg, t=topic: self._on_external_reinit(t, msg), 10)
@@ -175,8 +176,9 @@ class LocalizationSupervisorNode(Node):
             if directive.kind == 'reinit':
                 for resetter in self._resetters:
                     resetter.reset(directive.candidate)
-        for actuator in self._actuators:
-            actuator.apply(result)
+        apply_actuators(self._actuators, self._supervisor.config.disabled_actuators, self._released, result)
+        for name, scale in result.applied_scales.items():
+            self._store.note_scale(self._supervisor.config.residuals[name].a, now, scale)
         self._view = status_view(result, self._supervisor.config, self._supervisor.profile)
         self._status_pub.publish(to_message(self._view, self.get_clock().now().to_msg()))
 

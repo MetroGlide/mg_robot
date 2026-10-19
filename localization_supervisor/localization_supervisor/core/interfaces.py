@@ -18,7 +18,7 @@ import numpy as np
 
 from .geometry import Pose2
 
-CONTRACT_VERSION = 1
+CONTRACT_VERSION = 2
 
 
 class SourceKind(str, enum.Enum):
@@ -145,6 +145,8 @@ class InstanceInfo:
     decay: float = 1.0
     max_score: float = 5.0
     options: Dict[str, Any] = field(default_factory=dict)
+    # 正常と判定できたとき、正しいと示す情報源 (切り分けで、2 つの情報源を比べた判定の疑いを、もう一方に寄せる)
+    vouches: List[str] = field(default_factory=list)
 
 
 @dataclass

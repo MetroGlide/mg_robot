@@ -46,7 +46,8 @@ class OutputConfig:
     status_topic: str = '/localization/status'
     diagnostic_name: str = 'localization'
     hardware_id: str = 'localization'
-DETECTOR_KEYS = {'type', 'sources', 'params', 'weight', 'allowance', 'decay', 'max_score', 'enabled', 'options'}
+DETECTOR_KEYS = {
+    'type', 'sources', 'params', 'weight', 'allowance', 'decay', 'max_score', 'enabled', 'options', 'vouch'}
 
 
 @dataclass
@@ -70,6 +71,8 @@ class DetectorConfig:
     max_score: float = 5.0
     enabled: bool = True
     options: Dict[str, Any] = field(default_factory=dict)
+    # 正常と判定できたとき、正しいと示す情報源 (この判定の疑いの対象のうち)
+    vouch: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -95,6 +98,8 @@ class SupervisorConfig:
     # 推定器への送り先と、対処の設定 (ROS 側のプラグインが読む。形だけここで確かめる)
     resetters: List[Dict[str, Any]] = field(default_factory=list)
     actuators: List[Dict[str, Any]] = field(default_factory=list)
+    # 起動時に作った対処のうち、いま働かせない対処の名前 (プロファイルで切り替える)
+    disabled_actuators: List[str] = field(default_factory=list)
     anchors: Optional[AnchorConfig] = None
     safety: Optional[SafetyConfig] = None
     residuals: Dict[str, ResidualConfig] = field(default_factory=dict)
@@ -238,11 +243,15 @@ def _parse_detector(
         name=name, type=type_name, cls=cls, sources=dict(bound), params=params,
         weight=_number(body, 'weight', 1.0, where), allowance=_number(body, 'allowance', 1.0, where),
         decay=_number(body, 'decay', 1.0, where), max_score=_number(body, 'max_score', 5.0, where),
-        enabled=enabled, options=_mapping(body.get('options'), f'{where}.options'))
+        enabled=enabled, options=_mapping(body.get('options'), f'{where}.options'),
+        vouch=_names(body.get('vouch'), f'{where}.vouch'))
     try:
-        cls(name, params, bound)
+        subjects = cls(name, params, bound).subjects()
     except (ValueError, TypeError) as error:
         raise ConfigError(f'{where}: {error}') from error
+    for source in detector.vouch:
+        if source not in subjects:
+            raise ConfigError(f'{where}.vouch: {source!r} is not one of the sources this detector suspects {subjects}')
     return detector
 
 
@@ -288,7 +297,7 @@ def _parse_safety(raw: Mapping[str, Any], sources: Mapping[str, SourceConfig]) -
 
 
 RECOVERY_KEYS = {'convergence', 'matcher', 'scan_buffer', 'generators', 'scorers', 'selection', 'resetters',
-                 'actuators'}
+                 'actuators', 'disabled_actuators'}
 GENERATOR_KEYS = {'type', 'sources', 'params', 'enabled'}
 SCORER_KEYS = {'type', 'sources', 'params', 'weight', 'veto_below', 'enabled'}
 
@@ -363,9 +372,15 @@ def _parse_recovery(
 
     resetters = _plugin_list(recovery.get('resetters'), 'recovery.resetters')
     actuators = _plugin_list(recovery.get('actuators'), 'recovery.actuators')
+    disabled_actuators = _names(recovery.get('disabled_actuators'), 'recovery.disabled_actuators')
+    actuator_names = [item.get('name', item['type']) for item in actuators]
+    for name in disabled_actuators:
+        if name not in actuator_names:
+            raise ConfigError(
+                f'recovery.disabled_actuators: unknown actuator {name!r} (actuators: {actuator_names})')
     return {'generators': generators, 'scorers': scorers, 'selection': selection, 'matcher_cls': matcher_cls,
             'matcher_params': matcher_params, 'scan_buffer': scan_buffer, 'resetters': resetters,
-            'actuators': actuators}
+            'actuators': actuators, 'disabled_actuators': disabled_actuators}
 
 
 def _enabled(body: Mapping[str, Any], where: str) -> bool:
@@ -481,6 +496,10 @@ def parse_config(
     machine = _dataclass_from(MachineConfig, _mapping(merged.get('state_machine'), 'state_machine'), 'state_machine')
     if machine.recovery_enabled and not recovery_parts['generators']:
         raise ConfigError('state_machine.recovery_enabled: requires recovery.generators')
+    machine.isolate_only = _names(machine.isolate_only, 'state_machine.isolate_only')
+    for name in machine.isolate_only:
+        if name not in sources:
+            raise ConfigError(f'state_machine.isolate_only: unknown source {name!r}')
 
     grace = _mapping(merged.get('grace'), 'grace')
     _check_keys(grace, {'startup_sec', 'after_recovery_sec', 'after_reset_sec'}, 'grace')

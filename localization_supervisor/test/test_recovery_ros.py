@@ -60,6 +60,7 @@ class FakeNode:
         self.publishers = []
         self.clients = []
         self.timers = []
+        self.destroyed = []
         self.logger = MagicMock()
         self.sec = 100
 
@@ -74,6 +75,10 @@ class FakeNode:
         client.name = name
         self.clients.append(client)
         return client
+
+    def destroy_timer(self, timer):
+        self.timers.remove(timer)
+        self.destroyed.append(timer)
 
     def create_timer(self, period, callback):
         timer = FakeTimer(period, callback)
@@ -206,8 +211,11 @@ def test_service_call_on_reinit_directive_with_delay():
     assert not node.timers
     call.apply(_result(directives=[Directive('reinit', 'amcl', _candidate())]))
     assert not node.clients[0].calls
-    node.timers[0].callback()
-    assert len(node.clients[0].calls) == 1 and node.timers[0].cancelled
+    (timer,) = node.timers
+    timer.callback()
+    assert len(node.clients[0].calls) == 1 and timer.cancelled
+    # 一度呼んだタイマーは破棄する (再初期化のたびにノードにたまらない)
+    assert node.destroyed == [timer] and not node.timers
 
 
 def test_service_call_without_delay_and_unknown_type():

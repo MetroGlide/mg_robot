@@ -7,13 +7,14 @@ import pytest
 from localization_supervisor.core.config import ConfigError, load_config, merge, parse_config
 from localization_supervisor.core.detectors.pose_consistency import PoseConsistency
 from localization_supervisor.core.fusion import ConsecutiveFusion
+from localization_supervisor.core.interfaces import CONTRACT_VERSION
 
 from supervisor_test_helpers import AlwaysNormal, NeedsExtra
 
 EXAMPLES = sorted((pathlib.Path(__file__).resolve().parents[1] / 'config' / 'examples').glob('*.yaml'))
 
 BASE = {
-    'version': 1,
+    'version': CONTRACT_VERSION,
     'sources': {'amcl': {'kind': 'pose'}, 'gnss': {'kind': 'pose'}, 'odom': {'kind': 'motion'},
                 'ekf': {'kind': 'pose', 'derived_from': ['amcl', 'gnss', 'odom']}},
     'detectors': {
@@ -119,7 +120,7 @@ def test_load_config_validates_every_profile(tmp_path):
     (tmp_path / 'bad.yaml').write_text('detectors: {amcl_gnss: {params: {threshold: x}}}\n')
     main = tmp_path / 'main.yaml'
     main.write_text(
-        'version: 1\nsources: {amcl: {kind: pose}, gnss: {kind: pose}}\n'
+        f'version: {CONTRACT_VERSION}\n' 'sources: {amcl: {kind: pose}, gnss: {kind: pose}}\n'
         'detectors: {amcl_gnss: {type: pose_consistency, sources: {a: amcl, b: gnss}, params: {threshold: 6.0}}}\n'
         'profiles: {bad: bad.yaml}\n')
     with pytest.raises(ConfigError, match='expected float'):

@@ -74,26 +74,34 @@ class RecoveryPlanner:
         for plugin in [*self.generators, *self.scorers]:
             plugin.reset()
 
-    def plan(self, context: RecoveryContext) -> RecoveryPlan:
+    def plan(self, context: RecoveryContext, exclude: str = '') -> RecoveryPlan:
+        """exclude は、疑わしい情報源の名前。それを使う候補を作るものと評価するものは、使わない。"""
         started = time.monotonic()
         context.matcher = self.matcher
         candidates: List[Candidate] = []
+        notes: Dict[str, str] = {}
         for generator in self.generators:
+            if exclude and exclude in generator.sources.values():
+                notes[generator.name] = f'excluded:{exclude}'
+                continue
             candidates.extend(generator.generate(context))
-        notes = {generator.name: generator.status for generator in self.generators}
+            notes[generator.name] = generator.status
         if not candidates:
             return RecoveryPlan([], None, 'no_candidates', time.monotonic() - started, generators=notes)
+        scorers = [(s, c) for s, c in zip(self.scorers, self.scorer_configs)
+                   if not (exclude and exclude in s.sources.values())]
         for candidate in candidates:
-            self._score(candidate, context)
+            self._score(candidate, context, scorers)
         alive = [c for c in candidates if not c.vetoed_by]
         plan = self._select(candidates, alive)
         plan.elapsed_sec = time.monotonic() - started
         plan.generators = notes
         return plan
 
-    def _score(self, candidate: Candidate, context: RecoveryContext) -> None:
+    @staticmethod
+    def _score(candidate: Candidate, context: RecoveryContext, scorers) -> None:
         weighted = total = 0.0
-        for scorer, config in zip(self.scorers, self.scorer_configs):
+        for scorer, config in scorers:
             value = scorer.score(candidate, context)
             if value is None:
                 continue

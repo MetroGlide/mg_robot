@@ -26,7 +26,12 @@ class Gate(Actuator):
         self._pending = False
 
     def apply(self, result: StepResult) -> None:
-        attach = not (result.hold_requested and result.blame in self.params['blames'])
+        self._set(not (result.hold_requested and result.blame in self.params['blames']))
+
+    def release(self) -> None:
+        self._set(True)
+
+    def _set(self, attach: bool) -> None:
         if attach == self._applied or self._pending or not self._client.service_is_ready():
             return
         request = SetBool.Request()
@@ -67,13 +72,14 @@ class ServiceCall(Actuator):
         if delay <= 0.0:
             self._call()
             return
-        timer = self.node.create_timer(delay, lambda: self._on_timer())
+        timer = self.node.create_timer(delay, lambda: self._on_timer(timer))
         self._timers.append(timer)
 
-    def _on_timer(self) -> None:
-        for timer in self._timers:
-            timer.cancel()
-        self._timers.clear()
+    def _on_timer(self, timer: Any) -> None:
+        """一度だけ呼んで、タイマーを破棄する。"""
+        timer.cancel()
+        self._timers.remove(timer)
+        self.node.destroy_timer(timer)
         self._call()
 
     def _call(self) -> None:

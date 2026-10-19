@@ -74,12 +74,21 @@ class StepResult:
     blame: str = ''
     # 残差の統計 (設定の residuals ごと)
     residuals: Dict[str, ResidualStats] = field(default_factory=dict)
+    # 受け取る側に出す、分散の倍率 (設定の residuals ごと。a の分散にかける。1 以上、max_scale 以下)
+    applied_scales: Dict[str, float] = field(default_factory=dict)
 
 
-def make_store(config: SupervisorConfig) -> SampleStore:
-    return SampleStore(
+def make_store(config: SupervisorConfig, track_scales: bool = True) -> SampleStore:
+    """標本の置き場。track_scales なら、residuals の a の標本の分散から、出した倍率を割り戻す
+    (受け取る側が倍率をかける実機。記録を読むオフライン評価は、倍率がかかっていないので False)。
+    倍率の記録は note_scale で行う。"""
+    store = SampleStore(
         config.kinds(), tuple(config.motion_priority), config.horizon_sec,
         config.max_extrapolation_sec, config.alignment)
+    if track_scales:
+        for residual in config.residuals.values():
+            store.track_scale(residual.a, residual.scale_delay_sec)
+    return store
 
 
 class Supervisor:
@@ -113,7 +122,7 @@ class Supervisor:
         infos = [InstanceInfo(
             name=name, subjects=self.detectors[name].subjects(), sources=list(d.sources.values()),
             weight=self._weights.get(name, d.weight), allowance=d.allowance, decay=d.decay,
-            max_score=d.max_score, options=d.options)
+            max_score=d.max_score, options=d.options, vouches=d.vouch)
             for name, d in enabled.items()]
         self.fusion: FusionStrategy = config.fusion_cls(
             config.fusion_type, config.fusion_params, infos,
@@ -263,7 +272,18 @@ class Supervisor:
             stamp=now, state=state, decision=decision, fusion=fusion, evidences=evidences,
             trusted=trusted, in_grace=in_grace, hold_requested=self.machine.hold_requested, safety=safety,
             isolated_sources=self._isolated(), last_event=self._last_event, events=events,
-            directives=directives, plan=plan, blame=self.machine.blame, residuals=residuals)
+            directives=directives, plan=plan, blame=self.machine.blame, residuals=residuals,
+            applied_scales=self._applied_scales(residuals))
+
+    def _applied_scales(self, residuals: Dict[str, ResidualStats]) -> Dict[str, float]:
+        """残差ごとに、a の分散にかける倍率。a の情報源を切り離しているあいだは、上限にして、ほぼ使わないようにする。"""
+        blame = self.machine.blame
+        scales = {}
+        for name, stats in residuals.items():
+            cfg = self.residuals[name].config
+            scale = cfg.max_scale if self.machine.isolating and blame == cfg.a else stats.scale
+            scales[name] = min(max(scale, 1.0), cfg.max_scale)
+        return scales
 
     def _update_residuals(self, snapshot: Snapshot, trusted: bool) -> Dict[str, ResidualStats]:
         """信頼できる周期に、a と b の位置の差 (共分散で正規化) を残し、統計を求める。大きさが変わったらイベントを出す。"""
@@ -341,7 +361,7 @@ class Supervisor:
         context = RecoveryContext(
             snapshot=snapshot, anchors=self.anchors, suspect_since=self._suspect_since, scans=self.scans,
             safety=self.config.safety)
-        plan = self.planner.plan(context)
+        plan = self.planner.plan(context, exclude=self.machine.blame)
         self._plan_events(plan)
         if plan.chosen is not None:
             directives.append(Directive('reinit', self.machine.blame, plan.chosen))
@@ -411,7 +431,7 @@ class Supervisor:
 
     def _isolated(self) -> List[str]:
         blame = self.machine.blame
-        if self.machine.hold_requested and blame and blame != 'unknown':
+        if self.machine.isolating and blame and blame != 'unknown':
             return [blame]
         return []
 

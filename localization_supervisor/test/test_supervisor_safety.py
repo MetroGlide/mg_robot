@@ -5,6 +5,7 @@ import pytest
 from localization_supervisor.core.config import ConfigError, parse_config
 from localization_supervisor.core.geometry import compose
 from localization_supervisor.core.grid import OccupancyMap
+from localization_supervisor.core.interfaces import CONTRACT_VERSION
 from localization_supervisor.core.safety import FootprintChecker, SafetyConfig, footprint_samples, inside_polygon
 from localization_supervisor.core.state_machine import State
 from localization_supervisor.core.supervisor import Supervisor, make_store
@@ -46,7 +47,7 @@ def test_footprint_checker_fraction_and_depth():
 
 def _raw(**overrides):
     raw = {
-        'version': 1,
+        'version': CONTRACT_VERSION,
         'sources': {
             'amcl': {'kind': 'pose'}, 'gnss': {'kind': 'pose'}, 'odom': {'kind': 'motion'},
             'map_scan': {'kind': 'reference'}, 'planning': {'kind': 'reference'}},

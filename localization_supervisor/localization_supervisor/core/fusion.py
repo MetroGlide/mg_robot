@@ -12,21 +12,27 @@
     かける情報源 (subjects) に足す。最も多い情報源と次点の差 (他と共有しない疑い) が blame_margin 以上なら、
     その情報源を blame とする。決めきれなければ unknown。
     2 つの情報源の食い違い (pose_consistency など) は両方に同じだけ足すので、それだけでは決まらない。
+    ただし、一方を vouch (正常なら、その情報源が正しいと示す) する判定のインスタンスが、直近で「判定できて正常」
+    なら、その一方は疑わず、もう一方だけに足す (両方が vouch されているときは、両方に足す)。
     一度だけの強い証拠 (飛び) も、最大値を使うので、時間が経っても薄まらない
   - 融合の結果 (derived_from を持つ情報源) が関わるインスタンスは blame に数えず、今の累積があれば
     その情報源を contaminated (出力が汚れている) とする。ただし、比べた相手の独立の情報源が blame なら、
     その食い違いは相手のせいとみなし、融合の結果を疑わない
 """
-from typing import Dict, List, Mapping, Tuple
+from typing import Collection, Dict, List, Mapping, Set, Tuple
 
 from .interfaces import Evidence, FusionResult, FusionStrategy, InstanceInfo, ParamSpec, Status
+
+VOUCH_HOLD_TICKS = ParamSpec(int, 15, 'vouch する判定が判定できない周期が続いても、正常と示していると見なす周期の数')
 
 
 def attribute(
     peaks: Mapping[str, float], accumulated: Mapping[str, float], instances: Mapping[str, InstanceInfo],
     independent: List[str], derived: Mapping[str, List[str]], blame_margin: float,
+    vouched: Collection[str] = (),
 ) -> Tuple[str, List[str]]:
-    """(blame, contaminated) を決める。peaks は疑いが始まってからの累積の最大値、accumulated は今の累積。"""
+    """(blame, contaminated) を決める。peaks は疑いが始まってからの累積の最大値、accumulated は今の累積。
+    vouched は、正常と示されている情報源。"""
     if not any(v > 0.0 for v in accumulated.values()):
         return '', []
     suspicion: Dict[str, float] = {}
@@ -34,9 +40,10 @@ def attribute(
         subjects = instances[name].subjects
         if value <= 0.0 or any(s in derived for s in subjects):
             continue
-        for subject in subjects:
-            if subject in independent:
-                suspicion[subject] = suspicion.get(subject, 0.0) + value
+        targets = [s for s in subjects if s in independent]
+        targets = [s for s in targets if s not in vouched] or targets
+        for subject in targets:
+            suspicion[subject] = suspicion.get(subject, 0.0) + value
     ranked = sorted(suspicion.values(), reverse=True)
     blame = 'unknown'
     if ranked and ranked[0] - (ranked[1] if len(ranked) > 1 else 0.0) >= blame_margin:
@@ -63,6 +70,36 @@ class _Peaks:
         return dict(self.values)
 
 
+class _Vouch:
+    """vouch を持つ判定のインスタンスが、正常と示している情報源。
+
+    直近に判定できたときの結果が正常なら示している。判定できない周期が hold_ticks を超えるか、異常になれば外れる
+    (スキャンの照合のように、数周期に 1 回しか判定できないものがあるため、すぐには外さない)。
+    """
+
+    def __init__(self, instances: Mapping[str, InstanceInfo], hold_ticks: int) -> None:
+        self._instances = instances
+        self._hold = hold_ticks
+        # 正常と示しているインスタンスの名前 -> 最後に正常だった周期からの周期の数
+        self._age: Dict[str, int] = {}
+
+    def update(self, evidences: Mapping[str, Evidence], active: bool) -> Set[str]:
+        if active:
+            for name, info in self._instances.items():
+                if not info.vouches:
+                    continue
+                evidence = evidences.get(name)
+                if evidence is None or evidence.status == Status.UNKNOWN:
+                    if name in self._age:
+                        self._age[name] += 1
+                elif evidence.status == Status.NORMAL:
+                    self._age[name] = 0
+                else:
+                    self._age.pop(name, None)
+        return {source for name, age in self._age.items() if age <= self._hold
+                for source in self._instances[name].vouches}
+
+
 def _reason(accumulated: Mapping[str, float]) -> str:
     positive = [(v, k) for k, v in accumulated.items() if v > 0.0]
     return max(positive)[1] if positive else ''
@@ -73,6 +110,7 @@ class CusumFusion(FusionStrategy):
         'suspect_level': ParamSpec(float, 1.0, '総合の強さがこれ以上で疑い'),
         'confirm_level': ParamSpec(float, 5.0, '総合の強さがこれ以上で異常を確認'),
         'blame_margin': ParamSpec(float, 1.0, '他と共有しない疑いがこれ以上の情報源を blame とする'),
+        'vouch_hold_ticks': VOUCH_HOLD_TICKS,
     }
 
     def __init__(self, name, params, instances, independent, derived) -> None:
@@ -82,6 +120,7 @@ class CusumFusion(FusionStrategy):
     def reset(self) -> None:
         self._acc: Dict[str, float] = {name: 0.0 for name in self.instances}
         self._peaks = _Peaks(self.instances)
+        self._vouch = _Vouch(self.instances, self.params.get('vouch_hold_ticks', VOUCH_HOLD_TICKS.default))
 
     def update(self, evidences: Mapping[str, Evidence], active: bool) -> FusionResult:
         p = self.params
@@ -104,7 +143,7 @@ class CusumFusion(FusionStrategy):
             self._peaks = _Peaks(self.instances)
         blame, contaminated = attribute(
             self._peaks.update(self._acc), self._acc, self.instances, self.independent, self.derived,
-            p['blame_margin'])
+            p['blame_margin'], self._vouch.update(evidences, active))
         return FusionResult(
             level=level, suspect=level >= p['suspect_level'], confirmed=level >= p['confirm_level'],
             cleared=known and not anomaly, anomaly=anomaly, blame=blame, contaminated=contaminated,
@@ -121,7 +160,10 @@ class ConsecutiveFusion(FusionStrategy):
                           異常を確認 (0 なら使わない。既定 0)
     異常がなくなった (cleared) のは、その周期に判定できたインスタンスがあり、どれも異常でないとき。
     """
-    PARAMS = {'blame_margin': ParamSpec(float, 1.0, '他と共有しない疑い (回数) がこれ以上の情報源を blame とする')}
+    PARAMS = {
+        'blame_margin': ParamSpec(float, 1.0, '他と共有しない疑い (回数) がこれ以上の情報源を blame とする'),
+        'vouch_hold_ticks': VOUCH_HOLD_TICKS,
+    }
 
     def __init__(self, name, params, instances, independent, derived) -> None:
         super().__init__(name, params, instances, independent, derived)
@@ -132,6 +174,7 @@ class ConsecutiveFusion(FusionStrategy):
         self._fired: Dict[str, bool] = {name: False for name in self.instances}
         self._suspect = False
         self._peaks = _Peaks(self.instances)
+        self._vouch = _Vouch(self.instances, self.params.get('vouch_hold_ticks', VOUCH_HOLD_TICKS.default))
 
     def _option(self, name: str, key: str, default: int) -> int:
         return int(self.instances[name].options.get(key, default))
@@ -180,7 +223,7 @@ class ConsecutiveFusion(FusionStrategy):
             self._peaks = _Peaks(self.instances)
         blame, contaminated = attribute(
             self._peaks.update(accumulated), accumulated, self.instances, self.independent, self.derived,
-            self.params['blame_margin'])
+            self.params['blame_margin'], self._vouch.update(evidences, active))
         return FusionResult(
             level=level, suspect=suspect, confirmed=confirmed, cleared=known and not anomaly,
             anomaly=anomaly, blame=blame, contaminated=contaminated, accumulated=accumulated,

@@ -17,6 +17,9 @@
 
     RECOVERING (まだ初期化し直していない) と DEGRADED で、異常がなくなった周期が clear_ticks 回続けば、
     初期化せずに NORMAL へ戻す (一時的な外れ値だった場合に、走行を止め続けない)
+
+    blame が isolate_only の情報源のときは、ISOLATED のまま、止めず、再初期化もせず、異常がなくなる
+    (clear_ticks 回) のを待って NORMAL に戻る。別の blame で異常を確認したら、その blame の対処に移る
 """
 import enum
 from dataclasses import dataclass, field
@@ -56,6 +59,9 @@ class MachineConfig:
     max_reinit_attempts: int = 3
     # DEGRADED から再試行する間隔 [s] (recovery_enabled のとき)
     degraded_retry_sec: float = 60.0
+    # blame がこれらの情報源のときは、切り離す (信頼度を下げる) だけにして、走行を止めず、再初期化もしない。
+    # 異常がなくなれば戻る。別の blame で異常を確認したら、その blame の対処に移る
+    isolate_only: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -78,16 +84,22 @@ class StateMachine:
         self._degraded_at = 0.0
         self._attempts = 0
         self._reinit_done = False
+        # isolate_only の blame を切り離しているだけの間 (止めず、再初期化もしない)
+        self._soft = False
 
     def note_reinit(self) -> None:
         """推定器を初期化し直す指示を出した。これ以降は、収束を確認して戻す (それまでは、異常が消えても戻せる)。"""
         self._reinit_done = True
 
     @property
+    def isolating(self) -> bool:
+        """blame の情報源を切り離している状態か (切り離してから、戻すまで)。"""
+        return self.config.recovery_enabled and self.state in (State.ISOLATED, State.RECOVERING, State.DEGRADED)
+
+    @property
     def hold_requested(self) -> bool:
-        """走行を止めてほしい状態か (切り離してから、戻すまで)。"""
-        return (self.config.recovery_enabled and self.config.request_hold
-                and self.state in (State.ISOLATED, State.RECOVERING, State.DEGRADED))
+        """走行を止めてほしい状態か (切り離してから、戻すまで。isolate_only の blame は止めない)。"""
+        return self.isolating and self.config.request_hold and not self._soft
 
     def step(self, now: float, fusion: FusionResult, converged: Optional[bool] = None) -> Decision:
         cfg = self.config
@@ -107,12 +119,17 @@ class StateMachine:
                     return Decision(self.state, [Action.NOTIFY_DEGRADED], f'alert: {fusion.reason}', self.blame)
                 self.state = State.ISOLATED
                 self._isolated_at = now
+                self._soft = self.blame in cfg.isolate_only
                 return Decision(self.state, [Action.ISOLATE], f'isolated: {fusion.reason}', self.blame)
             if self._cleared(fusion):
                 return self._to_normal([], 'cleared')
             return Decision(self.state, [], '', fusion.blame)
 
         if self.state == State.ISOLATED:
+            if self._soft:
+                return self._step_soft(now, fusion)
+            if self._narrowed(fusion):
+                return self._to_soft(fusion)
             if now - self._isolated_at >= cfg.isolate_hold_sec:
                 return self._start_recovery(now, 'reinit')
             return Decision(self.state, [], '', self.blame)
@@ -120,6 +137,8 @@ class StateMachine:
         if self.state == State.RECOVERING:
             # まだ初期化し直していないうちに、異常がなくなった (一時的な外れ値だった) なら、初期化せずに戻す。
             # 初期化し直した後は、推定器が収束したかで戻す (停止中は AMCL が更新されないので、異常の有無は決められない)
+            if not self._reinit_done and self._narrowed(fusion):
+                return self._to_soft(fusion)
             if not self._reinit_done and self._cleared(fusion):
                 return self._to_normal([Action.RESTORE], 'cleared')
             if converged is False:
@@ -152,6 +171,30 @@ class StateMachine:
             return self._start_recovery(now, 'retry from degraded')
         return Decision(self.state, [], '', self.blame)
 
+    def _narrowed(self, fusion: FusionResult) -> bool:
+        """決めきれずに止めたが、まだ再初期化していないうちに、blame が isolate_only の情報源だと分かった
+        (正しいと示す判定が、後から判定できるようになった場合など)。"""
+        return self.config.recovery_enabled and fusion.confirmed and fusion.blame in self.config.isolate_only
+
+    def _to_soft(self, fusion: FusionResult) -> Decision:
+        self.state = State.ISOLATED
+        self._soft = True
+        self.blame = fusion.blame
+        self._clear_run = 0
+        return Decision(self.state, [Action.ISOLATE], f'isolated: narrowed to {self.blame}', self.blame)
+
+    def _step_soft(self, now: float, fusion: FusionResult) -> Decision:
+        """isolate_only の blame を切り離している間。異常がなくなれば戻る。別の blame で異常を確認したら、
+        その blame の対処 (切り離し・停止・再初期化) に移る。"""
+        if fusion.confirmed and fusion.blame and fusion.blame not in self.config.isolate_only:
+            self._soft = False
+            self.blame = fusion.blame
+            self._isolated_at = now
+            return Decision(self.state, [Action.ISOLATE], f'isolated: escalate to {self.blame}', self.blame)
+        if self._cleared(fusion):
+            return self._to_normal([Action.RESTORE], 'cleared')
+        return Decision(self.state, [], '', self.blame)
+
     def _cleared(self, fusion: FusionResult) -> bool:
         if fusion.cleared:
             self._clear_run += 1
@@ -162,6 +205,7 @@ class StateMachine:
     def _to_normal(self, actions: List[Action], event: str) -> Decision:
         self.state = State.NORMAL
         self.blame = ''
+        self._soft = False
         self._clear_run = 0
         return Decision(self.state, actions, event)
 

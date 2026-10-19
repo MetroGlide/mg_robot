@@ -13,7 +13,7 @@ from localization_supervisor.core.detectors.scan_map import ScanMap
 from localization_supervisor.core.fusion import ConsecutiveFusion, CusumFusion, attribute
 from localization_supervisor.core.geometry import compose
 from localization_supervisor.core.interfaces import (
-    Evidence, FusionResult, InstanceInfo, MotionSample, SourceKind, Status)
+    CONTRACT_VERSION, Evidence, FusionResult, InstanceInfo, MotionSample, SourceKind, Status)
 from localization_supervisor.core.plugins import resolve_params
 from localization_supervisor.core.snapshot import SampleStore
 from localization_supervisor.core.state_machine import Action, MachineConfig, State, StateMachine
@@ -358,7 +358,7 @@ def test_anchor_store_limits_and_lookup():
 
 def _config(**overrides):
     raw = {
-        'version': 1,
+        'version': CONTRACT_VERSION,
         'sources': {'amcl': {'kind': 'pose'}, 'gnss': {'kind': 'pose'}, 'odom': {'kind': 'motion'}},
         'timeline': {'motion_priority': ['odom'], 'alignment_std_per_m': 0.0, 'alignment_std_per_rad': 0.0},
         'detectors': {

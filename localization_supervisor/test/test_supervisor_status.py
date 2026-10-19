@@ -5,7 +5,7 @@ import pytest
 
 from localization_supervisor.core.config import ConfigError, parse_config
 from localization_supervisor.core.geometry import compose
-from localization_supervisor.core.interfaces import Status
+from localization_supervisor.core.interfaces import CONTRACT_VERSION, Status
 from localization_supervisor.core.state_machine import State
 from localization_supervisor.core.status import CheckView, StatusView, localization_health, status_view
 from localization_supervisor.core.supervisor import Supervisor, make_store
@@ -41,7 +41,7 @@ def test_health_values_show_each_check():
 
 def _config(**overrides):
     raw = {
-        'version': 1,
+        'version': CONTRACT_VERSION,
         'sources': {'amcl': {'kind': 'pose'}, 'gnss': {'kind': 'pose'}, 'odom': {'kind': 'motion'}},
         'timeline': {'motion_priority': ['odom'], 'alignment_std_per_m': 0.0, 'alignment_std_per_rad': 0.0},
         'detectors': {

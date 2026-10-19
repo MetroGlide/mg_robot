@@ -6,7 +6,7 @@ import pytest
 
 from localization_supervisor.core.config import ConfigError, parse_config
 from localization_supervisor.core.interfaces import (
-    Candidate, CandidateGenerator, CandidateScorer, ParamSpec, RecoveryContext, SourceKind)
+    CONTRACT_VERSION, Candidate, CandidateGenerator, CandidateScorer, ParamSpec, RecoveryContext, SourceKind)
 from localization_supervisor.core.recovery.planner import RecoveryPlanner, ScorerConfig, SelectionConfig
 from localization_supervisor.core.state_machine import MachineConfig, State, StateMachine
 from localization_supervisor.core.supervisor import Supervisor, make_store
@@ -80,7 +80,7 @@ def test_no_candidates():
 
 def _raw(recovery=None, anchors=True, enabled=True):
     raw = {
-        'version': 1,
+        'version': CONTRACT_VERSION,
         'sources': {'amcl': {'kind': 'pose'}, 'gnss': {'kind': 'pose'}, 'odom': {'kind': 'motion'},
                     'map_scan': {'kind': 'reference'}},
         'timeline': {'motion_priority': ['odom'], 'alignment_std_per_m': 0.0, 'alignment_std_per_rad': 0.0},

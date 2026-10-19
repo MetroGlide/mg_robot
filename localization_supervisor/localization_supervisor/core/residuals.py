@@ -6,8 +6,7 @@ a の自己申告の分散が正しければ、Δ² の平均は 2 自由度 × 
 `S = (Δ² の平均 / 2 − b の分散 − 時刻のずれの分散) / a の分散` とする (これで平均が期待値に一致する)。1 以上、上限以下に収める。
 地図と GNSS のずれは場所ごとに違う (地図は SLAM から作るため) ので、一定のバイアスとしては補正せず、信頼度だけを下げる。
 
-観測する a の分散は、受け取る側が倍率をかけた後の値になる。そこで、前の周期に出した倍率で割って、
-倍率をかける前の分散に戻して残す (受け取る側がかけていなければ、倍率は上限に向かうだけで害はない)。
+a の分散は、倍率をかける前の値で受け取る (受け取る側がかけた倍率は、標本を入れるときに SampleStore が割り戻す)。
 信頼できない周期は残さず、倍率を保つ。倍率は急に変えない (gain の割合で近づける)。
 """
 from collections import deque
@@ -31,6 +30,8 @@ class ResidualConfig:
     max_age_sec: float = 3.0
     # 時刻のずれなどによる位置の不確かさ [m]
     extra_std_m: float = 0.3
+    # 出した倍率が、a の標本の分散に効き始めるまでの遅れ [s] (受け取る側が処理するまでの時間)
+    scale_delay_sec: float = 0.5
     # 1 回の更新で、求めた倍率へ近づく割合 (小さいほどゆっくり)
     gain: float = 0.2
     # 倍率の上限
@@ -52,7 +53,7 @@ class ResidualTracker:
     def __init__(self, config: ResidualConfig) -> None:
         self.config = config
         self.scale = 1.0
-        # (時刻, Δ², 倍率をかける前の a の分散, b の分散 + 時刻のずれの分散)
+        # (時刻, Δ², a の分散, b の分散 + 時刻のずれの分散)
         self._samples: Deque[Tuple[float, float, float, float]] = deque()
         self._fresh = False
 
@@ -63,10 +64,10 @@ class ResidualTracker:
         self.scale = 1.0
 
     def add(self, stamp: float, delta2: float, var_a: float, var_other: float) -> None:
-        """var_a は、受け取る側が倍率をかけた後の分散 (add の中で今の倍率で割る)。"""
+        """var_a は、倍率をかける前の a の分散。"""
         if self._samples and stamp < self._samples[-1][0]:
             self._samples.clear()
-        self._samples.append((stamp, delta2, var_a / self.scale, var_other))
+        self._samples.append((stamp, delta2, var_a, var_other))
         self._fresh = True
 
     def update(self, now: float) -> ResidualStats:

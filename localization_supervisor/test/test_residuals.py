@@ -5,8 +5,9 @@ from unittest.mock import MagicMock
 import pytest
 
 from localization_supervisor.core.config import ConfigError, parse_config
-from localization_supervisor.core.interfaces import PoseSample
+from localization_supervisor.core.interfaces import CONTRACT_VERSION, PoseSample
 from localization_supervisor.core.residuals import ResidualConfig, ResidualStats, ResidualTracker
+from localization_supervisor.core.state_machine import State
 from localization_supervisor.core.supervisor import Supervisor, make_store
 from localization_supervisor.ros.actuators import build_actuators, variance_scale
 
@@ -56,13 +57,24 @@ def test_consistent_residual_does_not_raise_the_scale():
     assert tracker.scale == pytest.approx(1.0)
 
 
-def test_the_observed_variance_is_divided_by_the_scale_we_asked_for():
-    # 受け取る側が倍率 s をかけた分散で観測されるので、前の倍率で割ってから残す
-    tracker = ResidualTracker(ResidualConfig(min_samples=1, gain=1.0))
-    tracker.add(0.0, 8.0, 1.0, 0.0)
-    assert tracker.update(0.0).scale == pytest.approx(4.0)
-    tracker.add(1.0, 8.0, 4.0, 0.0)   # 倍率 4 をかけた a の分散
-    assert tracker.update(1.0).scale == pytest.approx(4.0)
+def test_the_store_divides_the_scale_we_asked_for_out_of_the_variance():
+    # 受け取る側が倍率 s をかけた分散で届くので、標本を入れるときに、そのとき効いていた倍率で割る
+    config = _config(scale_delay_sec=0.5)
+    store = make_store(config)
+    store.note_scale('gnss', 10.0, 4.0)
+    for stamp in (10.2, 10.5, 11.0):
+        store.add_pose('gnss', PoseSample(stamp, (0.0, 0.0, 0.0), cov(0.2) * 4.0))
+    variances = [float(s.cov[0, 0]) for s in store.poses['gnss'].samples()]
+    # 出してから 0.5 s 後に効き始める。それより前の標本は、倍率がかかっていない
+    assert variances == pytest.approx([0.16, 0.04, 0.04])
+    assert store.poses['gnss'].samples()[0].cov[1, 1] == pytest.approx(0.16)
+
+
+def test_the_store_does_not_divide_when_scales_are_not_tracked():
+    store = make_store(_config(), track_scales=False)
+    store.note_scale('gnss', 10.0, 4.0)
+    store.add_pose('gnss', PoseSample(11.0, (0.0, 0.0, 0.0), cov(0.2)))
+    assert float(store.poses['gnss'].latest().cov[0, 0]) == pytest.approx(0.04)
 
 
 def test_tracker_forgets_old_samples_and_clears():
@@ -76,7 +88,7 @@ def test_tracker_forgets_old_samples_and_clears():
 
 def _config(**residual):
     raw = {
-        'version': 1,
+        'version': CONTRACT_VERSION,
         'sources': {'amcl': {'kind': 'pose'}, 'gnss': {'kind': 'pose'}, 'odom': {'kind': 'motion'}},
         'timeline': {'motion_priority': ['odom'], 'alignment_std_per_m': 0.0, 'alignment_std_per_rad': 0.0},
         'detectors': {'amcl_jump': {'type': 'pose_jump', 'sources': {'pose': 'amcl', 'motion': 'odom'}}},
@@ -104,7 +116,8 @@ def _run(config, bias_x, seconds=60, apply_scale=False):
         store.add_pose('gnss', PoseSample(stamp, (truth[0] + bias_x, truth[1], truth[2]), cov(0.1) * scale))
         results.append(supervisor.step(store.snapshot(stamp)))
         if apply_scale:
-            scale = results[-1].residuals['gnss_vs_amcl'].scale
+            scale = results[-1].applied_scales['gnss_vs_amcl']
+            store.note_scale('gnss', stamp, scale)
     return results
 
 
@@ -134,7 +147,7 @@ def test_a_consistent_source_keeps_the_scale_at_one_without_events():
 def test_residuals_are_only_collected_while_trusted():
     # 起動の猶予の間は信頼できる周期にならないので、標本がたまらない
     config = parse_config({
-        'version': 1,
+        'version': CONTRACT_VERSION,
         'sources': {'amcl': {'kind': 'pose'}, 'gnss': {'kind': 'pose'}, 'odom': {'kind': 'motion'}},
         'timeline': {'motion_priority': ['odom']},
         'detectors': {'amcl_jump': {'type': 'pose_jump', 'sources': {'pose': 'amcl', 'motion': 'odom'}}},
@@ -162,24 +175,37 @@ def _actuator(**params):
     return actuator, node.create_publisher.return_value
 
 
-def _result(scale=None, blame=''):
-    residuals = {} if scale is None else {'r': ResidualStats(30, 2.0 * scale, scale)}
-    return SimpleNamespace(residuals=residuals, blame=blame)
+def _result(scale=None):
+    return SimpleNamespace(applied_scales={} if scale is None else {'r': scale})
 
 
-def test_variance_scale_actuator_publishes_the_residual_scale(monkeypatch):
+def test_variance_scale_actuator_publishes_the_applied_scale(monkeypatch):
     monkeypatch.setattr(variance_scale, 'Float64', SimpleNamespace)
     actuator, pub = _actuator()
     actuator.apply(_result(4.0))
     actuator.apply(_result(None))
-    actuator.apply(_result(1000.0))
-    assert [call.args[0].data for call in pub.publish.call_args_list] == [4.0, 1.0, 100.0]
+    assert [call.args[0].data for call in pub.publish.call_args_list] == [4.0, 1.0]
 
 
-def test_variance_scale_actuator_uses_the_maximum_for_the_blamed_source(monkeypatch):
+def test_variance_scale_actuator_publishes_one_when_released(monkeypatch):
     monkeypatch.setattr(variance_scale, 'Float64', SimpleNamespace)
-    actuator, pub = _actuator(blame='gnss', max_scale=50.0)
-    actuator.apply(_result(1.0, blame='amcl'))
-    actuator.apply(_result(1.0, blame='gnss'))
-    assert [call.args[0].data for call in pub.publish.call_args_list] == [1.0, 50.0]
+    actuator, pub = _actuator()
+    actuator.release()
+    assert [call.args[0].data for call in pub.publish.call_args_list] == [1.0]
+
+
+def test_the_applied_scale_is_the_maximum_while_the_source_is_isolated():
+    # a (gnss) を切り離しているあいだは、残差の倍率に関わらず上限にする
+    supervisor = Supervisor(_config(max_scale=50.0))
+    machine = supervisor.machine
+    machine.config.recovery_enabled = True
+    machine.state = State.ISOLATED
+    machine.blame = 'gnss'
+    stats = {'gnss_vs_amcl': ResidualStats(30, 2.0, 1.5)}
+    assert supervisor._applied_scales(stats) == {'gnss_vs_amcl': 50.0}
+    machine.blame = 'amcl'
+    assert supervisor._applied_scales(stats) == {'gnss_vs_amcl': 1.5}
+    machine.state = State.NORMAL
+    machine.blame = ''
+    assert supervisor._applied_scales(stats) == {'gnss_vs_amcl': 1.5}
 

@@ -7,8 +7,11 @@ Snapshot は、その周期の中で使い回せる計算結果のキャッシ�
 地図の距離場のように周期をまたいで使い回すものは、ReferenceData が持つ。
 """
 import math
+from collections import deque
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, Mapping, Optional, Tuple
+from typing import Any, Callable, Deque, Dict, Mapping, Optional, Tuple
+
+import numpy as np
 
 from .geometry import Pose2
 from .grid import LocalDistanceField, OccupancyMap, build_local_distance_field
@@ -53,8 +56,37 @@ class ReferenceData:
         self.fields.clear()
 
 
+class ScaleHistory:
+    """情報源の分散にかけるよう、受け取る側に出した倍率の履歴 (出した時刻と倍率)。"""
+
+    def __init__(self, delay_sec: float, horizon_sec: float) -> None:
+        self.delay_sec = delay_sec
+        self._horizon = horizon_sec
+        self._entries: Deque[Tuple[float, float]] = deque()
+
+    def note(self, stamp: float, scale: float) -> None:
+        if self._entries and stamp < self._entries[-1][0]:
+            self._entries.clear()
+        self._entries.append((stamp, scale))
+        while len(self._entries) > 1 and stamp - self._entries[1][0] > self._horizon:
+            self._entries.popleft()
+
+    def at(self, stamp: float) -> float:
+        """stamp の標本に効いていた倍率 (出してから delay_sec 後に効く。履歴がなければ 1)。"""
+        scale = 1.0
+        for noted, value in self._entries:
+            if noted + self.delay_sec > stamp:
+                break
+            scale = value
+        return scale
+
+
 class SampleStore:
-    """情報源ごとの標本の履歴。情報源の名前と種類は、設定から決まる。"""
+    """情報源ごとの標本の履歴。情報源の名前と種類は、設定から決まる。
+
+    track_scale した姿勢の情報源は、受け取る側が分散に倍率をかけて配信するので、標本の位置の分散を、
+    その時点で効いていた倍率で割って、倍率をかける前に戻してから残す (判定・候補・残差は、倍率に左右されない)。
+    """
 
     def __init__(
         self, kinds: Mapping[str, SourceKind], motion_priority: Tuple[str, ...] = (),
@@ -75,8 +107,27 @@ class SampleStore:
         order = list(motion_priority) + [n for n in self.motions if n not in motion_priority]
         self.timeline = Timeline([(n, self.motions[n]) for n in order], alignment or AlignmentConfig())
         self.extras: Dict[str, Any] = {}
+        self._horizon_sec = horizon_sec
+        self._scales: Dict[str, ScaleHistory] = {}
+
+    def track_scale(self, name: str, delay_sec: float) -> None:
+        """name の標本の分散に、受け取る側がかけた倍率を割り戻す。"""
+        self._scales[name] = ScaleHistory(delay_sec, self._horizon_sec)
+
+    def note_scale(self, name: str, stamp: float, scale: float) -> None:
+        """name の分散にかけるよう出した倍率を記録する (track_scale していなければ何もしない)。"""
+        if name in self._scales:
+            self._scales[name].note(stamp, scale)
 
     def add_pose(self, name: str, sample: PoseSample) -> None:
+        scales = self._scales.get(name)
+        if scales is not None:
+            factor = scales.at(sample.stamp)
+            if factor != 1.0:
+                cov = np.array(sample.cov, dtype=float, copy=True)
+                cov[0, 0] /= factor
+                cov[1, 1] /= factor
+                sample = PoseSample(sample.stamp, sample.pose, cov)
         self.poses[name].add(sample)
 
     def add_motion(self, name: str, sample: MotionSample) -> None:
