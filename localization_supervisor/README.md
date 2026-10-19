@@ -43,7 +43,8 @@ make test pkg=localization_supervisor
 - `test_recovery_matcher.py`: 総当たりの照合 (既知のずれを求められる、似た場所の候補を離して返す)
 - `test_recovery.py`: 復旧の選び方 (決めきれなければ再初期化しない)、設定の検証、Supervisor が再初期化を指示するまで (GNSS・推測航法・照合の候補)
 - `test_recovery_ros.py`: 再初期化の送り先、対処、自分のメッセージの目印 (rclpy は偽物)
-- `test_residuals.py`: 残差から求める分散の倍率 (受け取る側がかけたときに落ち着く、信頼できる周期だけ、イベント)、倍率を出す対処
+- `test_residuals.py`: 残差から求める分散の倍率 (受け取る側がかけたときに落ち着く、信頼できる周期だけ、イベント)、標本からの倍率の割り戻し、倍率を出す対処
+- `test_isolate_only.py`: 正しいと示す判定 (`vouch`) による切り分け、切り離すだけの blame (`isolate_only`) の状態遷移と、GNSS だけがずれたときの Supervisor 全体、復旧の候補から疑わしい情報源を外すこと、対処の無効化
 - `test_supervisor_status.py`: 状態と診断の中身、イベントの出力、ノードが動かせる設定かの検証
 - `test_supervisor_config.py`: 設定の検証 (誤りは読み込みで落ちる)、外部のプラグインの読み込み、プロファイル、`config/examples/` が読める
 - `test_supervisor_faults.py`: 故障注入と評価の集計

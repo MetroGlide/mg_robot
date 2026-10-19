@@ -65,9 +65,12 @@ detectors:
     max_score: <数>   # cusum: 1 周期の score の上限 (1 回の大きな異常の効き方を決める)
     enabled: <true | false>
     options: {...}    # 総合の方式ごとの指定 (consecutive の suspect_after・confirm_after・corroborate_after)
+    vouch: [<情報源の名前>, ...]   # 正常と判定できたとき、その情報源が正しいと示す (この判定が疑いをかける情報源のうち)
 ```
 
 書かなかったキーの既定値は `core/config.py` の `DetectorConfig`。
+
+`vouch`: 2 つの独立の情報源の食い違い (`pose_consistency` など) は、どちらが悪いかを決められない。その片方を `vouch` する別の判定 (例: AMCL の姿勢でスキャンを地図に照合する判定) が正常と判定できているあいだは、`blame` の切り分けで、その片方を疑わず、もう一方だけを疑う ([design.md](./design.md#疑わしい情報源の切り分け-blamecontaminated))。その情報源と独立でない判定 (同じスキャンと地図で推定している推定器に対するスキャンの一致など) には付けない。
 
 `allowance` と `confirm_level` の関係: `score` が `allowance + a` の周期が続くと、累積は 1 周期に `weight · a` ずつ増え、`confirm_level / (weight · a)` 周期で確認に達する。1 回で確認させたい判定 (大きな飛び) は `max_score` を `confirm_level + allowance` より大きくする。
 
@@ -80,6 +83,8 @@ detectors:
 
 `blame_margin`: 他と共有しない疑い (1 位と 2 位の差) がこれ以上の情報源を `blame` とする。
 
+`vouch_hold_ticks` (両方式): `vouch` する判定が判定できない周期が続いても、正常と示していると見なす周期の数。数周期に 1 回しか判定できない判定のため。これを超えるか異常になれば、示すのをやめる。
+
 ## state_machine
 
 | キー | 内容 |
@@ -91,6 +96,7 @@ detectors:
 | `recover_ok_ticks` | 再初期化の後、収束を確認する回数 |
 | `recover_timeout_sec`、`max_reinit_attempts` | 収束しないときの再試行の間隔と回数 |
 | `degraded_retry_sec` | `DEGRADED` から再試行する間隔 [s] (`recovery_enabled` のとき) |
+| `isolate_only` | `blame` がこの情報源のときは、切り離す (信頼度を下げる) だけにして、走行を止めず、再初期化もしない。異常がなくなれば戻る (`recovery_enabled` のとき)。情報源の名前のリスト |
 
 ## recovery
 
@@ -105,7 +111,8 @@ detectors:
 | `scorers` | 候補を評価するもの (下記) |
 | `selection` | 選び方 (下記) |
 | `resetters` | 選んだ姿勢の送り先 `[{type, name?, params?}, ...]` ([plugins.md](./plugins.md#再初期化の送り先-poseresetter))。ノードが使う。オフライン評価は使わない |
-| `actuators` | 対処 `[{type, name?, params?}, ...]` ([plugins.md](./plugins.md#対処-actuator))。ノードが使う |
+| `actuators` | 対処 `[{type, name?, params?}, ...]` ([plugins.md](./plugins.md#対処-actuator))。ノードが使う。`name` を書かなければ `type` が名前になる |
+| `disabled_actuators` | いま働かせない対処の名前。対処は起動時に作るので、プロファイルで切り替えられるのは、これだけ。無効になった周期に一度だけ、元に戻す (`release`) |
 
 ```yaml
 recovery:
@@ -170,11 +177,12 @@ residuals:
 | `min_samples` | 倍率を更新するのに要る標本の数 |
 | `max_age_sec` | これより古い標本は使わない [s] |
 | `extra_std_m` | 時刻のずれなどによる位置の不確かさ [m] (b の側の分散に足す) |
+| `scale_delay_sec` | 出した倍率が、a の標本の分散に効き始めるまでの遅れ [s] (受け取る側が処理するまでの時間。標本の分散から倍率を割り戻すときに使う) |
 | `gain` | 1 回の更新で、求めた倍率へ近づく割合 |
 | `max_scale` | 倍率の上限 |
 | `notify_scale` | 倍率がこれ以上の状態を、イベント `residual_changed` で知らせる (これの 0.8 倍を下回ると戻ったとする) |
 
-倍率は `StepResult.residuals` に出る。出力は対処 `variance_scale` が配信し、受け取る側 (例: GNSS のブリッジ) が a の分散にかける ([plugins.md](./plugins.md#対処-actuator))。
+残差から求めた倍率は `StepResult.residuals` に、受け取る側に出す倍率 (a を切り離しているあいだは上限) は `StepResult.applied_scales` に出る。出力は対処 `variance_scale` が配信し、受け取る側 (例: GNSS のブリッジ) が a の分散にかける ([plugins.md](./plugins.md#対処-actuator))。
 
 ## profiles
 

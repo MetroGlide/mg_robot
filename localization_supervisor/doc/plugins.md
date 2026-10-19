@@ -5,7 +5,7 @@
 
 ## 約束の版
 
-版は `core/interfaces.py` の `CONTRACT_VERSION`。基底クラス (`core/interfaces.py`、`ros/adapters/base.py`、`ros/resetters/base.py`、`ros/actuators/base.py`)・`Snapshot`・設定のスキーマは、版 1 に固定した (mg ではない設定 `config/examples/` のテストが通ることを確かめた)。
+版は `core/interfaces.py` の `CONTRACT_VERSION`。基底クラス (`core/interfaces.py`、`ros/adapters/base.py`、`ros/resetters/base.py`、`ros/actuators/base.py`)・`Snapshot`・設定のスキーマは、版 2 に固定している (mg ではない設定 `config/examples/` のテストが通ることを確かめている)。
 プラグインを足すだけなら版は変わらない。既存の約束を変えるときは、`core/interfaces.py` の `CONTRACT_VERSION` と、設定の `version` を上げる。設定の `version` が合わなければ、読み込みで落ちる。
 
 ## 共通
@@ -119,12 +119,13 @@ class SpeedLimitCheck(Detector):
 
 `ros/actuators/base.py`。周期ごとに `apply(result)` が、周期の結果 (`state`・`blame`・`hold_requested`・`directives`) を受け取って、外に働きかける。
 状態に応じた働きかけ (ゲート・一時停止) は、毎周期の結果から決めて、変わったときだけ送る (失敗しても次の周期でやり直せる)。設定の `recovery.actuators` に `[{type, name?, params?}]` を書く。
+プロファイルが `recovery.disabled_actuators` に名前を挙げた対処は、`apply` が呼ばれなくなり、無効になった周期に一度だけ `release()` が呼ばれる。`release()` では、働きかけたものを元に戻す (止めていた走行を戻す、閉じたゲートを開けるなど)。働きかけを持たない対処は、何もしなくてよい。
 
 | 登録名 | 内容 |
 | :--- | :--- |
 | `gate` | ゲート (`SetBool` で開閉するサービス。要求元ごとに調停するゲートの調停ノードの窓口) を、`hold_requested` で `blame` が指定のものにあるあいだ閉じ、戻ったら開ける |
 | `service_call` | 指示 (`reinit`・`isolate`・`restore`) が出たとき、サービス (`Empty` または `Trigger`) を、指定の遅れの後に呼ぶ |
-| `variance_scale` | 設定の `residuals` の倍率 (a の実際の誤差が自己申告の何倍か) を、周期ごとに `std_msgs/Float64` で配信する。`blame` が指定の情報源のときは上限。受け取る側が分散にかけ、一定時間届かなければ 1 に戻す |
+| `variance_scale` | 監督が求めた、設定の `residuals` の分散の倍率 (`StepResult.applied_scales`。a の実際の誤差が自己申告の何倍か。a を切り離しているあいだは上限) を、周期ごとに `std_msgs/Float64` で配信する。受け取る側が分散にかけ、一定時間届かなければ 1 に戻す |
 
 ## 入力のアダプタ (`SourceAdapter`)
 

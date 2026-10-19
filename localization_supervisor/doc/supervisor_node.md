@@ -42,6 +42,8 @@
 異常を確認すると (`recovery_enabled`)、状態が `ISOLATED` になり、対処が切り離す (`gate` など) と同時に、`hold_requested` で走行を止めてほしいと知らせる (`pause_request` など)。`isolate_hold_sec` 待って `RECOVERING` になり、復旧の計画を `retry_sec` ごとに繰り返す。
 候補が選べたら、イベント `<prefix>.reinit_requested` を出して、再初期化の送り先にすべて送る。収束 (`recovery.convergence`) を確認したら `NORMAL` に戻り、切り離しを戻す。
 候補を選べない (`<prefix>.reinit_skipped` の `reason`)、または収束しない時間切れが続くと `DEGRADED` になる (走行を止めてほしいまま、一定の間隔で再び試す)。
+`blame` が `state_machine.isolate_only` の情報源のときは、`ISOLATED` のまま、走行を止めず、再初期化もしない (対処 `variance_scale` が、その情報源の分散を上限にするだけ)。異常がなくなれば `NORMAL` に戻る。
+プロファイルの `recovery.disabled_actuators` に挙げた対処は、働かせない (無効になったときに一度、元に戻す)。プロファイルを切り替えると、監督は作り直されて `NORMAL` から始まる。
 
 - **監督自身の再初期化**: 送った再初期化のメッセージは、トピックとヘッダの時刻で見分けて、外からの再初期化として扱わない。
 - **戻し方**: `recovery_enabled: false` にする (通知だけ)、プロファイルを替える、対処の設定を外す。

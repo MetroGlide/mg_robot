@@ -101,11 +101,18 @@ GNSS による初期化と監督ノードは、他のノードが立ち上がる
 ### GNSS の信頼度
 
 地図と GNSS のずれは場所ごとに違う (地図は SLAM から作るため)。`supervision.yaml` の `residuals` が、信頼できる周期の GNSS と EKF の位置の差から、GNSS の自己申告の分散より実際の誤差が大きいかを調べ、分散にかける倍率を出す ([設計](../localization_supervisor/doc/design.md#残差と分散の倍率))。
-対処 `variance_scale` が `/gnss_variance_scale` に配信し、`slam_gnss_nav_bridge` が `/odom/gps` の分散にかける ([nav_bridge.md](../slam_gnss_2d/doc/nav_bridge.md#外からの分散の倍率))。GNSS が `blame` のときは倍率が上限になる。
+対処 `variance_scale` が `/gnss_variance_scale` に配信し、`slam_gnss_nav_bridge` が `/odom/gps` の分散にかける ([nav_bridge.md](../slam_gnss_2d/doc/nav_bridge.md#外からの分散の倍率))。GNSS を切り離しているあいだは倍率が上限になる。
 倍率が大きい状態が続くと、イベント `localization.residual_changed` で知らせる (`gnss_transform.yaml` を見直すきっかけ)。止めたいときは、`slam_gnss_nav_bridge` の `variance_scale_topic` を空にする (プロファイル `gnss_fallback` は倍率を 1 に固定する)。
 
+### GNSS だけがずれたとき
+
+AMCL と GNSS の食い違いだけでは、どちらが悪いかは決まらない。`submap_amcl` (AMCL の姿勢で、直近の走行のスキャンを地図に照合する判定) が正常と判定できているあいだは、AMCL は正しいと見なして (`vouch`)、GNSS を疑う。`scan_amcl` は AMCL と同じスキャンと地図で推定しているので独立ではなく、`vouch` しない。
+GNSS が悪いと分かったとき (`state_machine.isolate_only`) は、止めず、AMCL と EKF の再初期化もせずに、GNSS の分散を上限にして使わないようにするだけにする。地図の歪みなどで、GNSS が地図の座標と場所によって合わないことがあっても、正しい AMCL を切り離したり、走行を止めたりしない。GNSS の異常がなくなれば戻る。
+`submap_amcl` が判定できていないとき (走り出して 5 m を走る前、止まっているなど) は、AMCL も疑う側に戻り、通常の対処 (ゲートを閉じ、止め、再初期化) になる。ただし、再初期化の前に GNSS のずれと分かれば、その時点で止めるのをやめる。
+
 - 自動復旧が使える状況: GNSS の測位がある(運ばれたときも、その位置へ戻せる)、または、ずれが推測航法とスキャンの照合で直せる範囲(オドメトリのすべり・AMCL の少しずつのずれ)。GNSS がなく運ばれたときは、復旧できず `DEGRADED` で知らせる。
-- 対処はすべて起動時に作る(プロファイルでは変えられない)。戻し方: プロファイル `notify_only`(通知だけ)、`state_machine.request_hold: false`(止めない)、`gnss_fallback`(以前の GNSS で引き戻すだけの動作)、`localization_monitor:=watchdog`(従来の監視)。
+- 対処は起動時にすべて作る。プロファイルで変えられるのは、働かせない対処 (`recovery.disabled_actuators`) だけ。`gnss_fallback` は、以前の初期化ノードに無かった対処 (`pause_request`・`clear_costmap`・`variance_scale`) を無効にする。
+- 戻し方: プロファイル `notify_only`(通知だけ)、`state_machine.request_hold: false`(止めない)、`state_machine.isolate_only: []`(GNSS のずれでも、通常の対処をする)、`gnss_fallback`(以前の GNSS で引き戻すだけの動作)、`localization_monitor:=watchdog`(従来の監視)。
 - 部品は `mg_localization_supervisor/actuators/` (`pause_request.py`、`clear_costmap.py`)。
 
 ### オフライン評価
@@ -148,7 +155,7 @@ make test pkg=mg_localization_supervisor
 - `test_config.py`: 設定ファイルが読み込め、起動するノードの名前・ゲートの要求元が合っている
 - `test_event_format.py`: フレームワークが出すイベントが、このプロジェクトのイベントの規約 ([doc/monitoring.md](../doc/monitoring.md)) と同じ書式で、`mg_utils.event_log.parse_event` で読める
 - `test_supervision_config.py`: `supervision.yaml` とすべてのプロファイルがフレームワークの検証を通り、監督ノードで動かせる、入力のトピックが AMCL の設定と合う、footprint と計画用地図がコストマップと合う、イベントがプロジェクトのイベントログで出る
-- `test_recovery_config.py`: 自動復旧の構成(候補・評価・送り先・対処)、`pause_request` の変換、`gnss_fallback` が以前の初期化ノードと同じ条件・共分散で、すぐ GNSS の位置で初期化し直す、`variance_scale` のトピックが GNSS のブリッジの設定と合う
+- `test_recovery_config.py`: 自動復旧の構成(候補・評価・送り先・対処)、`pause_request` の変換、`gnss_fallback` が以前の初期化ノードと同じ条件・共分散で、すぐ GNSS の位置で初期化し直し、以前に無かった対処を無効にする、`variance_scale` のトピックが GNSS のブリッジの設定と合う、GNSS のずれは `submap_amcl` の `vouch` と `isolate_only` で切り離すだけにする
 
 ## 依存
 
