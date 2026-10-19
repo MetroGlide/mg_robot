@@ -37,6 +37,7 @@ from ..core.status import StatusView, status_view
 from ..core.supervisor import Supervisor, make_store
 from .adapters import AdapterContext, build_adapters
 from .actuators import apply_actuators, build_actuators
+from .actuators.variance_scale import delivered_scales
 from .adapters.standard import yaw_from_quaternion
 from .diagnostics import LocalizationTask
 from .event_sinks import build_event_sink
@@ -176,8 +177,9 @@ class LocalizationSupervisorNode(Node):
             if directive.kind == 'reinit':
                 for resetter in self._resetters:
                     resetter.reset(directive.candidate)
-        apply_actuators(self._actuators, self._supervisor.config.disabled_actuators, self._released, result)
-        for name, scale in result.applied_scales.items():
+        disabled = self._supervisor.config.disabled_actuators
+        apply_actuators(self._actuators, disabled, self._released, result)
+        for name, scale in delivered_scales(self._actuators, disabled, result.applied_scales).items():
             self._store.note_scale(self._supervisor.config.residuals[name].a, now, scale)
         self._view = status_view(result, self._supervisor.config, self._supervisor.profile)
         self._status_pub.publish(to_message(self._view, self.get_clock().now().to_msg()))

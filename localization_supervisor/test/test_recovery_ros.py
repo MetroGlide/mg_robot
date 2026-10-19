@@ -10,6 +10,7 @@ from localization_supervisor.core.interfaces import Candidate
 from localization_supervisor.core.supervisor import Directive
 from localization_supervisor.ros.actuators import build_actuators
 from localization_supervisor.ros.actuators.standard import Gate, ServiceCall
+from localization_supervisor.ros.actuators.variance_scale import delivered_scales
 from localization_supervisor.ros.own_messages import OwnMessages
 from localization_supervisor.ros.resetters import build_resetters
 from localization_supervisor.ros.resetters.standard import pose_message
@@ -146,8 +147,23 @@ def test_amcl_resetter_requests_a_nomotion_update_after_a_delay():
     resetter.reset(_candidate())
     assert node.publishers[0].topic == '/initialpose'
     assert node.clients[0].name == '/request_nomotion_update' and not node.clients[0].calls
-    node.timers[0].callback()
-    assert node.timers[0].cancelled and len(node.clients[0].calls) == 1
+    timer = node.timers[0]
+    timer.callback()
+    assert timer.cancelled and node.destroyed == [timer] and not node.timers
+    assert len(node.clients[0].calls) == 1
+    # 続けて初期化し直したら、前のタイマーが残っていれば破棄する
+    resetter.reset(_candidate())
+    first = node.timers[0]
+    resetter.reset(_candidate())
+    assert first.cancelled and first in node.destroyed and len(node.timers) == 1
+
+
+def test_delivered_scales_only_count_an_enabled_variance_scale_actuator():
+    node = FakeNode()
+    actuators = build_actuators([{'type': 'variance_scale', 'params': {'topic': '/s', 'residual': 'r'}}], node)
+    assert delivered_scales(actuators, set(), {'r': 7.0, 'other': 3.0}) == {'r': 7.0, 'other': 1.0}
+    assert delivered_scales(actuators, {'variance_scale'}, {'r': 7.0}) == {'r': 1.0}
+    assert delivered_scales([], set(), {'r': 7.0}) == {'r': 1.0}
 
 
 def test_resetter_config_errors():

@@ -72,10 +72,14 @@ class Amcl(TopicResetter):
             return
         if self._timer is not None:
             self._timer.cancel()
+            self.node.destroy_timer(self._timer)
         self._timer = self.node.create_timer(self.params['nomotion_delay_sec'], self._request_nomotion_update)
 
     def _request_nomotion_update(self) -> None:
+        """一度だけ呼んで、タイマーを破棄する。"""
         self._timer.cancel()
+        self.node.destroy_timer(self._timer)
+        self._timer = None
         if self._client.service_is_ready():
             self._client.call_async(Empty.Request())
 

@@ -102,7 +102,7 @@ GNSS による初期化と監督ノードは、他のノードが立ち上がる
 
 地図と GNSS のずれは場所ごとに違う (地図は SLAM から作るため)。`supervision.yaml` の `residuals` が、信頼できる周期の GNSS と EKF の位置の差から、GNSS の自己申告の分散より実際の誤差が大きいかを調べ、分散にかける倍率を出す ([設計](../localization_supervisor/doc/design.md#残差と分散の倍率))。
 対処 `variance_scale` が `/gnss_variance_scale` に配信し、`slam_gnss_nav_bridge` が `/odom/gps` の分散にかける ([nav_bridge.md](../slam_gnss_2d/doc/nav_bridge.md#外からの分散の倍率))。GNSS を切り離しているあいだは倍率が上限になる。
-倍率が大きい状態が続くと、イベント `localization.residual_changed` で知らせる (`gnss_transform.yaml` を見直すきっかけ)。止めたいときは、`slam_gnss_nav_bridge` の `variance_scale_topic` を空にする (プロファイル `gnss_fallback` は倍率を 1 に固定する)。
+倍率が大きい状態が続くと、イベント `localization.residual_changed` で知らせる (`gnss_transform.yaml` を見直すきっかけ)。止めたいときは、監督の対処 `variance_scale` を無効にする (プロファイルの `recovery.disabled_actuators`。`gnss_fallback` は無効にして、倍率も 1 に固定する)。監督は、届いた倍率だけを割り戻して GNSS の誤差を見積もる。`slam_gnss_nav_bridge` の `variance_scale_topic` だけを空にすると、監督は倍率がかかったものとして割り戻し続け、GNSS の誤差を小さく見積もるので、止めるときは両方を合わせる。
 
 ### GNSS だけがずれたとき
 

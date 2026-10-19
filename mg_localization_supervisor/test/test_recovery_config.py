@@ -82,6 +82,17 @@ def test_variance_scale_topic_matches_the_gnss_bridge_parameters():
     assert residual.a == 'gnss'
 
 
+def test_the_gnss_bridge_accepts_the_largest_scale_the_supervisor_publishes():
+    # ブリッジが上限で切ると、監督が割り戻す倍率とかけられた倍率が食い違い、GNSS の誤差を小さく見積もる
+    config = load_config(SUPERVISION)
+    residual = config.residuals['gnss_vs_ekf']
+    for path in ('slam_gnss_2d/slam_gnss_2d/params/nav_bridge.yaml', 'mg_simulation/config/nav_bridge_sim.yaml'):
+        with open(PACKAGE_DIR.parent / path, encoding='utf-8') as f:
+            bridge = yaml.safe_load(f)['slam_gnss_nav_bridge']['ros__parameters']
+        # 書いていなければ、ブリッジのコードの既定 (100)
+        assert bridge.get('variance_scale_max', 100.0) >= residual.max_scale, path
+
+
 def test_gnss_fallback_does_not_scale_the_gnss_variance():
     assert load_config(SUPERVISION, 'gnss_fallback').residuals['gnss_vs_ekf'].max_scale == 1.0
 
