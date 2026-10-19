@@ -1,7 +1,7 @@
 # mg_localization_supervisor
 
 自己位置推定の検証と復旧のフレームワーク [localization_supervisor](../localization_supervisor/README.md) を、このロボットの構成 (AMCL + GNSS + オドメトリを EKF で融合) で使うための設定・launch・部品。
-自己位置推定の全体の構成は [mg_navigation/doc/localization.md](../mg_navigation/doc/localization.md)。
+自己位置推定の全体の構成は [mg_navigation/doc/localization.md](../mg_navigation/doc/localization.md)。blame・vouch・切り離しなどの用語は [用語集](../localization_supervisor/doc/glossary.md)。
 
 ## 構成要素
 
