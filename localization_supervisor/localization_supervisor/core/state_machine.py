@@ -19,13 +19,17 @@
     初期化せずに NORMAL へ戻す (一時的な外れ値だった場合に、走行を止め続けない)
 
     blame が isolate_only の情報源のときは、ISOLATED のまま、止めず、再初期化もせず、異常がなくなる
-    (clear_ticks 回) のを待って NORMAL に戻る。別の blame で異常を確認したら、その blame の対処に移る
+    (clear_ticks 回) のを待って NORMAL に戻る。別の情報源が blame で異常を確認したら、その blame の対処に移る
+    (blame が決めきれない間は、切り離したまま待つ)
 """
 import enum
 from dataclasses import dataclass, field
 from typing import List, Optional
 
 from .interfaces import FusionResult
+
+# 疑わしい情報源を決めきれないときの blame
+UNKNOWN = 'unknown'
 
 
 class State(enum.IntEnum):
@@ -112,7 +116,7 @@ class StateMachine:
 
         if self.state == State.SUSPECT:
             if fusion.confirmed:
-                self.blame = fusion.blame or 'unknown'
+                self.blame = fusion.blame or UNKNOWN
                 if not cfg.recovery_enabled:
                     self.state = State.DEGRADED
                     self._clear_run = 0
@@ -184,9 +188,11 @@ class StateMachine:
         return Decision(self.state, [Action.ISOLATE], f'isolated: narrowed to {self.blame}', self.blame)
 
     def _step_soft(self, now: float, fusion: FusionResult) -> Decision:
-        """isolate_only の blame を切り離している間。異常がなくなれば戻る。別の blame で異常を確認したら、
-        その blame の対処 (切り離し・停止・再初期化) に移る。"""
-        if fusion.confirmed and fusion.blame and fusion.blame not in self.config.isolate_only:
+        """isolate_only の blame を切り離している間。異常がなくなれば戻る。別の情報源が blame で異常を確認したら、
+        その blame の対処 (切り離し・停止・再初期化) に移る。決めきれない (unknown) 間は、今の状態を保つ
+        (正しいと示す判定が、停止中などで判定できないだけのことがある。本当にずれていれば blame が決まる)。"""
+        if (fusion.confirmed and fusion.blame and fusion.blame != UNKNOWN
+                and fusion.blame not in self.config.isolate_only):
             self._soft = False
             self.blame = fusion.blame
             self._isolated_at = now

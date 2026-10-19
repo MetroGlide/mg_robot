@@ -129,11 +129,14 @@ def test_another_blame_takes_over_from_an_isolate_only_blame():
     assert d.state == State.RECOVERING and d.actions == [Action.REINIT]
 
 
-def test_an_undecided_blame_also_takes_over():
+def test_an_undecided_blame_does_not_take_over():
+    # 正しいと示す判定が判定できなくなって blame が unknown に戻っても、止めず、再初期化もしない
     machine = _soft_machine()
     machine.step(1.0, _fr(confirmed=True, suspect=True, anomaly=True, blame='gnss'))
-    d = machine.step(2.0, _fr(confirmed=True, suspect=True, anomaly=True, blame='unknown'))
-    assert d.actions == [Action.ISOLATE] and machine.hold_requested
+    for t in range(2, 40):
+        d = machine.step(float(t), _fr(confirmed=True, suspect=True, anomaly=True, blame='unknown'))
+        assert d.state == State.ISOLATED and d.actions == [] and not machine.hold_requested
+    assert machine.blame == 'gnss'
 
 
 def test_a_blame_narrowed_before_the_reinit_becomes_an_isolate_only_isolation():
@@ -331,3 +334,23 @@ def test_the_scale_applied_while_isolated_does_not_hide_the_bias_from_the_detect
     results = _run(_supervisor_config(['amcl'], ['gnss']), bias_until=40, seconds=40)
     assert results[-1].state == State.ISOLATED
     assert results[-1].evidences['amcl_gnss'].status == Status.ANOMALY
+
+
+def test_stopping_while_gnss_is_isolated_does_not_stop_the_robot_or_reinitialize():
+    # 走行中に GNSS がずれて切り離した後、止まって正しいと示す判定が判定できなくなる (vouch が外れ、blame が unknown に戻る)
+    infos = _infos(('amcl_gnss', ['amcl', 'gnss'], {'allowance': 0.6, 'max_score': 2.0}),
+                   ('scan', ['amcl'], {'allowance': 0.8, 'vouches': ['amcl']}))
+    fusion = CusumFusion('cusum', {'suspect_level': 1.0, 'confirm_level': 4.0, 'blame_margin': 1.0,
+                                   'vouch_hold_ticks': 15}, infos, ['amcl', 'gnss'], {})
+    machine = StateMachine(MachineConfig(recovery_enabled=True, isolate_only=['gnss']))
+    holds, reinits, blames = [], [], set()
+    for t in range(80):
+        moving = t < 20
+        scan = _ev('normal', 0.5) if moving and t % 5 == 0 else _ev('unknown')
+        gnss = _ev('anomaly', 2.0) if moving else _ev('unknown')
+        result = fusion.update({'amcl_gnss': gnss, 'scan': scan}, True)
+        decision = machine.step(float(t), result)
+        holds.append(machine.hold_requested)
+        reinits.append(Action.REINIT in decision.actions)
+        blames.add(result.blame)
+    assert 'unknown' in blames and not any(holds) and not any(reinits)
