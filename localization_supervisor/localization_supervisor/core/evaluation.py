@@ -188,8 +188,8 @@ def format_report(report: Report, title: str = '') -> str:
             extra = (f'{_seconds(f.reinit_after)} | {_seconds(f.reinit_error_m)} | {_seconds(f.recovered_after)} | '
                      if recovery else '')
             lines.append(
-                f'| {f.type} | {f.source} | {"○" if f.expected else "-"} | {f.start:.1f} | {_seconds(f.suspect_after)} | '
-                f'{_seconds(f.confirm_after)} | {f.blame or "-"} | {extra}'
+                f'| {f.type} | {f.source} | {"○" if f.expected else "-"} | {f.start:.1f} | '
+                f'{_seconds(f.suspect_after)} | {_seconds(f.confirm_after)} | {f.blame or "-"} | {extra}'
                 + ' | '.join(_seconds(f.instance_after[n]) for n in names) + ' |')
     lines += ['', '## 判定のインスタンスごと', '',
               '| インスタンス | 検知した故障 | 誤検知率 (区間の外で異常と判定した割合) | 区間の外で判定できた周期 |',

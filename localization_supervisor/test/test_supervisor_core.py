@@ -259,7 +259,7 @@ def test_attribute_blame_uses_independent_sources_only():
 
 def test_consecutive_jump_needs_corroboration():
     infos = _infos(('jump', ['amcl'], {'options': {'suspect_after': 1, 'confirm_after': 0,
-                                                    'corroborate_after': 2}}),
+                                                   'corroborate_after': 2}}),
                    ('scan', ['amcl'], {'options': {'suspect_after': 5, 'confirm_after': 10}}))
     fusion = ConsecutiveFusion('consecutive', {'blame_margin': 1.0}, infos, ['amcl'], {})
     r = fusion.update({'jump': _ev('anomaly', 3.0), 'scan': _ev('normal')}, True)

@@ -46,6 +46,8 @@ class OutputConfig:
     status_topic: str = '/localization/status'
     diagnostic_name: str = 'localization'
     hardware_id: str = 'localization'
+
+
 DETECTOR_KEYS = {
     'type', 'sources', 'params', 'weight', 'allowance', 'decay', 'max_score', 'enabled', 'options', 'vouch'}
 

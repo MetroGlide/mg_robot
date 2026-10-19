@@ -208,4 +208,3 @@ def test_the_applied_scale_is_the_maximum_while_the_source_is_isolated():
     machine.state = State.NORMAL
     machine.blame = ''
     assert supervisor._applied_scales(stats) == {'gnss_vs_amcl': 1.5}
-

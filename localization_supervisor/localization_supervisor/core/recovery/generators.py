@@ -134,8 +134,9 @@ class SubmapMatch(CandidateGenerator):
         elapsed = time.monotonic() - started
         self.status = 'ok' if peaks else 'no_match'
         result_cov = np.diag([p['result_std_m'] ** 2, p['result_std_m'] ** 2, p['result_std_yaw_rad'] ** 2])
-        return [Candidate(
-            peak.pose, result_cov.copy(), self.name,
-            info={'ratio': peak.ratio, 'rank': float(rank), 'search_m': range_xy, 'elapsed_sec': elapsed,
-                  'points': float(points.shape[0])})
+        return [
+            Candidate(
+                peak.pose, result_cov.copy(), self.name,
+                info={'ratio': peak.ratio, 'rank': float(rank), 'search_m': range_xy, 'elapsed_sec': elapsed,
+                      'points': float(points.shape[0])})
             for rank, peak in enumerate(peaks)]

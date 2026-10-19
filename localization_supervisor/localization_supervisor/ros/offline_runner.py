@@ -281,8 +281,9 @@ def step_record(t_rel: float, result: StepResult) -> Dict[str, Any]:
                                for name, s in result.residuals.items()}
     for directive in result.directives:
         if directive.kind == 'reinit':
-            record['reinit'] = {'origin': directive.candidate.origin, 'pose': [round(v, 3) for v in directive.candidate.pose],
-                                'total': directive.candidate.total}
+            candidate = directive.candidate
+            record['reinit'] = {'origin': candidate.origin, 'pose': [round(v, 3) for v in candidate.pose],
+                                'total': candidate.total}
     if result.safety is not None:
         record['lethal'] = {'in_lethal': result.safety.in_lethal, 'fraction': round(result.safety.fraction, 4),
                             'depth_m': round(result.safety.depth_m, 3)}

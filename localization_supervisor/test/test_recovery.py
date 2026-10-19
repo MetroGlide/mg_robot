@@ -6,7 +6,7 @@ import pytest
 
 from localization_supervisor.core.config import ConfigError, parse_config
 from localization_supervisor.core.interfaces import (
-    CONTRACT_VERSION, Candidate, CandidateGenerator, CandidateScorer, ParamSpec, RecoveryContext, SourceKind)
+    CONTRACT_VERSION, Candidate, CandidateGenerator, CandidateScorer, ParamSpec, RecoveryContext)
 from localization_supervisor.core.recovery.planner import RecoveryPlanner, ScorerConfig, SelectionConfig
 from localization_supervisor.core.state_machine import MachineConfig, State, StateMachine
 from localization_supervisor.core.supervisor import Supervisor, make_store
