@@ -114,6 +114,7 @@ GNSS が悪いと分かったとき (`state_machine.isolate_only`) は、止め�
 - 対処は起動時にすべて作る。プロファイルで変えられるのは、働かせない対処 (`recovery.disabled_actuators`) だけ。`gnss_fallback` は、以前の初期化ノードに無かった対処 (`pause_request`・`clear_costmap`・`variance_scale`) を無効にする。
 - 戻し方: プロファイル `notify_only`(通知だけ)、`state_machine.request_hold: false`(止めない)、`state_machine.isolate_only: []`(GNSS のずれでも、通常の対処をする)、`gnss_fallback`(以前の GNSS で引き戻すだけの動作)、`localization_monitor:=watchdog`(従来の監視)。
 - 部品は `mg_localization_supervisor/actuators/` (`pause_request.py`、`clear_costmap.py`)。
+- 将来の拡張 (構想): [GNSS の場所ごとのずれを信頼度に反映する](../doc/ideas/gnss_map_distortion.md)、[AMCL を止めている区間を監督が知る](../doc/ideas/localization_gate_awareness.md)。
 
 ### オフライン評価
 

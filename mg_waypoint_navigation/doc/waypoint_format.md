@@ -75,6 +75,7 @@ waypoints:
 - 切り替えると、監督は作り直される。状態は NORMAL に戻り、復旧の起点 (アンカー) とスキャンの一致率の基準は捨てられる。止まっているウェイポイントで切り替え、自己位置の復旧中は避ける。
 - プロファイルは、走行が終わっても残る。区間の終わりで、空の `profile` に戻す。`amcl_on` と `amcl_off` のように、切り替えた側が戻す責任を持つ。
 - 監督が起動していない (`localization_monitor:=watchdog` など) ときは、サービスがなく、失敗になる。
+- 将来の拡張: `amcl_off` の区間で、監督が自動で AMCL の判定を外す案が [doc/ideas](../../doc/ideas/localization_gate_awareness.md) にある。
 
 ### type: publish — トピックパブリッシュ
 
