@@ -179,6 +179,36 @@ class TestDriving:
             running_recovery_nodes=frozenset({'BackUp'}))
         assert recovery.code == act.RECOVERY
 
+    def test_detour_rejected(self):
+        result = compose(rejected_detour=act.DetourInput(152.0, 45.0))
+        assert result.code == act.DETOUR_REJECTED
+        assert result.emphasis == act.NOTICE
+        assert result.detail == '経路 152 m / 上限 45 m'
+        assert (result.index, result.total) == (3, 10)
+
+    def test_detour_rejected_takes_priority_over_recovery_and_stop(self):
+        result = compose(
+            rejected_detour=act.DetourInput(152.0, 45.0),
+            running_recovery_nodes=frozenset({'BackUpAndReplan'}),
+            collision=CollisionInput(act.COLLISION_STOP, 'p'),
+            stalled_sec=100.0)
+        assert result.code == act.DETOUR_REJECTED
+
+    def test_detour_rejected_on_manual_and_external_goal(self):
+        manual = compose(
+            state=SequencerState.IDLE, manual_goal_active=True,
+            rejected_detour=act.DetourInput(152.0, 45.0))
+        assert (manual.code, manual.index, manual.total) == (act.DETOUR_REJECTED, -1, -1)
+        external = compose(
+            state=SequencerState.IDLE, external_goal_active=True,
+            rejected_detour=act.DetourInput(152.0, 45.0))
+        assert external.code == act.DETOUR_REJECTED
+
+    def test_detour_rejected_is_ignored_in_sequencer_states(self):
+        result = compose(
+            state=SequencerState.SUSPENDED, rejected_detour=act.DetourInput(152.0, 45.0))
+        assert result.code == act.PAUSED
+
     def test_paused_takes_priority_over_stop(self):
         result = compose(
             state=SequencerState.SUSPENDED,

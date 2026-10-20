@@ -1,4 +1,4 @@
-"""「いまの活動」の合成に使う Nav2 側の入力 (collision_monitor の状態・BT のリカバリー) を保持する。
+"""「いまの活動」の合成に使う Nav2 側の入力 (collision_monitor の状態・BT のリカバリー・遠回りの棄却) を保持する。
 
 購読して最新の値を保存するだけで、判定は activity.py が行う。
 """
@@ -9,6 +9,7 @@ from typing import FrozenSet, Optional, Set
 
 import rclpy.node
 from action_msgs.msg import GoalStatus, GoalStatusArray
+from mg_msgs.msg import PathCandidateCheck
 from nav2_msgs.msg import BehaviorTreeLog, CollisionMonitorState
 from rclpy.callback_groups import CallbackGroup
 from rclpy.qos import (
@@ -16,6 +17,7 @@ from rclpy.qos import (
 
 from mg_waypoint_navigation.waypoint_sequencer.activity import (
     CollisionInput,
+    DetourInput,
     RECOVERY_NODE_NAMES,
 )
 
@@ -33,7 +35,8 @@ EXTERNAL_GOAL_HOLD_SEC = 1.0
 
 
 class ActivitySources:
-    """collision_monitor の最新の状態と、実行中のリカバリーの BT ノード名を保持する。
+    """collision_monitor の最新の状態と、実行中のリカバリーの BT ノード名、
+    遠回りの棄却 (CommitPath の最新の判定が棄却のとき) を保持する。
 
     collision_monitor の状態は変化したときしか届かない。まだ届いていなければ「障害物なし」として扱う。
     BT のログは終了の通知を取りこぼしても表示が残り続けないよう、走行に戻ったとき
@@ -51,12 +54,14 @@ class ActivitySources:
         collision_state_topic: str,
         bt_log_topic: str,
         nav_status_topic: str,
+        path_check_topic: str,
     ):
         self._node = node
         self._nav_status_topic = nav_status_topic
         self._lock = threading.Lock()
         self._collision: Optional[CollisionInput] = None
         self._recovery_nodes: Set[str] = set()
+        self._rejected_detour: Optional[DetourInput] = None
         self._nav_goal_live = False
         self._external_since: Optional[float] = None
 
@@ -69,6 +74,11 @@ class ActivitySources:
             node.create_subscription(
                 BehaviorTreeLog, bt_log_topic, self.on_bt_log,
                 QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT),
+                callback_group=callback_group)
+        # 遠回りの棄却。発行側 (CommitPath) の既定の QoS で受ける
+        if path_check_topic:
+            node.create_subscription(
+                PathCandidateCheck, path_check_topic, self.on_path_candidate_check, 10,
                 callback_group=callback_group)
         # Nav2 のアクションの状態と同じ QoS。再起動直後も現在の状態が届く
         if nav_status_topic:
@@ -116,10 +126,21 @@ class ActivitySources:
                     else:
                         self._recovery_nodes.discard(event.node_name)
 
-    def clear_recovery(self) -> None:
-        """新しいゴールを送ったときや、走行中でなくなったときに、リカバリーの記録を消す。"""
+    def on_path_candidate_check(self, msg: PathCandidateCheck) -> None:
+        with self._lock:
+            self._rejected_detour = (
+                DetourInput(msg.path_length, msg.limit) if msg.rejected else None)
+
+    def clear_navigation_state(self) -> None:
+        """走行中でなくなったときに、リカバリーと遠回りの棄却の記録を消す。"""
         with self._lock:
             self._recovery_nodes.clear()
+            self._rejected_detour = None
+
+    @property
+    def rejected_detour(self) -> Optional[DetourInput]:
+        with self._lock:
+            return self._rejected_detour
 
     @property
     def collision(self) -> Optional[CollisionInput]:
