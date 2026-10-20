@@ -154,10 +154,8 @@ class ConsecutiveFusion(FusionStrategy):
     """インスタンスごとの、続けて異常だった回数で判断する。
 
     インスタンスの options:
-      suspect_after     : この回数続けば疑い (既定 1)
-      confirm_after     : この回数続けば異常を確認 (0 なら、単独では確認しない。既定 3)
-      corroborate_after : このインスタンスが疑いの間に異常になっていて、他のインスタンスがこの回数続けば
-                          異常を確認 (0 なら使わない。既定 0)
+      suspect_after : この回数続けば疑い (既定 1)
+      confirm_after : この回数続けば異常を確認 (0 なら、単独では確認しない。既定 3)
     異常がなくなった (cleared) のは、その周期に判定できたインスタンスがあり、どれも異常でないとき。
     """
     PARAMS = {
@@ -171,8 +169,6 @@ class ConsecutiveFusion(FusionStrategy):
 
     def reset(self) -> None:
         self._runs: Dict[str, int] = {name: 0 for name in self.instances}
-        self._fired: Dict[str, bool] = {name: False for name in self.instances}
-        self._suspect = False
         self._peaks = _Peaks(self.instances)
         self._vouch = _Vouch(self.instances, self.params.get('vouch_hold_ticks', VOUCH_HOLD_TICKS.default))
 
@@ -189,36 +185,20 @@ class ConsecutiveFusion(FusionStrategy):
                 if evidence.status == Status.ANOMALY:
                     anomaly = True
                     self._runs[name] += 1
-                    self._fired[name] = True
                 else:
                     self._runs[name] = 0
-        if not self._suspect:
-            # 疑いの前は、この周期に異常になったものだけを覚える
-            self._fired = {name: active and evidences.get(name, Evidence.unknown()).status == Status.ANOMALY
-                           for name in self.instances}
         suspect = confirmed = False
         level = 0.0
         for name in self.instances:
             run = self._runs[name]
-            suspect_after = self._option(name, 'suspect_after', 1)
             confirm_after = self._option(name, 'confirm_after', 3)
-            corroborate_after = self._option(name, 'corroborate_after', 0)
-            if run >= suspect_after or (corroborate_after and self._fired[name]):
+            if run >= self._option(name, 'suspect_after', 1):
                 suspect = True
-            if confirm_after and run >= confirm_after:
-                confirmed = True
-            if corroborate_after and self._fired[name]:
-                others = [self._runs[o] for o in self.instances if o != name]
-                if others and max(others) >= corroborate_after:
-                    confirmed = True
             if confirm_after:
+                confirmed = confirmed or run >= confirm_after
                 level = max(level, run / confirm_after)
         suspect = suspect or confirmed
-        self._suspect = suspect
         accumulated = {name: float(run) for name, run in self._runs.items()}
-        for name, fired in self._fired.items():
-            if fired and accumulated[name] == 0.0:
-                accumulated[name] = 1.0
         if not any(accumulated.values()):
             self._peaks = _Peaks(self.instances)
         blame, contaminated = attribute(

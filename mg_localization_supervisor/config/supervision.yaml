@@ -247,7 +247,5 @@ output:
 profiles:
   # AMCL と GNSS が乖離したら GNSS で引き戻すだけの動作
   gnss_fallback: profiles/gnss_fallback.yaml
-  # 判定ごとに続けて異常だった回数で判断する (今の監督ノードと同じ判定と回数)
-  consecutive: profiles/consecutive.yaml
   # 検知と通知だけ (自動復旧しない。watchdog と並行して動かすときに使う)
   notify_only: profiles/notify_only.yaml

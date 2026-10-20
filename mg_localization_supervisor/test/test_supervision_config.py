@@ -54,12 +54,6 @@ def test_gnss_fallback_only_compares_amcl_and_gnss():
     assert config.fusion_cls is ConsecutiveFusion
 
 
-def test_consecutive_profile_uses_the_counting_fusion():
-    config = load_config(SUPERVISION, 'consecutive')
-    assert config.fusion_cls is ConsecutiveFusion
-    assert sorted(config.enabled_detectors()) == ['amcl_ekf', 'amcl_gnss', 'amcl_jump', 'scan_ekf']
-
-
 def test_node_can_run_every_profile():
     check_node_supports(load_config(SUPERVISION))
 

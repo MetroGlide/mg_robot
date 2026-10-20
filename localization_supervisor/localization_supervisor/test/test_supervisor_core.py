@@ -231,6 +231,25 @@ def test_cusum_ignores_zero_weight_instances():
     assert result.level == 0.0 and not result.anomaly and result.cleared
 
 
+def test_consecutive_counts_runs_of_anomalies_per_instance():
+    infos = _infos(('gnss', ['amcl', 'gnss'], {'options': {'suspect_after': 2, 'confirm_after': 3}}))
+    fusion = ConsecutiveFusion('consecutive', {'blame_margin': 1.0}, infos, ['amcl', 'gnss'], {})
+    anomaly, normal = {'gnss': _ev('anomaly', 3.0)}, {'gnss': _ev('normal')}
+    r = fusion.update(anomaly, True)
+    assert not r.suspect and r.anomaly and not r.cleared
+    r = fusion.update(anomaly, True)
+    assert r.suspect and not r.confirmed
+    # 判定できない周期は、回数を変えない
+    r = fusion.update({'gnss': _ev('unknown')}, True)
+    assert r.suspect and not r.confirmed and not r.cleared
+    r = fusion.update(anomaly, True)
+    assert r.confirmed and r.level == pytest.approx(1.0)
+    # 2 つの情報源の食い違いだけでは、blame は決まらない
+    assert r.blame == 'unknown'
+    r = fusion.update(normal, True)
+    assert not r.suspect and r.cleared and r.blame == ''
+
+
 def test_attribute_blame_uses_independent_sources_only():
     instances = {i.name: i for i in _infos(
         ('amcl_gnss', ['amcl', 'gnss'], {}), ('amcl_jump', ['amcl'], {}), ('scan_ekf', ['ekf'], {}),
@@ -255,19 +274,6 @@ def test_attribute_blame_uses_independent_sources_only():
     # 融合の結果との食い違いは、相手が blame なら融合の結果を疑わない
     assert run({'amcl_gnss': 9.0, 'amcl_jump': 3.0, 'amcl_ekf': 2.0}) == ('amcl', [])
     assert run({'amcl_gnss': 9.0, 'amcl_jump': 3.0, 'amcl_ekf': 2.0, 'scan_ekf': 1.0}) == ('amcl', ['ekf'])
-
-
-def test_consecutive_jump_needs_corroboration():
-    infos = _infos(('jump', ['amcl'], {'options': {'suspect_after': 1, 'confirm_after': 0,
-                                                   'corroborate_after': 2}}),
-                   ('scan', ['amcl'], {'options': {'suspect_after': 5, 'confirm_after': 10}}))
-    fusion = ConsecutiveFusion('consecutive', {'blame_margin': 1.0}, infos, ['amcl'], {})
-    r = fusion.update({'jump': _ev('anomaly', 3.0), 'scan': _ev('normal')}, True)
-    assert r.suspect and not r.confirmed
-    r = fusion.update({'jump': _ev('unknown'), 'scan': _ev('anomaly', 2.0)}, True)
-    assert r.suspect and not r.confirmed
-    r = fusion.update({'jump': _ev('unknown'), 'scan': _ev('anomaly', 2.0)}, True)
-    assert r.confirmed and r.blame == 'amcl'
 
 
 # ---------------------------------------------------------------- state machine

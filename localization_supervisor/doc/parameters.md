@@ -64,7 +64,7 @@ detectors:
     decay: <数>       # cusum: 前の周期の累積に掛ける (1 未満で古い証拠を忘れる)
     max_score: <数>   # cusum: 1 周期の score の上限 (1 回の大きな異常の効き方を決める)
     enabled: <true | false>
-    options: {...}    # 総合の方式ごとの指定 (consecutive の suspect_after・confirm_after・corroborate_after)
+    options: {...}    # 総合の方式ごとの指定 (consecutive の suspect_after・confirm_after)
     vouch: [<情報源の名前>, ...]   # 正常と判定できたとき、その情報源が正しいと示す (この判定が疑いをかける情報源のうち)
 ```
 

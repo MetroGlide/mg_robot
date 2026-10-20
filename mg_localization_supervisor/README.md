@@ -83,7 +83,6 @@ GNSS による初期化と監督ノードは、他のノードが立ち上がる
 | :--- | :--- |
 | `notify_only` | 検知と通知だけにする (自動復旧しない)。判定は基の設定のまま。watchdog と並行して動かすときの既定 |
 | `gnss_fallback` | AMCL と GNSS が乖離したら GNSS で引き戻すだけの動作 (以前の watchdog と GNSS による初期化と同じ)。AMCL と GNSS の食い違いだけを、続けて異常だった回数で判断し、候補は精度の良い GNSS が続いたときの位置だけ。評価も切り離しも一時停止もしない |
-| `consecutive` | 以前の監督ノードと同じ判定・しきい値・回数。累積 (`cusum`) と比べるために使う |
 
 ### 自動復旧の構成
 
@@ -118,13 +117,13 @@ GNSS が悪いと分かったとき (`state_machine.isolate_only`) は、止め�
 ### オフライン評価
 
 再生評価 (`tools/scripts/run_localization_variant.sh`) の記録を使って、判定と総合を実時間を待たずに評価する ([tools の README](../tools/README.md) の `eval_localization_offline.py`)。
-しきい値・重み・`allowance` を変えたら、正常な記録 (誤検知) と故障注入 (検知までの時間・`blame`) で、`consecutive` のプロファイル (以前の監督ノード) と同じか、それより良いことを確かめる。
+しきい値・重み・`allowance` を変えたら、正常な記録 (誤検知) と故障注入 (検知までの時間・`blame`) で、変える前の設定の結果と同じか、それより良いことを確かめる。変える前の結果は、`--out` で名前を分けて残しておく。
 新しい判定は、まず重み 0 (記録だけ) のプロファイルで、正しい姿勢での値の分布と故障のときの値を比べてから有効にする。
 
 ```bash
-# 例: 採用している設定の再生の記録に kidnap を注入し、既定の設定と consecutive を比べる
+# 例: 採用している設定の再生の記録に kidnap を注入し、既定の設定と gnss_fallback を比べる
 tools/scripts/eval_localization_offline.py <評価 bag>/eval_loc/<データセット>/<変種> \
-    --faults tools/datasets/localization/faults/kidnap.yaml --profile '' --profile consecutive
+    --faults tools/datasets/localization/faults/kidnap.yaml --profile '' --profile gnss_fallback
 ```
 
 ## gnss_amcl_initializer_node
