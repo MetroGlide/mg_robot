@@ -1,8 +1,8 @@
 """入力のアダプタの組み立て: 設定の sources.<名前>.input からアダプタを作る。"""
 from typing import Dict
 
-from ...core.config import ConfigError, SupervisorConfig
-from ...core.plugins import PluginError, resolve, resolve_params
+from ...core.config import SupervisorConfig
+from ...core.plugins import ConfigError, build
 from ...core.snapshot import SampleStore
 from .base import AdapterContext, SourceAdapter, Subscription
 from .standard import STANDARD_ADAPTERS
@@ -21,11 +21,7 @@ def build_adapters(
         type_name = raw.pop('type', None)
         if not isinstance(type_name, str):
             raise ConfigError(f'{where}.type: required')
-        try:
-            cls = resolve(type_name, STANDARD_ADAPTERS, SourceAdapter, where)
-            params = resolve_params(cls, raw, where)
-        except PluginError as error:
-            raise ConfigError(str(error)) from error
+        cls, params = build(type_name, STANDARD_ADAPTERS, SourceAdapter, raw, where)
         if source.kind not in cls.KINDS:
             raise ConfigError(f'{where}: {type_name} cannot make a {source.kind.value} source')
         try:

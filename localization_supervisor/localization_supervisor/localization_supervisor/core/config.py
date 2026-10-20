@@ -19,7 +19,7 @@ from .fusion import STANDARD_FUSIONS
 from .interfaces import (
     CONTRACT_VERSION, CandidateGenerator, CandidateScorer, Detector, FusionStrategy, Matcher, SourceKind)
 from .matcher import STANDARD_MATCHERS
-from .plugins import PluginError, resolve, resolve_params
+from .plugins import ConfigError, build
 from .recovery import STANDARD_GENERATORS, STANDARD_SCORERS
 from .recovery.planner import GeneratorConfig, ScorerConfig, SelectionConfig
 from .residuals import ResidualConfig
@@ -27,10 +27,6 @@ from .safety import SafetyConfig
 from .scan_buffer import ScanBufferConfig
 from .state_machine import MachineConfig
 from .timeline import AlignmentConfig
-
-
-class ConfigError(ValueError):
-    pass
 
 
 TOP_LEVEL_KEYS = {
@@ -209,11 +205,8 @@ def _bind_plugin(
     type_name = body.get('type')
     if not isinstance(type_name, str):
         raise ConfigError(f'{where}.type: required')
-    try:
-        cls = resolve(type_name, registry, base, where)
-        params = resolve_params(cls, _mapping(body.get('params'), f'{where}.params'), f'{where}.params')
-    except PluginError as error:
-        raise ConfigError(str(error)) from error
+    cls, params = build(
+        type_name, registry, base, _mapping(body.get('params'), f'{where}.params'), where, f'{where}.params')
     declared = getattr(cls, 'SOURCES', {})
     bound = _mapping(body.get('sources'), f'{where}.sources')
     if set(bound) != set(declared):
@@ -354,12 +347,9 @@ def _parse_recovery(
 
     matcher = _mapping(recovery.get('matcher'), 'recovery.matcher')
     _check_keys(matcher, {'type', 'params'}, 'recovery.matcher')
-    try:
-        matcher_cls = resolve(matcher.get('type', 'correlative'), STANDARD_MATCHERS, Matcher, 'recovery.matcher')
-        matcher_params = resolve_params(
-            matcher_cls, _mapping(matcher.get('params'), 'recovery.matcher.params'), 'recovery.matcher.params')
-    except PluginError as error:
-        raise ConfigError(str(error)) from error
+    matcher_cls, matcher_params = build(
+        matcher.get('type', 'correlative'), STANDARD_MATCHERS, Matcher,
+        _mapping(matcher.get('params'), 'recovery.matcher.params'), 'recovery.matcher', 'recovery.matcher.params')
 
     scan_buffer = None
     if recovery.get('scan_buffer') is not None:
@@ -472,11 +462,9 @@ def parse_config(
     fusion = _mapping(merged.get('fusion'), 'fusion')
     _check_keys(fusion, {'type', 'params'}, 'fusion')
     fusion_type = fusion.get('type', 'cusum')
-    try:
-        fusion_cls = resolve(fusion_type, STANDARD_FUSIONS, FusionStrategy, 'fusion')
-        fusion_params = resolve_params(fusion_cls, _mapping(fusion.get('params'), 'fusion.params'), 'fusion.params')
-    except PluginError as error:
-        raise ConfigError(str(error)) from error
+    fusion_cls, fusion_params = build(
+        fusion_type, STANDARD_FUSIONS, FusionStrategy, _mapping(fusion.get('params'), 'fusion.params'), 'fusion',
+        'fusion.params')
 
     trust = _mapping(merged.get('trust'), 'trust')
     _check_keys(trust, {'require_normal'}, 'trust')
