@@ -65,6 +65,10 @@ class _Peaks:
     def __init__(self, names) -> None:
         self.values: Dict[str, float] = {name: 0.0 for name in names}
 
+    def clear(self) -> None:
+        for name in self.values:
+            self.values[name] = 0.0
+
     def update(self, accumulated: Mapping[str, float]) -> Dict[str, float]:
         for name, value in accumulated.items():
             self.values[name] = max(self.values[name], value)
@@ -146,13 +150,13 @@ class AttributingFusion(FusionStrategy):
     def update(self, evidences: Mapping[str, Evidence], active: bool) -> FusionResult:
         acc = self._accumulate(evidences, active)
         if not any(v > 0.0 for v in acc.accumulated.values()):
-            self._peaks = _Peaks(self.instances)
+            self._peaks.clear()
         blame, contaminated = attribute(
             self._peaks.update(acc.accumulated), acc.accumulated, self.instances, self.independent, self.derived,
             self.params['blame_margin'], self._vouch.update(evidences, active))
         return FusionResult(
             level=acc.level, suspect=acc.suspect, confirmed=acc.confirmed, cleared=acc.known and not acc.anomaly,
-            anomaly=acc.anomaly, blame=blame, contaminated=contaminated, accumulated=dict(acc.accumulated),
+            anomaly=acc.anomaly, blame=blame, contaminated=contaminated, accumulated=acc.accumulated,
             reason=_reason(acc.accumulated))
 
 
@@ -184,7 +188,7 @@ class CusumFusion(AttributingFusion):
         level = sum(self._acc.values())
         return Accumulation(
             level, level >= self.params['suspect_level'], level >= self.params['confirm_level'], known, anomaly,
-            self._acc)
+            dict(self._acc))
 
 
 class ConsecutiveFusion(AttributingFusion):

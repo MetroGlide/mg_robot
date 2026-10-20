@@ -94,8 +94,8 @@ class SubmapMap(Detector):
         if result is None:
             return Evidence.unknown()
         self._last_match = snapshot.stamp
-        ratio, best, (dx, dy, dyaw) = result
-        gain = best - ratio
+        ratio, gain = result.base, result.gain
+        dx, dy, dyaw = result.shift
         threshold = self.ratio_threshold()
         score = max(threshold / max(ratio, MIN_RATIO), gain / p['gain_threshold'])
         return Evidence.from_score(

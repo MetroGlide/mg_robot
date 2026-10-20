@@ -68,9 +68,7 @@ class ScanMap(Detector):
             field, points, p['tolerance_m'], (pose[0], pose[1]), self._offsets, min_points=p['min_points'])
         if result is None:
             return Evidence.unknown()
-        # 利得: ずらしたほうが合う分 (姿勢が地図に対してずれていて、近くにもっと合う位置があるときに大きい)
-        ratio, best, _ = result
-        gain = best - ratio
+        ratio, gain = result.base, result.gain
         threshold = self.ratio_threshold()
         score = max(threshold / max(ratio, MIN_RATIO), gain / p['gain_threshold'])
         return Evidence.from_score(score, ratio=ratio, gain=gain, ratio_threshold=threshold)

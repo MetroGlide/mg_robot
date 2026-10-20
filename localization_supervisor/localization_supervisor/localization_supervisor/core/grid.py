@@ -5,7 +5,7 @@ AMCL の共分散 (自己申告) とは独立な、自己位置の妥当性の�
 巨大な地図でも扱えるよう、姿勢の周りの局所だけの距離場をそのつど作る。
 """
 import math
-from typing import Optional, Sequence, Tuple
+from typing import NamedTuple, Optional, Sequence, Tuple
 
 import numpy as np
 from scipy import ndimage
@@ -113,13 +113,24 @@ def transform_points(pose: Pose2, points_xy: np.ndarray) -> np.ndarray:
                      pose[1] + s * points_xy[:, 0] + c * points_xy[:, 1]], axis=1)
 
 
+class OffsetMatch(NamedTuple):
+    """best_offset の結果。base はずらさないときの一致率、best は最良の一致率、shift は最良のずらし方 (dx, dy, dyaw)。"""
+    base: float
+    best: float
+    shift: Pose2
+
+    @property
+    def gain(self) -> float:
+        """ずらしたほうが合う分 (姿勢が地図に対してずれていて、近くにもっと合う位置があるときに大きい)。"""
+        return self.best - self.base
+
+
 def best_offset(
     field: LocalDistanceField, points_xy: np.ndarray, tolerance: float, center: Tuple[float, float],
     offsets: np.ndarray, yaws: Sequence[float] = (0.0,), min_points: int = 30,
-) -> Optional[Tuple[float, float, Pose2]]:
+) -> Optional[OffsetMatch]:
     """点を center の周りに yaws だけ回し、offsets だけずらして、最もよく一致するずらし方を探す。
 
-    Returns: (ずらさないときの一致した割合, 最良の一致した割合, 最良のずらし方 (dx, dy, dyaw))。
     同じ割合なら、距離の平均の小さいほう (tolerance の中でもよく合うほう)、それも同じならずらし量の小さいほうを
     選ぶ。判断できなければ None。
     """
@@ -127,14 +138,12 @@ def best_offset(
     if base is None:
         return None
     best_key, best = (base[0], -base[1], 0.0), (0.0, 0.0, 0.0)
-    relative = points_xy - np.asarray(center, dtype=float)
+    center_xy = np.asarray(center, dtype=float)
     for dyaw in yaws:
         if dyaw == 0.0:
             rotated = points_xy
         else:
-            c, s = math.cos(dyaw), math.sin(dyaw)
-            rotated = np.stack([c * relative[:, 0] - s * relative[:, 1],
-                                s * relative[:, 0] + c * relative[:, 1]], axis=1) + np.asarray(center, dtype=float)
+            rotated = transform_points((0.0, 0.0, dyaw), points_xy - center_xy) + center_xy
         for offset in offsets:
             shifted = match_ratio(field, rotated + offset, tolerance, min_points)
             if shifted is None:
@@ -142,7 +151,7 @@ def best_offset(
             key = (shifted[0], -shifted[1], -(math.hypot(offset[0], offset[1]) + abs(dyaw)))
             if key > best_key:
                 best_key, best = key, (float(offset[0]), float(offset[1]), float(dyaw))
-    return base[0], best_key[0], best
+    return OffsetMatch(base[0], best_key[0], best)
 
 
 def search_offsets(range_m: float, step_m: float) -> np.ndarray:
