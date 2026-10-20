@@ -106,7 +106,6 @@ class SampleStore:
                 self.references[name] = ReferenceData()
         order = list(motion_priority) + [n for n in self.motions if n not in motion_priority]
         self.timeline = Timeline([(n, self.motions[n]) for n in order], alignment or AlignmentConfig())
-        self.extras: Dict[str, Any] = {}
         self._horizon_sec = horizon_sec
         self._scales: Dict[str, ScaleHistory] = {}
 
@@ -140,13 +139,12 @@ class SampleStore:
         self.references[name].scan = scan
 
     def snapshot(self, stamp: float) -> 'Snapshot':
-        return Snapshot(stamp, self, dict(self.extras))
+        return Snapshot(stamp, self)
 
 
 class Snapshot(SnapshotLike):
-    def __init__(self, stamp: float, store: SampleStore, extras: Dict[str, Any]) -> None:
+    def __init__(self, stamp: float, store: SampleStore) -> None:
         self.stamp = stamp
-        self.extras = extras
         self._store = store
         self._cache: Dict[Any, Any] = {}
 

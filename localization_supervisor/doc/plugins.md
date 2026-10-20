@@ -5,8 +5,8 @@
 
 ## 約束の版
 
-版は `core/interfaces.py` の `CONTRACT_VERSION`。基底クラス (`core/interfaces.py`、`ros/adapters/base.py`、`ros/resetters/base.py`、`ros/actuators/base.py`)・`Snapshot`・設定のスキーマは、版 2 に固定している (mg ではない設定 `config/examples/` のテストが通ることを確かめている)。
-プラグインを足すだけなら版は変わらない。既存の約束を変えるときは、`core/interfaces.py` の `CONTRACT_VERSION` と、設定の `version` を上げる。設定の `version` が合わなければ、読み込みで落ちる。
+版は `core/interfaces.py` の `CONTRACT_VERSION`。基底クラス (`core/interfaces.py`、`ros/adapters/base.py`、`ros/resetters/base.py`、`ros/actuators/base.py`)・`Snapshot`・設定のスキーマは、版 1 に固定している (mg ではない設定 `config/examples/` のテストが通ることを確かめている)。
+プラグインを足すだけなら版は変わらない。リリースの後に既存の約束を変えるときは、`core/interfaces.py` の `CONTRACT_VERSION` と、設定の `version` を上げる (リリースの前は、版を上げずに約束を変えてよい)。設定の `version` が合わなければ、読み込みで落ちる。
 
 ## 共通
 
@@ -25,7 +25,6 @@ from localization_supervisor.core.interfaces import Detector, Evidence, ParamSpe
 class SpeedLimitCheck(Detector):
     SOURCES = {'pose': SourceKind.POSE}      # 引数の名前と、求める情報源の種類
     SUBJECTS = ('pose',)                     # 異常のとき疑いをかける引数 (既定は reference 以外のすべて)
-    EXTRAS = ()                              # Snapshot.extras から読む値の名前
     PARAMS = {'threshold': ParamSpec(float, None, '...')}
 
     def evaluate(self, snapshot) -> Evidence:
@@ -54,7 +53,6 @@ class SpeedLimitCheck(Detector):
 | `motion_at(name, stamp)` | 動きの情報源の、その時刻の姿勢 (補間) |
 | `reference(name)` | 地図 (`occupancy`)・最新のスキャン (`scan`)・距離場のキャッシュ (`fields`) |
 | `cached(key, compute)` | 同じ周期の中で計算を使い回す |
-| `extras` | 注入した入力のアダプタが入れた追加の値 |
 
 ### 標準の判定
 

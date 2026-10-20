@@ -18,7 +18,7 @@ import numpy as np
 
 from .geometry import Pose2
 
-CONTRACT_VERSION = 2
+CONTRACT_VERSION = 1
 
 
 class SourceKind(str, enum.Enum):
@@ -107,11 +107,9 @@ class Detector(Plugin):
 
     SOURCES  : 引数の名前と、求める情報源の種類
     SUBJECTS : 異常のとき、疑いをかける引数 (情報源の切り分けに使う)。既定は reference 以外のすべて
-    EXTRAS   : Snapshot.extras から読む値の名前
     """
     SOURCES: Mapping[str, SourceKind] = {}
     SUBJECTS: Optional[Sequence[str]] = None
-    EXTRAS: Sequence[str] = ()
 
     def __init__(self, name: str, params: Mapping[str, Any], sources: Mapping[str, str]) -> None:
         super().__init__(name, params)
@@ -290,7 +288,6 @@ class CandidateScorer(_SourcedPlugin):
 class SnapshotLike:
     """Detector が使う Snapshot の窓口 (core/snapshot.py の Snapshot が実装する)。"""
     stamp: float
-    extras: Dict[str, Any]
 
     def pose(self, name: str, max_age: Optional[float] = None) -> Optional[PoseSample]:
         raise NotImplementedError

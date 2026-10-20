@@ -32,7 +32,7 @@ from .timeline import AlignmentConfig
 TOP_LEVEL_KEYS = {
     'version', 'period_sec', 'sources', 'timeline', 'detectors', 'enabled_detectors', 'fusion', 'trust',
     'state_machine', 'recovery', 'anchors', 'safety', 'residuals', 'grace', 'external_reinit', 'events', 'output',
-    'extras', 'profiles',
+    'profiles',
 }
 
 
@@ -109,7 +109,6 @@ class SupervisorConfig:
     event_prefix: str = 'localization'
     event_sink: Dict[str, Any] = field(default_factory=lambda: {'type': 'logfmt'})
     output: OutputConfig = field(default_factory=OutputConfig)
-    extras: List[str] = field(default_factory=list)
     profile: str = ''
     profiles: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     raw: Dict[str, Any] = field(default_factory=dict)
@@ -235,16 +234,11 @@ def _bind_plugin(
     return type_name, cls, params, bound
 
 
-def _parse_detector(
-    name: str, body: Mapping[str, Any], sources: Mapping[str, SourceConfig], extras: List[str],
-) -> DetectorConfig:
+def _parse_detector(name: str, body: Mapping[str, Any], sources: Mapping[str, SourceConfig]) -> DetectorConfig:
     where = f'detectors.{name}'
     body = _mapping(body, where)
     _check_keys(body, DETECTOR_KEYS, where)
     type_name, cls, params, bound = _bind_plugin(where, body, Detector, STANDARD_DETECTORS, sources)
-    missing = [e for e in cls.EXTRAS if e not in extras]
-    if missing:
-        raise ConfigError(f'{where}: extras {missing} are not provided (extras: {extras})')
     enabled = _enabled(body, where)
     detector = DetectorConfig(
         name=name, type=type_name, cls=cls, sources=dict(bound), params=params,
@@ -436,7 +430,6 @@ def parse_config(
         raise ConfigError(f'version: expected {CONTRACT_VERSION}, got {merged.get("version")!r}')
 
     sources = _parse_sources(_mapping(merged.get('sources'), 'sources'))
-    extras = _names(merged.get('extras'), 'extras')
 
     timeline = _mapping(merged.get('timeline'), 'timeline')
     _check_keys(timeline, {'motion_priority', 'horizon_sec', 'max_extrapolation_sec',
@@ -445,7 +438,7 @@ def parse_config(
     for name in motion_priority:
         _source(sources, name, SourceKind.MOTION, 'timeline.motion_priority')
 
-    detectors = {name: _parse_detector(name, body, sources, extras)
+    detectors = {name: _parse_detector(name, body, sources)
                  for name, body in _mapping(merged.get('detectors'), 'detectors').items()}
     if 'enabled_detectors' in merged:
         only = _names(merged['enabled_detectors'], 'enabled_detectors')
@@ -522,7 +515,7 @@ def parse_config(
         external_reinit_topics=_names(external.get('topics'), 'external_reinit.topics'),
         event_prefix=prefix, event_sink=sink,
         output=_dataclass_from(OutputConfig, _mapping(merged.get('output'), 'output'), 'output'),
-        extras=extras, profile=profile, profiles=profiles,
+        profile=profile, profiles=profiles,
         raw={k: v for k, v in raw.items() if k != 'profiles'})
 
 

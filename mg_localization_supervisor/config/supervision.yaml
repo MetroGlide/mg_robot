@@ -2,7 +2,7 @@
 # 情報源 (AMCL・GNSS・EKF・ホイールオドメトリ・地図とスキャン・計画用地図)、判定のインスタンス、総合、状態遷移、
 # アンカー、安全の信号、出力。書き方は localization_supervisor/doc/parameters.md。
 # オフライン評価 (tools/scripts/eval_localization_offline.py) もこのファイルを読む。
-version: 2
+version: 1
 
 # 判定と総合の周期 [s]
 period_sec: 1.0

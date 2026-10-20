@@ -21,13 +21,6 @@ class AlwaysNormal(Detector):
         return Evidence(Status.NORMAL)
 
 
-class NeedsExtra(Detector):
-    EXTRAS = ('wheel_slip',)
-
-    def evaluate(self, snapshot):
-        return Evidence(Status.UNKNOWN)
-
-
 class NotAPlugin:
     pass
 

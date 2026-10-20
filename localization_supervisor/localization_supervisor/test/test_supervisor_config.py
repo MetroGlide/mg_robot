@@ -9,7 +9,7 @@ from localization_supervisor.core.detectors.pose_consistency import PoseConsiste
 from localization_supervisor.core.fusion import ConsecutiveFusion
 from localization_supervisor.core.interfaces import CONTRACT_VERSION
 
-from supervisor_test_helpers import AlwaysNormal, NeedsExtra
+from supervisor_test_helpers import AlwaysNormal
 
 EXAMPLES = sorted((pathlib.Path(__file__).resolve().parents[1] / 'config' / 'examples').glob('*.yaml'))
 
@@ -77,14 +77,6 @@ def test_parse_fills_defaults():
 def test_invalid_configs_fail_at_load(changes, message):
     with pytest.raises(ConfigError, match=message):
         parse_config(_raw(**changes))
-
-
-def test_extras_must_be_provided():
-    raw = _raw(detectors={'d': {'type': 'supervisor_test_helpers:NeedsExtra', 'sources': {}}})
-    with pytest.raises(ConfigError, match='extras'):
-        parse_config(raw)
-    raw['extras'] = ['wheel_slip']
-    assert parse_config(raw).detectors['d'].cls is NeedsExtra
 
 
 def test_external_plugin_by_module_path():

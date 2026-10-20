@@ -27,7 +27,6 @@
 | `events.prefix` | イベントの名前の前置き (`<prefix>.state_changed`) |
 | `events.sink` | イベントの出力のプラグイン `{type, パラメータ...}` ([plugins.md](./plugins.md#イベントの出力-eventsink))。書かなければ `logfmt` |
 | `output.status_topic`、`output.diagnostic_name`、`output.hardware_id` | 状態のメッセージのトピック、診断の名前とハードウェア ID (ノード) |
-| `extras` | 注入した入力のアダプタが `Snapshot.extras` に入れる値の名前 (判定の `EXTRAS` はここにあるものに限る) |
 | `profiles` | プロファイルの名前と、重ねる設定 (ファイルのパスは設定ファイルの場所から。または辞書) |
 
 ## sources
