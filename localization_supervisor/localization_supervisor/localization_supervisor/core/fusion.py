@@ -19,6 +19,7 @@
     その情報源を contaminated (出力が汚れている) とする。ただし、比べた相手の独立の情報源が blame なら、
     その食い違いは相手のせいとみなし、融合の結果を疑わない
 """
+from dataclasses import dataclass
 from typing import Collection, Dict, List, Mapping, Set, Tuple
 
 from .interfaces import Evidence, FusionResult, FusionStrategy, InstanceInfo, ParamSpec, Status
@@ -105,10 +106,24 @@ def _reason(accumulated: Mapping[str, float]) -> str:
     return max(positive)[1] if positive else ''
 
 
-class CusumFusion(FusionStrategy):
+@dataclass
+class Accumulation:
+    """周期ごとの累積の結果 (方式ごとに求める)。known はその周期に判定できたインスタンスがあったか、
+    anomaly は異常と判定したインスタンスがあったか。"""
+    level: float
+    suspect: bool
+    confirmed: bool
+    known: bool
+    anomaly: bool
+    accumulated: Dict[str, float]
+
+
+class AttributingFusion(FusionStrategy):
+    """疑わしい情報源の切り分け (最大値の記録、vouch、attribute) を共通にした総合の基底。
+
+    方式ごとに _accumulate (インスタンスごとの累積と、疑い・確認の判定) と _reset_counts を実装する。
+    """
     PARAMS = {
-        'suspect_level': ParamSpec(float, 1.0, '総合の強さがこれ以上で疑い'),
-        'confirm_level': ParamSpec(float, 5.0, '総合の強さがこれ以上で異常を確認'),
         'blame_margin': ParamSpec(float, 1.0, '他と共有しない疑いがこれ以上の情報源を blame とする'),
         'vouch_hold_ticks': VOUCH_HOLD_TICKS,
     }
@@ -118,12 +133,40 @@ class CusumFusion(FusionStrategy):
         self.reset()
 
     def reset(self) -> None:
-        self._acc: Dict[str, float] = {name: 0.0 for name in self.instances}
         self._peaks = _Peaks(self.instances)
         self._vouch = _Vouch(self.instances, self.params.get('vouch_hold_ticks', VOUCH_HOLD_TICKS.default))
+        self._reset_counts()
+
+    def _reset_counts(self) -> None:
+        raise NotImplementedError
+
+    def _accumulate(self, evidences: Mapping[str, Evidence], active: bool) -> Accumulation:
+        raise NotImplementedError
 
     def update(self, evidences: Mapping[str, Evidence], active: bool) -> FusionResult:
-        p = self.params
+        acc = self._accumulate(evidences, active)
+        if not any(v > 0.0 for v in acc.accumulated.values()):
+            self._peaks = _Peaks(self.instances)
+        blame, contaminated = attribute(
+            self._peaks.update(acc.accumulated), acc.accumulated, self.instances, self.independent, self.derived,
+            self.params['blame_margin'], self._vouch.update(evidences, active))
+        return FusionResult(
+            level=acc.level, suspect=acc.suspect, confirmed=acc.confirmed, cleared=acc.known and not acc.anomaly,
+            anomaly=acc.anomaly, blame=blame, contaminated=contaminated, accumulated=dict(acc.accumulated),
+            reason=_reason(acc.accumulated))
+
+
+class CusumFusion(AttributingFusion):
+    PARAMS = {
+        'suspect_level': ParamSpec(float, 1.0, '総合の強さがこれ以上で疑い'),
+        'confirm_level': ParamSpec(float, 5.0, '総合の強さがこれ以上で異常を確認'),
+        **AttributingFusion.PARAMS,
+    }
+
+    def _reset_counts(self) -> None:
+        self._acc: Dict[str, float] = {name: 0.0 for name in self.instances}
+
+    def _accumulate(self, evidences: Mapping[str, Evidence], active: bool) -> Accumulation:
         known = anomaly = False
         if active:
             for name, evidence in evidences.items():
@@ -139,18 +182,12 @@ class CusumFusion(FusionStrategy):
                 score = min(evidence.score, info.max_score)
                 self._acc[name] = max(0.0, info.decay * self._acc[name] + info.weight * (score - info.allowance))
         level = sum(self._acc.values())
-        if level <= 0.0:
-            self._peaks = _Peaks(self.instances)
-        blame, contaminated = attribute(
-            self._peaks.update(self._acc), self._acc, self.instances, self.independent, self.derived,
-            p['blame_margin'], self._vouch.update(evidences, active))
-        return FusionResult(
-            level=level, suspect=level >= p['suspect_level'], confirmed=level >= p['confirm_level'],
-            cleared=known and not anomaly, anomaly=anomaly, blame=blame, contaminated=contaminated,
-            accumulated=dict(self._acc), reason=_reason(self._acc))
+        return Accumulation(
+            level, level >= self.params['suspect_level'], level >= self.params['confirm_level'], known, anomaly,
+            self._acc)
 
 
-class ConsecutiveFusion(FusionStrategy):
+class ConsecutiveFusion(AttributingFusion):
     """インスタンスごとの、続けて異常だった回数で判断する。
 
     インスタンスの options:
@@ -158,24 +195,14 @@ class ConsecutiveFusion(FusionStrategy):
       confirm_after : この回数続けば異常を確認 (0 なら、単独では確認しない。既定 3)
     異常がなくなった (cleared) のは、その周期に判定できたインスタンスがあり、どれも異常でないとき。
     """
-    PARAMS = {
-        'blame_margin': ParamSpec(float, 1.0, '他と共有しない疑い (回数) がこれ以上の情報源を blame とする'),
-        'vouch_hold_ticks': VOUCH_HOLD_TICKS,
-    }
 
-    def __init__(self, name, params, instances, independent, derived) -> None:
-        super().__init__(name, params, instances, independent, derived)
-        self.reset()
-
-    def reset(self) -> None:
+    def _reset_counts(self) -> None:
         self._runs: Dict[str, int] = {name: 0 for name in self.instances}
-        self._peaks = _Peaks(self.instances)
-        self._vouch = _Vouch(self.instances, self.params.get('vouch_hold_ticks', VOUCH_HOLD_TICKS.default))
 
     def _option(self, name: str, key: str, default: int) -> int:
         return int(self.instances[name].options.get(key, default))
 
-    def update(self, evidences: Mapping[str, Evidence], active: bool) -> FusionResult:
+    def _accumulate(self, evidences: Mapping[str, Evidence], active: bool) -> Accumulation:
         known = anomaly = False
         if active:
             for name, evidence in evidences.items():
@@ -197,17 +224,8 @@ class ConsecutiveFusion(FusionStrategy):
             if confirm_after:
                 confirmed = confirmed or run >= confirm_after
                 level = max(level, run / confirm_after)
-        suspect = suspect or confirmed
         accumulated = {name: float(run) for name, run in self._runs.items()}
-        if not any(accumulated.values()):
-            self._peaks = _Peaks(self.instances)
-        blame, contaminated = attribute(
-            self._peaks.update(accumulated), accumulated, self.instances, self.independent, self.derived,
-            self.params['blame_margin'], self._vouch.update(evidences, active))
-        return FusionResult(
-            level=level, suspect=suspect, confirmed=confirmed, cleared=known and not anomaly,
-            anomaly=anomaly, blame=blame, contaminated=contaminated, accumulated=accumulated,
-            reason=_reason(accumulated))
+        return Accumulation(level, suspect or confirmed, confirmed, known, anomaly, accumulated)
 
 
 STANDARD_FUSIONS = {

@@ -70,7 +70,7 @@ class SpeedLimitCheck(Detector):
 ## 総合 (`FusionStrategy`)
 
 `update(evidences, active) -> FusionResult` と `reset()` を実装する。`self.instances` (インスタンスの名前ごとの `InstanceInfo`: `subjects`、`weight`、`allowance`、`decay`、`max_score`、`options`)、`self.independent` (独立の情報源)、`self.derived` (融合の結果と、その元) を使える。
-疑わしい情報源の切り分けは、`core/fusion.py` の `attribute` を使い回せる。標準の方式 (`cusum`、`consecutive`) は [design.md](./design.md#総合)。
+疑わしい情報源の切り分け (最大値の記録、`vouch`、`attribute`) は、`core/fusion.py` の `AttributingFusion` を継承すれば共通で使える。その場合は `_accumulate` (インスタンスごとの累積と、疑い・確認の判定) と `_reset_counts` だけを書く。標準の方式 (`cusum`、`consecutive`) は [design.md](./design.md#総合)。
 
 ## 復旧の候補を作るもの (`CandidateGenerator`)
 
