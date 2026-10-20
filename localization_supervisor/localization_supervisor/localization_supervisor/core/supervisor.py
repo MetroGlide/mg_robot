@@ -10,12 +10,11 @@
   6. 安全の信号 (footprint が計画用地図の致死セルにかかっているか) を求める
   7. イベントを作る
 
-外からの再初期化 (人による上書き) は external_reinit で知らせる。プロファイル・判定の有効・無効・重みは、
-走行中に set_profile・set_disabled・set_weight で変えられる。
+外からの再初期化 (人による上書き) は external_reinit で知らせる。プロファイルは、走行中に set_profile で変えられる。
 """
 import math
 from dataclasses import dataclass, field
-from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -95,8 +94,6 @@ class Supervisor:
     def __init__(self, config: SupervisorConfig) -> None:
         self._base = config
         self._profile = config.profile
-        self._disabled: Set[str] = set()
-        self._weights: Dict[str, float] = {}
         self._grace_until: Optional[float] = None
         self._suspect_since: Optional[float] = None
         self._odometer = 0.0
@@ -114,14 +111,14 @@ class Supervisor:
         self._build(config)
 
     def _build(self, config: SupervisorConfig) -> None:
-        """設定に、無効にした判定と重みの指定を重ねて作る。"""
+        """設定から、判定・総合・状態遷移・アンカーなどを作る。"""
         self.config = config
-        enabled = {name: d for name, d in config.enabled_detectors().items() if name not in self._disabled}
+        enabled = config.enabled_detectors()
         self.detectors: Dict[str, Detector] = {
             name: d.cls(name, d.params, d.sources) for name, d in enabled.items()}
         infos = [InstanceInfo(
             name=name, subjects=self.detectors[name].subjects(), sources=list(d.sources.values()),
-            weight=self._weights.get(name, d.weight), allowance=d.allowance, decay=d.decay,
+            weight=d.weight, allowance=d.allowance, decay=d.decay,
             max_score=d.max_score, options=d.options, vouches=d.vouch)
             for name, d in enabled.items()]
         self.fusion: FusionStrategy = config.fusion_cls(
@@ -173,30 +170,6 @@ class Supervisor:
         self._profile = profile
         self._rebuild()
         self._emit('profile_changed', 'info', {'from': before, 'to': profile})
-
-    def set_disabled(self, names: Iterable[str]) -> None:
-        """名前を並べた判定のインスタンスを無効にする (プロファイルの上に重ねる)。作り直す。"""
-        names = set(names)
-        unknown = sorted(names - set(self._base.detectors))
-        if unknown:
-            raise ValueError(f'unknown detectors {unknown}')
-        if names != self._disabled:
-            self._disabled = names
-            self._rebuild()
-            self._emit('detectors_changed', 'info', {'disabled': ','.join(sorted(names))})
-
-    def set_weight(self, name: str, weight: Optional[float]) -> None:
-        """判定のインスタンスの重み (None は設定の値に戻す)。作り直さずに効く。"""
-        if name not in self._base.detectors:
-            raise ValueError(f'unknown detector {name!r}')
-        if weight is None:
-            self._weights.pop(name, None)
-            configured = self.config.detectors.get(name)
-            weight = configured.weight if configured is not None else 1.0
-        else:
-            self._weights[name] = weight
-        if name in self.fusion.instances:
-            self.fusion.instances[name].weight = weight
 
     def reset(self) -> None:
         """累積・判定の内部状態・アンカーを捨てる。"""

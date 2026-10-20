@@ -9,10 +9,8 @@
 | :--- | :--- |
 | `config_file` | 設定ファイルのパス (必須。[parameters.md](./parameters.md)) |
 | `profile` | 重ねるプロファイル (空は基の設定) |
-| `disabled_detectors` | 無効にする判定のインスタンスの名前 (カンマ区切り。プロファイルの上に重ねる) |
-| `weight.<インスタンス>` | 総合での重み (負なら設定の値) |
 
-`profile`・`disabled_detectors`・`weight.*` は走行中に変えられる (`ros2 param set`)。知らない名前は拒否する。プロファイルと無効化を変えると、判定・総合・状態遷移・復旧を作り直す (状態は `NORMAL` から)。重みは作り直さずに効く。
+`profile` は走行中に変えられる (`ros2 param set`)。知らない名前は拒否する。変えると、判定・総合・状態遷移・復旧を作り直す (状態は `NORMAL` から)。
 
 設定ファイルは起動時にすべて検証する (プロファイルも)。入力のアダプタ・再初期化の送り先・対処は起動時に基の設定で作るので、プロファイルで `sources`・`recovery.resetters`・`recovery.actuators` は変えられない。`recovery_enabled` にした設定 (プロファイルを含む) には、`recovery.resetters` が要る。
 
@@ -67,7 +65,6 @@
 | `<prefix>.map_changed` | info | `sources` |
 | `<prefix>.lethal` | 入ったら warn、出たら info | `in_lethal`、`fraction`、`depth_m` |
 | `<prefix>.profile_changed` | info | `from`、`to` |
-| `<prefix>.detectors_changed` | info | `disabled` |
 | `<prefix>.check_changed` | info | 判定のインスタンスが正常と異常の間で変わったとき(判定できない周期は飛ばす): `check`、`to` (`normal` / `anomaly`)、`score`、判定の値 `v_<名前>` |
 | `<prefix>.residual_changed` | 大きくなったら warn、戻ったら info | 残差から求めた分散の倍率が `notify_scale` 以上になった・戻った: `residual`、`high`、`scale`、`mean_d2`、`count` |
 | `<prefix>.recovery_candidate` | info | 計画ごと・候補ごとに `origin`、`x`、`y`、`yaw`、`total`、`vetoed_by`、評価ごとの `score_<名前>` |

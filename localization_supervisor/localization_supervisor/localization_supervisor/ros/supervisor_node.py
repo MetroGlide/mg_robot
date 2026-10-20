@@ -5,18 +5,15 @@
 このノードは入力を標本にして渡し、結果を出すだけにする。
 
   パラメータ
-    config_file        : 設定ファイル (必須。書き方は doc/parameters.md)
-    profile            : 重ねるプロファイル (空は基の設定)
-    disabled_detectors : 無効にする判定のインスタンスの名前 (カンマ区切り)
-    weight.<インスタンス> : 総合での重み (負なら設定の値)
-    profile・disabled_detectors・weight.* は走行中に変えられる (プロファイルはサービス ~/set_profile でも)
+    config_file : 設定ファイル (必須。書き方は doc/parameters.md)
+    profile     : 重ねるプロファイル (空は基の設定)。走行中に変えられる (サービス ~/set_profile でも)
   入力
     設定の sources.<名前>.input のアダプタが購読するトピックと TF
     external_reinit.topics: 届いたら、人による上書きとして、状態を NORMAL に戻して猶予を置く
   出力
     output.status_topic (LocalizationStatus)、診断 output.diagnostic_name、イベント (events.sink)
 """
-from typing import List, Optional
+from typing import Optional
 
 import rclpy
 import tf2_ros
@@ -45,7 +42,6 @@ from .own_messages import OwnMessages
 from .resetters import build_resetters
 from .status import to_message
 
-WEIGHT_PREFIX = 'weight.'
 _QOS = {
     'default': 10,
     'sensor': qos_profile_sensor_data,
@@ -92,7 +88,6 @@ class LocalizationSupervisorNode(Node):
         super().__init__('localization_supervisor_node')
         config_file = self.declare_parameter('config_file', '').value
         profile = self.declare_parameter('profile', '').value
-        disabled = self.declare_parameter('disabled_detectors', '').value
         if not config_file:
             raise ConfigError('parameter config_file is required')
         config = load_config(config_file)
@@ -100,11 +95,6 @@ class LocalizationSupervisorNode(Node):
         self._supervisor = Supervisor(config)
         if profile:
             self._supervisor.set_profile(profile)
-        self._supervisor.set_disabled(_names(disabled))
-        for name in config.detectors:
-            weight = self.declare_parameter(WEIGHT_PREFIX + name, -1.0).value
-            if weight >= 0.0:
-                self._supervisor.set_weight(name, weight)
         self.add_on_set_parameters_callback(self._on_parameters)
 
         self._store = make_store(config)
@@ -149,11 +139,6 @@ class LocalizationSupervisorNode(Node):
             for param in params:
                 if param.name == 'profile':
                     self._supervisor.set_profile(param.value)
-                elif param.name == 'disabled_detectors':
-                    self._supervisor.set_disabled(_names(param.value))
-                elif param.name.startswith(WEIGHT_PREFIX):
-                    weight = float(param.value)
-                    self._supervisor.set_weight(param.name[len(WEIGHT_PREFIX):], weight if weight >= 0.0 else None)
                 elif param.name == 'config_file':
                     raise ValueError('config_file cannot be changed while running')
         except (ValueError, ConfigError) as error:
@@ -183,10 +168,6 @@ class LocalizationSupervisorNode(Node):
             self._store.note_scale(self._supervisor.config.residuals[name].a, now, scale)
         self._view = status_view(result, self._supervisor.config, self._supervisor.profile)
         self._status_pub.publish(to_message(self._view, self.get_clock().now().to_msg()))
-
-
-def _names(text: str) -> List[str]:
-    return [n.strip() for n in text.split(',') if n.strip()]
 
 
 def main(args=None) -> None:

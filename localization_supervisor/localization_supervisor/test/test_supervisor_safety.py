@@ -132,22 +132,14 @@ def test_supervisor_map_change_resets_detectors():
     assert result.in_grace
 
 
-def test_supervisor_disable_and_weight_overrides_survive_profile_switch():
+def test_supervisor_profile_switch_reports_an_event_and_rejects_unknown_profiles():
     config = parse_config(_raw(), profiles={'strict': {'fusion': {'params': {'confirm_level': 2.0}}}})
     supervisor = Supervisor(config)
-    supervisor.set_disabled(['scan_amcl'])
-    assert list(supervisor.detectors) == ['amcl_gnss']
-    supervisor.set_weight('amcl_gnss', 0.5)
     supervisor.set_profile('strict')
-    assert list(supervisor.detectors) == ['amcl_gnss']
-    assert supervisor.fusion.instances['amcl_gnss'].weight == 0.5
     assert supervisor.fusion.params['confirm_level'] == 2.0
-    supervisor.set_weight('amcl_gnss', None)
-    assert supervisor.fusion.instances['amcl_gnss'].weight == 1.0
     with pytest.raises(ValueError):
         supervisor.set_profile('missing')
-    with pytest.raises(ValueError):
-        supervisor.set_disabled(['missing'])
+    assert supervisor.profile == 'strict'
     store = make_store(supervisor.config)
     names = [e.name for e in supervisor.step(store.snapshot(0.0)).events]
-    assert names == ['localization.detectors_changed', 'localization.profile_changed']
+    assert names == ['localization.profile_changed']

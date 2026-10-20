@@ -11,15 +11,15 @@
 
 ## 構想
 
-- 監督が、AMCL のゲート ([gate_arbiter.md](../../localization_supervisor/doc/gate_arbiter.md)) の状態を購読する。ゲートの要求元にウェイポイント (`waypoint`) がいて、AMCL を止めているあいだは、AMCL に関わる判定を自動で外す (重みを 0 にする、または判定を無効にする)。ゲートが戻れば、判定も戻す。
+- 監督が、AMCL のゲート ([gate_arbiter.md](../../localization_supervisor/doc/gate_arbiter.md)) の状態を購読する。ゲートの要求元にウェイポイント (`waypoint`) がいて、AMCL を止めているあいだは、AMCL に関わる判定を自動で外す (AMCL の判定を外したプロファイルに切り替える)。ゲートが戻れば、判定も戻す。
   - 作り手がプロファイルの切り替えを書き忘れても、止まらない。
   - フレームワークは、ゲートの状態を「ある情報源を使っていない」という入力として受け取る形にすれば、ロボットに依存しない (`mg_*` を参照しない)。
 
 ## 入る場所
 
-- 入力: 情報源の入力のアダプタ ([plugins.md](../../localization_supervisor/doc/plugins.md#入力のアダプタ-sourceadapter)) の拡張として、ゲートの状態を `extras` に入れる。
-- 判定の無効化: 監督の `set_disabled` / `set_weight` (走行中に変えられる) がすでにある。
-- 設定: どの情報源を止めると、どの判定を外すかを、MG の設定に書く。
+- 切り替えの手段: 判定を外すには、プロファイルを切り替える (`set_profile`。AMCL の判定を `enabled_detectors` から外したプロファイルを用意する)。ゲートの状態を購読して `set_profile` を呼ぶ層 (ノードか、監督の対処) を足す。
+- 入力: ゲートの状態 (`GateState`) を、監督の入力にするか、上の層だけで使うか。判定の側に「ある情報源を使っていない」を渡す必要が出たら、入力のアダプタ ([plugins.md](../../localization_supervisor/doc/plugins.md#入力のアダプタ-sourceadapter)) を足す。
+- 設定: どの情報源を止めると、どのプロファイルに切り替えるかを、MG の設定に書く。
 
 ## 着手の前に確かめること
 

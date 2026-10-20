@@ -420,7 +420,7 @@ def test_supervisor_grace_suppresses_detection():
     assert results[0].evidences['amcl_gnss'].status == Status.ANOMALY
 
 
-def test_supervisor_profile_switch_and_weight():
+def test_supervisor_profile_switch():
     config = _config()
     config.profiles['only_gnss'] = {'enabled_detectors': ['amcl_gnss'], 'fusion': {'type': 'consecutive'}}
     supervisor = Supervisor(config)
@@ -429,11 +429,6 @@ def test_supervisor_profile_switch_and_weight():
     assert type(supervisor.fusion).__name__ == 'ConsecutiveFusion'
     supervisor.set_profile('')
     assert sorted(supervisor.detectors) == ['amcl_gnss', 'amcl_jump']
-    supervisor.set_weight('amcl_gnss', 0.0)
-    store = make_store(supervisor.config)
-    drive = Drive()
-    results = [_feed(supervisor, store, drive, float(t), (3.0, 0.0, 0.0)) for t in range(5)]
-    assert all(r.fusion.accumulated['amcl_gnss'] == 0.0 for r in results)
 
 
 def test_supervisor_ignores_unknown_evidence():
