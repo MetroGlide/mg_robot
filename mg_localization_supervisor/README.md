@@ -76,7 +76,6 @@ GNSS による初期化と監督ノードは、他のノードが立ち上がる
 | `scan_amcl` | AMCL の姿勢での地図との一致 (AMCL と独立でないので重みを下げる) |
 | `amcl_covariance` | watchdog と同じ共分散の判定 |
 | `submap_ekf`、`submap_amcl` | 直近の走行のスキャンをまとめた局所地図と、地図との照合。GNSS が使えず、AMCL が誤った場所に収束して EKF も引きずられたときに効く |
-| `freespace_ekf`、`drift_ekf` | 定義だけ (無効)。この環境のオフライン評価で、正しい姿勢と区別できなかった (理由はファイルのコメント) |
 
 安全の信号は、EKF の姿勢の footprint と計画用地図で求める。footprint は `mg_navigation/params/nav2_params.yaml` のコストマップと同じ (テストで確かめる)。
 

@@ -27,4 +27,5 @@
 | :--- | :--- |
 | [gnss_map_distortion.md](./gnss_map_distortion.md) | 地図の歪みによる GNSS の場所ごとのずれを、信頼度 (分散) に反映する |
 | [localization_gate_awareness.md](./localization_gate_awareness.md) | AMCL を意図して止めている区間で、自己位置の監督が AMCL の判定を自動で外す |
+| [localization_single_scan_checks.md](./localization_single_scan_checks.md) | 1 枚のスキャンを使う自己位置の判定 (光線の突き抜けと、少しずつのずれ) を、室内の地図などで試す |
 | [localization_pose_trust.md](./localization_pose_trust.md) | 自己位置の状態に「姿勢を信頼してよいか」の値を足し、GNSS だけを切り離している間も走行側の脱出が働くようにする |

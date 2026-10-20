@@ -113,32 +113,6 @@ def transform_points(pose: Pose2, points_xy: np.ndarray) -> np.ndarray:
                      pose[1] + s * points_xy[:, 0] + c * points_xy[:, 1]], axis=1)
 
 
-def ray_penetration(
-    occupancy: OccupancyMap, origin_xy: Tuple[float, float], endpoints_xy: np.ndarray, margin: float,
-) -> np.ndarray:
-    """origin から各端点への光線が、端点の margin 手前までに通る占有セルの長さ [m] (N,)。
-
-    光線は地図の解像度の間隔で標本を取る。端点の近くは、地図とスキャンの位置のずれで占有にかかるので数えない。
-    """
-    count = endpoints_xy.shape[0]
-    if count == 0:
-        return np.zeros(0)
-    step = occupancy.resolution
-    delta = endpoints_xy - np.asarray(origin_xy, dtype=float)
-    lengths = np.hypot(delta[:, 0], delta[:, 1])
-    usable = np.maximum(lengths - margin, 0.0)
-    steps = int(math.ceil(float(usable.max()) / step)) if usable.max() > 0.0 else 0
-    if steps == 0:
-        return np.zeros(count)
-    t = (np.arange(steps) + 0.5) * step
-    valid = t[None, :] < usable[:, None]
-    unit = delta / np.maximum(lengths, 1e-9)[:, None]
-    xs = origin_xy[0] + unit[:, 0:1] * t[None, :]
-    ys = origin_xy[1] + unit[:, 1:2] * t[None, :]
-    occupied = occupancy.occupied_at(np.stack([xs.ravel(), ys.ravel()], axis=1)).reshape(count, steps)
-    return (occupied & valid).sum(axis=1) * step
-
-
 def best_offset(
     field: LocalDistanceField, points_xy: np.ndarray, tolerance: float, center: Tuple[float, float],
     offsets: np.ndarray, yaws: Sequence[float] = (0.0,), min_points: int = 30,

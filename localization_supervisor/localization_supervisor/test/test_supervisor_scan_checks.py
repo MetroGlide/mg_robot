@@ -1,14 +1,10 @@
-"""スキャンを地図に照合する判定 (freespace、scan_drift、submap_map) と、スキャンのバッファのテスト。"""
+"""スキャンを地図に照合する判定 (submap_map) と、スキャンのバッファのテスト。"""
 import math
 
-import numpy as np
 import pytest
 
-from localization_supervisor.core.detectors.freespace import Freespace
-from localization_supervisor.core.detectors.scan_drift import ScanDrift
 from localization_supervisor.core.detectors.submap_map import SubmapMap
 from localization_supervisor.core.geometry import compose
-from localization_supervisor.core.grid import ray_penetration
 from localization_supervisor.core.interfaces import MotionSample, SourceKind, Status
 from localization_supervisor.core.plugins import resolve_params
 from localization_supervisor.core.scan_buffer import ScanBuffer
@@ -38,67 +34,6 @@ def _still(store, t, true_pose, amcl_pose):
     store.add_motion('odom', MotionSample(t, (0.0, 0.0, 0.0)))
     store.add_pose('amcl', pose_sample(t, amcl_pose))
     return store.snapshot(t)
-
-
-def test_ray_penetration_counts_occupied_cells_before_the_end():
-    occupancy = wall_map()
-    # x = 9.95 の壁を突き抜けて、地図の外の端点へ
-    through = ray_penetration(occupancy, (0.0, 0.0), np.array([[12.0, 0.0]]), 0.3)
-    assert through[0] == pytest.approx(0.1, abs=0.05)
-    # 壁の手前で止まる光線は、端点の近くを数えない
-    short = ray_penetration(occupancy, (0.0, 0.0), np.array([[9.95, 0.0]]), 0.3)
-    assert short[0] == 0.0
-
-
-def test_freespace_detects_rays_through_walls():
-    detector = _detector(Freespace, {'pose': 'amcl', 'reference': 'map_scan'})
-    good = detector.evaluate(_still(_store(), 1.0, (1.0, 2.0, 0.3), (1.0, 2.0, 0.3)))
-    assert good.status == Status.NORMAL and good.values['ratio'] < 0.05
-    # AMCL が壁の方へ 2 m ずれると、壁の向こうに端点が来る
-    bad = detector.evaluate(_still(_store(), 1.0, (1.0, 2.0, 0.3), (3.0, 2.0, 0.3)))
-    assert bad.status == Status.ANOMALY and bad.values['ratio'] > 0.2
-
-
-def test_freespace_threshold_follows_normal_baseline():
-    detector = _detector(Freespace, {'pose': 'amcl', 'reference': 'map_scan'},
-                         baseline_min_samples=3, ratio_max=0.1, ratio_factor=3.0)
-    evidence = detector.evaluate(_still(_store(), 1.0, (1.0, 2.0, 0.3), (1.0, 2.0, 0.3)))
-    evidence.values['ratio'] = 0.05
-    for _ in range(3):
-        detector.after_step(evidence, normal=True)
-    assert detector.ratio_threshold() == pytest.approx(0.15)
-
-
-def test_scan_drift_needs_a_consistent_offset():
-    detector = _detector(ScanDrift, {'pose': 'amcl', 'reference': 'map_scan'},
-                         min_samples=5, threshold_m=0.2, search_range_m=0.6)
-    store = _store()
-    truth = (1.0, 2.0, 0.3)
-    results = [detector.evaluate(_still(store, float(t), truth, truth)) for t in range(1, 8)]
-    assert results[0].status == Status.UNKNOWN
-    assert results[-1].status == Status.NORMAL and results[-1].values['drift_m'] < 0.05
-
-    detector.reset()
-    results = []
-    for t in range(1, 12):
-        drifted = (truth[0] + 0.05 * t, truth[1], truth[2])
-        results.append(detector.evaluate(_still(store, float(t), truth, drifted)))
-    last = results[-1]
-    assert last.status == Status.ANOMALY
-    assert last.values['dx'] < -0.2 and abs(last.values['dy']) < 0.1
-    assert last.values['consistency'] > 0.9 and last.values['growth_m_per_s'] > 0.0
-
-
-def test_scan_drift_can_require_growth():
-    detector = _detector(ScanDrift, {'pose': 'amcl', 'reference': 'map_scan'},
-                         min_samples=5, threshold_m=0.3, search_range_m=0.6, min_growth_m_per_s=0.01)
-    store = _store()
-    truth = (1.0, 2.0, 0.3)
-    shifted = (truth[0] + 0.5, truth[1], truth[2])
-    results = [detector.evaluate(_still(store, float(t), truth, shifted)) for t in range(1, 10)]
-    # 一定のずれ (増えていかない) は異常としない
-    assert results[-1].values['drift_m'] > 0.4
-    assert results[-1].status == Status.NORMAL
 
 
 def test_scan_buffer_keeps_keyframes_within_distance():

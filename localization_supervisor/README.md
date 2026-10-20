@@ -47,7 +47,7 @@ make test pkg=localization_supervisor/localization_supervisor
 
 - `test_framework_independence.py`: `package.xml` の依存と Python の import に、ロボット固有のパッケージ (`mg_` で始まるもの) が無く、中核が ROS に依存しない
 - `test_supervisor_core.py`: 時刻のそろえ方、判定、総合 (情報源の切り分けを含む)、状態遷移、アンカー、Supervisor
-- `test_supervisor_scan_checks.py`: スキャンを照合する判定 (`submap_map`、`scan_drift`、`freespace`) とスキャンのバッファ
+- `test_supervisor_scan_checks.py`: スキャンを照合する判定 (`submap_map`) とスキャンのバッファ
 - `test_supervisor_safety.py`: 安全の信号、外からの再初期化・地図の切り替え・走行中の変更への対処
 - `test_recovery_matcher.py`: 総当たりの照合 (既知のずれを求められる、似た場所の候補を離して返す)
 - `test_recovery.py`: 復旧の選び方 (決めきれなければ再初期化しない)、設定の検証、Supervisor が再初期化を指示するまで (GNSS・推測航法・照合の候補)

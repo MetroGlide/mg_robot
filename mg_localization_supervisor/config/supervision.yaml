@@ -106,17 +106,6 @@ detectors:
     params: {ratio_min: 0.35, baseline_min_samples: 5, gain_threshold: 0.5}
     allowance: 0.8
     vouch: [amcl]
-  # 次の 2 つは、この環境 (屋外。別の走行で作った地図) のオフライン評価で、正しい姿勢でも異常と区別できなかった
-  # ため無効にしている。光線が地図の占有セルを越える割合が正しい姿勢でも 2〜7 割あり (植栽や柵の向こうが見える)、
-  # ずらしたほうが合う向きも、地図の位置合わせのずれで場所ごとに一定の向きにそろう
-  freespace_ekf:
-    type: freespace
-    sources: {pose: ekf, reference: map_scan}
-    enabled: false
-  drift_ekf:
-    type: scan_drift
-    sources: {pose: ekf, reference: map_scan}
-    enabled: false
 
 fusion:
   type: cusum
