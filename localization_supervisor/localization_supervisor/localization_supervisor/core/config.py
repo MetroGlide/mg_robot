@@ -173,6 +173,20 @@ def _names(raw: Any, where: str) -> List[str]:
     return list(raw)
 
 
+def _source(sources: Mapping[str, SourceConfig], name: Any, kind: SourceKind, where: str) -> None:
+    """name が kind の情報源でなければ ConfigError。"""
+    source = sources.get(name)
+    if source is None or source.kind != kind:
+        raise ConfigError(f'{where}: {name!r} is not a {kind.value} source')
+
+
+def _enabled(body: Mapping[str, Any], where: str) -> bool:
+    enabled = body.get('enabled', True)
+    if not isinstance(enabled, bool):
+        raise ConfigError(f'{where}.enabled: expected true or false')
+    return enabled
+
+
 def _parse_sources(raw: Mapping[str, Any]) -> Dict[str, SourceConfig]:
     sources: Dict[str, SourceConfig] = {}
     if not raw:
@@ -231,9 +245,7 @@ def _parse_detector(
     missing = [e for e in cls.EXTRAS if e not in extras]
     if missing:
         raise ConfigError(f'{where}: extras {missing} are not provided (extras: {extras})')
-    enabled = body.get('enabled', True)
-    if not isinstance(enabled, bool):
-        raise ConfigError(f'{where}.enabled: expected true or false')
+    enabled = _enabled(body, where)
     detector = DetectorConfig(
         name=name, type=type_name, cls=cls, sources=dict(bound), params=params,
         weight=_number(body, 'weight', 1.0, where), allowance=_number(body, 'allowance', 1.0, where),
@@ -275,10 +287,8 @@ def _dataclass_from(cls: type, raw: Mapping[str, Any], where: str) -> Any:
 def _parse_safety(raw: Mapping[str, Any], sources: Mapping[str, SourceConfig]) -> SafetyConfig:
     _check_keys(raw, {'pose', 'map', 'footprint', 'max_age_sec', 'depth_range_m'}, 'safety')
     pose, map_name = raw.get('pose'), raw.get('map')
-    if sources.get(pose) is None or sources[pose].kind != SourceKind.POSE:
-        raise ConfigError(f'safety.pose: {pose!r} is not a pose source')
-    if sources.get(map_name) is None or sources[map_name].kind != SourceKind.REFERENCE:
-        raise ConfigError(f'safety.map: {map_name!r} is not a reference source')
+    _source(sources, pose, SourceKind.POSE, 'safety.pose')
+    _source(sources, map_name, SourceKind.REFERENCE, 'safety.map')
     footprint = raw.get('footprint')
     if (not isinstance(footprint, list) or len(footprint) < 3
             or not all(isinstance(p, list) and len(p) == 2
@@ -355,12 +365,8 @@ def _parse_recovery(
     if recovery.get('scan_buffer') is not None:
         scan_buffer = _dataclass_from(
             ScanBufferConfig, _mapping(recovery['scan_buffer'], 'recovery.scan_buffer'), 'recovery.scan_buffer')
-        reference = sources.get(scan_buffer.reference)
-        if reference is None or reference.kind != SourceKind.REFERENCE:
-            raise ConfigError(f'recovery.scan_buffer.reference: {scan_buffer.reference!r} is not a reference source')
-        motion = sources.get(scan_buffer.motion)
-        if motion is None or motion.kind != SourceKind.MOTION:
-            raise ConfigError(f'recovery.scan_buffer.motion: {scan_buffer.motion!r} is not a motion source')
+        _source(sources, scan_buffer.reference, SourceKind.REFERENCE, 'recovery.scan_buffer.reference')
+        _source(sources, scan_buffer.motion, SourceKind.MOTION, 'recovery.scan_buffer.motion')
 
     resetters = _plugin_list(recovery.get('resetters'), 'recovery.resetters')
     actuators = _plugin_list(recovery.get('actuators'), 'recovery.actuators')
@@ -373,13 +379,6 @@ def _parse_recovery(
     return {'generators': generators, 'scorers': scorers, 'selection': selection, 'matcher_cls': matcher_cls,
             'matcher_params': matcher_params, 'scan_buffer': scan_buffer, 'resetters': resetters,
             'actuators': actuators, 'disabled_actuators': disabled_actuators}
-
-
-def _enabled(body: Mapping[str, Any], where: str) -> bool:
-    enabled = body.get('enabled', True)
-    if not isinstance(enabled, bool):
-        raise ConfigError(f'{where}.enabled: expected true or false')
-    return enabled
 
 
 def _plugin_list(raw: Any, where: str) -> List[Dict[str, Any]]:
@@ -403,9 +402,7 @@ def _parse_residuals(raw: Mapping[str, Any], sources: Mapping[str, SourceConfig]
         where = f'residuals.{name}'
         residual = _dataclass_from(ResidualConfig, _mapping(body, where), where)
         for key in ('a', 'b'):
-            source = sources.get(getattr(residual, key))
-            if source is None or source.kind != SourceKind.POSE:
-                raise ConfigError(f'{where}.{key}: {getattr(residual, key)!r} is not a pose source')
+            _source(sources, getattr(residual, key), SourceKind.POSE, f'{where}.{key}')
         if residual.a == residual.b:
             raise ConfigError(f'{where}: a and b must differ')
         residuals[name] = residual
@@ -446,8 +443,7 @@ def parse_config(
                            'alignment_std_per_m', 'alignment_std_per_rad'}, 'timeline')
     motion_priority = _names(timeline.get('motion_priority'), 'timeline.motion_priority')
     for name in motion_priority:
-        if name not in sources or sources[name].kind != SourceKind.MOTION:
-            raise ConfigError(f'timeline.motion_priority: {name!r} is not a motion source')
+        _source(sources, name, SourceKind.MOTION, 'timeline.motion_priority')
 
     detectors = {name: _parse_detector(name, body, sources, extras)
                  for name, body in _mapping(merged.get('detectors'), 'detectors').items()}
@@ -474,10 +470,8 @@ def parse_config(
     anchors = None
     if merged.get('anchors') is not None:
         anchors = _dataclass_from(AnchorConfig, _mapping(merged['anchors'], 'anchors'), 'anchors')
-        if sources.get(anchors.pose) is None or sources[anchors.pose].kind != SourceKind.POSE:
-            raise ConfigError(f'anchors.pose: {anchors.pose!r} is not a pose source')
-        if sources.get(anchors.motion) is None or sources[anchors.motion].kind != SourceKind.MOTION:
-            raise ConfigError(f'anchors.motion: {anchors.motion!r} is not a motion source')
+        _source(sources, anchors.pose, SourceKind.POSE, 'anchors.pose')
+        _source(sources, anchors.motion, SourceKind.MOTION, 'anchors.motion')
 
     safety = None
     if merged.get('safety') is not None:
