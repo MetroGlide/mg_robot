@@ -91,6 +91,13 @@ def test_external_plugin_by_module_path():
         parse_config(_raw(detectors={'d': {'type': 'supervisor_test_helpers:NotAPlugin', 'sources': {}}}))
 
 
+def test_a_detector_that_requires_anchors_needs_them_configured():
+    detectors = {'d': {'type': 'supervisor_test_helpers:NeedsAnchors', 'sources': {'pose': 'amcl'}}}
+    with pytest.raises(ConfigError, match="requires 'anchors'"):
+        parse_config(_raw(detectors=detectors))
+    parse_config(_raw(detectors=detectors, anchors={'pose': 'ekf', 'motion': 'odom'}))
+
+
 def test_profiles_overlay_and_replace_plugin_type():
     profiles = {'strict': {'detectors': {'amcl_gnss': {'params': {'threshold': 3.0}}}},
                 'counting': {'fusion': {'type': 'consecutive'}, 'enabled_detectors': []}}

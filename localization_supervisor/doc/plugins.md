@@ -41,6 +41,8 @@ class SpeedLimitCheck(Detector):
 | `after_step(evidence, normal)` | 総合と状態遷移の後に呼ばれる。`normal` はその周期の状態が `NORMAL` か (正常時の基準の学習に使う) |
 | `reset()` | 内部の状態を捨てる (地図の切り替え、外からの再初期化) |
 
+`REQUIRES` (設定に要る項目: `anchors`・`safety`) も宣言でき、設定になければ起動時に落ちる。
+
 `Evidence.score` は 1.0 が異常のしきい値に当たるよう正規化する (`from_score` は 1.0 を超えれば異常とする)。`values` は記録用の値 (オフライン評価の `timeline.jsonl` に出る)。
 
 ### Snapshot から読めるもの

@@ -21,6 +21,10 @@ class AlwaysNormal(Detector):
         return Evidence(Status.NORMAL)
 
 
+class NeedsAnchors(AlwaysNormal):
+    REQUIRES = ('anchors',)
+
+
 class NotAPlugin:
     pass
 

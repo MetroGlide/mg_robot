@@ -234,11 +234,15 @@ def _bind_plugin(
     return type_name, cls, params, bound
 
 
-def _parse_detector(name: str, body: Mapping[str, Any], sources: Mapping[str, SourceConfig]) -> DetectorConfig:
+def _parse_detector(
+    name: str, body: Mapping[str, Any], sources: Mapping[str, SourceConfig], anchors: Optional[AnchorConfig],
+    safety: Optional[SafetyConfig],
+) -> DetectorConfig:
     where = f'detectors.{name}'
     body = _mapping(body, where)
     _check_keys(body, DETECTOR_KEYS, where)
     type_name, cls, params, bound = _bind_plugin(where, body, Detector, STANDARD_DETECTORS, sources)
+    _check_requires(where, cls, anchors, safety, bound)
     enabled = _enabled(body, where)
     detector = DetectorConfig(
         name=name, type=type_name, cls=cls, sources=dict(bound), params=params,
@@ -438,7 +442,17 @@ def parse_config(
     for name in motion_priority:
         _source(sources, name, SourceKind.MOTION, 'timeline.motion_priority')
 
-    detectors = {name: _parse_detector(name, body, sources)
+    anchors = None
+    if merged.get('anchors') is not None:
+        anchors = _dataclass_from(AnchorConfig, _mapping(merged['anchors'], 'anchors'), 'anchors')
+        _source(sources, anchors.pose, SourceKind.POSE, 'anchors.pose')
+        _source(sources, anchors.motion, SourceKind.MOTION, 'anchors.motion')
+
+    safety = None
+    if merged.get('safety') is not None:
+        safety = _parse_safety(_mapping(merged['safety'], 'safety'), sources)
+
+    detectors = {name: _parse_detector(name, body, sources, anchors, safety)
                  for name, body in _mapping(merged.get('detectors'), 'detectors').items()}
     if 'enabled_detectors' in merged:
         only = _names(merged['enabled_detectors'], 'enabled_detectors')
@@ -460,15 +474,6 @@ def parse_config(
     recovery = _mapping(merged.get('recovery'), 'recovery')
     _check_keys(recovery, RECOVERY_KEYS, 'recovery')
 
-    anchors = None
-    if merged.get('anchors') is not None:
-        anchors = _dataclass_from(AnchorConfig, _mapping(merged['anchors'], 'anchors'), 'anchors')
-        _source(sources, anchors.pose, SourceKind.POSE, 'anchors.pose')
-        _source(sources, anchors.motion, SourceKind.MOTION, 'anchors.motion')
-
-    safety = None
-    if merged.get('safety') is not None:
-        safety = _parse_safety(_mapping(merged['safety'], 'safety'), sources)
     recovery_parts = _parse_recovery(recovery, sources, anchors, safety)
     machine = _dataclass_from(MachineConfig, _mapping(merged.get('state_machine'), 'state_machine'), 'state_machine')
     if machine.recovery_enabled and not recovery_parts['generators']:

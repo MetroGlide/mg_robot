@@ -102,18 +102,29 @@ class Plugin:
         self.params = dict(params)
 
 
-class Detector(Plugin):
-    """判定。比べる情報源は、引数の名前 (SOURCES のキー) で受け取る。
+class SourcedPlugin(Plugin):
+    """引数の名前で情報源を受け取るプラグイン (判定・復旧の候補を作るもの・評価するもの)。
 
     SOURCES  : 引数の名前と、求める情報源の種類
-    SUBJECTS : 異常のとき、疑いをかける引数 (情報源の切り分けに使う)。既定は reference 以外のすべて
+    REQUIRES : 設定に必要な項目 ('anchors'、'safety')
     """
     SOURCES: Mapping[str, SourceKind] = {}
-    SUBJECTS: Optional[Sequence[str]] = None
+    REQUIRES: Sequence[str] = ()
 
     def __init__(self, name: str, params: Mapping[str, Any], sources: Mapping[str, str]) -> None:
         super().__init__(name, params)
         self.sources = dict(sources)
+
+    def reset(self) -> None:
+        """内部の状態を捨てる (地図の切り替え、外からの再初期化など)。"""
+
+
+class Detector(SourcedPlugin):
+    """判定。比べる情報源は、引数の名前 (SOURCES のキー) で受け取る。
+
+    SUBJECTS : 異常のとき、疑いをかける引数 (情報源の切り分けに使う)。既定は reference 以外のすべて
+    """
+    SUBJECTS: Optional[Sequence[str]] = None
 
     def subjects(self) -> List[str]:
         """疑いをかける情報源の名前。"""
@@ -127,9 +138,6 @@ class Detector(Plugin):
 
     def after_step(self, evidence: Evidence, normal: bool) -> None:
         """総合と状態遷移の後に呼ばれる。normal は、その周期の状態が NORMAL か (正常時の基準の学習などに使う)。"""
-
-    def reset(self) -> None:
-        """内部の状態を捨てる (地図の切り替え、外からの再初期化など)。"""
 
 
 @dataclass
@@ -251,21 +259,7 @@ class RecoveryContext:
     matcher: Optional[Matcher] = None
 
 
-class _SourcedPlugin(Plugin):
-    """引数の名前で情報源を受け取るプラグイン (判定と同じ約束)。"""
-    SOURCES: Mapping[str, SourceKind] = {}
-    # 設定に必要な項目 ('anchors'、'safety')
-    REQUIRES: Sequence[str] = ()
-
-    def __init__(self, name: str, params: Mapping[str, Any], sources: Mapping[str, str]) -> None:
-        super().__init__(name, params)
-        self.sources = dict(sources)
-
-    def reset(self) -> None:
-        """内部の状態を捨てる。"""
-
-
-class CandidateGenerator(_SourcedPlugin):
+class CandidateGenerator(SourcedPlugin):
     """復旧の候補を作る。再初期化が要るあいだ、周期ごとに呼ばれる (作れなければ空を返す)。
 
     status に、直近の generate の結果の短い理由 (作れたら ok、作れなければその理由) を入れる。
@@ -277,7 +271,7 @@ class CandidateGenerator(_SourcedPlugin):
         raise NotImplementedError
 
 
-class CandidateScorer(_SourcedPlugin):
+class CandidateScorer(SourcedPlugin):
     """候補を評価する。"""
 
     def score(self, candidate: Candidate, context: RecoveryContext) -> Optional[float]:
