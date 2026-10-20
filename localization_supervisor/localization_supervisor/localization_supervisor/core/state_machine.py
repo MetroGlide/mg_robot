@@ -165,13 +165,9 @@ class StateMachine:
             return Decision(self.state, [], '', self.blame)
 
         # DEGRADED
-        if not cfg.recovery_enabled:
-            if self._cleared(fusion):
-                return self._to_normal([Action.RESTORE], 'cleared')
-            return Decision(self.state, [], '', self.blame)
         if self._cleared(fusion):
             return self._to_normal([Action.RESTORE], 'cleared')
-        if now - self._degraded_at >= cfg.degraded_retry_sec:
+        if cfg.recovery_enabled and now - self._degraded_at >= cfg.degraded_retry_sec:
             return self._start_recovery(now, 'retry from degraded')
         return Decision(self.state, [], '', self.blame)
 
