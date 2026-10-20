@@ -19,6 +19,7 @@ def build_resetters(items: List[Mapping[str, Any]], node: Any, own: OwnMessages)
     resetters = []
     for i, item in enumerate(items):
         where = f'recovery.resetters[{i}]'
-        cls, params = build(item['type'], STANDARD_RESETTERS, PoseResetter, item.get('params'), where, f'{where}.params')
+        cls, params = build(
+            item['type'], STANDARD_RESETTERS, PoseResetter, item.get('params'), where, f'{where}.params')
         resetters.append(cls(item.get('name', item['type']), params, node, own))
     return resetters
