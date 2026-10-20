@@ -129,9 +129,12 @@ def best_offset(
     best_key, best = (base[0], -base[1], 0.0), (0.0, 0.0, 0.0)
     relative = points_xy - np.asarray(center, dtype=float)
     for dyaw in yaws:
-        c, s = math.cos(dyaw), math.sin(dyaw)
-        rotated = np.stack([c * relative[:, 0] - s * relative[:, 1],
-                            s * relative[:, 0] + c * relative[:, 1]], axis=1) + np.asarray(center, dtype=float)
+        if dyaw == 0.0:
+            rotated = points_xy
+        else:
+            c, s = math.cos(dyaw), math.sin(dyaw)
+            rotated = np.stack([c * relative[:, 0] - s * relative[:, 1],
+                                s * relative[:, 0] + c * relative[:, 1]], axis=1) + np.asarray(center, dtype=float)
         for offset in offsets:
             shifted = match_ratio(field, rotated + offset, tolerance, min_points)
             if shifted is None:
@@ -147,27 +150,6 @@ def search_offsets(range_m: float, step_m: float) -> np.ndarray:
     axis = np.arange(-range_m, range_m + 1e-9, step_m)
     xs, ys = np.meshgrid(axis, axis)
     return np.stack([xs.ravel(), ys.ravel()], axis=1)
-
-
-def match_gain(
-    field: LocalDistanceField, points_xy: np.ndarray, tolerance: float,
-    offsets: np.ndarray, min_points: int = 30,
-) -> Optional[Tuple[float, float]]:
-    """姿勢の周りで点を offsets だけずらして最もよく一致する割合と、ずらさないときの割合の差 (利得) を返す。
-
-    Returns: (ずらさないときの一致した割合, 利得)。ずらさないほうが最もよく一致していれば利得は 0。
-    利得が大きいのは、姿勢が地図に対してずれていて、近くにもっと合う位置があるとき。
-    地図の質や LiDAR の特性による一致率の絶対値の高低に左右されにくい。判断できなければ None。
-    """
-    base = match_ratio(field, points_xy, tolerance, min_points)
-    if base is None:
-        return None
-    best = base[0]
-    for offset in offsets:
-        shifted = match_ratio(field, points_xy + offset, tolerance, min_points)
-        if shifted is not None and shifted[0] > best:
-            best = shifted[0]
-    return base[0], best - base[0]
 
 
 def match_ratio(

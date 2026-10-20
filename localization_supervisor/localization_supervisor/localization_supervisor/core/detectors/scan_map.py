@@ -1,5 +1,5 @@
 """姿勢の情報源の姿勢で、スキャンを地図に重ねたときの一致。"""
-from ..grid import match_gain, search_offsets
+from ..grid import best_offset, search_offsets
 from ..interfaces import Detector, Evidence, ParamSpec, SnapshotLike, SourceKind, Status
 from .common import Baseline, scan_points
 
@@ -64,10 +64,13 @@ class ScanMap(Detector):
         points = scan_points(snapshot, reference_name, reference, pose, p['max_points'], p['radius_m'])
         if points is None:
             return Evidence.unknown()
-        result = match_gain(field, points, p['tolerance_m'], self._offsets, p['min_points'])
+        result = best_offset(
+            field, points, p['tolerance_m'], (pose[0], pose[1]), self._offsets, min_points=p['min_points'])
         if result is None:
             return Evidence.unknown()
-        ratio, gain = result
+        # 利得: ずらしたほうが合う分 (姿勢が地図に対してずれていて、近くにもっと合う位置があるときに大きい)
+        ratio, best, _ = result
+        gain = best - ratio
         threshold = self.ratio_threshold()
         score = max(threshold / max(ratio, MIN_RATIO), gain / p['gain_threshold'])
         return Evidence.from_score(score, ratio=ratio, gain=gain, ratio_threshold=threshold)
