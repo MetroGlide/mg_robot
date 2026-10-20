@@ -6,7 +6,7 @@
 
   パラメータ
     config_file : 設定ファイル (必須。書き方は doc/parameters.md)
-    profile     : 重ねるプロファイル (空は基の設定)。走行中に変えられる (サービス ~/set_profile でも)
+    profile     : 重ねるプロファイル (空は基本設定)。走行中に変えられる (サービス ~/set_profile でも)
   入力
     設定の sources.<名前>.input のアダプタが購読するトピックと TF
     external_reinit.topics: 届いたら、人による上書きとして、状態を NORMAL に戻して猶予を置く
@@ -55,9 +55,9 @@ class TfContext(TfBufferContext):
 
 
 def check_node_supports(config: SupervisorConfig) -> None:
-    """基の設定とすべてのプロファイルが、このノードで動かせるか。
+    """基本設定とすべてのプロファイルが、このノードで動かせるか。
 
-    - 入力のアダプタ・再初期化の送り先・対処は起動時に基の設定で作るので、プロファイルで変えることはできない
+    - 入力のアダプタ・再初期化の送り先・対処は起動時に基本設定で作るので、プロファイルで変えることはできない
     - recovery_enabled には、再初期化の送り先 (recovery.resetters) が要る
     """
     for name in [''] + list(config.profiles):

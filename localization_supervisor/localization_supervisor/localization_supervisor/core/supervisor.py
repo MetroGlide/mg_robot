@@ -73,14 +73,14 @@ class StepResult:
     blame: str = ''
     # 残差の統計 (設定の residuals ごと)
     residuals: Dict[str, ResidualStats] = field(default_factory=dict)
-    # 受け取る側に出す、分散の倍率 (設定の residuals ごと。a の分散にかける。1 以上、max_scale 以下)
+    # 受け取る側に出す、分散の倍率 (設定の residuals ごと。残差の a の分散にかける。1 以上、max_scale 以下)
     applied_scales: Dict[str, float] = field(default_factory=dict)
 
 
 def make_store(config: SupervisorConfig, track_scales: bool = True) -> SampleStore:
-    """標本の置き場。track_scales なら、residuals の a の標本の分散から、出した倍率を割り戻す
-    (受け取る側が倍率をかける実機。記録を読むオフライン評価は、倍率がかかっていないので False)。
-    倍率の記録は note_scale で行う。"""
+    """標本の置き場。track_scales なら、設定の residuals で a に指定した情報源の標本の分散から、
+    出した倍率を割り戻す (受け取る側が倍率をかける実機。記録を読むオフライン評価は、倍率がかかっていないので
+    False)。倍率の記録は note_scale で行う。"""
     store = SampleStore(
         config.kinds(), tuple(config.motion_priority), config.horizon_sec,
         config.max_extrapolation_sec, config.alignment)
@@ -163,7 +163,7 @@ class Supervisor:
         return self._suspect_since
 
     def set_profile(self, profile: str) -> None:
-        """プロファイルを切り替える ('' は基の設定)。判定・総合・状態遷移・アンカーは作り直す (状態は NORMAL から)。"""
+        """プロファイルを切り替える ('' は基本設定)。判定・総合・状態遷移・アンカーは作り直す (状態は NORMAL から)。"""
         if profile and profile not in self._base.profiles:
             raise ValueError(f'unknown profile {profile!r} (profiles: {sorted(self._base.profiles)})')
         before = self._profile
@@ -249,7 +249,7 @@ class Supervisor:
             applied_scales=self._applied_scales(residuals))
 
     def _applied_scales(self, residuals: Dict[str, ResidualStats]) -> Dict[str, float]:
-        """残差ごとに、a の分散にかける倍率。a の情報源を切り離しているあいだは、上限にして、ほぼ使わないようにする。"""
+        """残差ごとに、残差の a の分散にかける倍率。a の情報源を切り離しているあいだは、上限にして、ほぼ使わないようにする。"""
         blame = self.machine.blame
         scales = {}
         for name, stats in residuals.items():
@@ -259,7 +259,7 @@ class Supervisor:
         return scales
 
     def _update_residuals(self, snapshot: Snapshot, trusted: bool) -> Dict[str, ResidualStats]:
-        """信頼できる周期に、a と b の位置の差 (共分散で正規化) を残し、統計を求める。大きさが変わったらイベントを出す。"""
+        """信頼できる周期に、残差の 2 つの情報源 a、b の位置の差 (共分散で正規化) を残し、統計を求める。大きさが変わったらイベントを出す。"""
         result: Dict[str, ResidualStats] = {}
         for name, tracker in self.residuals.items():
             cfg = tracker.config
@@ -452,7 +452,7 @@ class Supervisor:
 
 
 def _residual_terms(a: PoseSample, b: PoseSample, extra_std_m: float) -> Tuple[float, float, float]:
-    """a と b の位置の差の二乗と、a の分散、b の分散 + 時刻のずれの分散 (x, y の分散の平均)。"""
+    """情報源 a、b の位置の差の二乗と、a の分散、b の分散 + 時刻のずれの分散 (x, y の分散の平均)。"""
     delta2 = float((a.pose[0] - b.pose[0]) ** 2 + (a.pose[1] - b.pose[1]) ** 2)
     var_a = float(np.mean(np.diag(np.asarray(a.cov, dtype=float))[:2]))
     var_b = float(np.mean(np.diag(np.asarray(b.cov, dtype=float))[:2]))

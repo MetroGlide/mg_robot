@@ -5,7 +5,7 @@
 
   map->base(t_to) = map->base(t_from) * [odom->base(t_from)^-1 * odom->base(t_to)]
 
-動きの情報源は優先の順に並べ、両方の時刻を含む最初のものを使う。どれも含まなければ移せない。
+動きの情報源は優先の順に並べ、両方の時刻を含む最初のものを使う。どれも含まなければ、姿勢を時刻どおりにそろえられない。
 """
 import math
 from collections import deque

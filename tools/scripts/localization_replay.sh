@@ -26,7 +26,7 @@
 #   EVAL_SKIP        INIT_MODE=gt のとき、評価の先頭から除く秒数 (既定 10。初期姿勢を与えた直後の過渡)
 #   USE_INITIALIZER  GNSS から AMCL の初期姿勢を与えるノードを起動するか (既定: gt なら false、gnss なら true)
 #   MONITOR          自己位置の監視ノード none | watchdog | supervisor (既定: gt なら none、gnss なら watchdog)
-#   PROFILE          監督の設定に重ねるプロファイル (既定: 基の設定)
+#   PROFILE          監督の設定に重ねるプロファイル (既定: 基本設定)
 #   BUILD_PKGS       起動前に増分ビルドするパッケージ
 # ROS の setup.bash は未定義の変数を参照するため、set -u は使わない
 set -eo pipefail

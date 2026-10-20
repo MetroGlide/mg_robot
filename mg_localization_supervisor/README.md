@@ -26,7 +26,7 @@ GNSS による初期化と監督ノードは、他のノードが立ち上がる
 | `use_gnss_amcl_initializer` | GNSS による初期化ノードを起動するか |
 | `use_supervisor` | 監督ノードを起動するか (`localization_launch.py` は `localization_monitor:=supervisor` か `localization_supervisor:=true` のときに true を渡す) |
 | `supervisor_config` | 監督の設定ファイル (既定は `config/supervision.yaml`) |
-| `localization_profile` | 監督の設定に重ねるプロファイル (空は基の設定) |
+| `localization_profile` | 監督の設定に重ねるプロファイル (空は基本設定) |
 
 ## AMCL のゲートの調停 (amcl_gate_arbiter)
 
@@ -48,7 +48,7 @@ GNSS による初期化と監督ノードは、他のノードが立ち上がる
 パラメータ・入出力・イベントは [localization_supervisor/doc/supervisor_node.md](../localization_supervisor/doc/supervisor_node.md)。このロボットでの使い方:
 
 - `localization_supervisor:=true` で、既定の監視 (`mg_navigation` の `amcl_watchdog_node`。共分散が大きければ GNSS で初期化し直す) のまま、監督ノードを並行して動かす。状態 `/localization/status` は監督ノードが出す (watchdog は出さない)。実機で通知の質を確かめるときに使う。watchdog と二重に再初期化しないよう、プロファイルは `notify_only` になる。
-- `localization_monitor:=supervisor` (既定) では、watchdog の代わりに監督ノードだけを動かし、基の設定の自動復旧を使う。watchdog と並行して動かすときは、プロファイル `notify_only` になる (二重に再初期化しない)。
+- `localization_monitor:=supervisor` (既定) では、watchdog の代わりに監督ノードだけを動かし、基本設定の自動復旧を使う。watchdog と並行して動かすときは、プロファイル `notify_only` になる (二重に再初期化しない)。
 - 設定は `supervisor_config`、プロファイルは `localization_profile` で渡す。走行中は `ros2 service call /localization_supervisor_node/set_profile localization_supervisor_msgs/srv/SetProfile "{profile: gnss_fallback}"` で切り替えられる。
 - GNSS による初期化 (`gnss_amcl_initializer_node`)・watchdog・人による `/initialpose`・`/set_pose` は、外からの再初期化として扱う (状態を戻して猶予を置く)。
 - 診断 `localization_supervisor_node: localization` は、集約で `/Robot/Localization/Monitor`。watchdog と並行して動かすときは、watchdog の診断も同じ集約に入る (悪いほうのレベルになる)。Web UI の「自己位置」のタイルに、状態・疑わしい情報源・異常の判定・障害物の中かが出る。
@@ -81,7 +81,7 @@ GNSS による初期化と監督ノードは、他のノードが立ち上がる
 
 | プロファイル | 内容 |
 | :--- | :--- |
-| `notify_only` | 検知と通知だけにする (自動復旧しない)。判定は基の設定のまま。watchdog と並行して動かすときの既定 |
+| `notify_only` | 検知と通知だけにする (自動復旧しない)。判定は基本設定のまま。watchdog と並行して動かすときの既定 |
 | `gnss_fallback` | AMCL と GNSS が乖離したら GNSS で引き戻すだけの動作 (以前の watchdog と GNSS による初期化と同じ)。AMCL と GNSS の食い違いだけを、続けて異常だった回数で判断し、候補は精度の良い GNSS が続いたときの位置だけ。評価も切り離しも一時停止もしない |
 
 ### 自動復旧の構成
@@ -92,7 +92,7 @@ GNSS による初期化と監督ノードは、他のノードが立ち上がる
 | :--- | :--- |
 | 候補を作るもの | `gnss` (精度の良い測位が続いたら、その位置)、`dead_reckoning` (疑いの前のアンカーにオドメトリを足した位置)、`submap` (その周りでスキャンを地図に照合した位置) |
 | 候補の評価 | スキャンの一致率を主に、GNSS・推測航法との近さを小さい重みで足す。計画用地図の致死セルに footprint がかかる候補は捨てる |
-| 選び方 | 最良が最低の評価に届かない、または離れた次点との差が小さい(似た場所の取り違え)ときは、再初期化せず `DEGRADED` で知らせる |
+| 選び方 | 最良の評価が最低の評価に届かない、または次点との差が小さい (似た場所の取り違えの疑い) ときは、再初期化せず `DEGRADED` で知らせる |
 | 再初期化の送り先 | AMCL (`/initialpose`) と EKF (`/set_pose`)。監督が送ったものは、外からの再初期化として扱わない |
 | 対処 | AMCL のゲートを閉じる (`gate`。`/amcl_gate_arbiter/supervisor/...`)、シーケンサを一時停止する (`pause_request`)、再初期化の後にグローバルコストマップを消す (`clear_costmap`)、GNSS の分散の倍率を配信する (`variance_scale`) |
 
@@ -105,7 +105,7 @@ GNSS による初期化と監督ノードは、他のノードが立ち上がる
 ### GNSS だけがずれたとき
 
 AMCL と GNSS の食い違いだけでは、どちらが悪いかは決まらない。`submap_amcl` (AMCL の姿勢で、直近の走行のスキャンを地図に照合する判定) が正常と判定できているあいだは、AMCL は正しいと見なして (`vouch`)、GNSS を疑う。`scan_amcl` は AMCL と同じスキャンと地図で推定しているので独立ではなく、`vouch` しない。
-GNSS が悪いと分かったとき (`state_machine.isolate_only`) は、止めず、AMCL と EKF の再初期化もせずに、GNSS の分散を上限にして使わないようにするだけにする。地図の歪みなどで、GNSS が地図の座標と場所によって合わないことがあっても、正しい AMCL を切り離したり、走行を止めたりしない。GNSS の異常がなくなれば戻る。
+GNSS が悪いと分かったとき (`state_machine.isolate_only`) は、止めず、AMCL と EKF の再初期化もせずに、GNSS の分散を上限にして使わないようにするだけにする。地図の歪みなどで、場所によっては GNSS が地図の座標と合わないことがあっても、正しい AMCL を切り離したり、走行を止めたりしない。GNSS の異常がなくなれば戻る。
 `submap_amcl` が判定できていないとき (走り出して 5 m を走る前、止まっているなど) は、AMCL も疑う側に戻り、通常の対処 (ゲートを閉じ、止め、再初期化) になる。ただし、再初期化の前に GNSS のずれと分かれば、その時点で止めるのをやめる。
 
 - 自動復旧が使える状況: GNSS の測位がある(運ばれたときも、その位置へ戻せる)、または、ずれが推測航法とスキャンの照合で直せる範囲(オドメトリのすべり・AMCL の少しずつのずれ)。GNSS がなく運ばれたときは、復旧できず `DEGRADED` で知らせる。

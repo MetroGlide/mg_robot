@@ -322,7 +322,7 @@ def _recovering(clear_ticks=2):
 
 
 def test_recovering_without_reinit_returns_to_normal_when_the_anomaly_clears():
-    # 一時的な外れ値で確認に進んでも、初期化し直す前に異常がなくなれば、初期化せずに戻す(停止し続けない)
+    # 一時的な外れ値で確認に進んでも、初期化し直す前に異常がなくなれば、初期化せずに戻す (停止し続けない)
     machine = _recovering()
     assert machine.step(3.0, _fr(cleared=True)).state == State.RECOVERING
     d = machine.step(4.0, _fr(cleared=True))

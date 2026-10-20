@@ -69,7 +69,7 @@ detectors:
     max_score: 10.0
   # EKF の姿勢でのスキャンと地図の一致。一致率の絶対値は地図の質や LiDAR の特性で決まる (正しい姿勢でも
   # 0.3 前後のことがある) ので、正常なときの中央値を基準にする。利得 (ずらしたほうが合う) は、別走行の地図との
-  # 位置合わせのずれで正しい姿勢でも 0.4 前後になるため使わない (gain_threshold 1.0)
+  # 位置合わせのずれにより、正しい姿勢でも 0.4 前後になるため、使わない (gain_threshold 1.0)
   scan_ekf:
     type: scan_map
     sources: {pose: ekf, reference: map_scan}

@@ -31,7 +31,7 @@ def generate_launch_description():
         'supervisor_config', default=os.path.join(config_dir, 'supervision.yaml'),
         description='監督の設定ファイル (情報源・判定・総合・状態遷移・プロファイル)')
     localization_profile = arg.create(
-        'localization_profile', default='', description='監督の設定に重ねるプロファイル (空は基の設定)')
+        'localization_profile', default='', description='監督の設定に重ねるプロファイル (空は基本設定)')
 
     def create_nodes(context):
         """TimerAction の中の LaunchConfiguration は、タイマーが発火するとき (include のスコープを抜けた後) に

@@ -12,7 +12,7 @@ from ..snapshot import ReferenceData
 
 
 def position_std(cov: np.ndarray) -> float:
-    """位置の標準偏差 (x, y の分散の大きいほう)。"""
+    """位置の標準偏差 (x, y のうち分散の大きいほうの標準偏差)。"""
     return math.sqrt(max(float(cov[0, 0]), float(cov[1, 1]), 0.0))
 
 
