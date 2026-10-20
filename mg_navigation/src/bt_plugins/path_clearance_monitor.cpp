@@ -319,6 +319,53 @@ void PathClearanceMonitor::resetEvaluation()
   last_blocked_ = false;
 }
 
+PathClearanceMonitor::FreeStartStatus PathClearanceMonitor::findFreeStart(
+  double now, double max_distance, double margin, geometry_msgs::msg::PoseStamped & start)
+{
+  if (!costmap_msg_) {
+    return FreeStartStatus::kNoCostmap;
+  }
+  if (!footprint_ || now - costmap_received_ > kCostmapTimeout) {
+    RCLCPP_WARN_THROTTLE(
+      node_->get_logger(), *node_->get_clock(), 5000, "%s: costmap is stale or footprint is unknown",
+      options_.log_name.c_str());
+    return FreeStartStatus::kUnavailable;
+  }
+  const std::string & frame = costmap_msg_->header.frame_id;
+  geometry_msgs::msg::PoseStamped robot_pose;
+  if (!nav2_util::getCurrentPose(
+      robot_pose, *tf_, frame, robot_base_frame_, options_.transform_tolerance))
+  {
+    RCLCPP_WARN_THROTTLE(
+      node_->get_logger(), *node_->get_clock(), 5000,
+      "%s: failed to get the robot pose in %s", options_.log_name.c_str(), frame.c_str());
+    return FreeStartStatus::kUnavailable;
+  }
+  updateCostmap();
+  geometry_msgs::msg::Pose2D robot;
+  robot.x = robot_pose.pose.position.x;
+  robot.y = robot_pose.pose.position.y;
+  robot.theta = tf2::getYaw(robot_pose.pose.orientation);
+
+  PathClearanceParams params = controller_params_.value_or(PathClearanceParams());
+  params.track_unknown_space = track_unknown_space_.value_or(false);
+  const PathClearanceChecker checker(costmap_.get(), *footprint_, params);
+  if (!checker.inCollision(robot.x, robot.y, robot.theta)) {
+    return FreeStartStatus::kNotNeeded;
+  }
+  const auto free_pose = checker.findNearestFreePose(robot, max_distance, margin);
+  if (!free_pose) {
+    return FreeStartStatus::kNotFound;
+  }
+  start.header.frame_id = frame;
+  start.header.stamp = robot_pose.header.stamp;
+  start.pose.position.x = free_pose->x;
+  start.pose.position.y = free_pose->y;
+  start.pose.position.z = 0.0;
+  start.pose.orientation = robot_pose.pose.orientation;
+  return FreeStartStatus::kFound;
+}
+
 PathClearanceMonitor::Status PathClearanceMonitor::evaluate(
   const nav_msgs::msg::Path & path, double now)
 {

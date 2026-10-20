@@ -54,5 +54,28 @@ double LeverArmUncertaintyVariance(double lever_x, double lever_y) {
   return lever_x * lever_x + lever_y * lever_y;
 }
 
+VarianceScale::VarianceScale(double timeout_sec, double max_scale)
+    : timeout_sec_(timeout_sec), max_scale_(max_scale) {}
+
+void VarianceScale::Update(double scale, double now_sec) {
+  if (!std::isfinite(scale)) {
+    return;
+  }
+  scale_ = std::min(std::max(scale, 1.0), max_scale_);
+  received_sec_ = now_sec;
+  received_ = true;
+}
+
+double VarianceScale::Current(double now_sec) const {
+  if (!received_ || now_sec - received_sec_ > timeout_sec_) {
+    return 1.0;
+  }
+  return scale_;
+}
+
+double ApplyVarianceScale(double variance, double scale) {
+  return variance * std::max(scale, 1.0);
+}
+
 }  // namespace gnss
 }  // namespace slam_gnss_2d

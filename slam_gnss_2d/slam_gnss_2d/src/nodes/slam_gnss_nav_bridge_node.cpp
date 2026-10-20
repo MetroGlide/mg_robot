@@ -14,6 +14,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/nav_sat_fix.hpp>
 #include <std_msgs/msg/bool.hpp>
+#include <std_msgs/msg/float64.hpp>
 #include <std_srvs/srv/set_bool.hpp>
 #include <tf2/exceptions.h>
 #include <tf2_ros/buffer.h>
@@ -98,6 +99,12 @@ class SlamGnssNavBridgeNode : public rclcpp::Node {
     quality_.single_scale = get_parameter("single_scale").as_double();
     quality_.accept_single = get_parameter("accept_single").as_bool();
 
+    // 位置の分散にかける倍率を、外 (自己位置の監督) から受け取る。トピックが空なら受け取らない
+    const std::string variance_scale_topic = declare_parameter("variance_scale_topic", std::string(""));
+    variance_scale_ = gnss::VarianceScale(
+        declare_parameter("variance_scale_timeout_sec", 10.0),
+        declare_parameter("variance_scale_max", 100.0));
+
     // GNSS を地図に使えているか (使えない理由つき) を、診断とイベントで知らせる。
     // 変換ファイルが読めずにノードが動かない場合も、診断に出す
     adoption_timeout_sec_ = declare_parameter("adoption_timeout_sec", 5.0);
@@ -146,6 +153,13 @@ class SlamGnssNavBridgeNode : public rclcpp::Node {
           response->message = publish_enabled_ ? "publishing /odom/gps" : "stopped /odom/gps";
           RCLCPP_INFO(get_logger(), "%s", response->message.c_str());
         });
+
+    if (!variance_scale_topic.empty()) {
+      variance_scale_sub_ = create_subscription<std_msgs::msg::Float64>(
+          variance_scale_topic, 10, [this](const std_msgs::msg::Float64::SharedPtr msg) {
+            variance_scale_.Update(msg->data, now().seconds());
+          });
+    }
 
     rclcpp::QoS map_qos(rclcpp::KeepLast(1));
     map_qos.reliable();
@@ -207,6 +221,9 @@ class SlamGnssNavBridgeNode : public rclcpp::Node {
 
   bool publish_enabled_{true};
 
+  // 位置の分散にかける倍率 (外から受け取る)
+  gnss::VarianceScale variance_scale_{10.0, 100.0};
+
   // GNSS の採用の状態
   double adoption_timeout_sec_{5.0};
   unsigned char not_adopting_level_{diagnostic_msgs::msg::DiagnosticStatus::WARN};
@@ -256,6 +273,7 @@ class SlamGnssNavBridgeNode : public rclcpp::Node {
     }
     stat.add("publish_enabled", publish_enabled_);
     stat.add("last_reject_reason", last_reject_reason_);
+    stat.add("variance_scale", variance_scale_.Current(now().seconds()));
   }
 
   std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
@@ -264,6 +282,7 @@ class SlamGnssNavBridgeNode : public rclcpp::Node {
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_pub_;
   rclcpp::Publisher<sensor_msgs::msg::NavSatFix>::SharedPtr anchor_pub_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr publish_state_pub_;
+  rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr variance_scale_sub_;
   rclcpp::Subscription<ublox_msgs::msg::NavPVT>::SharedPtr navpvt_sub_;
   rclcpp::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr navsatfix_sub_;
 
@@ -479,6 +498,8 @@ class SlamGnssNavBridgeNode : public rclcpp::Node {
         pos_var += gnss::LeverArmUncertaintyVariance(lever_x_, lever_y_);
       }
     }
+
+    pos_var = gnss::ApplyVarianceScale(pos_var, variance_scale_.Current(now().seconds()));
 
     nav_msgs::msg::Odometry odom;
     odom.header.stamp = header.stamp;

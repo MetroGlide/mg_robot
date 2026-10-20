@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <optional>
 #include <vector>
 
 #include "mg_navigation/bt_plugins/path_clearance.hpp"
@@ -238,6 +239,88 @@ geometry_msgs::msg::PoseStamped makeGoal(const std::string & frame, double x, do
 }
 
 }  // namespace
+
+// 衝突している領域から出られる、最も近い位置を探す
+class FreePoseTest : public PathClearanceTest
+{
+protected:
+  // x の範囲 [x0, x1]、y の範囲 [y0, y1] を致死にする
+  void fillBlock(double x0, double x1, double y0, double y1)
+  {
+    unsigned int ax, ay, bx, by;
+    ASSERT_TRUE(costmap_.worldToMap(x0, y0, ax, ay));
+    ASSERT_TRUE(costmap_.worldToMap(x1, y1, bx, by));
+    for (unsigned int mx = ax; mx <= bx; ++mx) {
+      for (unsigned int my = ay; my <= by; ++my) {
+        costmap_.setCost(mx, my, nav2_costmap_2d::LETHAL_OBSTACLE);
+      }
+    }
+  }
+
+  std::optional<geometry_msgs::msg::Pose2D> find(
+    const geometry_msgs::msg::Pose2D & robot, double max_distance, double margin = 0.1)
+  {
+    PathClearanceChecker checker(&costmap_, footprint_, params_);
+    return checker.findNearestFreePose(robot, max_distance, margin);
+  }
+
+  bool inCollision(const geometry_msgs::msg::Pose2D & p)
+  {
+    PathClearanceChecker checker(&costmap_, footprint_, params_);
+    return checker.inCollision(p.x, p.y, p.theta);
+  }
+};
+
+TEST_F(FreePoseTest, NotNeededWhenNotColliding)
+{
+  EXPECT_FALSE(find(pose(0.0, 0.0, 0.0), 3.0).has_value());
+}
+
+TEST_F(FreePoseTest, FindsTheNearestExitOfTheBlock)
+{
+  // 3m 四方の致死の領域。ロボットは領域の左端の近く (x=-1.2) にいる
+  fillBlock(-1.5, 1.5, -1.5, 1.5);
+  const auto robot = pose(-1.2, 0.0, 0.0);
+  ASSERT_TRUE(inCollision(robot));
+  const auto exit = find(robot, 3.0);
+  ASSERT_TRUE(exit.has_value());
+  EXPECT_FALSE(inCollision(*exit));
+  // 近い左側に出る (右側は 3m 以上先)。向きは変えない
+  EXPECT_LT(exit->x, robot.x);
+  EXPECT_DOUBLE_EQ(exit->theta, 0.0);
+  EXPECT_LT(std::hypot(exit->x - robot.x, exit->y - robot.y), 1.2);
+}
+
+TEST_F(FreePoseTest, ExitKeepsTheMarginFromTheBlock)
+{
+  fillBlock(-1.5, 1.5, -1.5, 1.5);
+  const auto robot = pose(-1.2, 0.0, 0.0);
+  const auto without_margin = find(robot, 3.0, 0.0);
+  const auto with_margin = find(robot, 3.0, 0.3);
+  ASSERT_TRUE(without_margin.has_value());
+  ASSERT_TRUE(with_margin.has_value());
+  // 余裕を求めると、出口が領域から遠くなる
+  EXPECT_LT(with_margin->x, without_margin->x);
+  for (int i = 0; i < 8; ++i) {
+    const double angle = i * M_PI / 4.0;
+    EXPECT_FALSE(
+      inCollision(
+        pose(
+          with_margin->x + 0.3 * std::cos(angle), with_margin->y + 0.3 * std::sin(angle), 0.0)));
+  }
+}
+
+TEST_F(FreePoseTest, NoExitWithinMaxDistance)
+{
+  fillBlock(-1.5, 1.5, -1.5, 1.5);
+  EXPECT_FALSE(find(pose(0.0, 0.0, 0.0), 0.5).has_value());
+}
+
+TEST_F(FreePoseTest, NoExitWhenEverythingIsBlocked)
+{
+  fillBlock(-4.9, 4.9, -4.9, 4.9);
+  EXPECT_FALSE(find(pose(0.0, 0.0, 0.0), 2.0).has_value());
+}
 
 TEST(PathForGoalTest, PathReachesGoal)
 {

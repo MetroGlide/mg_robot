@@ -1,11 +1,11 @@
-import { BoolMsg, GateArbiterState } from "../types";
+import { BoolMsg, GateState } from "../types";
 import { TOPICS } from "../ros/topics";
 import { FoxgloveClientHandle } from "./useFoxgloveClient";
 import { useTopicSubscriber } from "./useTopicSubscriber";
 
 export interface LocalizationGates {
   /** AMCL のゲートの状態。状態トピックが届いていなければ null */
-  amcl: GateArbiterState | null;
+  amcl: GateState | null;
   /** GNSS ブリッジが /odom/gps を配信しているか。状態トピックが届いていなければ null */
   gnssPublishing: boolean | null;
 }
@@ -14,10 +14,10 @@ export interface LocalizationGates {
 export function useLocalizationGates(
   client: FoxgloveClientHandle,
 ): LocalizationGates {
-  const amcl = useTopicSubscriber<GateArbiterState>(
+  const amcl = useTopicSubscriber<GateState>(
     client,
     TOPICS.AMCL_GATE_STATE,
-    "mg_msgs/msg/GateArbiterState",
+    "localization_supervisor_msgs/msg/GateState",
   );
   const gnss = useTopicSubscriber<BoolMsg>(
     client,

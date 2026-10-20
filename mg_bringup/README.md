@@ -51,8 +51,10 @@ compose のサービス (`make slam`、`make navigation` など) は、ここの
 | `ekf_odom_topic` | EKF の出力トピック |
 | `use_navigation` | `false` で自己位置推定だけを起動する (rosbag の再生評価用) |
 | `use_gnss_amcl_initializer` | GNSS から AMCL の初期姿勢を与えるノード |
-| `localization_monitor` | 自己位置の監視ノード (`none` / `watchdog` / `supervisor`) |
-| `supervisor_params_file` | 監督ノードのパラメータ |
+| `localization_monitor` | 自己位置の監視ノード (`none` / `watchdog` / `supervisor`。既定は `supervisor`) |
+| `localization_supervisor` | `true` で、監視が `watchdog` のまま、監督ノードを並行して通知だけで動かす |
+| `supervisor_config` | 監督の設定ファイル |
+| `localization_profile` | 監督の設定に重ねるプロファイル (空は基の設定。監視が `watchdog` のときは `notify_only`) |
 | `nav2_params_file` | Nav2 のパラメータ |
 | `use_slam_gnss_bridge` | GNSS ブリッジ (`/odom/gps`) を起動するか |
 | `bridge_params_file` | GNSS ブリッジのパラメータ |

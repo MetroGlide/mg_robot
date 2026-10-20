@@ -72,8 +72,10 @@ class BagData:
         self.odom: List[List[float]] = []        # [t, vx, wz]
         self.amcl: List[List[float]] = []        # [t, record_t, x, y, yaw] + cov36
         self.gps_count = 0
-        # [t, state, gnss_d2, jump_m, ekf_diff_m, scan_ratio, scan_gain]。使えなかった判定の値は -1
+        # [t, state, fusion_level]
         self.status: List[List[float]] = []
+        # 判定のインスタンスごとの [t, score] (判定できた周期だけ)
+        self.check_scores: Dict[str, List[List[float]]] = {}
 
 
 def read_bag(bag_path: str, args: argparse.Namespace) -> BagData:
@@ -114,10 +116,11 @@ def read_bag(bag_path: str, args: argparse.Namespace) -> BagData:
         elif topic == args.gps_topic:
             data.gps_count += 1
         elif topic == args.status_topic:
-            data.status.append([
-                stamp_sec(msg.header.stamp), float(msg.state), float(msg.amcl_gnss_d2),
-                float(msg.amcl_jump_m), float(msg.amcl_ekf_diff_m), float(msg.scan_match_ratio),
-                float(getattr(msg, "scan_match_gain", -1.0))])
+            t = stamp_sec(msg.header.stamp)
+            data.status.append([t, float(msg.state), float(msg.fusion_level)])
+            for check in msg.checks:
+                if check.status != lm.CHECK_UNKNOWN:
+                    data.check_scores.setdefault(check.name, []).append([t, float(check.score)])
     return data
 
 
@@ -419,7 +422,7 @@ def format_summary(report: Dict[str, Any]) -> str:
         names = {"NORMAL": 0, "SUSPECT": 1, "ISOLATED": 2, "RECOVERING": 3, "DEGRADED": 4}
         fractions = ", ".join(
             f"{name} {sv['state_fractions'].get(code, 0.0) * 100:.0f}%" for name, code in names.items())
-        lines += ["## 監督ノードの判定の値 (使えなかったものを除く)", "", f"- 状態の割合: {fractions}", "",
+        lines += ["## 監督の総合の強さと判定の score (判定できた周期だけ)", "", f"- 状態の割合: {fractions}", "",
                   "| 判定 | N | 最小 | 中央値 | p95 | 最大 |", "|---|---|---|---|---|---|"]
         for name, s in sv["values"].items():
             if s.get("n", 0) == 0:
@@ -474,7 +477,9 @@ def main() -> None:
     ekf = clip_time(as_array(data.ekf, 42), t_from, t_to)
     odom = clip_time(as_array(data.odom, 3), t_from, t_to)
     amcl = clip_time(as_array(data.amcl, 41), t_from, t_to)
-    status = clip_time(as_array(data.status, 7), t_from, t_to)
+    status = clip_time(as_array(data.status, 3), t_from, t_to)
+    check_scores = {name: clip_time(as_array(rows, 2), t_from, t_to)[:, 1]
+                    for name, rows in data.check_scores.items()}
     map_odom = clip_time(as_array(data.map_odom, 4), t_from, t_to)
 
     report: Dict[str, Any] = {
@@ -504,7 +509,7 @@ def main() -> None:
     elif status.shape[0]:
         report["status"] = lm.count_episodes(status[:, 0], status[:, 1], [])
     if status.shape[0]:
-        report["status_values"] = lm.summarize_status_values(status)
+        report["status_values"] = lm.summarize_status_values(status, check_scores)
 
     text = format_summary(report)
     print(text)

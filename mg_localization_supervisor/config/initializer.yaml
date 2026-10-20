@@ -1,0 +1,14 @@
+gnss_amcl_initializer_node:
+  ros__parameters:
+    # 測位に向きが無いときに、固定の向き (fixed_heading) を使うか
+    use_fixed_heading: false
+    required_consecutive_good: 2
+    # 初期化の共分散を、測位の精度からではなく pose_covariance (6x6、行優先) で与える
+    override_pose_covariance: true
+    pose_covariance: [
+      0.25, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 0.25, 0.0, 0.0, 0.0, 0.0,
+      0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 0.0, 0.0, 0.0, 0.0, 0.06853891909122467]

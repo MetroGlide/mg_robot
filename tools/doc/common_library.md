@@ -51,7 +51,10 @@ rclpy に依存しないため、テストや rosbag を読まない解析から
 numpy のみに依存する指標の計算 (`compose`, `pose_errors`, `correction_jumps`, `nees`, `best_lag`, `recovery_metrics`, `count_episodes` ほか)。
 
 ## `tools.common.faults` (故障注入の定義)
-評価ツールと故障注入ノードが共有する故障定義 (`kidnap` / `gnss_bias` / `gnss_drop` / `odom_scale` / `scan_drop`) の読込。時刻は再生開始からの経過秒。
+評価ツールと故障注入ノードが共有する故障定義 (`kidnap` / `gnss_bias` / `gnss_drop` / `odom_scale` / `scan_drop` / `amcl_drift`) の読込。時刻は再生開始からの経過秒。
 
 ## `tools.common.fault_apply` (故障注入の計算)
 故障の作用の判定と、スキャンの欠測・GNSS のバイアスなどの計算。numpy のみに依存し、`fault_injector.py` が使う。
+
+## `tools.common.offline_faults` (オフライン評価の故障への変換)
+故障定義を、自己位置の監督のオフライン評価 (`localization_supervisor.core.faults`) の定義に直す。情報源の名前は `mg_localization_supervisor/config/supervision.yaml` に合わせる。`eval_localization_offline.py` が使う。

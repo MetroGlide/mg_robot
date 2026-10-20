@@ -18,32 +18,64 @@ from ament_index_python.packages import get_package_share_directory
 
 from launch import LaunchDescription
 from launch.actions import (
-    DeclareLaunchArgument, GroupAction, OpaqueFunction, SetEnvironmentVariable, TimerAction)
+    GroupAction, IncludeLaunchDescription, OpaqueFunction, SetEnvironmentVariable, TimerAction)
 from launch.conditions import IfCondition
-from launch.substitutions import LaunchConfiguration, PythonExpression
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import PythonExpression
 from launch_ros.actions import LoadComposableNodes
 from launch_ros.actions import Node
 from launch_ros.descriptions import ComposableNode, ParameterFile
 from nav2_common.launch import RewrittenYaml
 
+from mg_utils.launch_argument import LaunchArgumentCreator
+
 
 def generate_launch_description():
     # Get the launch directory
     bringup_dir = get_package_share_directory('nav2_bringup')
+    supervisor_dir = get_package_share_directory('mg_localization_supervisor')
 
-    namespace = LaunchConfiguration('namespace')
-    map_yaml_file = LaunchConfiguration('map')
-    use_sim_time = LaunchConfiguration('use_sim_time', default='false')
-    autostart = LaunchConfiguration('autostart')
-    params_file = LaunchConfiguration('params_file')
-    use_composition = LaunchConfiguration('use_composition')
-    container_name = LaunchConfiguration('container_name')
+    arg = LaunchArgumentCreator()
+    namespace = arg.create('namespace', default='', description='Top-level namespace').launch_config
+    map_yaml_file = arg.create('map', description='Full path to map yaml file to load').launch_config
+    use_sim_time = arg.create(
+        'use_sim_time', default='false', description='Use simulation (Gazebo) clock if true').launch_config
+    params_file = arg.create(
+        'params_file', default=os.path.join(bringup_dir, 'params', 'nav2_params.yaml'),
+        description='Full path to the ROS2 parameters file to use for all launched nodes').launch_config
+    autostart = arg.create(
+        'autostart', default='true', description='Automatically startup the nav2 stack').launch_config
+    use_composition = arg.create(
+        'use_composition', default='False', description='Use composed bringup if True').launch_config
+    container_name = arg.create(
+        'container_name', default='nav2_container',
+        description='the name of conatiner that nodes will load in if use composition').launch_config
     container_name_full = (namespace, '/', container_name)
-    use_respawn = LaunchConfiguration('use_respawn')
-    log_level = LaunchConfiguration('log_level')
-    use_gnss_amcl_initializer = LaunchConfiguration('use_gnss_amcl_initializer')
-    localization_monitor = LaunchConfiguration('localization_monitor')
-    supervisor_params_file = LaunchConfiguration('supervisor_params_file')
+    use_respawn = arg.create(
+        'use_respawn', default='False',
+        description='Whether to respawn if a node crashes. Applied when composition is disabled.').launch_config
+    log_level = arg.create('log_level', default='info', description='log level').launch_config
+    use_gnss_amcl_initializer = arg.create(
+        'use_gnss_amcl_initializer', default='true',
+        description='GNSS から AMCL の初期姿勢を与えるノードを起動するか').launch_config
+    localization_monitor = arg.create(
+        'localization_monitor', default='supervisor',
+        description='自己位置の監視ノード (none | watchdog | supervisor)').launch_config
+    localization_supervisor = arg.create(
+        'localization_supervisor', default='false',
+        description='監視が watchdog のとき、監督ノードを並行して通知だけで動かすか '
+                    '(状態 /localization/status は監督ノードが出す)').launch_config
+    supervisor_config = arg.create(
+        'supervisor_config', default=os.path.join(supervisor_dir, 'config', 'supervision.yaml'),
+        description='監督の設定ファイル').launch_config
+    localization_profile = arg.create(
+        'localization_profile', default='',
+        description='監督の設定に重ねるプロファイル (空は基の設定。監視が watchdog のときは、'
+                    '二重に再初期化しないよう notify_only)').launch_config
+    # watchdog と並行して動かす監督は、通知だけにする (どちらも再初期化すると互いに上書きする)
+    supervisor_profile = PythonExpression([
+        "'notify_only' if '", localization_monitor, "' == 'watchdog' and '", localization_profile,
+        "' == '' else '", localization_profile, "'"])
 
     lifecycle_nodes = [
         'map_server',
@@ -74,59 +106,6 @@ def generate_launch_description():
 
     stdout_linebuf_envvar = SetEnvironmentVariable(
         'RCUTILS_LOGGING_BUFFERED_STREAM', '1')
-
-    declare_namespace_cmd = DeclareLaunchArgument(
-        'namespace',
-        default_value='',
-        description='Top-level namespace')
-
-    declare_map_yaml_cmd = DeclareLaunchArgument(
-        'map',
-        description='Full path to map yaml file to load')
-
-    declare_use_sim_time_cmd = DeclareLaunchArgument(
-        'use_sim_time',
-        default_value='false',
-        description='Use simulation (Gazebo) clock if true')
-
-    declare_params_file_cmd = DeclareLaunchArgument(
-        'params_file',
-        default_value=os.path.join(bringup_dir, 'params', 'nav2_params.yaml'),
-        description='Full path to the ROS2 parameters file to use for all launched nodes')
-
-    declare_autostart_cmd = DeclareLaunchArgument(
-        'autostart', default_value='true',
-        description='Automatically startup the nav2 stack')
-
-    declare_use_composition_cmd = DeclareLaunchArgument(
-        'use_composition', default_value='False',
-        description='Use composed bringup if True')
-
-    declare_container_name_cmd = DeclareLaunchArgument(
-        'container_name', default_value='nav2_container',
-        description='the name of conatiner that nodes will load in if use composition')
-
-    declare_use_respawn_cmd = DeclareLaunchArgument(
-        'use_respawn', default_value='False',
-        description='Whether to respawn if a node crashes. Applied when composition is disabled.')
-
-    declare_log_level_cmd = DeclareLaunchArgument(
-        'log_level', default_value='info',
-        description='log level')
-
-    declare_use_gnss_amcl_initializer_cmd = DeclareLaunchArgument(
-        'use_gnss_amcl_initializer', default_value='true',
-        description='GNSS から AMCL の初期姿勢を与えるノードを起動するか')
-
-    declare_localization_monitor_cmd = DeclareLaunchArgument(
-        'localization_monitor', default_value='watchdog',
-        description='自己位置の監視ノード (none | watchdog | supervisor)')
-
-    declare_supervisor_params_file_cmd = DeclareLaunchArgument(
-        'supervisor_params_file',
-        default_value=os.path.join(
-            get_package_share_directory('mg_navigation'), 'params', 'localization_supervisor.yaml'),
-        description='localization_supervisor_node のパラメータファイル')
 
     load_nodes = GroupAction(
         condition=IfCondition(PythonExpression(['not ', use_composition])),
@@ -208,45 +187,30 @@ def generate_launch_description():
                     ("output_topic", "amcl_pose")]
     )
 
-    # AMCL ゲートの調停: ウェイポイントの amcl_on/off と監督ノードが互いの意図を上書きしないようにする
-    amcl_gate_arbiter_node = Node(
-        package='mg_navigation',
-        executable='amcl_gate_arbiter_node.py',
-        name='amcl_gate_arbiter',
-        output='screen',
-        parameters=[{'use_sim_time': use_sim_time}],
-    )
+    # 監督ノード・AMCL ゲートの調停・GNSS による初期化 (mg_localization_supervisor)
+    supervisor_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(os.path.join(supervisor_dir, 'launch', 'supervisor.launch.py')),
+        launch_arguments={
+            'use_sim_time': use_sim_time,
+            'use_gnss_amcl_initializer': use_gnss_amcl_initializer,
+            'use_supervisor': PythonExpression([
+                "'", localization_monitor, "' == 'supervisor' or '", localization_supervisor, "'.lower() == 'true'"]),
+            'supervisor_config': supervisor_config,
+            'localization_profile': supervisor_profile,
+        }.items())
 
-    def create_delayed_nodes(context):
-        """起動を遅らせるノード (GNSS による初期化と監視ノード) を作る。
+    def create_watchdog(context):
+        """watchdog を遅れて起動する。
 
         TimerAction の中の LaunchConfiguration は、タイマーが発火するとき (include のスコープを抜けた後) に
         評価されるため、use_sim_time が既定値 (false) になってしまう。その結果、シミュレーション・rosbag 再生で
-        これらのノードだけが実時間で動いていた。値をここ (スコープ内) で確定してから渡す。
+        このノードだけが実時間で動いていた。値をここ (スコープ内) で確定してから渡す。
         """
+        if context.perform_substitution(localization_monitor) != 'watchdog':
+            return []
         sim_time = context.perform_substitution(use_sim_time).lower() == 'true'
-        supervisor_params = context.perform_substitution(supervisor_params_file)
-
-        gnss_amcl_initializer_node = Node(
-            package='mg_navigation',
-            executable='gnss_amcl_initializer_node.py',
-            name='gnss_amcl_initializer_node',
-            output='screen',
-            parameters=[
-                {'use_sim_time': sim_time,
-                 'use_fixed_heading': False,
-                 'required_consecutive_good': 2,
-                 'override_pose_covariance': True,
-                 'pose_covariance': [
-                    0.25, 0.0, 0.0, 0.0, 0.0, 0.0,
-                    0.0, 0.25, 0.0, 0.0, 0.0, 0.0,
-                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                    0.0, 0.0, 0.0, 0.0, 0.0, 0.06853891909122467
-                 ]}
-            ]
-        )
+        # 監督ノードを並行して動かすときは、状態の配信を監督ノードに任せる
+        with_supervisor = context.perform_substitution(localization_supervisor).lower() == 'true'
 
         # AMCL watchdog node: monitor amcl covariance and trigger reinitialization when needed
         amcl_watchdog_node = Node(
@@ -254,58 +218,18 @@ def generate_launch_description():
             executable='amcl_watchdog_node.py',
             name='amcl_watchdog_node',
             output='screen',
-            parameters=[{'use_sim_time': sim_time}],
+            parameters=[{'use_sim_time': sim_time, 'publish_status': not with_supervisor}],
             remappings=remappings + [('amcl_pose', 'amcl_pose_origin'),
                                      ('request_reinit', '/gnss_amcl_initializer_node/request_reinit')]
         )
+        return [TimerAction(period=12.0, actions=[amcl_watchdog_node])]
 
-        # Localization supervisor: AMCL のずれを検知して EKF から切り離し、EKF の姿勢で復旧する
-        localization_supervisor_node = Node(
-            package='mg_navigation',
-            executable='localization_supervisor_node.py',
-            name='localization_supervisor_node',
-            output='screen',
-            parameters=[supervisor_params, {'use_sim_time': sim_time}],
-        )
-
-        return [
-            TimerAction(
-                period=10.0, actions=[gnss_amcl_initializer_node],
-                condition=IfCondition(use_gnss_amcl_initializer)),
-            TimerAction(
-                period=12.0, actions=[amcl_watchdog_node],
-                condition=IfCondition(PythonExpression(["'", localization_monitor, "' == 'watchdog'"]))),
-            TimerAction(
-                period=12.0, actions=[localization_supervisor_node],
-                condition=IfCondition(PythonExpression(["'", localization_monitor, "' == 'supervisor'"]))),
-        ]
-
-    # Create the launch description and populate
-    ld = LaunchDescription()
-
-    # Set environment variables
-    ld.add_action(stdout_linebuf_envvar)
-
-    # Declare the launch options
-    ld.add_action(declare_namespace_cmd)
-    ld.add_action(declare_map_yaml_cmd)
-    ld.add_action(declare_use_sim_time_cmd)
-    ld.add_action(declare_params_file_cmd)
-    ld.add_action(declare_autostart_cmd)
-    ld.add_action(declare_use_composition_cmd)
-    ld.add_action(declare_container_name_cmd)
-    ld.add_action(declare_use_respawn_cmd)
-    ld.add_action(declare_log_level_cmd)
-    ld.add_action(declare_use_gnss_amcl_initializer_cmd)
-    ld.add_action(declare_localization_monitor_cmd)
-    ld.add_action(declare_supervisor_params_file_cmd)
-
-    # Add the actions to launch all of the localiztion nodes
-    ld.add_action(load_nodes)
-    ld.add_action(load_composable_nodes)
-
-    ld.add_action(change_amcl_publish_state_node)
-    ld.add_action(amcl_gate_arbiter_node)
-    ld.add_action(OpaqueFunction(function=create_delayed_nodes))
-
-    return ld
+    return LaunchDescription([
+        stdout_linebuf_envvar,
+        *arg.get_created_declare_launch_args(),
+        load_nodes,
+        load_composable_nodes,
+        change_amcl_publish_state_node,
+        supervisor_launch,
+        OpaqueFunction(function=create_watchdog),
+    ])

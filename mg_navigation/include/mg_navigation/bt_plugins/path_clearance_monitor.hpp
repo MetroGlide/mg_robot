@@ -79,6 +79,28 @@ public:
   // 判定の記録を消し、次の evaluate で必ず判定する
   void resetEvaluation();
 
+  enum class FreeStartStatus
+  {
+    // 衝突している領域の外の位置を見つけた
+    kFound,
+    // 今の姿勢が衝突していない (探す必要がない)
+    kNotNeeded,
+    // 衝突している領域から max_distance 以内に出られない
+    kNotFound,
+    // コストマップをまだ受け取っていない
+    kNoCostmap,
+    // 判定できない (フットプリントを取得できていない、コストマップが古い、TF が取れない)
+    kUnavailable,
+  };
+
+  // フットプリントを取得済みなら true (findFreeStart に必要なのはこれだけ)
+  bool footprintReady() const {return footprint_.has_value();}
+
+  // ロボットの今の姿勢が、コストマップで衝突しているとき、その領域の外の最も近い位置を start に入れる。
+  // 向きはロボットの今の向きのまま。出口は margin [m] 以内に衝突がない位置にする
+  FreeStartStatus findFreeStart(
+    double now, double max_distance, double margin, geometry_msgs::msg::PoseStamped & start);
+
   bool lastBlocked() const {return last_blocked_;}
   std::uint64_t costmapSeq() const {return costmap_seq_;}
   double costmapReceived() const {return costmap_received_;}

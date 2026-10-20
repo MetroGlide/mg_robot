@@ -68,5 +68,29 @@ TEST(NavBridgeCoreTest, LeverArmUncertaintyVariance) {
   EXPECT_NEAR(LeverArmUncertaintyVariance(0.26, -0.13), 0.26 * 0.26 + 0.13 * 0.13, 1e-12);
 }
 
+TEST(NavBridgeCoreTest, VarianceScaleIsOneUntilReceivedAndAfterTimeout) {
+  VarianceScale scale(10.0, 100.0);
+  EXPECT_DOUBLE_EQ(scale.Current(0.0), 1.0);
+  scale.Update(4.0, 100.0);
+  EXPECT_DOUBLE_EQ(scale.Current(105.0), 4.0);
+  // 監督が止まって届かなくなったら、GNSS を弱いままにしない
+  EXPECT_DOUBLE_EQ(scale.Current(111.0), 1.0);
+}
+
+TEST(NavBridgeCoreTest, VarianceScaleIsClamped) {
+  VarianceScale scale(10.0, 100.0);
+  scale.Update(0.2, 0.0);
+  EXPECT_DOUBLE_EQ(scale.Current(1.0), 1.0);
+  scale.Update(1e6, 0.0);
+  EXPECT_DOUBLE_EQ(scale.Current(1.0), 100.0);
+  scale.Update(std::nan(""), 0.0);
+  EXPECT_DOUBLE_EQ(scale.Current(1.0), 100.0);
+}
+
+TEST(NavBridgeCoreTest, ApplyVarianceScaleOnlyIncreases) {
+  EXPECT_DOUBLE_EQ(ApplyVarianceScale(0.25, 4.0), 1.0);
+  EXPECT_DOUBLE_EQ(ApplyVarianceScale(0.25, 0.5), 0.25);
+}
+
 }  // namespace gnss
 }  // namespace slam_gnss_2d

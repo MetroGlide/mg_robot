@@ -24,3 +24,10 @@ slam_gnss_nav_bridge:
     accept_single: true
     # 位置の分散の 2 倍がこの値 [m^2] を超える測位は使わない (49.0 は標準偏差 約 4.95 m)
     max_covariance_threshold: 49.0
+    # 自己位置の監督が、GNSS と EKF の残差から求めた分散の倍率 (std_msgs/Float64) を受け取るトピック
+    # (mg_localization_supervisor の supervision.yaml の variance_scale と同じ)。
+    # 地図と GNSS のずれは場所ごとに違うので、補正せずに信頼度だけを下げる。空にすると受け取らない
+    variance_scale_topic: /gnss_variance_scale
+    # 倍率を最後に受け取ってから、この秒数を過ぎたら 1 に戻す (監督が止まっても、GNSS を弱いままにしない)
+    variance_scale_timeout_sec: 10.0
+    variance_scale_max: 100.0

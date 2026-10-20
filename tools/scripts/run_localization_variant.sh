@@ -10,7 +10,9 @@
 #   --rate R                 再生速度 (既定 1.0。実時間で評価するのが基本)
 #   --init gt|gnss           初期姿勢 (既定 gt: 真値を与える / gnss: GNSS による初期化に任せる)
 #   --initializer true|false GNSS から AMCL の初期姿勢を与えるノード (既定: gt なら false、gnss なら true)
-#   --monitor none|watchdog  自己位置の監視ノード (既定: gt なら none、gnss なら watchdog)
+#   --monitor none|watchdog|supervisor
+#                            自己位置の監視ノード (既定: gt なら none、gnss なら watchdog)
+#   --profile <名前>         監督の設定に重ねるプロファイル (mg_localization_supervisor/config/supervision.yaml)
 #   --start S / --duration D 評価する区間 (データセットの値を上書き)
 #   --cpus N                 コンテナに使わせる CPU 数 (実機相当の負荷にしたいとき)
 #   --faults <yaml>          センサ入力に故障を注入する (tools/datasets/localization/faults/。復旧の評価用)
@@ -23,7 +25,8 @@
 #   amcl.<key>    mg_navigation/params/nav2_params.yaml の amcl
 #   bridge.<key>  slam_gnss_2d/params/nav_bridge.yaml の slam_gnss_nav_bridge
 #   odom.<key>    mg_drivers/params/wheel_odom_corrector.yaml の wheel_odom_corrector_node
-#   sup.<key>     mg_navigation/params/localization_supervisor.yaml の localization_supervisor_node
+#   sup.<key>     mg_localization_supervisor/config/supervision.yaml (監督の設定。トップレベルからのパスで、
+#                 フロー形式の中の値も書ける。例: sup.detectors.amcl_gnss.params.threshold=8.0)
 #
 # 例:
 #   tools/scripts/run_localization_variant.sh baseline
@@ -51,6 +54,7 @@ RATE=1.0
 INIT_MODE=gt
 USE_INITIALIZER=""
 MONITOR=""
+PROFILE=""
 CPUS=""
 START_OVERRIDE=""
 DURATION_OVERRIDE=""
@@ -69,6 +73,7 @@ while [ $# -gt 0 ]; do
     --init) INIT_MODE="$2"; shift 2 ;;
     --initializer) USE_INITIALIZER="$2"; shift 2 ;;
     --monitor) MONITOR="$2"; shift 2 ;;
+    --profile) PROFILE="$2"; shift 2 ;;
     --start) START_OVERRIDE="$2"; shift 2 ;;
     --duration) DURATION_OVERRIDE="$2"; shift 2 ;;
     --cpus) CPUS="$2"; shift 2 ;;
@@ -83,7 +88,7 @@ while [ $# -gt 0 ]; do
     amcl.*=*) AMCL_UPDATES+=("amcl:${1#amcl.}"); shift ;;
     bridge.*=*) BRIDGE_UPDATES+=("slam_gnss_nav_bridge:${1#bridge.}"); shift ;;
     odom.*=*) ODOM_UPDATES+=("wheel_odom_corrector_node:${1#odom.}"); shift ;;
-    sup.*=*) SUPERVISOR_UPDATES+=("localization_supervisor_node:${1#sup.}"); shift ;;
+    sup.*=*) SUPERVISOR_UPDATES+=("${1#sup.}"); shift ;;
     *) echo "エラー: 解釈できない引数です: $1" >&2; usage ;;
   esac
 done
@@ -115,7 +120,11 @@ patch "${ODOM_FILE:-mg_drivers/params/wheel_odom_corrector.yaml}" wheel_odom_cor
 patch "${EKF_FILE:-mg_drivers/params/ekf_global.yaml}" ekf_global.yaml "${EKF_UPDATES[@]}"
 patch "${AMCL_FILE:-mg_navigation/params/nav2_params.yaml}" nav2_params.yaml "${AMCL_UPDATES[@]}"
 patch "${BRIDGE_FILE:-slam_gnss_2d/slam_gnss_2d/params/nav_bridge.yaml}" nav_bridge.yaml "${BRIDGE_UPDATES[@]}"
-patch "${SUPERVISOR_FILE:-mg_navigation/params/localization_supervisor.yaml}" localization_supervisor.yaml "${SUPERVISOR_UPDATES[@]}"
+# 監督の設定は ROS2 パラメータではないので --plain で書き換える。プロファイルは設定ファイルからの相対パスなので複製する
+SUPERVISOR_SRC="${SUPERVISOR_FILE:-mg_localization_supervisor/config/supervision.yaml}"
+python3 tools/scripts/patch_params.py --plain "$SUPERVISOR_SRC" "$VARIANT_REL/supervision.yaml" "${SUPERVISOR_UPDATES[@]}"
+rm -rf "$VARIANT_REL/profiles"
+cp -r "$(dirname "$SUPERVISOR_SRC")/profiles" "$VARIANT_REL/profiles"
 
 OUT_DIR="${BAG}/eval_loc/${DATASET_NAME}/${NAME}"
 IMAGE="${IMAGE:-mg_develop:latest}"
@@ -143,6 +152,7 @@ DOCKER_ARGS=(run --rm --network host -e ROS_DOMAIN_ID="$DOMAIN_ID"
 [ -n "$CPUS" ] && DOCKER_ARGS+=(--cpus "$CPUS")
 [ -n "$USE_INITIALIZER" ] && DOCKER_ARGS+=(-e USE_INITIALIZER="$USE_INITIALIZER")
 [ -n "$MONITOR" ] && DOCKER_ARGS+=(-e MONITOR="$MONITOR")
+[ -n "$PROFILE" ] && DOCKER_ARGS+=(-e PROFILE="$PROFILE")
 if [ -n "$FAULTS" ]; then
   # ホストのパスをコンテナ内のパスに直す (リポジトリ内 -> /app、~/ros2_data -> /root/ros2_data)
   FAULTS_ABS="$(cd "$(dirname "$FAULTS")" && pwd)/$(basename "$FAULTS")"

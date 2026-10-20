@@ -239,21 +239,50 @@ export const ACTIVITY_CODE = {
   ERROR: 'error',
 } as const
 
-/** amcl_gate_arbiter の状態 (mg_msgs/GateArbiterState) */
-export interface GateArbiterState {
+/** amcl_gate_arbiter の状態 (localization_supervisor_msgs/GateState) */
+export interface GateState {
   desired: boolean
   applied: boolean
   holders: string[]
 }
 
-/** localization_supervisor が配信する自己位置推定の状態 (mg_msgs/LocalizationStatus) */
-export interface LocalizationStatus {
-  state: number
-  amcl_attached: boolean
-  last_event: string
+/** 判定のインスタンスの 1 周期分の結果 (localization_supervisor_msgs/LocalizationCheck) */
+export interface LocalizationCheck {
+  name: string
+  detector: string
+  sources: string[]
+  /** LOCALIZATION_CHECK_STATUS の値 */
+  status: number
+  score: number
+  accumulated: number
+  values: DiagnosticKeyValue[]
 }
 
-/** LocalizationStatus.state の名前。値は mg_msgs/msg/LocalizationStatus.msg に合わせる */
+/** LocalizationCheck.status の値。localization_supervisor_msgs/msg/LocalizationCheck.msg に合わせる */
+export const LOCALIZATION_CHECK_STATUS = {
+  NORMAL: 0,
+  ANOMALY: 1,
+  UNKNOWN: 2,
+} as const
+
+/** localization_supervisor が配信する自己位置推定の状態 (localization_supervisor_msgs/LocalizationStatus) */
+export interface LocalizationStatus {
+  state: number
+  blame: string
+  contaminated: string[]
+  isolated_sources: string[]
+  hold_requested: boolean
+  fusion_level: number
+  trusted: boolean
+  in_grace: boolean
+  footprint_in_lethal: boolean
+  lethal_depth_m: number
+  profile: string
+  last_event: string
+  checks: LocalizationCheck[]
+}
+
+/** LocalizationStatus.state の名前。値は localization_supervisor_msgs/msg/LocalizationStatus.msg に合わせる */
 export const LOCALIZATION_STATE_NAME: Record<number, string> = {
   0: 'NORMAL',
   1: 'SUSPECT',

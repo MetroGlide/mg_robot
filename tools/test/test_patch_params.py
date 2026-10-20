@@ -1,4 +1,6 @@
-from tools.scripts.patch_params import patch_lines
+import yaml
+
+from tools.scripts.patch_params import patch_lines, patch_plain
 
 MULTI_NODE = """\
 amcl:
@@ -73,3 +75,13 @@ def test_untouched_multiline_list_is_kept():
 def test_reports_unapplied_keys():
     _, unapplied = _patch(MULTI_NODE, {"amcl:missing": "1", "nope:use_sim_time": "true"})
     assert unapplied == ["amcl:missing", "nope:use_sim_time"]
+
+
+def test_plain_patches_nested_flow_values():
+    data = yaml.safe_load("detectors:\n  amcl_gnss: {type: pose_consistency, params: {threshold: 6.0}}\n"
+                          "fusion:\n  params: {confirm_level: 4.0}\n")
+    unapplied = patch_plain(data, {"detectors.amcl_gnss.params.threshold": "8", "fusion.type": "x",
+                                   "detectors.amcl_gnss.enabled": "false"})
+    assert data["detectors"]["amcl_gnss"]["params"]["threshold"] == 8
+    # 無いキーは足さずに知らせる
+    assert unapplied == ["detectors.amcl_gnss.enabled", "fusion.type"]

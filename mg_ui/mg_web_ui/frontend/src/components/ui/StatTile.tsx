@@ -7,6 +7,8 @@ interface StatTileProps {
   value: string;
   unit?: string;
   tone?: Tone;
+  /** 値の下に小さく添える補足(空なら出さない。長いときは省略し、全体はツールチップに出す) */
+  detail?: string;
   /** 値が古いとき(鮮度切れ)に true。値を灰色にし、経過秒を添える */
   stale?: boolean;
   ageSec?: number | null;
@@ -42,6 +44,7 @@ export default function StatTile({
   value,
   unit,
   tone = "neutral",
+  detail = "",
   stale = false,
   ageSec = null,
   widthClass,
@@ -69,6 +72,11 @@ export default function StatTile({
             <span className="ml-1 text-xs font-normal text-muted">{unit}</span>
           )}
         </div>
+        {!stale && detail !== "" && (
+          <div className="truncate text-[10px] text-muted" title={detail}>
+            {detail}
+          </div>
+        )}
         {stale && ageSec !== null && (
           <div className="truncate text-[10px] text-warn">{Math.floor(ageSec)}秒 更新なし</div>
         )}

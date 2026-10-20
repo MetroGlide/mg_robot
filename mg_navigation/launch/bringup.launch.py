@@ -40,10 +40,16 @@ def generate_launch_description():
         'use_gnss_amcl_initializer', default="true")
     # 自己位置の監視ノード (none | watchdog | supervisor)
     localization_monitor_arg = launch_argument_creator.create(
-        'localization_monitor', default="watchdog")
-    supervisor_params_file_arg = launch_argument_creator.create(
-        'supervisor_params_file',
-        default=os.path.join(pkg_dir, 'params', 'localization_supervisor.yaml'))
+        'localization_monitor', default="supervisor")
+    # 監視が watchdog のとき、監督ノードを並行して通知だけで動かすか
+    localization_supervisor_arg = launch_argument_creator.create(
+        'localization_supervisor', default="false")
+    supervisor_config_arg = launch_argument_creator.create(
+        'supervisor_config',
+        default=os.path.join(
+            get_package_share_directory('mg_localization_supervisor'), 'config', 'supervision.yaml'))
+    localization_profile_arg = launch_argument_creator.create(
+        'localization_profile', default="")
     use_waypoints_follower_arg = launch_argument_creator.create(
         'use_waypoints_follower', default="true")
     waypoints_load_path_arg = launch_argument_creator.create(
@@ -150,7 +156,9 @@ def generate_launch_description():
                               'use_respawn': use_respawn_arg.launch_config,
                               'use_gnss_amcl_initializer': use_gnss_amcl_initializer_arg.launch_config,
                               'localization_monitor': localization_monitor_arg.launch_config,
-                              'supervisor_params_file': supervisor_params_file_arg.launch_config,
+                              'localization_supervisor': localization_supervisor_arg.launch_config,
+                              'supervisor_config': supervisor_config_arg.launch_config,
+                              'localization_profile': localization_profile_arg.launch_config,
                               'container_name': 'nav2_container'}.items()
         ),
 

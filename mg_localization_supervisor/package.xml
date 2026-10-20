@@ -1,0 +1,34 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>mg_localization_supervisor</name>
+  <version>0.0.0</version>
+  <description>
+    Configuration, launch and robot-specific plugins of localization_supervisor for MG robots
+  </description>
+  <maintainer email="chuson@todo.todo">chuson</maintainer>
+  <license>TODO</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>ament_cmake_python</buildtool_depend>
+
+  <exec_depend>localization_supervisor</exec_depend>
+  <exec_depend>localization_supervisor_msgs</exec_depend>
+  <exec_depend>mg_msgs</exec_depend>
+  <exec_depend>mg_utils</exec_depend>
+  <exec_depend>nav2_msgs</exec_depend>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>std_srvs</exec_depend>
+  <exec_depend>tf2_ros_py</exec_depend>
+  <exec_depend>tf_transformations</exec_depend>
+
+  <test_depend>python3-pytest</test_depend>
+  <test_depend>python3-yaml</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

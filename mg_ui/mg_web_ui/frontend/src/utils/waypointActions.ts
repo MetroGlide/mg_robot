@@ -1,5 +1,5 @@
 import { normalizeType, parse } from "@foxglove/rosmsg";
-import type { GateArbiterState } from "../types";
+import type { GateState } from "../types";
 
 type MessageDefinition = ReturnType<typeof parse>[number];
 
@@ -133,7 +133,7 @@ export interface GateView {
 }
 
 /** AMCL のゲートの状態を、表示用のラベルと補足にする。 */
-export function describeAmclGate(state: GateArbiterState | null): GateView {
+export function describeAmclGate(state: GateState | null): GateView {
   if (state === null) return { label: "UNKNOWN", detail: "" };
   const holders = state.holders.join(", ");
   if (!state.applied) {

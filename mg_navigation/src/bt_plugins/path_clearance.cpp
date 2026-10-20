@@ -2,7 +2,11 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
+#include <functional>
 #include <limits>
+#include <queue>
+#include <utility>
 #include <vector>
 
 #include "nav2_costmap_2d/cost_values.hpp"
@@ -53,6 +57,80 @@ bool PathClearanceChecker::inCollision(double x, double y, double theta) const
     return false;
   }
   return footprint_cost >= static_cast<double>(nav2_costmap_2d::LETHAL_OBSTACLE);
+}
+
+std::optional<geometry_msgs::msg::Pose2D> PathClearanceChecker::findNearestFreePose(
+  const geometry_msgs::msg::Pose2D & robot_pose, double max_distance, double margin) const
+{
+  if (!inCollision(robot_pose.x, robot_pose.y, robot_pose.theta)) {
+    return std::nullopt;
+  }
+  // 衝突している、または margin 以内に衝突する位置がある場所
+  const auto blocked = [this, margin, &robot_pose](double x, double y) {
+      if (inCollision(x, y, robot_pose.theta)) {
+        return true;
+      }
+      if (margin <= 0.0) {
+        return false;
+      }
+      for (int i = 0; i < 8; ++i) {
+        const double angle = i * M_PI / 4.0;
+        if (inCollision(
+            x + margin * std::cos(angle), y + margin * std::sin(angle), robot_pose.theta))
+        {
+          return true;
+        }
+      }
+      return false;
+    };
+  const double resolution = costmap_->getResolution();
+  const int radius = static_cast<int>(std::ceil(max_distance / resolution));
+  const int width = 2 * radius + 1;
+  // robot_pose を中心にした正方形の格子。衝突している領域の中だけを広げる
+  const auto cell_index = [width, radius](int dx, int dy) {
+      return static_cast<std::size_t>((dy + radius) * width + (dx + radius));
+    };
+  std::vector<double> best(static_cast<std::size_t>(width) * width, -1.0);
+  using Item = std::pair<double, std::pair<int, int>>;
+  std::priority_queue<Item, std::vector<Item>, std::greater<Item>> queue;
+  best[cell_index(0, 0)] = 0.0;
+  queue.push({0.0, {0, 0}});
+  while (!queue.empty()) {
+    const auto [cost, offset] = queue.top();
+    queue.pop();
+    if (cost > best[cell_index(offset.first, offset.second)]) {
+      continue;
+    }
+    const double x = robot_pose.x + offset.first * resolution;
+    const double y = robot_pose.y + offset.second * resolution;
+    if (cost > 0.0 && !blocked(x, y)) {
+      geometry_msgs::msg::Pose2D free_pose;
+      free_pose.x = x;
+      free_pose.y = y;
+      free_pose.theta = robot_pose.theta;
+      return free_pose;
+    }
+    for (int dy = -1; dy <= 1; ++dy) {
+      for (int dx = -1; dx <= 1; ++dx) {
+        if (dx == 0 && dy == 0) {
+          continue;
+        }
+        const int nx = offset.first + dx;
+        const int ny = offset.second + dy;
+        const double step = std::hypot(nx * resolution, ny * resolution);
+        if (std::abs(nx) > radius || std::abs(ny) > radius || step > max_distance) {
+          continue;
+        }
+        const double next = cost + std::hypot(dx, dy) * resolution;
+        double & known = best[cell_index(nx, ny)];
+        if (known < 0.0 || next < known) {
+          known = next;
+          queue.push({next, {nx, ny}});
+        }
+      }
+    }
+  }
+  return std::nullopt;
 }
 
 std::vector<geometry_msgs::msg::Pose2D> PathClearanceChecker::resamplePathAhead(

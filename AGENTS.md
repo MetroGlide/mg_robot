@@ -83,6 +83,7 @@ source /opt/ros/humble/setup.bash && source /root/ros2_ws/install/setup.bash
 - `nav2_pkg` は**カスタム修正済み**のNav2（アップストリームと差分あり）。`geometry2_pkg` は上流の `tf2` の取り込み（apt が追いついたら削除）。どちらも文書を含めて変更しない。
 - `mg_simulator_client`（Unityシミュレータ用）は現在未使用。
 - `mg_navigation` の自己位置推定の構成は [doc/localization.md](./mg_navigation/doc/localization.md)。
+- `localization_supervisor` (と `localization_supervisor_msgs`) はロボットに依存しないフレームワークで、`mg_*` に依存させない (テストで確かめている)。MG 固有の設定・launch・部品は `mg_localization_supervisor` に置く。
 
 ## 重要なコード規約
 
@@ -132,6 +133,7 @@ node_name:
 - プロジェクト全体: [README.md](./README.md)（入口）と [doc/](./doc/)（システム構成・Docker・コマンド・環境変数・運用手順）
 - 状態監視（diagnostics）とイベントログの規約: [doc/monitoring.md](./doc/monitoring.md)。診断は `diagnostic_updater` で出し、判定は発信元のノードが1回だけ行う。イベントは `evt=<domain>.<event> key=value` の書式で出す。ソースにロボットのバージョン名（`mg01` など）を書かない
 - 書き方の規約 (文書の種類、値を書かない、1 つの事実は 1 か所): [doc/documentation_guide.md](./doc/documentation_guide.md)。設定値・既定値は文書に書かず、yaml・launch・`.env.example` を正とする
+- 着手していない拡張のアイデア (構想): [doc/ideas/](./doc/ideas/README.md)。実装の前のアイデアや、見送った案はここに残し、パッケージの文書には混ぜない。着手したら設計を正式な文書に移して削除する
 - パッケージごと: パッケージルートの `README.md`（役割・ノード・launch・使い方の入口）と、詳細を書く `doc/`（ディレクトリ名は `doc/` に統一）
 - パッケージ固有の開発ルールは、そのパッケージの `README.md` または `doc/` に書き、パッケージ内に `AGENTS.md` を新設しない。本ファイルには要点とリンクだけを載せる
 - コードを変更したときは、対応する README・doc（launch引数の名前、トピック名、パラメータの意味や関係など）も実装に合わせて更新する
@@ -183,6 +185,7 @@ make test pkg=mg_waypoint_navigation
 | `tools/scripts/make_sim_gnss_transform.py` | シミュレータのワールドSDFからGNSSブリッジ用の`gnss_transform.yaml`を生成 |
 | `tools/scripts/eval_localization.py`<br>(`make bag-eval-localization`) | 自己位置推定の評価（滑らかさ・真値との誤差・NEES・AMCL遅延・故障からの復旧） |
 | `tools/scripts/run_localization_variant.sh` | 自己位置推定のパラメータ変種をrosbag再生で評価（センサ故障の注入にも対応）。データセットは`tools/datasets/localization/` |
+| `tools/scripts/eval_localization_offline.py` | 自己位置の監督の判定と総合を、再生評価の記録で実時間を待たずに評価（記録した標本への故障注入、プロファイルの比較） |
 | `tools/scripts/calib_wheel_odom.py` | 走行ログとSLAM出力からホイールオドメトリのスケール・バイアス・遅れを推定 |
 
 ### 解析結果・可視化画像の保存先切り替え

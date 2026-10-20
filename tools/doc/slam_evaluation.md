@@ -38,4 +38,5 @@ EXTRA_OPTS="start_time:=750.0 end_time:=1000.0" tools/scripts/run_slam_variant.s
 
 - 書き換えた YAML は `tools/data/variants/<名前>.yaml` (Git 追跡除外) に保存されます。
 - 元の値が小数のパラメータに整数を指定した場合は `.0` を補います (ROS2 のパラメータ型は厳密なため)。
+- `patch_params.py --plain` は、ROS2 パラメータではない YAML (自己位置の監督の設定など) を、トップレベルからのパスで書き換えます。YAML として読み直すので、フロー形式の中の値も書き換えられますが、コメントは残りません。
 - ノードが異常終了した場合や 20 分以内に完了しない場合はエラー終了します。

@@ -15,6 +15,7 @@ import Card from "../ui/Card";
 import StatTile from "../ui/StatTile";
 import VelocityTile from "./VelocityTile";
 import { usePanelVisible } from "./operatePanels";
+import { localizationDetail } from "./localizationText";
 import { CpuIcon, SatelliteIcon } from "../ui/icons";
 import { Tone, toneFromDiagLevel } from "../ui/Pill";
 
@@ -34,7 +35,7 @@ export default function KpiRow({ client }: { client: FoxgloveClientHandle }) {
   const loc = useTopicSubscriber<LocalizationStatus>(
     client,
     TOPICS.LOCALIZATION_STATUS,
-    "mg_msgs/msg/LocalizationStatus",
+    "localization_supervisor_msgs/msg/LocalizationStatus",
   );
   const gnss = useGnss(client, GNSS_HZ);
   const diagnostics = useDiagnosticsAgg(client);
@@ -73,6 +74,7 @@ export default function KpiRow({ client }: { client: FoxgloveClientHandle }) {
         widthClass="w-36"
         label="自己位置"
         value={loc ? (LOCALIZATION_STATE_NAME[loc.state] ?? String(loc.state)) : "--"}
+        detail={loc ? localizationDetail(loc) : ""}
         tone={diagTone(DIAG_PATHS.LOCALIZATION)}
         stale={locAge.stale}
         ageSec={locAge.ageSec}

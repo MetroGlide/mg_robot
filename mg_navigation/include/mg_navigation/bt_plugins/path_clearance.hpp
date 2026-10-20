@@ -54,6 +54,15 @@ public:
   // RPP の inCollision と同じ判定
   bool inCollision(double x, double y, double theta) const;
 
+  // robot_pose (向きは robot_pose のまま) が衝突しているとき、その衝突している領域の中だけを通って
+  // 出られる、衝突しない最も近い位置 (経路の長さで最も近い) を探す。max_distance [m] の外は探さない。
+  // margin [m] 以内に衝突する位置がある場所は、出口にしない (出た直後に衝突に戻らないため)。
+  // 衝突していないとき、領域の外に出られないとき、max_distance 以内に見つからないときは std::nullopt。
+  // 衝突している領域の中だけを通るので、細い進入禁止の線の向こう側へ出るのは、
+  // 領域をまたぐ道のりが、手前に出る道のりより短いときだけ
+  std::optional<geometry_msgs::msg::Pose2D> findNearestFreePose(
+    const geometry_msgs::msg::Pose2D & robot_pose, double max_distance, double margin) const;
+
 private:
   std::vector<geometry_msgs::msg::Pose2D> resamplePathAhead(
     const geometry_msgs::msg::Pose2D & robot_pose,

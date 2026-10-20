@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
-# 自己位置推定の状態 (mg_msgs/LocalizationStatus.state と対応)
+# 自己位置推定の状態 (localization_supervisor_msgs/LocalizationStatus.state と対応)
 STATE_NORMAL = 0
 
 
@@ -180,14 +180,18 @@ def recovery_metrics(
 
 
 # 監督ノードの状態の記録 (行: [t, state, gnss_d2, jump_m, ekf_diff_m, scan_ratio, scan_gain]) の値の列
-STATUS_VALUE_COLUMNS = {"gnss_d2": 2, "jump_m": 3, "ekf_diff_m": 4, "scan_ratio": 5, "scan_gain": 6}
+# localization_supervisor_msgs/LocalizationCheck.status の「判定できない」
+CHECK_UNKNOWN = 2
 
 
-def summarize_status_values(status: np.ndarray) -> Dict[str, Any]:
-    """監督ノードの判定の値の分布 (使えなかった -1 は除く) と、状態ごとの時間の割合。"""
-    values = {}
-    for name, column in STATUS_VALUE_COLUMNS.items():
-        values[name] = summarize(status[status[:, column] >= 0.0, column])
+def summarize_status_values(status: np.ndarray, check_scores: Dict[str, np.ndarray]) -> Dict[str, Any]:
+    """監督の総合の強さと、判定のインスタンスごとの score (判定できた周期だけ) の分布、状態ごとの時間の割合。
+
+    status は [t, state, fusion_level] の行。
+    """
+    values = {"fusion_level": summarize(status[:, 2])}
+    for name, scores in sorted(check_scores.items()):
+        values[name] = summarize(scores)
     states = status[:, 1].astype(int)
     fractions = {int(s): float(np.mean(states == s)) for s in np.unique(states)}
     return {"values": values, "state_fractions": fractions}

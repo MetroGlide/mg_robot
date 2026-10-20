@@ -7,13 +7,16 @@ import rclpy.node
 
 from mg_waypoint_navigation.waypoint import ActionConfig
 from mg_waypoint_navigation.waypoint_sequencer.actions.base import (
+    ActionFailed,
     BaseAction,
     EndpointCache,
 )
 
 
 class GenericServiceAction(BaseAction):
-    """YAML で指定したサービスを呼び出す"""
+    """YAML で指定したサービスを呼び出す。
+
+    応答に success があって false なら失敗 (ActionFailed) とする。走行は止まらず、イベント action.failed に残る。"""
 
     def __init__(
         self,
@@ -29,7 +32,11 @@ class GenericServiceAction(BaseAction):
         request = self._srv_type.Request()
         for key, value in self._config.request.items():
             setattr(request, key, value)
-        self._call_service(self._srv_type, self._config.service, request)
+        response = self._call_service(self._srv_type, self._config.service, request)
+        if getattr(response, "success", True) is False:
+            raise ActionFailed(
+                f"service {self._config.service} returned success=false: "
+                f"{getattr(response, 'message', '')}")
 
 
 class GenericPublishAction(BaseAction):
