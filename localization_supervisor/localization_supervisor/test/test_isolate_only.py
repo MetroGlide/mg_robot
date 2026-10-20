@@ -10,7 +10,6 @@ from localization_supervisor.core.interfaces import (
 from localization_supervisor.core.recovery.planner import RecoveryPlanner, ScorerConfig, SelectionConfig
 from localization_supervisor.core.state_machine import Action, MachineConfig, State, StateMachine
 from localization_supervisor.core.supervisor import Supervisor, make_store
-from localization_supervisor.ros.actuators import apply_actuators
 
 from supervisor_test_helpers import Drive, cov, pose_sample
 
@@ -238,40 +237,6 @@ def test_isolate_only_must_name_sources():
     with pytest.raises(ConfigError, match='isolate_only'):
         parse_config(_raw(state_machine={'isolate_only': ['nope']}))
     assert parse_config(_raw(state_machine={'isolate_only': ['gnss']})).machine.isolate_only == ['gnss']
-
-
-def test_disabled_actuators_must_name_actuators():
-    actuators = [{'type': 'gate', 'params': {'service': '/g'}}, {'type': 'variance_scale', 'name': 'scale'}]
-    config = parse_config(_raw(recovery={'actuators': actuators, 'disabled_actuators': ['gate', 'scale']}))
-    assert config.disabled_actuators == ['gate', 'scale']
-    with pytest.raises(ConfigError, match='disabled_actuators'):
-        parse_config(_raw(recovery={'actuators': actuators, 'disabled_actuators': ['variance_scale']}))
-
-
-# ---------------------------------------------------------------- 対処の無効化
-
-class _Recorder:
-    def __init__(self, name):
-        self.name = name
-        self.log = []
-
-    def apply(self, result):
-        self.log.append('apply')
-
-    def release(self):
-        self.log.append('release')
-
-
-def test_disabled_actuators_are_released_once_and_resume_when_enabled_again():
-    a, b = _Recorder('a'), _Recorder('b')
-    released = set()
-    apply_actuators([a, b], {'b'}, released, None)
-    apply_actuators([a, b], {'b'}, released, None)
-    assert a.log == ['apply', 'apply'] and b.log == ['release']
-    apply_actuators([a, b], set(), released, None)
-    assert b.log == ['release', 'apply']
-    apply_actuators([a, b], {'b'}, released, None)
-    assert b.log == ['release', 'apply', 'release']
 
 
 # ---------------------------------------------------------------- Supervisor 全体 (GNSS だけがずれる)

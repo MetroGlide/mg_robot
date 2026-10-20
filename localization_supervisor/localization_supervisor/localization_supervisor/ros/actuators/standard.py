@@ -28,9 +28,6 @@ class Gate(Actuator):
     def apply(self, result: StepResult) -> None:
         self._set(not (result.hold_requested and result.blame in self.params['blames']))
 
-    def release(self) -> None:
-        self._set(True)
-
     def _set(self, attach: bool) -> None:
         if attach == self._applied or self._pending or not self._client.service_is_ready():
             return

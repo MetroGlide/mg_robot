@@ -187,13 +187,6 @@ def test_variance_scale_actuator_publishes_the_applied_scale(monkeypatch):
     assert [call.args[0].data for call in pub.publish.call_args_list] == [4.0, 1.0]
 
 
-def test_variance_scale_actuator_publishes_one_when_released(monkeypatch):
-    monkeypatch.setattr(variance_scale, 'Float64', SimpleNamespace)
-    actuator, pub = _actuator()
-    actuator.release()
-    assert [call.args[0].data for call in pub.publish.call_args_list] == [1.0]
-
-
 def test_the_applied_scale_is_the_maximum_while_the_source_is_isolated():
     # a (gnss) を切り離しているあいだは、残差の倍率に関わらず上限にする
     supervisor = Supervisor(_config(max_scale=50.0))

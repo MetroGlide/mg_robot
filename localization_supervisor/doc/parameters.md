@@ -111,7 +111,6 @@ detectors:
 | `selection` | 選び方 (下記) |
 | `resetters` | 選んだ姿勢の送り先 `[{type, name?, params?}, ...]` ([plugins.md](./plugins.md#再初期化の送り先-poseresetter))。ノードが使う。オフライン評価は使わない |
 | `actuators` | 対処 `[{type, name?, params?}, ...]` ([plugins.md](./plugins.md#対処-actuator))。ノードが使う。`name` を書かなければ `type` が名前になる |
-| `disabled_actuators` | いま働かせない対処の名前。対処は起動時に作るので、プロファイルで切り替えられるのは、これだけ。無効になった周期に一度だけ、元に戻す (`release`) |
 
 ```yaml
 recovery:

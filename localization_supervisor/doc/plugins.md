@@ -117,7 +117,7 @@ class SpeedLimitCheck(Detector):
 
 `ros/actuators/base.py`。周期ごとに `apply(result)` が、周期の結果 (`state`・`blame`・`hold_requested`・`directives`) を受け取って、外に働きかける。
 状態に応じた働きかけ (ゲート・一時停止) は、毎周期の結果から決めて、変わったときだけ送る (失敗しても次の周期でやり直せる)。設定の `recovery.actuators` に `[{type, name?, params?}]` を書く。
-プロファイルが `recovery.disabled_actuators` に名前を挙げた対処は、`apply` が呼ばれなくなり、無効になった周期に一度だけ `release()` が呼ばれる。`release()` では、働きかけたものを元に戻す (止めていた走行を戻す、閉じたゲートを開けるなど)。働きかけを持たない対処は、何もしなくてよい。
+対処はプロファイルでは変えられない。働かせたくない状態は、状態遷移の設定 (`request_hold` など) で決める。プロファイルを切り替えると、監督は `NORMAL` から作り直されるので、対処は次の周期の結果から、働きかけを戻す (一時停止を解く、閉じたゲートを開けるなど)。
 
 | 登録名 | 内容 |
 | :--- | :--- |

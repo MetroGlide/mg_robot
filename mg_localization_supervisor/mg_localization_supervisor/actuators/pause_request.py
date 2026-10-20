@@ -26,9 +26,6 @@ class PauseRequestActuator(Actuator):
         reason = f'localization {result.state.name} blame={result.blame}' if result.hold_requested else ''
         self._publish(bool(result.hold_requested), reason)
 
-    def release(self) -> None:
-        self._publish(False, '')
-
     def _publish(self, active: bool, reason: str) -> None:
         request = PauseRequest()
         request.requester_id = self.params['requester_id']

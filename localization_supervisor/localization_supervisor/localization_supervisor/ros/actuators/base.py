@@ -17,7 +17,3 @@ class Actuator(Plugin):
 
     def apply(self, result: StepResult) -> None:
         raise NotImplementedError
-
-    def release(self) -> None:
-        """プロファイルで無効になったとき、一度だけ呼ばれる。働きかけたものを元に戻す (止めていた走行を戻す、
-        閉じたゲートを開けるなど)。無効の間は apply は呼ばれない。"""

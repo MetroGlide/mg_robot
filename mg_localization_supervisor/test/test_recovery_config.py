@@ -105,18 +105,18 @@ def test_a_gnss_that_disagrees_is_only_isolated_and_amcl_is_vouched_for_by_the_s
     assert 'submap_amcl' in config.enabled_detectors()
 
 
-def test_every_disabled_actuator_names_an_actuator():
+def test_actuators_are_the_same_in_every_profile():
     base = load_config(SUPERVISION)
-    names = [a.get('name', a['type']) for a in base.actuators]
-    assert names == ['gate', 'pause_request', 'clear_costmap', 'variance_scale']
-    for profile in ['', *base.profiles]:
-        assert set(load_config(SUPERVISION, profile).disabled_actuators) <= set(names)
-    assert base.disabled_actuators == []
+    assert [a.get('name', a['type']) for a in base.actuators] == [
+        'gate', 'pause_request', 'clear_costmap', 'variance_scale']
+    for profile in base.profiles:
+        assert load_config(SUPERVISION, profile).actuators == base.actuators
 
 
-def test_gnss_fallback_only_keeps_the_actions_the_previous_initializer_had():
+def test_gnss_fallback_neither_holds_nor_scales_nor_isolates():
     config = load_config(SUPERVISION, 'gnss_fallback')
-    assert set(config.disabled_actuators) == {'pause_request', 'clear_costmap', 'variance_scale'}
+    assert not config.machine.request_hold
+    assert config.residuals['gnss_vs_ekf'].max_scale == 1.0
     assert config.machine.isolate_only == []
 
 

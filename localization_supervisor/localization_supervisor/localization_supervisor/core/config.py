@@ -96,8 +96,6 @@ class SupervisorConfig:
     # 推定器への送り先と、対処の設定 (ROS 側のプラグインが読む。形だけここで確かめる)
     resetters: List[Dict[str, Any]] = field(default_factory=list)
     actuators: List[Dict[str, Any]] = field(default_factory=list)
-    # 起動時に作った対処のうち、いま働かせない対処の名前 (プロファイルで切り替える)
-    disabled_actuators: List[str] = field(default_factory=list)
     anchors: Optional[AnchorConfig] = None
     safety: Optional[SafetyConfig] = None
     residuals: Dict[str, ResidualConfig] = field(default_factory=dict)
@@ -300,7 +298,7 @@ def _parse_safety(raw: Mapping[str, Any], sources: Mapping[str, SourceConfig]) -
 
 
 RECOVERY_KEYS = {'convergence', 'matcher', 'scan_buffer', 'generators', 'scorers', 'selection', 'resetters',
-                 'actuators', 'disabled_actuators'}
+                 'actuators'}
 GENERATOR_KEYS = {'type', 'sources', 'params', 'enabled'}
 SCORER_KEYS = {'type', 'sources', 'params', 'weight', 'veto_below', 'enabled'}
 
@@ -368,15 +366,9 @@ def _parse_recovery(
 
     resetters = _plugin_list(recovery.get('resetters'), 'recovery.resetters')
     actuators = _plugin_list(recovery.get('actuators'), 'recovery.actuators')
-    disabled_actuators = _names(recovery.get('disabled_actuators'), 'recovery.disabled_actuators')
-    actuator_names = [item.get('name', item['type']) for item in actuators]
-    for name in disabled_actuators:
-        if name not in actuator_names:
-            raise ConfigError(
-                f'recovery.disabled_actuators: unknown actuator {name!r} (actuators: {actuator_names})')
     return {'generators': generators, 'scorers': scorers, 'selection': selection, 'matcher_cls': matcher_cls,
             'matcher_params': matcher_params, 'scan_buffer': scan_buffer, 'resetters': resetters,
-            'actuators': actuators, 'disabled_actuators': disabled_actuators}
+            'actuators': actuators}
 
 
 def _plugin_list(raw: Any, where: str) -> List[Dict[str, Any]]:

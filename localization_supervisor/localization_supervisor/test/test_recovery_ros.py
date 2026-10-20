@@ -158,12 +158,11 @@ def test_amcl_resetter_requests_a_nomotion_update_after_a_delay():
     assert first.cancelled and first in node.destroyed and len(node.timers) == 1
 
 
-def test_delivered_scales_only_count_an_enabled_variance_scale_actuator():
+def test_delivered_scales_only_count_a_variance_scale_actuator():
     node = FakeNode()
     actuators = build_actuators([{'type': 'variance_scale', 'params': {'topic': '/s', 'residual': 'r'}}], node)
-    assert delivered_scales(actuators, set(), {'r': 7.0, 'other': 3.0}) == {'r': 7.0, 'other': 1.0}
-    assert delivered_scales(actuators, {'variance_scale'}, {'r': 7.0}) == {'r': 1.0}
-    assert delivered_scales([], set(), {'r': 7.0}) == {'r': 1.0}
+    assert delivered_scales(actuators, {'r': 7.0, 'other': 3.0}) == {'r': 7.0, 'other': 1.0}
+    assert delivered_scales([], {'r': 7.0}) == {'r': 1.0}
 
 
 def test_resetter_config_errors():

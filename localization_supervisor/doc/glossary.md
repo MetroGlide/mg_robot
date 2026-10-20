@@ -53,7 +53,6 @@
 | 収束の確認 (convergence) | 再初期化の後に、`recovery.convergence` の判定がすべて正常な周期が続くこと。続けば元に戻す (`restore`) |
 | 指示 (Directive) | 状態遷移が対処に出す指示。`isolate` (切り離す)、`reinit` (候補の姿勢で初期化し直す)、`restore` (戻す) |
 | 対処 (actuator) | 状態に応じて外に働きかける部品。`gate` (AMCL のゲートの開閉)、`pause_request` (一時停止の要求)、`clear_costmap` (コストマップを消す)、`variance_scale` (分散の倍率の配信) |
-| 無効にした対処 | プロファイルの `recovery.disabled_actuators` に書いた対処。働かせず、無効になった周期に一度だけ `release()` で元に戻す (閉じたゲートを開ける、倍率を 1 に戻すなど) |
 | プロファイル | 設定に重ねるまとまり。判定の有効・無効、重み、しきい値、復旧の構成を切り替える。走行中にサービス `set_profile` で切り替えられる。MG には `notify_only` (通知だけ)、`gnss_fallback` (AMCL と GNSS が乖離したら GNSS で引き戻すだけの、以前の動作) がある |
 | 外からの再初期化 | 監督以外が `/initialpose` などを出したこと (人による上書き)。復旧をやめて `NORMAL` に戻し、累積・アンカーを捨てて猶予を置く |
 
