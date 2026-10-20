@@ -45,6 +45,7 @@ find_package(behaviortree_cpp_v3 REQUIRED)
 find_package(nav2_behavior_tree REQUIRED)
 find_package(nav2_costmap_2d REQUIRED)
 find_package(localization_supervisor_msgs REQUIRED)
+find_package(mg_msgs REQUIRED)
 
 ################################################################################
 # Build
@@ -105,6 +106,7 @@ set(BT_PLUGIN_DEPENDENCIES
   "nav2_behavior_tree"
   "behaviortree_cpp_v3"
   "localization_supervisor_msgs"
+  "mg_msgs"
   "tf2"
   "tf2_ros"
   "tf2_geometry_msgs"

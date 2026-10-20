@@ -4,7 +4,9 @@
 
 #include "behaviortree_cpp_v3/action_node.h"
 #include "geometry_msgs/msg/pose_stamped.hpp"
+#include "mg_msgs/msg/path_candidate_check.hpp"
 #include "nav_msgs/msg/path.hpp"
+#include "rclcpp/rclcpp.hpp"
 
 namespace mg_navigation
 {
@@ -15,7 +17,11 @@ namespace bt_plugins
 // ComputePathToPose は失敗すると出力を空にするので、candidate に書かせてこのノードで反映し、
 // 計画が失敗しても直前の経路で追従 (RPP の判定) を続けられるようにする。
 //
-// - candidate の終点が goal から goal_tolerance 以内なら、path を candidate にして SUCCESS
+// - candidate の終点が goal から goal_tolerance 以内で、かつ遠回りが上限以内なら、
+//   path を candidate にして SUCCESS。遠回りの上限は、
+//   max_detour_ratio * (始点からゴールまでの直線距離) + max_detour_margin。
+//   プランナが逆走や大回りの経路を引いたときに乗らずに待つための安全柵で、上限を超えた
+//   candidate は計画の失敗と同じに扱う。今の path には上限を掛けない
 // - そうでなく、今の path の終点が goal に届いていれば、path をそのままにして SUCCESS
 // - どちらでもなければ (別のゴールへの経路しかない)、path を空にして FAILURE。
 //   古いゴールへの経路を追従し続けて、そこで到着と報告するのを防ぐ
@@ -25,6 +31,9 @@ public:
   CommitPathAction(const std::string & name, const BT::NodeConfiguration & conf);
 
   CommitPathAction() = delete;
+
+  // 候補の判定結果 (PathCandidateCheck) を配信するトピック
+  static constexpr char kCheckTopic[] = "/navigation/path_candidate_check";
 
   BT::NodeStatus tick() override;
 
@@ -36,8 +45,17 @@ public:
       BT::BidirectionalPort<nav_msgs::msg::Path>("path", "Path to follow"),
       BT::InputPort<double>(
         "goal_tolerance", 0.6, "Max distance [m] between the path end and the goal"),
+      BT::InputPort<double>(
+        "max_detour_ratio", 2.0,
+        "Reject a candidate longer than ratio * straight distance + margin. 0 disables"),
+      BT::InputPort<double>(
+        "max_detour_margin", 10.0, "Margin [m] added to the detour limit"),
     };
   }
+
+private:
+  rclcpp::Node::SharedPtr node_;
+  rclcpp::Publisher<mg_msgs::msg::PathCandidateCheck>::SharedPtr check_pub_;
 };
 
 }  // namespace bt_plugins

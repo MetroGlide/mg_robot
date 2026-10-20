@@ -340,6 +340,39 @@ bool pathReachesGoal(
     end.x - goal.pose.position.x, end.y - goal.pose.position.y) <= tolerance;
 }
 
+double pathLength(const nav_msgs::msg::Path & path)
+{
+  double length = 0.0;
+  for (size_t i = 1; i < path.poses.size(); ++i) {
+    const auto & a = path.poses[i - 1].pose.position;
+    const auto & b = path.poses[i].pose.position;
+    length += std::hypot(b.x - a.x, b.y - a.y);
+  }
+  return length;
+}
+
+DetourCheck checkDetour(
+  const nav_msgs::msg::Path & path,
+  const geometry_msgs::msg::PoseStamped & goal,
+  double max_ratio,
+  double margin)
+{
+  DetourCheck check;
+  if (path.poses.empty()) {
+    return check;
+  }
+  const auto & start = path.poses.front().pose.position;
+  check.path_length = pathLength(path);
+  check.straight_distance = std::hypot(
+    goal.pose.position.x - start.x, goal.pose.position.y - start.y);
+  if (max_ratio <= 0.0) {
+    return check;
+  }
+  check.limit = max_ratio * check.straight_distance + margin;
+  check.exceeded = check.path_length > check.limit;
+  return check;
+}
+
 std::optional<nav_msgs::msg::Path> selectPathForGoal(
   const nav_msgs::msg::Path & candidate,
   const nav_msgs::msg::Path & current,

@@ -1,5 +1,6 @@
 #include "mg_navigation/bt_plugins/commit_path_action.hpp"
 
+#include <atomic>
 #include <string>
 
 #include "mg_navigation/bt_plugins/path_clearance.hpp"
@@ -10,9 +11,22 @@ namespace mg_navigation
 namespace bt_plugins
 {
 
+namespace
+{
+
+// 直前の判定で候補を棄却したか。BT には CommitPath が複数あるので、イベントログを
+// 状態が変わったときだけ出すために、全インスタンスで共有する
+std::atomic<bool> g_rejecting{false};
+
+}  // namespace
+
+constexpr char CommitPathAction::kCheckTopic[];
+
 CommitPathAction::CommitPathAction(const std::string & name, const BT::NodeConfiguration & conf)
 : BT::SyncActionNode(name, conf)
 {
+  node_ = config().blackboard->get<rclcpp::Node::SharedPtr>("node");
+  check_pub_ = node_->create_publisher<mg_msgs::msg::PathCandidateCheck>(kCheckTopic, 10);
 }
 
 BT::NodeStatus CommitPathAction::tick()
@@ -24,12 +38,45 @@ BT::NodeStatus CommitPathAction::tick()
   }
   double goal_tolerance = 0.6;
   getInput("goal_tolerance", goal_tolerance);
+  double max_detour_ratio = 2.0;
+  getInput("max_detour_ratio", max_detour_ratio);
+  double max_detour_margin = 10.0;
+  getInput("max_detour_margin", max_detour_margin);
 
   // まだ書かれていないキーは空の経路として扱う
   nav_msgs::msg::Path candidate;
   getInput("candidate", candidate);
   nav_msgs::msg::Path current;
   getInput("path", current);
+
+  // ゴールへ届く候補だけを遠回りの判定にかける。上限を超えたら、計画の失敗と同じ空の候補にする
+  if (pathReachesGoal(candidate, goal, goal_tolerance)) {
+    const auto detour = checkDetour(candidate, goal, max_detour_ratio, max_detour_margin);
+    mg_msgs::msg::PathCandidateCheck check;
+    check.stamp = node_->now();
+    check.rejected = detour.exceeded;
+    check.path_length = static_cast<float>(detour.path_length);
+    check.straight_distance = static_cast<float>(detour.straight_distance);
+    check.limit = static_cast<float>(detour.limit);
+    check_pub_->publish(check);
+
+    if (g_rejecting.exchange(detour.exceeded) != detour.exceeded) {
+      if (detour.exceeded) {
+        RCLCPP_WARN(
+          node_->get_logger(),
+          "evt=nav.detour_rejected path_length=%.1f straight_distance=%.1f limit=%.1f",
+          detour.path_length, detour.straight_distance, detour.limit);
+      } else {
+        RCLCPP_INFO(
+          node_->get_logger(),
+          "evt=nav.detour_accepted path_length=%.1f straight_distance=%.1f",
+          detour.path_length, detour.straight_distance);
+      }
+    }
+    if (detour.exceeded) {
+      candidate = nav_msgs::msg::Path();
+    }
+  }
 
   const auto selected = selectPathForGoal(candidate, current, goal, goal_tolerance);
   if (selected) {
