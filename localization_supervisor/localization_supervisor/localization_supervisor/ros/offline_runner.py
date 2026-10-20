@@ -20,32 +20,27 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Sequence, Tuple
 
 import rosbag2_py
-import tf2_ros
 import yaml
 from rclpy.serialization import deserialize_message
-from rclpy.time import Time
 from rosidl_runtime_py.utilities import get_message
 from tf2_msgs.msg import TFMessage
 
 from ..core.config import SupervisorConfig, load_config
 from ..core.evaluation import ReinitRecord, Report, TickRecord, evaluate, format_report
 from ..core.faults import Fault, FaultInjectingStore, FaultInjector, parse_faults, validate_sources
-from ..core.geometry import Pose2, wrap_angle
+from ..core.geometry import wrap_angle
 from ..core.interfaces import SourceKind
 from ..core.snapshot import Snapshot
 from ..core.supervisor import StepResult, Supervisor
 from .adapters import AdapterContext, build_adapters
-from .adapters.standard import yaw_from_quaternion
 from .map_io import load_map_yaml
+from .tf_context import TfBufferContext
 
 TF_TOPICS = ('/tf', '/tf_static')
 
 
-class BufferContext(AdapterContext):
+class BufferContext(TfBufferContext):
     """bag の /tf・/tf_static を入れた TF のバッファ。"""
-
-    def __init__(self) -> None:
-        self.buffer = tf2_ros.Buffer()
 
     def add(self, msg: TFMessage, static: bool) -> None:
         for transform in msg.transforms:
@@ -53,14 +48,6 @@ class BufferContext(AdapterContext):
                 self.buffer.set_transform_static(transform, 'offline')
             else:
                 self.buffer.set_transform(transform, 'offline')
-
-    def lookup(self, parent: str, child: str, stamp: Optional[float] = None) -> Optional[Pose2]:
-        when = Time() if stamp is None else Time(nanoseconds=int(stamp * 1e9))
-        try:
-            t = self.buffer.lookup_transform(parent, child, when).transform
-        except tf2_ros.TransformException:
-            return None
-        return (t.translation.x, t.translation.y, yaw_from_quaternion(t.rotation))
 
 
 @dataclass
@@ -174,7 +161,53 @@ class OfflineSession:
         on_step: Optional[Callable[[Snapshot, StepResult, float], None]] = None,
     ) -> OfflineResult:
         """messages は時刻の順の (記録時刻 [ns], トピック, メッセージ)。t0 + start_sec から周期を回す。"""
-        return _run(self, messages, on_step)
+        options, store, t0 = self.options, self.store, self.t0
+        start = t0 + options.start_sec
+        end = math.inf if options.duration_sec is None else start + options.duration_sec
+        supervisor = Supervisor(self.config)
+        records: List[TickRecord] = []
+        steps: List[Dict[str, Any]] = []
+        events: List[Dict[str, Any]] = []
+        reinits: List[ReinitRecord] = []
+        skipped: Dict[str, int] = {}
+        truth = options.truth or (self.config.anchors.pose if self.config.anchors is not None else '')
+        next_tick = start
+
+        def tick(stamp: float) -> None:
+            snapshot = store.snapshot(stamp)
+            result = supervisor.step(snapshot)
+            t_rel = stamp - t0
+            records.append(TickRecord(
+                t_rel, result.state, result.fusion.level, result.fusion.blame,
+                {n: e.status for n, e in result.evidences.items()},
+                {n: e.score for n, e in result.evidences.items()}))
+            steps.append(step_record(t_rel, result))
+            events.extend(
+                {'t': round(t_rel, 3), 'name': e.name, 'level': e.level, **e.fields} for e in result.events)
+            for event in result.events:
+                if event.name.endswith('.reinit_skipped'):
+                    reason = str(event.fields.get('reason', ''))
+                    skipped[reason] = skipped.get(reason, 0) + 1
+            for directive in result.directives:
+                if directive.kind == 'reinit':
+                    reinits.append(reinit_record(store, truth, t_rel, directive.candidate, stamp))
+                    if options.apply_reset:
+                        store.apply_reset(options.apply_reset, directive.candidate.pose, stamp)
+            if on_step is not None:
+                on_step(snapshot, result, t_rel)
+
+        for t_ns, topic, msg in messages:
+            t = t_ns * 1e-9
+            while t >= next_tick and next_tick <= end:
+                tick(next_tick)
+                next_tick += options.period_sec
+            if t > end:
+                break
+            for handler in self.routes.get(topic, []):
+                handler(msg)
+        labels = sorted(options.faults + options.labels, key=lambda f: f.start)
+        return OfflineResult(t0, records, steps, events, evaluate(
+            records, labels, reinits=reinits, skipped=skipped, ok_threshold_m=options.ok_threshold_m))
 
 
 def run_offline(
@@ -201,58 +234,6 @@ def run_offline(
             yield item
 
     return session.run(with_tf(), on_step)
-
-
-def _run(
-    session: OfflineSession, messages: Iterable[Tuple[int, str, Any]],
-    on_step: Optional[Callable[[Snapshot, StepResult, float], None]],
-) -> OfflineResult:
-    options, store, t0 = session.options, session.store, session.t0
-    start = t0 + options.start_sec
-    end = math.inf if options.duration_sec is None else start + options.duration_sec
-    supervisor = Supervisor(session.config)
-    records: List[TickRecord] = []
-    steps: List[Dict[str, Any]] = []
-    events: List[Dict[str, Any]] = []
-    reinits: List[ReinitRecord] = []
-    skipped: Dict[str, int] = {}
-    truth = options.truth or (session.config.anchors.pose if session.config.anchors is not None else '')
-    next_tick = start
-
-    def tick(stamp: float) -> None:
-        snapshot = store.snapshot(stamp)
-        result = supervisor.step(snapshot)
-        t_rel = stamp - t0
-        records.append(TickRecord(
-            t_rel, result.state, result.fusion.level, result.fusion.blame,
-            {n: e.status for n, e in result.evidences.items()},
-            {n: e.score for n, e in result.evidences.items()}))
-        steps.append(step_record(t_rel, result))
-        events.extend({'t': round(t_rel, 3), 'name': e.name, 'level': e.level, **e.fields} for e in result.events)
-        for event in result.events:
-            if event.name.endswith('.reinit_skipped'):
-                reason = str(event.fields.get('reason', ''))
-                skipped[reason] = skipped.get(reason, 0) + 1
-        for directive in result.directives:
-            if directive.kind == 'reinit':
-                reinits.append(reinit_record(store, truth, t_rel, directive.candidate, stamp))
-                if options.apply_reset:
-                    store.apply_reset(options.apply_reset, directive.candidate.pose, stamp)
-        if on_step is not None:
-            on_step(snapshot, result, t_rel)
-
-    for t_ns, topic, msg in messages:
-        t = t_ns * 1e-9
-        while t >= next_tick and next_tick <= end:
-            tick(next_tick)
-            next_tick += options.period_sec
-        if t > end:
-            break
-        for handler in session.routes.get(topic, []):
-            handler(msg)
-    labels = sorted(options.faults + options.labels, key=lambda f: f.start)
-    return OfflineResult(t0, records, steps, events, evaluate(
-        records, labels, reinits=reinits, skipped=skipped, ok_threshold_m=options.ok_threshold_m))
 
 
 def reinit_record(store: FaultInjectingStore, truth: str, t_rel: float, candidate, stamp: float) -> ReinitRecord:

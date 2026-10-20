@@ -26,21 +26,19 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.parameter import Parameter
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy, qos_profile_sensor_data
-from rclpy.time import Time
 
 from ..core.config import ConfigError, SupervisorConfig, load_config
-from ..core.geometry import Pose2
 from ..core.status import StatusView, status_view
 from ..core.supervisor import Supervisor, make_store
-from .adapters import AdapterContext, build_adapters
+from .adapters import build_adapters
 from .actuators import apply_actuators, build_actuators
 from .actuators.variance_scale import delivered_scales
-from .adapters.standard import yaw_from_quaternion
 from .diagnostics import LocalizationTask
 from .event_sinks import build_event_sink
 from .own_messages import OwnMessages
 from .resetters import build_resetters
 from .status import to_message
+from .tf_context import TfBufferContext
 
 _QOS = {
     'default': 10,
@@ -50,18 +48,10 @@ _QOS = {
 }
 
 
-class TfContext(AdapterContext):
+class TfContext(TfBufferContext):
     def __init__(self, node: Node) -> None:
-        self.buffer = tf2_ros.Buffer()
+        super().__init__()
         self.listener = tf2_ros.TransformListener(self.buffer, node)
-
-    def lookup(self, parent: str, child: str, stamp: Optional[float] = None) -> Optional[Pose2]:
-        when = Time() if stamp is None else Time(nanoseconds=int(stamp * 1e9))
-        try:
-            t = self.buffer.lookup_transform(parent, child, when).transform
-        except tf2_ros.TransformException:
-            return None
-        return (t.translation.x, t.translation.y, yaw_from_quaternion(t.rotation))
 
 
 def check_node_supports(config: SupervisorConfig) -> None:
