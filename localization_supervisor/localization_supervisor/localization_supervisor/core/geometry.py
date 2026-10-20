@@ -48,16 +48,3 @@ def mahalanobis_sq_xy(dx: float, dy: float, var_x: float, var_y: float) -> float
     """対角共分散の 2 次元のマハラノビス距離の二乗。分散が 0 以下のときは無限大にならないよう下限をかける。"""
     floor = 1e-6
     return dx * dx / max(var_x, floor) + dy * dy / max(var_y, floor)
-
-
-def amcl_gnss_d2(
-    amcl_xy: Tuple[float, float], amcl_var: Tuple[float, float],
-    gps_xy: Tuple[float, float], gps_var: float, extra_var: float = 0.0,
-) -> float:
-    """AMCL と GNSS の位置の差のマハラノビス距離の二乗 (2 自由度)。
-
-    extra_var は、2 つの時刻のずれの間にロボットが動いた分などの追加の分散 [m^2]。
-    """
-    return mahalanobis_sq_xy(
-        amcl_xy[0] - gps_xy[0], amcl_xy[1] - gps_xy[1],
-        amcl_var[0] + gps_var + extra_var, amcl_var[1] + gps_var + extra_var)

@@ -35,9 +35,6 @@ class History(Generic[T]):
         while self._samples and sample.stamp - self._samples[0].stamp > self.horizon_sec:
             self._samples.popleft()
 
-    def clear(self) -> None:
-        self._samples.clear()
-
     def latest(self) -> Optional[T]:
         return self._samples[-1] if self._samples else None
 
@@ -46,11 +43,6 @@ class History(Generic[T]):
 
     def __len__(self) -> int:
         return len(self._samples)
-
-    def span(self) -> Optional[Tuple[float, float]]:
-        if not self._samples:
-            return None
-        return self._samples[0].stamp, self._samples[-1].stamp
 
     def bracket(self, stamp: float) -> Optional[Tuple[T, T]]:
         """stamp を挟む 2 つの標本。範囲の外なら None。"""

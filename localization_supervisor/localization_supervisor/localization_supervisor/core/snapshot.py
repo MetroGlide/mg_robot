@@ -139,13 +139,6 @@ class SampleStore:
     def set_scan(self, name: str, scan: ScanSample) -> None:
         self.references[name].scan = scan
 
-    def clear_history(self) -> None:
-        """姿勢と動きの履歴を捨てる (時刻が戻ったとき、外からの再初期化など)。"""
-        for history in self.poses.values():
-            history.clear()
-        for motion in self.motions.values():
-            motion.clear()
-
     def snapshot(self, stamp: float) -> 'Snapshot':
         return Snapshot(stamp, self, dict(self.extras))
 
