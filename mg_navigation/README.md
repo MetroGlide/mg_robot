@@ -68,7 +68,7 @@ AMCL の初期化・入/切の調停・監督ノードは [mg_localization_super
 | `localization_monitor` | 自己位置の監視ノード: `none` / `watchdog` / `supervisor` (既定。検知して自動で復旧する) |
 | `localization_supervisor` | `true` で、監視が `watchdog` のまま、監督ノードを並行して通知だけで動かす |
 | `supervisor_config` | 監督の設定ファイル (既定は `mg_localization_supervisor` の `config/supervision.yaml`) |
-| `localization_profile` | 監督の設定に重ねるプロファイル (空は基の設定。監視が `watchdog` のときは `notify_only`) |
+| `localization_profile` | 監督の設定に重ねるプロファイル (空は基本設定。監視が `watchdog` のときは `notify_only`) |
 | `rviz` | RViz2 の起動 |
 | `record_bag` | rosbag の収録 |
 | `namespace`、`use_namespace` | 名前空間 |

@@ -1,6 +1,6 @@
 # プラグインの約束
 
-判定・総合・復旧の候補を作るもの・評価するもの・照合・再初期化の送り先・対処・入力のアダプタ・イベントの出力は、基底クラスを継承したプラグインとして作る。標準のものは登録名で、外部のものは `パッケージ.モジュール:クラス` で、設定ファイルの `type` に書く。
+判定、総合、復旧の候補を作るものと評価するもの、照合、再初期化の送り先、対処、入力のアダプタ、イベントの出力は、基底クラスを継承したプラグインとして作る。標準のものは登録名で、外部のものは `パッケージ.モジュール:クラス` で、設定ファイルの `type` に書く。
 読み込むときに、パラメータの型と必須、情報源の名前と種類をすべて検証し、合わなければ設定の読み込みで落ちる (`ConfigError`)。
 
 ## 約束の版
@@ -49,8 +49,8 @@ class SpeedLimitCheck(Detector):
 
 | メソッド | 内容 |
 | :--- | :--- |
-| `pose(name, max_age)` | 最新の姿勢の標本 (時刻は移さない) |
-| `pose_aligned(name, max_age, stamp)` | 最新の姿勢の標本を `stamp` (既定は周期の時刻) に移したものと、元の標本の古さ。移せなければ `None` |
+| `pose(name, max_age)` | 最新の姿勢の標本 (時刻はそろえない) |
+| `pose_aligned(name, max_age, stamp)` | 最新の姿勢の標本を `stamp` (既定は周期の時刻) にそろえたものと、元の標本の古さ。そろえられなければ `None` |
 | `pose_history(name)` | 姿勢の標本の履歴 |
 | `motion_at(name, stamp)` | 動きの情報源の、その時刻の姿勢 (補間) |
 | `reference(name)` | 地図 (`occupancy`)・最新のスキャン (`scan`)・距離場のキャッシュ (`fields`) |
@@ -64,7 +64,7 @@ class SpeedLimitCheck(Detector):
 | `pose_jump` | `pose`, `motion` (疑うのは `pose`) | 姿勢と動きが示す `map→odom` の、新しい標本ごとの変化 (飛び)。新しい標本がない周期は判定しない |
 | `covariance` | `pose` | 自己申告の共分散の大きさ (`trace_xy` / `determinant_xy` / `max_eigenvalue_xy`) |
 | `scan_map` | `pose`, `reference` (疑うのは `pose`) | その姿勢でスキャンを地図に重ねた一致率を、正常なときの中央値と比べる。姿勢の周りでずらしたほうが合う量 (利得) も見られる |
-| `submap_map` | `pose`, `motion`, `reference` (疑うのは `pose`) | 直近の一定距離のスキャンを、動きで 1 枚の局所地図にまとめ (キーフレームに間引く)、その姿勢で地図に重ねる。一致率と、位置・向きをずらしたほうが合う量 (利得) を見る。照合は `interval_sec` ごとで、間の周期と、走行距離が足りない間は判定しない |
+| `submap_map` | `pose`, `motion`, `reference` (疑うのは `pose`) | 直近の一定距離のスキャンを、動きに基づいて 1 枚の局所地図にまとめ (キーフレームに間引く)、その姿勢で地図に重ねる。一致率と、位置・向きをずらしたほうが合う量 (利得) を見る。照合は `interval_sec` ごとで、間の周期と、走行距離が足りない間は判定しない |
 
 推定器が同じスキャンと地図で推定しているとき、その推定器の姿勢でのスキャンの判定は推定器と独立ではない (誤った場所に収束していても一致率は良く見えやすい)。総合での重みは、この独立性を考えて決める ([design.md](./design.md#判定と-evidence))。
 スキャンの判定の値の大きさは、地図とセンサと環境で変わる。正しい姿勢での値の分布を、オフライン評価 (重み 0 で記録だけする) で確かめてから有効にする。
@@ -78,7 +78,7 @@ class SpeedLimitCheck(Detector):
 
 `core/interfaces.py`。再初期化が要るあいだ、周期ごとに `generate(context) -> List[Candidate]` が呼ばれる。作れなければ空を返し、理由を `self.status` に入れる (見送りのイベントに添える)。
 `SOURCES` (引数の名前と種類)、`REQUIRES` (設定に要る項目: `anchors`・`safety`) を宣言する。`Candidate` は姿勢 `pose`、共分散 `cov` (3x3)、作ったもの `origin`、評価 `scores`・`total`。
-`RecoveryContext` から、`snapshot`、`anchors` (`latest_before(疑いの始まり)`)、`scans` (動きでまとめるスキャンのバッファ)、`safety`、`matcher` を使える。
+`RecoveryContext` から、`snapshot`、`anchors` (`latest_before(疑いの始まり)`)、`scans` (動きに基づいてまとめるスキャンのバッファ)、`safety`、`matcher` を使える。
 
 | 登録名 | 引数 (種類) | 内容 |
 | :--- | :--- | :--- |

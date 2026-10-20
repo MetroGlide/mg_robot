@@ -70,7 +70,7 @@ def generate_launch_description():
         description='監督の設定ファイル').launch_config
     localization_profile = arg.create(
         'localization_profile', default='',
-        description='監督の設定に重ねるプロファイル (空は基の設定。監視が watchdog のときは、'
+        description='監督の設定に重ねるプロファイル (空は基本設定。監視が watchdog のときは、'
                     '二重に再初期化しないよう notify_only)').launch_config
     # watchdog と並行して動かす監督は、通知だけにする (どちらも再初期化すると互いに上書きする)
     supervisor_profile = PythonExpression([

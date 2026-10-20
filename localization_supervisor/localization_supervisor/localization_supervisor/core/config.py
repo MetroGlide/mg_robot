@@ -3,7 +3,7 @@
 ノードもオフライン評価も、同じファイルをこのモジュールで読む。合わないところがあれば ConfigError で落とす。
 スキーマの版は CONTRACT_VERSION (interfaces.py)。書き方は doc/parameters.md。
 
-プロファイルは、基の設定に重ねる部分の設定 (辞書は再帰的に重ね、それ以外は置き換える)。
+プロファイルは、基本設定に重ねる部分の設定 (辞書は再帰的に重ね、それ以外は置き換える)。
 enabled_detectors を書くと、そこに並べた判定のインスタンスだけを有効にする。
 """
 import copy
@@ -125,7 +125,7 @@ class SupervisorConfig:
         return {name: d for name, d in self.detectors.items() if d.enabled}
 
     def with_profile(self, profile: str) -> 'SupervisorConfig':
-        """プロファイルを重ねた設定。'' は基の設定。"""
+        """プロファイルを重ねた設定。'' は基本設定。"""
         return parse_config(self.raw, profile=profile, profiles=self.profiles)
 
 

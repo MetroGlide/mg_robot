@@ -19,7 +19,7 @@
 ## 入る場所
 
 - メッセージ: `localization_supervisor_msgs/LocalizationStatus` に値を足す。ロボットに依存しない定義にする (姿勢の元になる情報源は設定で宣言する)。
-- 判断: `core/status.py` の `StatusView` を作るところ (状態、`blame`、`contaminated`、`isolate_only` から決める)。
+- 判断: `core/status.py` に `StatusView` を作る (状態、`blame`、`contaminated`、`isolate_only` から決める)。
 - 利用側: `mg_navigation` の `IsLocalizationHealthy`、Web UI の自己位置のタイル。
 
 ## 着手の前に確かめること

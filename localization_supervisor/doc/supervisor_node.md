@@ -8,11 +8,11 @@
 | 名前 | 内容 |
 | :--- | :--- |
 | `config_file` | 設定ファイルのパス (必須。[parameters.md](./parameters.md)) |
-| `profile` | 重ねるプロファイル (空は基の設定) |
+| `profile` | 重ねるプロファイル (空は基本設定) |
 
 `profile` は走行中に変えられる (`ros2 param set`)。知らない名前は拒否する。変えると、判定・総合・状態遷移・復旧を作り直す (状態は `NORMAL` から)。
 
-設定ファイルは起動時にすべて検証する (プロファイルも)。入力のアダプタ・再初期化の送り先・対処は起動時に基の設定で作るので、プロファイルで `sources`・`recovery.resetters`・`recovery.actuators` は変えられない。`recovery_enabled` にした設定 (プロファイルを含む) には、`recovery.resetters` が要る。
+設定ファイルは起動時にすべて検証する (プロファイルも)。入力のアダプタ・再初期化の送り先・対処は起動時に基本設定で作るので、プロファイルで `sources`・`recovery.resetters`・`recovery.actuators` は変えられない。`recovery_enabled` にした設定 (プロファイルを含む) には、`recovery.resetters` が要る。
 
 ## 入出力
 

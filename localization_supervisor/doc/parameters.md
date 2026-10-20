@@ -47,7 +47,7 @@ sources:
 | :--- | :--- |
 | `motion_priority` | 時刻をそろえるのに使う動きの情報源の、優先の順 (書かなかった動きの情報源は後ろに続く) |
 | `horizon_sec` | 標本の履歴を残す時間 [s] |
-| `max_extrapolation_sec` | 動きの最新の標本より、これだけ新しい時刻までは最新の値を使う [s] |
+| `max_extrapolation_sec` | 動きの最新の標本の時刻より、これだけ先の時刻までは最新の値を使う [s] |
 | `alignment_std_per_m`、`alignment_std_per_rad` | 時刻を移すとき、移した距離・回転に比例して足す標準偏差 |
 
 ## detectors
@@ -88,7 +88,7 @@ detectors:
 
 | キー | 内容 |
 | :--- | :--- |
-| `recovery_enabled` | `false`: 確認したら `DEGRADED` で知らせるだけ。`true`: 切り離して再初期化する (`recovery.generators` と、ノードでは `recovery.resetters` が要る) |
+| `recovery_enabled` | `false`: 異常を確認したら `DEGRADED` で知らせるだけ。`true`: 切り離して再初期化する (`recovery.generators` と、ノードでは `recovery.resetters` が要る) |
 | `request_hold` | `recovery_enabled` のとき、切り離してから戻すまで、走行を止めてほしい (`hold_requested`) と要求するか。`false` なら、切り離しても止めない |
 | `clear_ticks` | 異常がなくなった周期がこの回数続けば `NORMAL` に戻る |
 | `isolate_hold_sec` | 切り離してから再初期化するまで待つ時間 [s] |
@@ -189,5 +189,5 @@ profiles:
   <名前>: profiles/<名前>.yaml   # または、その場に辞書で書く
 ```
 
-プロファイルのファイルは、基の設定と同じキーで、変えるところだけを書く。辞書は再帰的に重ね、リストや値は置き換える。`type` が変わる辞書 (別の総合の方式など) は、重ねずに置き換える。`version` と `profiles` は書けない。
-ノードは、入力のアダプタを起動時に基の設定で作るので、`sources` を変えるプロファイルは起動時に落とす。
+プロファイルのファイルは、基本設定と同じキーで、変えるところだけを書く。辞書は再帰的に重ね、リストや値は置き換える。`type` が変わる辞書 (別の総合の方式など) は、重ねずに置き換える。`version` と `profiles` は書けない。
+ノードは、入力のアダプタを起動時に基本設定で作るので、`sources` を変えるプロファイルは起動時に落とす。

@@ -14,6 +14,6 @@
 
 | 型 | 内容 | 提供元 |
 | :--- | :--- | :--- |
-| `SetProfile` | 監督のプロファイルを切り替える (空は基の設定) | `localization_supervisor_node` (`~/set_profile`) |
+| `SetProfile` | 監督のプロファイルを切り替える (空は基本設定) | `localization_supervisor_node` (`~/set_profile`) |
 
 各フィールドの意味は `.msg`・`.srv` ファイルのコメントを参照。

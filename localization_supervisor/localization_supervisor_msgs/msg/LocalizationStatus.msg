@@ -31,7 +31,7 @@ bool footprint_in_lethal
 # 致死セルへの食い込みの深さ [m] (かかっていなければ 0、計算できなければ -1)
 float32 lethal_depth_m
 
-# 使っているプロファイル (空は基の設定)
+# 使っているプロファイル (空は基本設定)
 string profile
 # 直近に起きたこと (例: "suspect: amcl_jump"、"map_changed")
 string last_event

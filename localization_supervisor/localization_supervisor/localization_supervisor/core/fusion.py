@@ -1,6 +1,6 @@
 """判定の総合 (標準の FusionStrategy) と、疑わしい情報源の切り分け。ROS に依存しない。
 
-  cusum       : インスタンスごとの漏れのある累積 S_i = max(0, decay_i * S_i + weight_i * (score_i - allowance_i))。
+  cusum       : インスタンスごとの減衰つきの累積 S_i = max(0, decay_i * S_i + weight_i * (score_i - allowance_i))。
                 総合の強さは S = Σ S_i。大きく飛ぶ場合 (1 回の大きな score) も、少しずつずれる場合
                 (しきい値を少し超える score の積み重ね) も、同じ仕組みで扱う。
                 異常がなくなった (cleared) のは、その周期に判定できたインスタンスがあり、どれも異常でないとき
@@ -128,7 +128,7 @@ class AttributingFusion(FusionStrategy):
     方式ごとに _accumulate (インスタンスごとの累積と、疑い・確認の判定) と _reset_counts を実装する。
     """
     PARAMS = {
-        'blame_margin': ParamSpec(float, 1.0, '他と共有しない疑いがこれ以上の情報源を blame とする'),
+        'blame_margin': ParamSpec(float, 1.0, '他と共有しない疑いがこの値以上ある情報源を blame とする'),
         'vouch_hold_ticks': VOUCH_HOLD_TICKS,
     }
 
@@ -162,8 +162,8 @@ class AttributingFusion(FusionStrategy):
 
 class CusumFusion(AttributingFusion):
     PARAMS = {
-        'suspect_level': ParamSpec(float, 1.0, '総合の強さがこれ以上で疑い'),
-        'confirm_level': ParamSpec(float, 5.0, '総合の強さがこれ以上で異常を確認'),
+        'suspect_level': ParamSpec(float, 1.0, '総合の強さがこの値以上になったら疑いとする'),
+        'confirm_level': ParamSpec(float, 5.0, '総合の強さがこの値以上になったら異常を確認とする'),
         **AttributingFusion.PARAMS,
     }
 
