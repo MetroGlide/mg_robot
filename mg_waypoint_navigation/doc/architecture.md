@@ -200,7 +200,7 @@ stateDiagram-v2
 `~/activity` (`mg_msgs/NavigationActivity`) は、走行が「いま何をしているか」の要約。シーケンサ経由の走行に加えて、シーケンサを通らないゴール (RViz の 2D Goal Pose など) の走行も `external_goal` として出す。表示用で、制御の入力にはしない。判定はここ (`waypoint_sequencer/activity.py` の `compose_activity`、ROS に依存しない純関数) だけで行い、UI は表示するだけにする ([doc/monitoring.md](../../doc/monitoring.md))。
 
 - **入力**: `SequencerStatus` と同じシーケンサの状態 (`current_action`、`waiting_trigger`、手動ゴールの有無を含む)、`activity_collision_state_topic` (`nav2_msgs/CollisionMonitorState`)、`activity_bt_log_topic` (`nav2_msgs/BehaviorTreeLog`)、`activity_nav_status_topic` (`action_msgs/GoalStatusArray`、Nav2 のアクションの状態)、`activity_path_check_topic` (`mg_msgs/PathCandidateCheck`、`CommitPath` の遠回りの判定)、位置が進まない時間 (`ProgressMonitor`)。
-- **遠回りの棄却**: 判定は `CommitPath` が行い、シーケンサは最新の判定が棄却のときだけ `detour_rejected` を出す (採用の判定が届く、または走行中でなくなると消える)。待っている理由をリカバリーの表示に隠さないため、リカバリーより優先する。棄却している間、定期の再計画は経路の近くが塞がっていると止まるので、判定が届くのはリカバリーの引き直しのときが中心。
+- **遠回りの棄却**: 判定は `CommitPath` が行い、シーケンサは最新の判定を保持する (採用の判定が届く、または走行中でなくなると消える)。最新の判定が棄却で、かつリカバリー中のときだけ、リカバリーの表示に代えて `detour_rejected` を出す。棄却しても今の経路で走れているときは出さず、停止・進めないの表示も隠さない。棄却している間、定期の再計画は経路の近くが塞がっていると止まるので、判定が届くのはリカバリーの引き直しのときが中心。
 - **外部のゴールの判定**: Nav2 のアクションに生きたゴール (ACCEPTED / EXECUTING) があり、シーケンサ自身が送ったゴールが結果の返るまでの間に無く (`WaypointNavigator.has_live_goal`)、その状態が `EXTERNAL_GOAL_HOLD_SEC` 続いたとき。この時間は、シーケンサのゴールの結果とアクションの状態の到着順の差を吸収するためのもの。アクションの状態は変化したときしか届かないので、発行側が居なくなったら最後の値を捨てる。
 - **配信**: `activity_freq_hz` のタイマーからだけ合成する (専用の callback group)。状態が変わってから、最大でタイマーの周期だけ遅れる。`elapsed_sec` は同じ `code` が続いている秒数。
 - **`text` は固定の短い説明**で、変わる数値は `index` / `total` / `remaining` で渡す。`emphasis` は表示の強調で、健全性ではない (健全性は `/diagnostics_agg`)。
@@ -212,7 +212,7 @@ stateDiagram-v2
 | `SUSPENDED` | `paused` (`detail` は要求元) |
 | `ON_STARTING` | `departure_wait` (`remaining` は残り秒数) |
 | `ON_ARRIVING` | `action` (`detail` はアクションの type) |
-| `NAVIGATING`、手動ゴール中、外部のゴール (下の `ERROR` の次): 直近の経路の候補を、遠回りが長すぎるとして棄却中 | `detour_rejected` (`detail` は経路の長さと上限) |
+| `NAVIGATING`、手動ゴール中、外部のゴール (下の `ERROR` の次): リカバリー中で、直近の経路の候補を遠回りが長すぎるとして棄却中 | `detour_rejected` (`detail` は経路の長さと上限) |
 | 同上: リカバリー中 | `recovery` |
 | 同上: collision_monitor が停止、`source_timeout:` | `sensor_timeout_stop` |
 | 同上: collision_monitor が停止 | `obstacle_stop` (`detail` はポリゴン名) |

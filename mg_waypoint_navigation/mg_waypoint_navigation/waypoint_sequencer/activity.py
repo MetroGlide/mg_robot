@@ -120,24 +120,23 @@ def _recovery_text(running_nodes: FrozenSet[str]) -> Optional[str]:
 
 def _compose_driving(
         inputs: ActivityInputs, stall_warn_sec: float, external: bool = False) -> Activity:
-    """Nav2 のゴールを走行中の活動。遠回りの棄却・リカバリー・停止・進めない・減速・通常の順に決める。
+    """Nav2 のゴールを走行中の活動。リカバリー・停止・進めない・減速・通常の順に決める。
 
     external は、シーケンサが送っていないゴール (RViz の 2D Goal Pose など) の走行。
+    遠回りの棄却は、リカバリー中だけ、リカバリーの表示に代えて出す (棄却しても、今の経路で
+    走れているときは出さない。停止・進めないの表示も隠さない)。
     """
     no_waypoint = inputs.manual_goal_active or external
     index = -1 if no_waypoint else inputs.current_index
     total = -1 if no_waypoint else inputs.total_waypoints
-
-    # 待っている理由が、リカバリーの後退・回転の表示に隠れないよう、リカバリーより先に決める
-    detour = inputs.rejected_detour
-    if detour is not None:
-        return Activity(
-            DETOUR_REJECTED, '遠回りの経路を棄却して待機中', NOTICE,
-            detail=f'経路 {detour.path_length:.0f} m / 上限 {detour.limit:.0f} m',
-            index=index, total=total)
-
     recovery = _recovery_text(inputs.running_recovery_nodes)
     if recovery is not None:
+        detour = inputs.rejected_detour
+        if detour is not None:
+            return Activity(
+                DETOUR_REJECTED, '遠回りの経路を棄却して待機中', NOTICE,
+                detail=f'経路 {detour.path_length:.0f} m / 上限 {detour.limit:.0f} m',
+                index=index, total=total)
         return Activity(RECOVERY, recovery, NOTICE, index=index, total=total)
 
     collision = inputs.collision
