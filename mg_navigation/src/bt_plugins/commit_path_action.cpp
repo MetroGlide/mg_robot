@@ -20,12 +20,16 @@ constexpr char kRejectingKey[] = "detour_rejecting";
 }  // namespace
 
 constexpr char CommitPathAction::kCheckTopic[];
+constexpr char CommitPathAction::kCommittedPathTopic[];
 
 CommitPathAction::CommitPathAction(const std::string & name, const BT::NodeConfiguration & conf)
 : BT::SyncActionNode(name, conf)
 {
   node_ = config().blackboard->get<rclcpp::Node::SharedPtr>("node");
   check_pub_ = node_->create_publisher<mg_msgs::msg::PathCandidateCheck>(kCheckTopic, 10);
+  // 後から購読を始めた表示にも、今の経路が届くようにする
+  committed_pub_ = node_->create_publisher<nav_msgs::msg::Path>(
+    kCommittedPathTopic, rclcpp::QoS(1).transient_local());
 }
 
 BT::NodeStatus CommitPathAction::tick()
@@ -80,9 +84,14 @@ BT::NodeStatus CommitPathAction::tick()
     }
   }
 
+  // candidate を採用したときだけ配信する。今の経路を保つときは、配信済みなので送らない
+  const bool adopt_candidate = pathReachesGoal(candidate, goal, goal_tolerance);
   const auto selected = selectPathForGoal(candidate, current, goal, goal_tolerance);
   if (selected) {
     setOutput("path", *selected);
+    if (adopt_candidate) {
+      committed_pub_->publish(*selected);
+    }
     return BT::NodeStatus::SUCCESS;
   }
   if (!current.poses.empty()) {
@@ -91,6 +100,10 @@ BT::NodeStatus CommitPathAction::tick()
       "CommitPath: no path reaches the current goal; dropping the path to the previous goal");
   }
   setOutput("path", nav_msgs::msg::Path());
+  nav_msgs::msg::Path empty;
+  empty.header.frame_id = goal.header.frame_id;
+  empty.header.stamp = node_->now();
+  committed_pub_->publish(empty);
   return BT::NodeStatus::FAILURE;
 }
 

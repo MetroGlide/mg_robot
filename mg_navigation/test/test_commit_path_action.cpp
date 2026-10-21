@@ -5,6 +5,7 @@
 #include <optional>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "behaviortree_cpp_v3/bt_factory.h"
 #include "mg_msgs/msg/path_candidate_check.hpp"
@@ -64,6 +65,10 @@ protected:
     check_sub_ = node_->create_subscription<mg_msgs::msg::PathCandidateCheck>(
       mg_navigation::bt_plugins::CommitPathAction::kCheckTopic, 10,
       [this](mg_msgs::msg::PathCandidateCheck::SharedPtr msg) {last_check_ = *msg;});
+    committed_sub_ = node_->create_subscription<nav_msgs::msg::Path>(
+      mg_navigation::bt_plugins::CommitPathAction::kCommittedPathTopic,
+      rclcpp::QoS(10).transient_local(),
+      [this](nav_msgs::msg::Path::SharedPtr msg) {committed_.push_back(*msg);});
     factory_.registerNodeType<mg_navigation::bt_plugins::CommitPathAction>("CommitPath");
     blackboard_ = BT::Blackboard::create();
     blackboard_->set("node", node_);
@@ -97,8 +102,23 @@ protected:
   }
 
   rclcpp::Node::SharedPtr node_;
+  // 採用した経路の配信を、1 回の tick の後に集める。
+  // transient local なので、接続が tick の後でも最後の 1 件は届く
+  std::vector<nav_msgs::msg::Path> committedAfter(BT::Tree & tree)
+  {
+    tree.tickRoot();
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
+    while (std::chrono::steady_clock::now() < deadline) {
+      rclcpp::spin_some(node_);
+      std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    return committed_;
+  }
+
   rclcpp::Subscription<mg_msgs::msg::PathCandidateCheck>::SharedPtr check_sub_;
   std::optional<mg_msgs::msg::PathCandidateCheck> last_check_;
+  rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr committed_sub_;
+  std::vector<nav_msgs::msg::Path> committed_;
   BT::BehaviorTreeFactory factory_;
   BT::Blackboard::Ptr blackboard_;
 };
@@ -133,6 +153,42 @@ TEST_F(CommitPathActionTest, FailsWithoutAnyPath)
   // candidate も path もまだ書かれていない (走行開始直後に計画が失敗した)
   EXPECT_EQ(tick(), BT::NodeStatus::FAILURE);
   EXPECT_TRUE(path().poses.empty());
+}
+
+TEST_F(CommitPathActionTest, PublishesAdoptedCandidate)
+{
+  blackboard_->set("candidate_path", makePath(10.0));
+  auto tree = factory_.createTreeFromText(kTreeXml, blackboard_);
+  const auto committed = committedAfter(tree);
+  ASSERT_EQ(committed.size(), 1u);
+  EXPECT_EQ(committed.front(), makePath(10.0));
+}
+
+TEST_F(CommitPathActionTest, DoesNotPublishWhenKeepingCurrentPath)
+{
+  blackboard_->set("path", makePath(10.0));
+  blackboard_->set("candidate_path", nav_msgs::msg::Path());
+  auto tree = factory_.createTreeFromText(kTreeXml, blackboard_);
+  EXPECT_TRUE(committedAfter(tree).empty());
+}
+
+TEST_F(CommitPathActionTest, DoesNotPublishRejectedCandidate)
+{
+  blackboard_->set("path", makePath(10.0));
+  blackboard_->set("candidate_path", makeDetourPath(50.0, 10.0));
+  auto tree = factory_.createTreeFromText(kTreeXml, blackboard_);
+  EXPECT_TRUE(committedAfter(tree).empty());
+}
+
+TEST_F(CommitPathActionTest, PublishesEmptyPathWhenDroppingThePath)
+{
+  blackboard_->set("path", makePath(5.0));
+  blackboard_->set("candidate_path", nav_msgs::msg::Path());
+  auto tree = factory_.createTreeFromText(kTreeXml, blackboard_);
+  const auto committed = committedAfter(tree);
+  ASSERT_EQ(committed.size(), 1u);
+  EXPECT_TRUE(committed.front().poses.empty());
+  EXPECT_EQ(committed.front().header.frame_id, "map");
 }
 
 // 直線距離 10m に対し、既定の上限は 2 * 10 + 10 = 30m
