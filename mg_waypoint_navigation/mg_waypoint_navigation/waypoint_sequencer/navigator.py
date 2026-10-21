@@ -50,7 +50,8 @@ class WaypointNavigator:
       次の send_goal() で上書き (preemption) されるか、cancel() で止められる。
       BT が異なる場合やキャンセル中は、終了を待ってから次のゴールを送る。
 
-    通過点の判定は、送信後に受信した /plan のうち終点がゴールと一致するものだけを使い、
+    通過点の判定は、送信後に受信した採用済みの経路 (CommitPath が配信する
+    /navigation/committed_path) のうち終点がゴールと一致するものだけを使い、
     その経路上の残り距離とゴールまでの直線距離が through_tolerance 以下になったら通過とする。
     """
 
@@ -94,7 +95,9 @@ class WaypointNavigator:
             "bt_xml_queue_wait",
             share_dir + "/behavior_trees/mg_navigate_to_pose_queue_wait.xml"
         ).value
-        plan_topic = node.declare_parameter("plan_topic", "/plan").value
+        # BT の CommitPath が採用した経路。planner_server の /plan は棄却した候補も含むので使わない
+        plan_topic = node.declare_parameter(
+            "plan_topic", "/navigation/committed_path").value
         self._plan_goal_match_tolerance = node.declare_parameter(
             "plan_goal_match_tolerance", 0.6).value
 

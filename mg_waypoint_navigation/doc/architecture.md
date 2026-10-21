@@ -179,7 +179,7 @@ stateDiagram-v2
 | `publish_waypoints_list` | bool | ウェイポイントリストパブリッシュ |
 | `bt_xml_normal` | string | 通常モードの BT |
 | `bt_xml_queue_wait` | string | queue_wait モードの BT |
-| `plan_topic` | string | 通過点判定に使う経路のトピック |
+| `plan_topic` | string | 通過点判定に使う経路のトピック。BT の `CommitPath` が採用した経路 (`/navigation/committed_path`) を使う。planner_server の `/plan` は棄却された候補も含むので使わない |
 | `initial_localization_map` | string | 起動時に map_server が読み込んでいる測位用地図 (`~/loaded_maps` の初期値。`mg_navigation` の bringup が渡す) |
 | `initial_planning_map` | string | 起動時に planning_map_server が読み込んでいる計画用地図 (同上) |
 | `plan_goal_match_tolerance` | double | 経路の終点をゴールのものとみなす距離 [m]（NavFn の `tolerance` 以上にする） |
@@ -241,7 +241,7 @@ stateDiagram-v2
 
 - **停止点** (`is_through_point: false`): Nav2 の goal_checker で判定する。到達半径は `nav2_params.yaml` の `general_goal_checker.xy_goal_tolerance` で全 WP 共通。`reach_tolerance` は使わない（`xy_goal_tolerance` を実行時に変更すると controller が停止する問題があるため）。
 - **通過点** (`is_through_point: true`): 次の 3 条件をすべて満たした時点で通過 (`PASSED`) とする。
-  1. ゴール送信後に受信した `/plan`（planner_server が publish）で、終点がゴールから `plan_goal_match_tolerance` 以内のものを採用済み。前のゴールへの経路は使わない。
+  1. ゴール送信後に受信した採用済みの経路（`plan_topic`。BT の `CommitPath` が publish）で、終点がゴールから `plan_goal_match_tolerance` 以内のものを採用済み。前のゴールへの経路は使わない。BT に `CommitPath` がないと配信されず、通過点の判定ができない（停止点と同じく Nav2 の到達で終わる）。
   2. 採用した経路に沿った残り距離が `through_tolerance` 以下。最近傍点は前回位置から経路に沿って 2m 先までだけ探す（経路が自分の近くを再び通る形でも、先の区間を誤って選ばない）。
   3. ゴールまでの直線距離が `through_tolerance` 以下。
 
