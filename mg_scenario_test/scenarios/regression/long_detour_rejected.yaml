@@ -7,7 +7,8 @@ description: >
   の通路を箱で塞ぐ。ゴール (6, 0) への迂回路は、西の抜けから北の広場を回る約 50m の経路だけで、直線距離に対する上限
   (CommitPath の max_detour_ratio・max_detour_margin) を超えるので棄却される。最初の引き直しで迂回路に乗らなかった
   (リカバリーが ClearAndReplan に進んだ) あと、リカバリーを何周かくり返すのを待ってから箱を除くと、通路を通ってゴールへ到達する。
-  planner_server は棄却した迂回路も /plan に配信するので、RViz などには迂回路が表示されるが、ロボットはそれに乗らない。
+  planner_server は棄却した迂回路も /plan に配信する (RViz の Plan Candidate で見える)。Web UI と RViz の Path は、
+  採用した経路 (/navigation/committed_path) を表示するので、迂回路は出ない。
   計画用地図を stack_args で差し替えるので、attach (起動済みの環境で実行) では使えない。
 profile: mg01
 world: warehouse
