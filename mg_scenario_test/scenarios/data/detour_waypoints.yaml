@@ -1,0 +1,12 @@
+# mg_waypoint_navigation の waypoint (version 2.0)。long_detour_rejected 用の停止点 1 つ。
+# 計画用地図 detour_wall/planning.yaml の長い壁 (x=2〜3) の通路の向こう側。
+version: "2.0"
+defaults:
+  reach_tolerance: 0.5
+  through_tolerance: 1.5
+  is_through_point: false
+waypoints:
+  - index: 0
+    pose:
+      position: {x: 6.0, y: 0.0, z: 0.0}
+      orientation: {x: 0.0, y: 0.0, z: 0.0, w: 1.0}

@@ -1,0 +1,57 @@
+version: "2.0"
+name: long_detour_rejected
+description: >
+  建物の外周の通路が塞がったときに、建物の反対側から回り込む極端な遠回りに乗らず、通路が空くまで待つことを確認する。
+  計画用地図にだけある南北の長い壁 (scenarios/data/detour_wall/planning.yaml。ウェアハウスの計画用地図の x=2〜3 を、
+  南端から北の棚の帯まで進入禁止にし、y=-1.25〜1.25 だけ通路として開けたもの。tools/scripts/add_keepout_to_map.py で作った)
+  の通路を箱で塞ぐ。ゴール (6, 0) への迂回路は、西の抜けから北の広場を回る約 50m の経路だけで、直線距離に対する上限
+  (CommitPath の max_detour_ratio・max_detour_margin) を超えるので棄却される。最初の引き直しで迂回路に乗らなかった
+  (リカバリーが ClearAndReplan に進んだ) あと、リカバリーを何周かくり返すのを待ってから箱を除くと、通路を通ってゴールへ到達する。
+  planner_server は棄却した迂回路も /plan に配信するので、RViz などには迂回路が表示されるが、ロボットはそれに乗らない。
+  計画用地図を stack_args で差し替えるので、attach (起動済みの環境で実行) では使えない。
+profile: mg01
+world: warehouse
+tags: [full, static_obstacle, mg_sequencer]
+timeout: 240
+
+stack_args:
+  planning_map_path: "pkg://mg_scenario_test/scenarios/data/detour_wall/planning.yaml"
+  waypoints_load_path: "pkg://mg_scenario_test/scenarios/data/detour_waypoints.yaml"
+
+obstacles:
+  gate_block:
+    model: { type: primitive, shape: box, size: { x: 0.5, y: 2.6, z: 1.5 }, static: true }
+
+setup:
+  - respawn: { pose: { x: 0.0, y: 0.0, yaw: 0.0 }, settle_sec: 3.0 }
+  - spawn: { obstacle: gate_block, pose: { frame: world, x: 2.5, y: 0.0, z: 0.75 } }
+  # 箱がコストマップに載ってから走り出す (載る前は、通路を通る経路が引かれる)
+  - delay: { sec: 5.0 }
+
+run:
+  mg_sequencer:
+    waypoints_file: "pkg://mg_scenario_test/scenarios/data/detour_waypoints.yaml"
+    start_index: 0
+    countdown_ms: 0
+    waypoint_timeout_sec: 200
+
+timeline:
+  # 迂回路に乗っていれば、最初の引き直し (Replan) で走行へ戻り、ここには進まない (発火しなければ ERROR)。
+  # 発火してから、リカバリーの段階を何周かくり返すのを待ってから箱を除く
+  - name: gate_opens
+    when: { bt_node: { node: ClearAndReplan, status: RUNNING } }
+    do:
+      - delay: { sec: 30.0 }
+      - despawn: { obstacle: gate_block }
+
+monitors:
+  # 遠回りを棄却したこと (迂回路が引けないだけなら出ないので、計画の失敗と区別できる)
+  - navigation_activity: { code: detour_rejected, expect: occurs }
+  # 待つ間に、リカバリーの最後の段階 (首振り) まで進んだこと
+  - bt_node: { node: SpinRightAndReplan, status: RUNNING, expect: occurs }
+  - obstacle_clearance: { obstacles: [gate_block], min_clearance: 0.0 }
+
+expect:
+  - reached_all
+  - time_limit: { sec: 200 }
+  - final_pose_error: { x: 6.0, y: 0.0, tolerance: 0.5, frame: world }
