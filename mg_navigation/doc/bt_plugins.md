@@ -87,9 +87,11 @@ RPP (Humble 1.1.20 の `RegulatedPurePursuitController`) の衝突判定と同�
 
 - 目的は極端な逆走・大回りを止めることで、通常の迂回を細かく制限するものではない。比率と余裕は緩めに置く
 - 基準は直線距離なので、正常な経路でも直線距離より大きく長い区間 (間隔の粗いウェイポイント、建物の向こう側への手動ゴール) では棄却して待ち続ける。ウェイポイントは経路に沿って置くか、上限を緩める
+- 基準の直線距離は、その時点の始点 (ロボットの位置) から測る。採用した遠回りの経路を進んでゴールから離れると、上限もそれに合わせて広がる。「一気に逆走へ切り替わる」経路は防ぐが、少しずつ延びる遠回りは防がない (ゴールごとに基準を固定すれば防げるが、状態を持つことになるので採っていない)
+- 通過点などで、新しいゴールへの最初の計画結果を棄却すると、追従する経路が空になって FAILURE を返す。RPP の待ちを挟まずにリカバリーへ入り、後退・首振りの段階を毎周期くり返す (到達できないゴールのときと同じ動き)
 - `max_detour_ratio` を 0 にすると判定しない
 - 判定のたびに `/navigation/path_candidate_check` (`mg_msgs/PathCandidateCheck`、`rejected`・経路の長さ・直線距離・上限) を配信する。シーケンサが「いまの活動」の `detour_rejected` に使う ([architecture](../../mg_waypoint_navigation/doc/architecture.md#いまの活動-activity))
-- ログ (bt_navigator): 棄却が始まったとき WARN (`evt=nav.detour_rejected`)、採用に戻ったとき INFO (`evt=nav.detour_accepted`)。BT 内の全 `CommitPath` で状態を共有し、変化のときだけ出す
+- ログ (bt_navigator): 棄却が始まったとき WARN (`evt=nav.detour_rejected`)、採用に戻ったとき INFO (`evt=nav.detour_accepted`)。同じ木の `CommitPath` で blackboard の状態を共有し、変化のときだけ出す
 
 | ポート | 既定値 | 内容 |
 | :--- | :--- | :--- |

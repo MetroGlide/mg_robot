@@ -150,6 +150,28 @@ TEST_F(CommitPathActionTest, RejectsTooLongCandidateAndKeepsCurrentPath)
   EXPECT_FLOAT_EQ(last_check_->limit, 30.0f);
 }
 
+TEST_F(CommitPathActionTest, RejectionStateIsKeptPerTree)
+{
+  // イベントログを変化時だけ出すための状態は、木 (blackboard) ごとに持つ
+  blackboard_->set("candidate_path", makeDetourPath(50.0, 10.0));
+  tick();
+  EXPECT_TRUE(blackboard_->get<bool>("detour_rejecting"));
+  blackboard_->set("candidate_path", makePath(10.0));
+  tick();
+  EXPECT_FALSE(blackboard_->get<bool>("detour_rejecting"));
+
+  // 別の木は、最初の棄却を自分の状態として記録する (別の木の状態に引きずられない)
+  blackboard_->set("candidate_path", makeDetourPath(50.0, 10.0));
+  tick();
+  auto other = BT::Blackboard::create();
+  other->set("node", node_);
+  other->set("goal", makeGoal(10.0));
+  other->set("candidate_path", makeDetourPath(50.0, 10.0));
+  auto tree = factory_.createTreeFromText(kTreeXml, other);
+  tree.tickRoot();
+  EXPECT_TRUE(other->get<bool>("detour_rejecting"));
+}
+
 TEST_F(CommitPathActionTest, FailsWhenTooLongCandidateIsTheOnlyPath)
 {
   blackboard_->set("candidate_path", makeDetourPath(50.0, 10.0));

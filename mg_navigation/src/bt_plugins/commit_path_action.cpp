@@ -1,6 +1,5 @@
 #include "mg_navigation/bt_plugins/commit_path_action.hpp"
 
-#include <atomic>
 #include <string>
 
 #include "mg_navigation/bt_plugins/path_clearance.hpp"
@@ -14,9 +13,9 @@ namespace bt_plugins
 namespace
 {
 
-// 直前の判定で候補を棄却したか。BT には CommitPath が複数あるので、イベントログを
-// 状態が変わったときだけ出すために、全インスタンスで共有する
-std::atomic<bool> g_rejecting{false};
+// 直前の判定で候補を棄却したかを置く blackboard のキー。BT には CommitPath が複数あるので、
+// イベントログを状態が変わったときだけ出すために、同じ木の CommitPath で共有する
+constexpr char kRejectingKey[] = "detour_rejecting";
 
 }  // namespace
 
@@ -60,7 +59,10 @@ BT::NodeStatus CommitPathAction::tick()
     check.limit = static_cast<float>(detour.limit);
     check_pub_->publish(check);
 
-    if (g_rejecting.exchange(detour.exceeded) != detour.exceeded) {
+    bool was_rejecting = false;
+    config().blackboard->get(kRejectingKey, was_rejecting);
+    if (was_rejecting != detour.exceeded) {
+      config().blackboard->set(kRejectingKey, detour.exceeded);
       if (detour.exceeded) {
         RCLCPP_WARN(
           node_->get_logger(),
