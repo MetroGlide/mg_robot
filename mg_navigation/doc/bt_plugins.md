@@ -92,7 +92,8 @@ RPP (Humble 1.1.20 の `RegulatedPurePursuitController`) の衝突判定と同�
 - `max_detour_ratio` を 0 にすると判定しない
 - 採用した経路を `/navigation/committed_path` (`nav_msgs/Path`、transient local) に配信する。`candidate` を採用したときと、経路を空にしたときに配信し、今の経路を保つときは配信しない。planner_server の `/plan` は棄却した候補も含むので、経路の表示 (Web UI、RViz) とシーケンサの通過点の判定はこちらを使う。棄却した候補は RViz の `Plan Candidate` (既定は非表示) で `/plan` を見る
 - 判定のたびに `/navigation/path_candidate_check` (`mg_msgs/PathCandidateCheck`、`rejected`・経路の長さ・直線距離・上限) を配信する。シーケンサが「いまの活動」の `detour_rejected` に使う ([architecture](../../mg_waypoint_navigation/doc/architecture.md#いまの活動-activity))
-- ログ (bt_navigator): 棄却が始まったとき WARN (`evt=nav.detour_rejected`)、採用に戻ったとき INFO (`evt=nav.detour_accepted`)。同じ木の `CommitPath` で blackboard の状態を共有し、変化のときだけ出す
+- ログ (bt_navigator): 棄却が始まったとき WARN (`evt=nav.detour_rejected`)、採用に戻ったとき INFO (`evt=nav.detour_accepted`)。変化のときだけ出す
+- 配信とイベントログは、同じ木 (blackboard) の `CommitPath` で 1 つを共有する `CommitPathReporter` が行う。配信者が `CommitPath` ごとにあると、transient local の `/navigation/committed_path` を後から購読した表示 (Web UI・RViz) に、それぞれが最後に配信した古い経路が届いてしまうため
 
 | ポート | 既定値 | 内容 |
 | :--- | :--- | :--- |

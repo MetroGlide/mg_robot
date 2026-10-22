@@ -10,10 +10,19 @@
 #include "behaviortree_cpp_v3/bt_factory.h"
 #include "mg_msgs/msg/path_candidate_check.hpp"
 #include "mg_navigation/bt_plugins/commit_path_action.hpp"
+#include "mg_navigation/bt_plugins/commit_path_reporter.hpp"
 #include "rclcpp/rclcpp.hpp"
 
 namespace
 {
+
+using mg_navigation::bt_plugins::CommitPathReporter;
+
+// blackboard に置かれた、その木の CommitPathReporter
+std::shared_ptr<CommitPathReporter> reporter(const BT::Blackboard::Ptr & blackboard)
+{
+  return blackboard->get<std::shared_ptr<CommitPathReporter>>("commit_path_reporter");
+}
 
 const char * const kTreeXml =
   R"(
@@ -63,10 +72,10 @@ protected:
   {
     node_ = std::make_shared<rclcpp::Node>("bt_navigator_test");
     check_sub_ = node_->create_subscription<mg_msgs::msg::PathCandidateCheck>(
-      mg_navigation::bt_plugins::CommitPathAction::kCheckTopic, 10,
+      CommitPathReporter::kCheckTopic, 10,
       [this](mg_msgs::msg::PathCandidateCheck::SharedPtr msg) {last_check_ = *msg;});
     committed_sub_ = node_->create_subscription<nav_msgs::msg::Path>(
-      mg_navigation::bt_plugins::CommitPathAction::kCommittedPathTopic,
+      CommitPathReporter::kCommittedPathTopic,
       rclcpp::QoS(10).transient_local(),
       [this](nav_msgs::msg::Path::SharedPtr msg) {committed_.push_back(*msg);});
     factory_.registerNodeType<mg_navigation::bt_plugins::CommitPathAction>("CommitPath");
@@ -208,15 +217,15 @@ TEST_F(CommitPathActionTest, RejectsTooLongCandidateAndKeepsCurrentPath)
 
 TEST_F(CommitPathActionTest, RejectionStateIsKeptPerTree)
 {
-  // イベントログを変化時だけ出すための状態は、木 (blackboard) ごとに持つ
+  // イベントログを変化時だけ出すための状態は、木 (blackboard) ごとの CommitPathReporter が持つ
   blackboard_->set("candidate_path", makeDetourPath(50.0, 10.0));
   tick();
-  EXPECT_TRUE(blackboard_->get<bool>("detour_rejecting"));
+  EXPECT_TRUE(reporter(blackboard_)->rejecting());
   blackboard_->set("candidate_path", makePath(10.0));
   tick();
-  EXPECT_FALSE(blackboard_->get<bool>("detour_rejecting"));
+  EXPECT_FALSE(reporter(blackboard_)->rejecting());
 
-  // 別の木は、最初の棄却を自分の状態として記録する (別の木の状態に引きずられない)
+  // 別の木は、別の CommitPathReporter で、最初の棄却を自分の状態として記録する
   blackboard_->set("candidate_path", makeDetourPath(50.0, 10.0));
   tick();
   auto other = BT::Blackboard::create();
@@ -225,7 +234,27 @@ TEST_F(CommitPathActionTest, RejectionStateIsKeptPerTree)
   other->set("candidate_path", makeDetourPath(50.0, 10.0));
   auto tree = factory_.createTreeFromText(kTreeXml, other);
   tree.tickRoot();
-  EXPECT_TRUE(other->get<bool>("detour_rejecting"));
+  EXPECT_NE(reporter(other), reporter(blackboard_));
+  EXPECT_TRUE(reporter(other)->rejecting());
+}
+
+TEST_F(CommitPathActionTest, CommitPathsInATreeShareOnePublisher)
+{
+  // 配信者が CommitPath ごとにあると、後から購読した表示に、それぞれの古い経路が届く
+  const char * const xml =
+    R"(
+    <root main_tree_to_execute="MainTree">
+      <BehaviorTree ID="MainTree">
+        <Sequence>
+          <CommitPath candidate="{candidate_path}" goal="{goal}" path="{path}"/>
+          <CommitPath candidate="{candidate_path}" goal="{goal}" path="{path}"/>
+          <CommitPath candidate="{candidate_path}" goal="{goal}" path="{path}"/>
+        </Sequence>
+      </BehaviorTree>
+    </root>)";
+  auto tree = factory_.createTreeFromText(xml, blackboard_);
+  EXPECT_EQ(node_->count_publishers(CommitPathReporter::kCommittedPathTopic), 1u);
+  EXPECT_EQ(node_->count_publishers(CommitPathReporter::kCheckTopic), 1u);
 }
 
 TEST_F(CommitPathActionTest, FailsWhenTooLongCandidateIsTheOnlyPath)

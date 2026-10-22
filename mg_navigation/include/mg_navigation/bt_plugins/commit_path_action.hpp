@@ -1,10 +1,11 @@
 #pragma once
 
+#include <memory>
 #include <string>
 
 #include "behaviortree_cpp_v3/action_node.h"
 #include "geometry_msgs/msg/pose_stamped.hpp"
-#include "mg_msgs/msg/path_candidate_check.hpp"
+#include "mg_navigation/bt_plugins/commit_path_reporter.hpp"
 #include "nav_msgs/msg/path.hpp"
 #include "rclcpp/rclcpp.hpp"
 
@@ -25,19 +26,15 @@ namespace bt_plugins
 // - そうでなく、今の path の終点が goal に届いていれば、path をそのままにして SUCCESS
 // - どちらでもなければ (別のゴールへの経路しかない)、path を空にして FAILURE。
 //   古いゴールへの経路を追従し続けて、そこで到着と報告するのを防ぐ
+//
+// 判定の結果と、採用した経路 (candidate を採用したときと、path を空にしたとき) は、
+// 同じ木の CommitPath で共有する CommitPathReporter が配信する。
 class CommitPathAction : public BT::SyncActionNode
 {
 public:
   CommitPathAction(const std::string & name, const BT::NodeConfiguration & conf);
 
   CommitPathAction() = delete;
-
-  // 候補の判定結果 (PathCandidateCheck) を配信するトピック
-  static constexpr char kCheckTopic[] = "/navigation/path_candidate_check";
-  // 採用した経路を配信するトピック (transient local)。candidate を採用したときと、
-  // 経路を空にしたときに配信する。planner_server の /plan は棄却した候補も含むので、
-  // 表示や通過点の判定にはこちらを使う
-  static constexpr char kCommittedPathTopic[] = "/navigation/committed_path";
 
   BT::NodeStatus tick() override;
 
@@ -59,8 +56,7 @@ public:
 
 private:
   rclcpp::Node::SharedPtr node_;
-  rclcpp::Publisher<mg_msgs::msg::PathCandidateCheck>::SharedPtr check_pub_;
-  rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr committed_pub_;
+  std::shared_ptr<CommitPathReporter> reporter_;
 };
 
 }  // namespace bt_plugins

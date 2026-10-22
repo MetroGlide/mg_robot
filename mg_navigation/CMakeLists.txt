@@ -129,7 +129,8 @@ add_library(mg_is_path_clear_condition_bt_node SHARED
 add_library(mg_is_path_blocked_condition_bt_node SHARED
   src/bt_plugins/is_path_blocked_condition.cpp)
 add_library(mg_commit_path_action_bt_node SHARED
-  src/bt_plugins/commit_path_action.cpp)
+  src/bt_plugins/commit_path_action.cpp
+  src/bt_plugins/commit_path_reporter.cpp)
 add_library(mg_find_free_start_action_bt_node SHARED
   src/bt_plugins/find_free_start_action.cpp)
 add_library(mg_is_localization_healthy_condition_bt_node SHARED

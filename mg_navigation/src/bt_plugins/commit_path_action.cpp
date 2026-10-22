@@ -10,26 +10,11 @@ namespace mg_navigation
 namespace bt_plugins
 {
 
-namespace
-{
-
-// 直前の判定で候補を棄却したかを置く blackboard のキー。BT には CommitPath が複数あるので、
-// イベントログを状態が変わったときだけ出すために、同じ木の CommitPath で共有する
-constexpr char kRejectingKey[] = "detour_rejecting";
-
-}  // namespace
-
-constexpr char CommitPathAction::kCheckTopic[];
-constexpr char CommitPathAction::kCommittedPathTopic[];
-
 CommitPathAction::CommitPathAction(const std::string & name, const BT::NodeConfiguration & conf)
 : BT::SyncActionNode(name, conf)
 {
   node_ = config().blackboard->get<rclcpp::Node::SharedPtr>("node");
-  check_pub_ = node_->create_publisher<mg_msgs::msg::PathCandidateCheck>(kCheckTopic, 10);
-  // 後から購読を始めた表示にも、今の経路が届くようにする
-  committed_pub_ = node_->create_publisher<nav_msgs::msg::Path>(
-    kCommittedPathTopic, rclcpp::QoS(1).transient_local());
+  reporter_ = CommitPathReporter::shared(config().blackboard, node_);
 }
 
 BT::NodeStatus CommitPathAction::tick()
@@ -55,30 +40,7 @@ BT::NodeStatus CommitPathAction::tick()
   // ゴールへ届く候補だけを遠回りの判定にかける。上限を超えたら、計画の失敗と同じ空の候補にする
   if (pathReachesGoal(candidate, goal, goal_tolerance)) {
     const auto detour = checkDetour(candidate, goal, max_detour_ratio, max_detour_margin);
-    mg_msgs::msg::PathCandidateCheck check;
-    check.stamp = node_->now();
-    check.rejected = detour.exceeded;
-    check.path_length = static_cast<float>(detour.path_length);
-    check.straight_distance = static_cast<float>(detour.straight_distance);
-    check.limit = static_cast<float>(detour.limit);
-    check_pub_->publish(check);
-
-    bool was_rejecting = false;
-    config().blackboard->get(kRejectingKey, was_rejecting);
-    if (was_rejecting != detour.exceeded) {
-      config().blackboard->set(kRejectingKey, detour.exceeded);
-      if (detour.exceeded) {
-        RCLCPP_WARN(
-          node_->get_logger(),
-          "evt=nav.detour_rejected path_length=%.1f straight_distance=%.1f limit=%.1f",
-          detour.path_length, detour.straight_distance, detour.limit);
-      } else {
-        RCLCPP_INFO(
-          node_->get_logger(),
-          "evt=nav.detour_accepted path_length=%.1f straight_distance=%.1f",
-          detour.path_length, detour.straight_distance);
-      }
-    }
+    reporter_->reportDetour(detour);
     if (detour.exceeded) {
       candidate = nav_msgs::msg::Path();
     }
@@ -90,7 +52,7 @@ BT::NodeStatus CommitPathAction::tick()
   if (selected) {
     setOutput("path", *selected);
     if (adopt_candidate) {
-      committed_pub_->publish(*selected);
+      reporter_->publishCommittedPath(*selected);
     }
     return BT::NodeStatus::SUCCESS;
   }
@@ -103,7 +65,7 @@ BT::NodeStatus CommitPathAction::tick()
   nav_msgs::msg::Path empty;
   empty.header.frame_id = goal.header.frame_id;
   empty.header.stamp = node_->now();
-  committed_pub_->publish(empty);
+  reporter_->publishCommittedPath(empty);
   return BT::NodeStatus::FAILURE;
 }
 
