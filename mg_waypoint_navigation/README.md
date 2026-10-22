@@ -158,6 +158,7 @@ BT の動きは、シナリオテスト (`dynamic_stop_and_resume`、`dynamic_pe
 | `sequencer.manual_goal_finished` | INFO | 手動ゴールが終わった (`result`) |
 | `nav.goal_sent` | INFO | Nav2 にゴールを送った (`index`、`x`、`y`、`mode`) |
 | `nav.goal_result` | INFO / WARN (CANCELED) / ERROR | ゴールの結果 (`result`、`duration_sec`、`recoveries`) |
+| `nav.through_plan_missing` | WARN | 通過点へ向かってから一定時間、採用済みの経路が届かない (`index`、`waited_sec`、`topic`)。1 ゴールに 1 回。BT に `CommitPath` がない、または計画の失敗・棄却が続いている。通過点の判定ができず、停止点と同じく Nav2 の到達で終わる |
 | `action.started` / `action.succeeded` / `action.failed` | INFO / INFO / ERROR | 到着時アクションの実行 (`type`、`index`、`duration_sec`、`error`) |
 | `node.started` | INFO | 起動 |
 

@@ -241,7 +241,7 @@ stateDiagram-v2
 
 - **停止点** (`is_through_point: false`): Nav2 の goal_checker で判定する。到達半径は `nav2_params.yaml` の `general_goal_checker.xy_goal_tolerance` で全 WP 共通。`reach_tolerance` は使わない（`xy_goal_tolerance` を実行時に変更すると controller が停止する問題があるため）。
 - **通過点** (`is_through_point: true`): 次の 3 条件をすべて満たした時点で通過 (`PASSED`) とする。
-  1. ゴール送信後に受信した採用済みの経路（`plan_topic`。BT の `CommitPath` が publish）で、終点がゴールから `plan_goal_match_tolerance` 以内のものを採用済み。前のゴールへの経路は使わない。BT に `CommitPath` がないと配信されず、通過点の判定ができない（停止点と同じく Nav2 の到達で終わる）。
+  1. ゴール送信後に受信した採用済みの経路（`plan_topic`。BT の `CommitPath` が publish）で、終点がゴールから `plan_goal_match_tolerance` 以内のものを採用済み。前のゴールへの経路は使わない。BT に `CommitPath` がないと配信されず、通過点の判定ができない（停止点と同じく Nav2 の到達で終わる）。採用済みの経路が届かないまま一定時間たつと、イベント `nav.through_plan_missing` を WARN で 1 回出す。
   2. 採用した経路に沿った残り距離が `through_tolerance` 以下。最近傍点は前回位置から経路に沿って 2m 先までだけ探す（経路が自分の近くを再び通る形でも、先の区間を誤って選ばない）。
   3. ゴールまでの直線距離が `through_tolerance` 以下。
 
