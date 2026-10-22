@@ -115,6 +115,18 @@ python3 tools/scripts/analyze_particle_modes.py <変種>/run_1/output --gt-dir <
 
 `--correct-position` は、真値と地図の座標のずれ (下記) より大きくします。
 
+### スキャンを地図に重ねる
+
+`plot_scan_on_map.py` で、指定した時刻の LiDAR のスキャンを、真値の姿勢と推定の姿勢 (再生の記録の `/amcl_pose`) に置いて、地図に重ねて描けます。推定がずれた時刻に、スキャンが真値の姿勢で地図と合うか、推定の姿勢で地図の何に引き寄せられたかを見るのに使います。`--map` を複数渡すと、地図ごとに 1 行で並べます (自己位置推定用の地図と、その走行の SLAM 地図の比較など)。
+
+```bash
+# コンテナ内で
+python3 tools/scripts/plot_scan_on_map.py <評価 bag> --map <自己位置推定用の地図の yaml> --map <SLAM 出力>/map.yaml \
+    --gt-dir <評価 bag の SLAM 出力> --estimate <変種>/run_1/output --times <時刻をカンマ区切り>
+```
+
+時刻は、評価 bag の最初のスキャンからの経過秒です。再生の記録から出す時刻 (評価レポート、`analyze_particle_modes.py`) は、再生の記録の先頭からの経過秒なので、少しずれます。
+
 ### センサ故障の注入
 
 `--faults` で、再生中のセンサ入力に故障を注入して、検知と復旧を評価できます (`fault_injector.py`)。
