@@ -22,6 +22,8 @@ from mg_waypoint_navigation.waypoint_sequencer.progress_monitor import (
 
 # 経路上の最近傍点を探す範囲 [m]。前回の最近傍点から経路に沿ってこの長さだけ先まで探す。
 _PLAN_SEARCH_WINDOW_M = 2.0
+# 通過点へ向かってから、採用済みの経路が届かないまま、この時間が過ぎたら WARN を出す [s]
+_PLAN_MISSING_WARN_SEC = 10.0
 
 # 手動ゴールで BT を指定しない (Nav2 の既定の BT を使う) ときのモード名
 DEFAULT_BT_MODE = "default"
@@ -50,7 +52,8 @@ class WaypointNavigator:
       次の send_goal() で上書き (preemption) されるか、cancel() で止められる。
       BT が異なる場合やキャンセル中は、終了を待ってから次のゴールを送る。
 
-    通過点の判定は、送信後に受信した /plan のうち終点がゴールと一致するものだけを使い、
+    通過点の判定は、送信後に受信した採用済みの経路 (CommitPath が配信する
+    /navigation/committed_path) のうち終点がゴールと一致するものだけを使い、
     その経路上の残り距離とゴールまでの直線距離が through_tolerance 以下になったら通過とする。
     """
 
@@ -76,6 +79,7 @@ class WaypointNavigator:
         self._plan_points: List[tuple] = []
         self._plan_suffix: List[float] = []
         self._plan_index: int = 0
+        self._plan_missing_warned: bool = False
 
         # Nav2 ゴール
         self._live_seq: int = 0
@@ -94,7 +98,9 @@ class WaypointNavigator:
             "bt_xml_queue_wait",
             share_dir + "/behavior_trees/mg_navigate_to_pose_queue_wait.xml"
         ).value
-        plan_topic = node.declare_parameter("plan_topic", "/plan").value
+        # BT の CommitPath が採用した経路。planner_server の /plan は棄却した候補も含むので使わない
+        self._plan_topic = node.declare_parameter(
+            "plan_topic", "/navigation/committed_path").value
         self._plan_goal_match_tolerance = node.declare_parameter(
             "plan_goal_match_tolerance", 0.6).value
 
@@ -102,7 +108,7 @@ class WaypointNavigator:
             node.declare_parameter("stall_distance", 0.5).value)
 
         self._plan_sub = node.create_subscription(
-            Path, plan_topic, self._plan_callback, 1,
+            Path, self._plan_topic, self._plan_callback, 1,
             callback_group=self._callback_group)
 
     @property
@@ -147,6 +153,7 @@ class WaypointNavigator:
             self._plan_points = []
             self._plan_suffix = []
             self._plan_index = 0
+            self._plan_missing_warned = False
             self._progress.reset(self._send_time_ns / 1e9)
 
         if not self._action_client.wait_for_server(timeout_sec=5.0):
@@ -352,6 +359,18 @@ class WaypointNavigator:
         self._plan_index = best
         return best_dist + self._plan_suffix[best]
 
+    def _take_plan_missing_warning(self) -> Optional[dict]:
+        """ロック保持中に呼ぶ。採用済みの経路が届かないまま _PLAN_MISSING_WARN_SEC 待ったら、
+        1 ゴールにつき 1 回だけ、イベントの値を返す。"""
+        if self._plan_missing_warned:
+            return None
+        waited = self._now_sec() - self._send_time_ns / 1e9
+        if waited < _PLAN_MISSING_WARN_SEC:
+            return None
+        self._plan_missing_warned = True
+        return {'index': self._waypoint.index, 'waited_sec': round(waited, 1),
+                'topic': self._plan_topic}
+
     def _feedback_callback(self, goal_id: int, feedback_msg) -> None:
         with self._lock:
             if not self._is_current(goal_id):
@@ -363,14 +382,25 @@ class WaypointNavigator:
                 feedback_msg.feedback.number_of_recoveries, self._now_sec())
 
             tolerance = self._through_tolerance
-            if tolerance is None or not self._plan_points:
+            if tolerance is None:
                 return
-            remaining = self._remaining_plan_length(current.x, current.y)
-            goal = self._waypoint.pose.pose.position
-            if (remaining > tolerance
-                    or hypot(goal.x - current.x, goal.y - current.y) > tolerance):
-                return
-            index = self._waypoint.index
+            has_plan = bool(self._plan_points)
+            if not has_plan:
+                missing = self._take_plan_missing_warning()
+            else:
+                remaining = self._remaining_plan_length(current.x, current.y)
+                goal = self._waypoint.pose.pose.position
+                if (remaining > tolerance
+                        or hypot(goal.x - current.x, goal.y - current.y) > tolerance):
+                    return
+                index = self._waypoint.index
+
+        if not has_plan:
+            # BT に CommitPath がない、または計画の失敗・棄却が続いている。通過点の判定ができず、
+            # 停止点と同じく Nav2 の到達で終わる
+            if missing is not None:
+                self._events.warn('nav.through_plan_missing', **missing)
+            return
 
         self._node.get_logger().info(
             f"Passed through waypoint {index} (tolerance {tolerance} m)")

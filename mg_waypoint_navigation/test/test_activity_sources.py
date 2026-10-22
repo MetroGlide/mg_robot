@@ -4,7 +4,10 @@ from unittest.mock import MagicMock
 
 from action_msgs.msg import GoalStatus
 
-from mg_waypoint_navigation.waypoint_sequencer.activity import CollisionInput
+from mg_waypoint_navigation.waypoint_sequencer.activity import (
+    CollisionInput,
+    DetourInput,
+)
 from mg_waypoint_navigation.waypoint_sequencer.activity_sources import (
     ActivitySources,
     EXTERNAL_GOAL_HOLD_SEC,
@@ -16,12 +19,18 @@ NAV_STATUS_TOPIC = '/navigate_to_pose/_action/status'
 
 def make_sources(collision_topic='/collision_monitor_state',
                  bt_log_topic='/behavior_tree_log',
-                 nav_status_topic=NAV_STATUS_TOPIC):
+                 nav_status_topic=NAV_STATUS_TOPIC,
+                 path_check_topic='/navigation/path_candidate_check'):
     node = MagicMock()
     node.count_publishers.return_value = 1
     sources = ActivitySources(
-        node, MagicMock(), collision_topic, bt_log_topic, nav_status_topic)
+        node, MagicMock(), collision_topic, bt_log_topic, nav_status_topic,
+        path_check_topic)
     return sources, node
+
+
+def path_check(rejected, path_length=152.0, limit=45.0):
+    return SimpleNamespace(rejected=rejected, path_length=path_length, limit=limit)
 
 
 def nav_status(*statuses):
@@ -70,11 +79,34 @@ class TestRecoveryNodes:
         sources.on_bt_log(bt_log(('FollowPath', 'RUNNING'), ('Spin', 'RUNNING')))
         assert sources.recovery_nodes == {'Spin'}
 
-    def test_clear_recovery(self):
+    def test_clear_navigation_state(self):
         sources, _ = make_sources()
         sources.on_bt_log(bt_log(('Wait', 'RUNNING')))
-        sources.clear_recovery()
+        sources.clear_navigation_state()
         assert sources.recovery_nodes == frozenset()
+
+
+class TestRejectedDetour:
+    def test_none_until_first_message(self):
+        sources, _ = make_sources()
+        assert sources.rejected_detour is None
+
+    def test_rejected_keeps_lengths(self):
+        sources, _ = make_sources()
+        sources.on_path_candidate_check(path_check(True))
+        assert sources.rejected_detour == DetourInput(152.0, 45.0)
+
+    def test_accepted_candidate_clears_rejection(self):
+        sources, _ = make_sources()
+        sources.on_path_candidate_check(path_check(True))
+        sources.on_path_candidate_check(path_check(False))
+        assert sources.rejected_detour is None
+
+    def test_clear_navigation_state(self):
+        sources, _ = make_sources()
+        sources.on_path_candidate_check(path_check(True))
+        sources.clear_navigation_state()
+        assert sources.rejected_detour is None
 
 
 class TestExternalGoal:
@@ -148,8 +180,9 @@ class TestExternalGoal:
 class TestSubscriptions:
     def test_all_topics_subscribed(self):
         _, node = make_sources()
-        assert node.create_subscription.call_count == 3
+        assert node.create_subscription.call_count == 4
 
     def test_empty_topic_disables_input(self):
-        _, node = make_sources(collision_topic='', bt_log_topic='', nav_status_topic='')
+        _, node = make_sources(
+            collision_topic='', bt_log_topic='', nav_status_topic='', path_check_topic='')
         node.create_subscription.assert_not_called()

@@ -29,6 +29,8 @@
 /map_updates
 /marker
 /memory_usage
+/navigation/committed_path
+/navigation/path_candidate_check
 
 /odom/gps
 /odom/gps/ref_point

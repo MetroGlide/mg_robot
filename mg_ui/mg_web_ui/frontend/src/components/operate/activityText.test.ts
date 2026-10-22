@@ -65,6 +65,19 @@ describe("formatActivity", () => {
     ).toBe("障害物で停止中 ・ stop_front ・ 5 秒");
   });
 
+  it("遠回りの棄却は、経路の長さと上限、続いている秒数を並べる", () => {
+    expect(
+      formatActivity(
+        activity({
+          code: "detour_rejected",
+          text: "遠回りの経路を棄却して待機中",
+          detail: "経路 152 m / 上限 45 m",
+          elapsed_sec: 30.2,
+        }),
+      ),
+    ).toBe("遠回りの経路を棄却して待機中 ・ 経路 152 m / 上限 45 m ・ 30 秒");
+  });
+
   it("1 秒未満は秒数を並べない", () => {
     expect(
       formatActivity(

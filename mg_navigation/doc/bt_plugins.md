@@ -81,9 +81,25 @@ RPP (Humble 1.1.20 の `RegulatedPurePursuitController`) の衝突判定と同�
 
 ## CommitPath
 
+計画の結果 (`candidate`) を、追従する経路 (`path`) に反映する。計画が失敗しても今のゴールへの経路があれば保ち、なければ `path` を空にして FAILURE を返す。
+
+遠回りの上限: プランナには経路長の上限がなく、前方が塞がると逆走して建物の反対側から回り込むような極端な経路を引くことがある。ゴールへ届く `candidate` の長さが「始点からゴールまでの直線距離 × `max_detour_ratio` + `max_detour_margin`」を超えるとき、その `candidate` は計画の失敗と同じに扱い、乗らない (今の `path` を保つ。保てなければ FAILURE でリカバリーに入り、塞がりが解けるまで待つ)。今追従している `path` には上限を掛けない。
+
+- 目的は極端な逆走・大回りを止めることで、通常の迂回を細かく制限するものではない。比率と余裕は緩めに置く
+- 基準は直線距離なので、正常な経路でも直線距離より大きく長い区間 (間隔の粗いウェイポイント、建物の向こう側への手動ゴール) では棄却して待ち続ける。ウェイポイントは経路に沿って置くか、上限を緩める
+- 基準の直線距離は、その時点の始点 (ロボットの位置) から測る。採用した遠回りの経路を進んでゴールから離れると、上限もそれに合わせて広がる。「一気に逆走へ切り替わる」経路は防ぐが、少しずつ延びる遠回りは防がない (ゴールごとに基準を固定すれば防げるが、状態を持つことになるので採っていない)
+- 通過点などで、新しいゴールへの最初の計画結果を棄却すると、追従する経路が空になって FAILURE を返す。RPP の待ちを挟まずにリカバリーへ入り、後退・首振りの段階を毎周期くり返す (到達できないゴールのときと同じ動き)
+- `max_detour_ratio` を 0 にすると判定しない
+- 採用した経路を `/navigation/committed_path` (`nav_msgs/Path`、transient local) に配信する。`candidate` を採用したときと、経路を空にしたときに配信し、今の経路を保つときは配信しない。planner_server の `/plan` は棄却した候補も含むので、経路の表示 (Web UI、RViz) とシーケンサの通過点の判定はこちらを使う。棄却した候補は RViz の `Plan Candidate` (既定は非表示) で `/plan` を見る
+- 判定のたびに `/navigation/path_candidate_check` (`mg_msgs/PathCandidateCheck`、`rejected`・経路の長さ・直線距離・上限) を配信する。シーケンサが「いまの活動」の `detour_rejected` に使う ([architecture](../../mg_waypoint_navigation/doc/architecture.md#いまの活動-activity))
+- ログ (bt_navigator): 棄却が始まったとき WARN (`evt=nav.detour_rejected`)、採用に戻ったとき INFO (`evt=nav.detour_accepted`)。変化のときだけ出す
+- 配信とイベントログは、同じ木 (blackboard) の `CommitPath` で 1 つを共有する `CommitPathReporter` が行う。配信者が `CommitPath` ごとにあると、transient local の `/navigation/committed_path` を後から購読した表示 (Web UI・RViz) に、それぞれが最後に配信した古い経路が届いてしまうため
+
 | ポート | 既定値 | 内容 |
 | :--- | :--- | :--- |
 | `candidate` | なし | 計画の結果 (`ComputePathToPose` の出力。失敗すると空になる) |
 | `goal` | なし | 今のゴール |
 | `path` | なし | 追従する経路 (入出力) |
 | `goal_tolerance` | `0.6` | 経路の終点とゴールの距離がこれ以内なら、そのゴールへの経路とみなす [m] |
+| `max_detour_ratio` | `2.0` | 直線距離に掛ける倍率。0 以下で遠回りの判定をしない |
+| `max_detour_margin` | `10.0` | 上限に足す余裕 [m]。近いゴールへの通常の迂回を棄却しないため |

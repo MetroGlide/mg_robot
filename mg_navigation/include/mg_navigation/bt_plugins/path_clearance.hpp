@@ -111,6 +111,30 @@ bool pathReachesGoal(
   const geometry_msgs::msg::PoseStamped & goal,
   double tolerance);
 
+// 経路に沿った長さ [m]。姿勢が 2 つ未満なら 0
+double pathLength(const nav_msgs::msg::Path & path);
+
+// 経路の遠回りの判定結果
+struct DetourCheck
+{
+  // 経路の長さ [m]
+  double path_length{0.0};
+  // 経路の始点からゴールまでの直線距離 [m]
+  double straight_distance{0.0};
+  // 採用できる経路の長さの上限 [m]。判定を無効にしているときは負
+  double limit{-1.0};
+  // 上限を超えているとき true
+  bool exceeded{false};
+};
+
+// path の長さが、始点からゴールまでの直線距離 × max_ratio + margin [m] を超えるかを調べる。
+// max_ratio が 0 以下なら判定しない (exceeded は常に false)。path が空なら exceeded は false
+DetourCheck checkDetour(
+  const nav_msgs::msg::Path & path,
+  const geometry_msgs::msg::PoseStamped & goal,
+  double max_ratio,
+  double margin);
+
 // CommitPath の判定。candidate がゴール向けなら candidate を、そうでなく current が
 // ゴール向けなら current を返す。どちらも違えば std::nullopt (経路を空にする)
 std::optional<nav_msgs::msg::Path> selectPathForGoal(

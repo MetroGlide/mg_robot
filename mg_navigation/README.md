@@ -32,7 +32,7 @@ AMCL の初期化・入/切の調停・監督ノードは [mg_localization_super
 | :--- | :--- | :--- |
 | `IsPathClear` (Condition) | `mg_is_path_clear_condition_bt_node` | リカバリーの間に、RPP が衝突判定なしで走り出せる状態になったかを判定する。塞がっていた経路が空いたら SUCCESS |
 | `IsPathBlocked` (Condition) | `mg_is_path_blocked_condition_bt_node` | 走行中に、経路の近くが塞がっているかを判定する。塞がっていると確定したときだけ SUCCESS。定期的な再計画を止めるゲートに使う |
-| `CommitPath` (Action) | `mg_commit_path_action_bt_node` | 計画の結果 (`candidate`) が今のゴールへの経路なら `path` に反映する。計画が失敗しても、今のゴールへの経路があれば保つ。なければ `path` を空にして FAILURE |
+| `CommitPath` (Action) | `mg_commit_path_action_bt_node` | 計画の結果 (`candidate`) が今のゴールへの経路なら `path` に反映する。計画が失敗しても、今のゴールへの経路があれば保つ。なければ `path` を空にして FAILURE。直線距離に対して長すぎる候補 (極端な逆走・大回り) は、計画の失敗と同じに扱って乗らない |
 | `FindFreeStart` (Action) | `mg_find_free_start_action_bt_node` | ロボットが計画用地図の障害物 (進入禁止の領域) にめり込んでいるとき、その領域の外の最も近い位置を `free_start` に出す。めり込んでいない、出られない、判定できないときは FAILURE |
 | `IsLocalizationHealthy` (Condition) | `mg_is_localization_healthy_condition_bt_node` | 自己位置の監督の状態 (`/localization/status`) が `NORMAL` で新しければ SUCCESS。疑わしいときの走行側の対処を止めるために使う |
 

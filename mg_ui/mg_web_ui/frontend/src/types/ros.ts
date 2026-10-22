@@ -231,6 +231,7 @@ export const ACTIVITY_CODE = {
   OBSTACLE_STOP: 'obstacle_stop',
   SENSOR_TIMEOUT_STOP: 'sensor_timeout_stop',
   RECOVERY: 'recovery',
+  DETOUR_REJECTED: 'detour_rejected',
   NO_PROGRESS: 'no_progress',
   ACTION: 'action',
   TRIGGER_WAIT: 'trigger_wait',

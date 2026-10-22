@@ -102,6 +102,8 @@ class WaypointSequencerNode(Node):
             "activity_bt_log_topic", "/behavior_tree_log").value
         self._activity_nav_status_topic: str = self.declare_parameter(
             "activity_nav_status_topic", "/navigate_to_pose/_action/status").value
+        self._activity_path_check_topic: str = self.declare_parameter(
+            "activity_path_check_topic", "/navigation/path_candidate_check").value
 
     # ------------------------------------------------------------------
     # ROS 通信初期化
@@ -152,7 +154,7 @@ class WaypointSequencerNode(Node):
             self._activity_sources = ActivitySources(
                 self, activity_group,
                 self._activity_collision_topic, self._activity_bt_log_topic,
-                self._activity_nav_status_topic)
+                self._activity_nav_status_topic, self._activity_path_check_topic)
             self._activity_tracker = ActivityTracker()
             self._activity_pub = self.create_publisher(
                 NavigationActivity, "~/activity", latched_qos)
@@ -308,7 +310,7 @@ class WaypointSequencerNode(Node):
         driving = (state == SequencerState.NAVIGATING or fsm.manual_goal_active
                    or external_goal_active)
         if not driving:
-            self._activity_sources.clear_recovery()
+            self._activity_sources.clear_navigation_state()
         progress = fsm.navigation_progress()
         inputs = ActivityInputs(
             state=state,
@@ -324,6 +326,7 @@ class WaypointSequencerNode(Node):
             collision=self._activity_sources.collision,
             running_recovery_nodes=self._activity_sources.recovery_nodes,
             stalled_sec=0.0 if progress is None else progress.stalled_sec,
+            rejected_detour=self._activity_sources.rejected_detour,
         )
         activity = compose_activity(inputs, self._stall_warn_sec)
         now = self.get_clock().now()

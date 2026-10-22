@@ -21,7 +21,8 @@ export const TOPICS = {
   TF: '/tf',
   TF_STATIC: '/tf_static',
   SCAN_TOP: '/scan_top_lidar',
-  NAV_PLAN: '/plan',
+  // BT の CommitPath が採用した経路 (ロボットが追従している経路)。/plan は棄却した候補も含む
+  NAV_PLAN: '/navigation/committed_path',
   ACTUAL_PATH: '/actual_path',
   GLOBAL_COSTMAP: '/global_costmap/costmap',
   LOCAL_COSTMAP: '/local_costmap/costmap',

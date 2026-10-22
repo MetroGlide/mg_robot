@@ -281,6 +281,51 @@ def test_no_pass_without_plan(env):
     assert env.results == []
 
 
+def _plan_missing_warnings(env):
+    return [c for c in env.node.get_logger().warning.call_args_list
+            if c.args[0].startswith('evt=nav.through_plan_missing')]
+
+
+def test_warns_once_when_no_plan_arrives(env):
+    _start_through(env)
+    _set_time(env, 9.9)
+    env.feedback(1.0, 0.0)
+    assert _plan_missing_warnings(env) == []
+    _set_time(env, 10.0)
+    env.feedback(1.0, 0.0)
+    _set_time(env, 15.0)
+    env.feedback(1.0, 0.0)
+    assert len(_plan_missing_warnings(env)) == 1
+    assert env.results == []
+
+
+def test_no_plan_missing_warning_when_plan_arrives(env):
+    _start_through(env)
+    env.plan(_path(_straight(0.0, 10.0)))
+    _set_time(env, 20.0)
+    env.feedback(1.0, 0.0)
+    assert _plan_missing_warnings(env) == []
+
+
+def test_plan_missing_warning_is_once_per_goal(env):
+    _start_through(env)
+    _set_time(env, 10.0)
+    env.feedback(1.0, 0.0)
+    env.nav.send_goal(_waypoint(index=1, is_through_point=True), env.on_result)
+    env.accept()
+    _set_time(env, 20.0)
+    env.feedback(1.0, 0.0)
+    assert len(_plan_missing_warnings(env)) == 2
+
+
+def test_stop_point_does_not_warn_plan_missing(env):
+    env.nav.send_goal(_waypoint(), env.on_result)
+    env.accept()
+    _set_time(env, 20.0)
+    env.feedback(1.0, 0.0)
+    assert _plan_missing_warnings(env) == []
+
+
 def test_stale_plan_to_previous_goal_is_ignored(env):
     _start_through(env)
     env.plan(_path(_straight(7.0, 8.0)))  # 前のゴール (x=8) への経路
