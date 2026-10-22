@@ -121,6 +121,9 @@ run_once() {
   mkdir -p "$run_dir"
   echo "[replay] run $run/$RUNS: スタックを起動します"
 
+  # 空の値の launch 引数 (name:=) は解釈できないので、プロファイルは指定したときだけ渡す
+  local profile_args=()
+  [ -n "${PROFILE:-}" ] && profile_args=(localization_profile:="$PROFILE")
   setsid ros2 launch mg_bringup bringup_navigation.launch.py \
     use_navigation:=false use_realsense:=false use_slam_gnss_bridge:=true \
     use_odom_corrector:=true \
@@ -131,7 +134,7 @@ run_once() {
     nav2_params_file:="$VARIANT_DIR/nav2_params.yaml" \
     bridge_params_file:="$VARIANT_DIR/nav_bridge.yaml" \
     odom_corrector_params_file:="$VARIANT_DIR/wheel_odom_corrector.yaml" \
-    supervisor_config:="$VARIANT_DIR/supervision.yaml" localization_profile:="${PROFILE:-}" \
+    supervisor_config:="$VARIANT_DIR/supervision.yaml" "${profile_args[@]}" \
     > "$run_dir/launch.log" 2>&1 &
   LAUNCH_PID=$!
 
