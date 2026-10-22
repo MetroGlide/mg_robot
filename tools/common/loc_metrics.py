@@ -179,6 +179,91 @@ def recovery_metrics(
     return result
 
 
+def detect_turns(nodes: np.ndarray, min_turn_rad: float, window_sec: float) -> List[Tuple[float, float, float]]:
+    """真値のノード列から、window_sec 以内に向きが min_turn_rad 以上変わる区間 (角) を見つける。
+
+    Args:
+      nodes: shape (N, 4) -> [t, x, y, yaw] (t 昇順)
+    Returns:
+      角ごとの (開始時刻, 終了時刻, 向きの変化 [rad]。左回りが正)。重なる区間はまとめる
+    """
+    if nodes.shape[0] < 2:
+        return []
+    t = nodes[:, 0]
+    yaw = np.unwrap(nodes[:, 3])
+    intervals: List[List[float]] = []
+    j = 0
+    for i in range(t.size):
+        j = max(j, i)
+        while j + 1 < t.size and t[j + 1] - t[i] <= window_sec:
+            j += 1
+        if j == i or abs(yaw[j] - yaw[i]) < min_turn_rad:
+            continue
+        if intervals and t[i] <= intervals[-1][1]:
+            intervals[-1][1] = max(intervals[-1][1], t[j])
+        else:
+            intervals.append([t[i], t[j]])
+    turns = []
+    for start, end in intervals:
+        i0, i1 = np.searchsorted(t, start), np.searchsorted(t, end)
+        turns.append((float(start), float(end), float(yaw[i1] - yaw[i0])))
+    return turns
+
+
+def turn_errors(
+    times: np.ndarray,
+    pos_err: np.ndarray,
+    yaw_err: np.ndarray,
+    turns: List[Tuple[float, float, float]],
+    after_sec: float,
+    pos_threshold: float,
+    yaw_threshold: float,
+) -> List[Dict[str, Any]]:
+    """角ごとに、角の中と抜けた後の誤差、ずれたか、取り違えたまま残ったかを返す。
+
+    deviated: 角の中から抜けた後 after_sec までに、誤差が一度でも位置 pos_threshold [m] か
+      yaw yaw_threshold [rad] を超えた (後で戻ったものも含む)
+    mispicked: 抜けた後の after_sec の間の誤差の中央値が、同じ閾値を超えた。一瞬の飛びではなく、
+      誤った姿勢に収束したまま残ったことを見るため中央値にする
+    """
+    results = []
+    for start, end, dyaw in turns:
+        entry: Dict[str, Any] = {"start_s": start, "end_s": end, "turn_rad": dyaw}
+        during = (times >= start) & (times < end + after_sec)
+        after = (times >= end) & (times < end + after_sec)
+        if not np.any(after):
+            entry["deviated"] = None
+            entry["mispicked"] = None
+            results.append(entry)
+            continue
+        after_pos = float(np.median(pos_err[after]))
+        after_yaw = float(np.median(np.abs(yaw_err[after])))
+        max_pos = float(np.max(pos_err[during]))
+        max_yaw = float(np.max(np.abs(yaw_err[during])))
+        entry.update({
+            "max_position_m": max_pos,
+            "max_yaw_rad": max_yaw,
+            "deviated": bool(max_pos > pos_threshold or max_yaw > yaw_threshold),
+            "after_position_m": after_pos,
+            "after_yaw_rad": after_yaw,
+            "mispicked": bool(after_pos > pos_threshold or after_yaw > yaw_threshold),
+        })
+        results.append(entry)
+    return results
+
+
+def gnss_weak_mask(times: np.ndarray, gps_times: np.ndarray, gps_sigma: np.ndarray,
+                   sigma_threshold: float, stale_sec: float) -> np.ndarray:
+    """times の各時点で GNSS が弱いか。直前の測位の σ が sigma_threshold を超えるか、stale_sec より古い
+    (または 1 つも無い) とき弱いとする。"""
+    idx = hold_index(gps_times, times)
+    weak = np.ones(times.shape, dtype=bool)
+    has = idx >= 0
+    fresh = times[has] - gps_times[idx[has]] <= stale_sec
+    weak[has] = ~fresh | (gps_sigma[idx[has]] > sigma_threshold)
+    return weak
+
+
 # 監督ノードの状態の記録 (行: [t, state, gnss_d2, jump_m, ekf_diff_m, scan_ratio, scan_gain]) の値の列
 # localization_supervisor_msgs/LocalizationCheck.status の「判定できない」
 CHECK_UNKNOWN = 2

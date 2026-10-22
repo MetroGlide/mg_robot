@@ -74,3 +74,16 @@ def test_dataset_definitions_are_valid():
     # 同じ走行では MAP_GT_DIR を使わない。別走行では地図側の SLAM 出力を指す
     assert load_dataset(resolve_dataset_path("same_run_043837"))["MAP_GT_DIR"] == ""
     assert load_dataset(resolve_dataset_path("map043837_eval051635"))["MAP_GT_DIR"] != ""
+
+
+def test_turn_rate_counts_runs_with_any_deviated_or_mispicked_turn():
+    runs = [{"turns": {"n_judged": 2, "n_deviated": 2, "n_mispicked": 1}},
+            {"turns": {"n_judged": 2, "n_deviated": 1, "n_mispicked": 0}},
+            {"turns": {"n_judged": 0, "n_deviated": 0, "n_mispicked": 0}},
+            {}]
+    assert cl.turn_rate(runs, "n_mispicked") == pytest.approx(0.5)
+    assert cl.turn_rate(runs, "n_deviated") == pytest.approx(1.0)
+    assert cl.turn_rate([{}], "n_mispicked") is None
+    summary = cl.summarize_variant(runs)
+    assert summary[cl.MISPICK_LABEL][0] == pytest.approx(0.5)
+    assert summary[cl.DEVIATED_LABEL][0] == pytest.approx(1.0)

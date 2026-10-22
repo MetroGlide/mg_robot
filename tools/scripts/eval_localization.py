@@ -16,6 +16,8 @@ eval_localization.py
   - nees        : EKF の共分散が誤差に見合っているか (自由度 3 に近いほど一貫)
   - ekf_vs_odom : EKF の速度とホイールオドメトリ速度の遅れ・差
   - amcl        : AMCL の共分散・遅延・EKF との差
+  - turns       : 真値の軌跡から見つけた角ごとの誤差と、取り違え (抜けた後も誤差が大きいまま) か
+  - gnss_weak   : GNSS が弱い (σ が大きい、または届いていない) 時間と強い時間に分けた位置誤差
   - faults      : --faults 指定時の検知・復旧の指標と、故障のない区間での誤検知
 """
 
@@ -71,7 +73,7 @@ class BagData:
         self.ekf: List[List[float]] = []         # [t, x, y, yaw, vx, wz] + cov36
         self.odom: List[List[float]] = []        # [t, vx, wz]
         self.amcl: List[List[float]] = []        # [t, record_t, x, y, yaw] + cov36
-        self.gps_count = 0
+        self.gps: List[List[float]] = []         # [t, σ_xy]
         # [t, state, fusion_level]
         self.status: List[List[float]] = []
         # 判定のインスタンスごとの [t, score] (判定できた周期だけ)
@@ -114,7 +116,8 @@ def read_bag(bag_path: str, args: argparse.Namespace) -> BagData:
             data.amcl.append([stamp_sec(msg.header.stamp), record_ns * 1e-9, x, y, yaw]
                              + list(msg.pose.covariance))
         elif topic == args.gps_topic:
-            data.gps_count += 1
+            cov = msg.pose.covariance
+            data.gps.append([stamp_sec(msg.header.stamp), float(np.sqrt(max(cov[0], cov[7], 0.0)))])
         elif topic == args.status_topic:
             t = stamp_sec(msg.header.stamp)
             data.status.append([t, float(msg.state), float(msg.fusion_level)])
@@ -177,10 +180,11 @@ def window_stats(times: np.ndarray, pos_err: np.ndarray, t0: float, window: floa
 
 def evaluate_accuracy(
     times: np.ndarray, poses: np.ndarray, gt_nodes: np.ndarray, t0: float, window: float,
-) -> Tuple[Dict[str, Any], np.ndarray, np.ndarray]:
+) -> Tuple[Dict[str, Any], np.ndarray, np.ndarray, np.ndarray]:
+    """Returns: (報告, 比較できた時刻, 位置誤差, 符号付きの yaw 誤差)"""
     gt_poses, valid = interpolate_nodes(gt_nodes, times, stationary_dist=STATIONARY_DIST_M)
     if not np.any(valid):
-        return {"n": 0}, times[:0], np.zeros(0)
+        return {"n": 0}, times[:0], np.zeros(0), np.zeros(0)
     t = times[valid]
     pos_err, yaw_err = lm.pose_errors(poses[valid], gt_poses[valid])
     report = {
@@ -205,7 +209,38 @@ def evaluate_accuracy(
             "rotation_deg": float(np.degrees(theta)),
             "position_m": lm.summarize(aligned_err),
         }
-    return report, t, pos_err
+    return report, t, pos_err, yaw_err
+
+
+def evaluate_turns(
+    gt_nodes: np.ndarray, t_from: float, t_to: float, times: np.ndarray, pos_err: np.ndarray,
+    yaw_err: np.ndarray, args: argparse.Namespace,
+) -> Dict[str, Any]:
+    turns = lm.detect_turns(clip_time(gt_nodes, t_from, t_to), np.radians(args.turn_min_deg), args.turn_window)
+    per_turn = lm.turn_errors(times, pos_err, yaw_err, turns, args.turn_after,
+                              args.mispick_position, np.radians(args.mispick_yaw_deg))
+    judged = [e for e in per_turn if e["mispicked"] is not None]
+    return {
+        "per_turn": per_turn,
+        "n_judged": len(judged),
+        "n_mispicked": sum(1 for e in judged if e["mispicked"]),
+        "n_deviated": sum(1 for e in judged if e["deviated"]),
+        "criteria": {"after_sec": args.turn_after, "position_m": args.mispick_position,
+                     "yaw_deg": args.mispick_yaw_deg},
+    }
+
+
+def evaluate_gnss_weak(
+    times: np.ndarray, pos_err: np.ndarray, gps: np.ndarray, args: argparse.Namespace,
+) -> Dict[str, Any]:
+    weak = lm.gnss_weak_mask(times, gps[:, 0], gps[:, 1], args.gnss_weak_sigma, args.gnss_stale_sec) \
+        if gps.size else np.ones(times.shape, dtype=bool)
+    return {
+        "fraction_weak": float(weak.mean()) if weak.size else 0.0,
+        "weak_position_m": lm.summarize(pos_err[weak]),
+        "strong_position_m": lm.summarize(pos_err[~weak]),
+        "criteria": {"sigma_m": args.gnss_weak_sigma, "stale_sec": args.gnss_stale_sec},
+    }
 
 
 def clip_time(arr: np.ndarray, t_from: float, t_to: float) -> np.ndarray:
@@ -391,6 +426,41 @@ def format_summary(report: Dict[str, Any]) -> str:
                          f"yaw 中央値 {dy['median']:.3f} rad / p95 {dy['p95']:.3f} rad")
         lines.append("")
 
+    turns = report.get("turns")
+    if turns:
+        cr = turns["criteria"]
+        lines += [f"## 角 (ずれた {turns['n_deviated']} / 取り違えたまま {turns['n_mispicked']} / "
+                  f"判定 {turns['n_judged']})", "",
+                  f"閾値は位置 {cr['position_m']:g} m か yaw {cr['yaw_deg']:g} deg。ずれた = 角の中から抜けた後 "
+                  f"{cr['after_sec']:g} s までに一度でも超えた。取り違えたまま = 抜けた後 {cr['after_sec']:g} s の"
+                  "誤差の中央値が超えた。時刻は先頭からの経過秒。", "",
+                  "| 開始[s] | 終了[s] | 向きの変化[deg] | 最大位置誤差[m] | 最大 yaw 誤差[deg] | "
+                  "抜けた後の位置誤差[m] | 抜けた後の yaw 誤差[deg] | ずれた | 取り違えたまま |",
+                  "|---|---|---|---|---|---|---|---|---|"]
+        t0 = meta["t0"]
+        for e in turns["per_turn"]:
+            if e["mispicked"] is None:
+                lines.append(f"| {e['start_s'] - t0:.0f} | {e['end_s'] - t0:.0f} | {np.degrees(e['turn_rad']):.0f} "
+                             "| - | - | - | - | - | 判定できない |")
+                continue
+            lines.append(
+                f"| {e['start_s'] - t0:.0f} | {e['end_s'] - t0:.0f} | {np.degrees(e['turn_rad']):.0f} | "
+                f"{e['max_position_m']:.2f} | {np.degrees(e['max_yaw_rad']):.1f} | {e['after_position_m']:.2f} | "
+                f"{np.degrees(e['after_yaw_rad']):.1f} | {'**はい**' if e['deviated'] else 'いいえ'} | "
+                f"{'**はい**' if e['mispicked'] else 'いいえ'} |")
+        lines.append("")
+
+    gw = report.get("gnss_weak")
+    if gw:
+        cr = gw["criteria"]
+
+        def med(s: Dict[str, Any]) -> str:
+            return "-" if s.get("n", 0) == 0 else f"中央値 {s['median']:.3f} m / p95 {s['p95']:.3f} m"
+
+        lines += [f"## GNSS が弱い時間の誤差 (σ > {cr['sigma_m']:g} m か {cr['stale_sec']:g} s 届かない。"
+                  f"時間の {gw['fraction_weak'] * 100:.0f}%)", "",
+                  f"- 弱い: {med(gw['weak_position_m'])}", f"- 強い: {med(gw['strong_position_m'])}", ""]
+
     lines += ["## GNSS", "", f"- `/odom/gps` の件数: {report['gps']['count']}", ""]
 
     faults = report.get("faults")
@@ -449,6 +519,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--hold-sec", type=float, default=3.0, help="復旧とみなすために誤差が閾値以下でいる時間 [s]")
     parser.add_argument("--fault-margin", type=float, default=60.0,
                         help="故障の終了後、状態遷移を誤検知に数えない時間 [s]")
+    parser.add_argument("--turn-min-deg", type=float, default=45.0,
+                        help="角とみなす、--turn-window 秒以内の真値の向きの変化 [deg]")
+    parser.add_argument("--turn-window", type=float, default=10.0, help="角を探す時間の幅 [s]")
+    parser.add_argument("--turn-after", type=float, default=15.0, help="角を抜けた後、取り違えを判定する時間 [s]")
+    parser.add_argument("--mispick-position", type=float, default=3.0,
+                        help="取り違えとみなす、抜けた後の位置誤差の中央値 [m]")
+    parser.add_argument("--mispick-yaw-deg", type=float, default=30.0,
+                        help="取り違えとみなす、抜けた後の yaw 誤差の中央値 [deg]")
+    parser.add_argument("--gnss-weak-sigma", type=float, default=1.0, help="GNSS が弱いとみなす σ [m]")
+    parser.add_argument("--gnss-stale-sec", type=float, default=3.0, help="GNSS が届いていないとみなす間隔 [s]")
     parser.add_argument("--map-frame", default="map")
     parser.add_argument("--odom-frame", default="odom")
     parser.add_argument("--base-frame", default="base_footprint")
@@ -491,15 +571,17 @@ def main() -> None:
         "smoothness": evaluate_smoothness(map_odom, as_array(data.odom_base, 4)),
         "ekf_vs_odom": evaluate_ekf_vs_odom(ekf, odom),
         "amcl": evaluate_amcl(amcl, est_times, est_poses),
-        "gps": {"count": data.gps_count},
+        "gps": {"count": len(data.gps)},
     }
 
     gt_nodes = load_ground_truth(args)
     gt_times = np.zeros(0)
     gt_pos_err = np.zeros(0)
     if gt_nodes is not None:
-        report["accuracy"], gt_times, gt_pos_err = evaluate_accuracy(
+        report["accuracy"], gt_times, gt_pos_err, gt_yaw_err = evaluate_accuracy(
             est_times, est_poses, gt_nodes, t0, args.window)
+        report["turns"] = evaluate_turns(gt_nodes, t_from, t_to, gt_times, gt_pos_err, gt_yaw_err, args)
+        report["gnss_weak"] = evaluate_gnss_weak(gt_times, gt_pos_err, as_array(data.gps, 2), args)
         if ekf.size:
             report["nees"] = evaluate_nees(ekf, gt_nodes)
 

@@ -145,3 +145,57 @@ def test_first_detection_delay():
     assert lm.first_detection_delay(t, s, 20.0, 50.0) == pytest.approx(3.0)
     assert lm.first_detection_delay(t, s, 30.0, 50.0) == pytest.approx(0.0)
     assert lm.first_detection_delay(t, np.zeros_like(s), 20.0, 50.0) is None
+
+
+def _straight_then_turn():
+    # 0-10 s は +x へ直進、10-14 s で左に 90 度曲がり、その後 +y へ直進する
+    rows = [[t, t, 0.0, 0.0] for t in np.arange(0.0, 10.0, 0.5)]
+    rows += [[10.0 + k, 10.0, 0.0, math.pi / 2 * k / 4] for k in range(1, 5)]
+    rows += [[14.0 + t, 10.0, t, math.pi / 2] for t in np.arange(0.5, 10.0, 0.5)]
+    return np.array(rows)
+
+
+def test_detect_turns_finds_one_left_turn():
+    turns = lm.detect_turns(_straight_then_turn(), min_turn_rad=math.radians(45), window_sec=5.0)
+    assert len(turns) == 1
+    start, end, dyaw = turns[0]
+    # 区間は、窓の中で向きが変わる範囲なので、実際の曲がり (10-14 s) より窓の幅だけ前後に広がりうる
+    assert 9.0 - 5.0 <= start <= 10.0
+    assert 14.0 <= end <= 14.0 + 5.0
+    assert dyaw == pytest.approx(math.pi / 2, abs=0.4)
+
+
+def test_detect_turns_ignores_straight_and_short_input():
+    straight = np.array([[t, t, 0.0, 0.01 * t] for t in np.arange(0.0, 20.0, 0.5)])
+    assert lm.detect_turns(straight, math.radians(45), 5.0) == []
+    assert lm.detect_turns(straight[:1], math.radians(45), 5.0) == []
+
+
+def test_turn_errors_marks_mispick_only_when_error_persists():
+    times = np.arange(0.0, 30.0, 0.1)
+    turns = [(10.0, 14.0, math.pi / 2)]
+    pos = np.full(times.shape, 0.2)
+    yaw = np.zeros(times.shape)
+    # 角の中だけ一瞬ずれても、抜けた後に戻れば取り違えではない
+    pos[(times > 11.0) & (times < 12.0)] = 5.0
+    ok = lm.turn_errors(times, pos, yaw, turns, after_sec=10.0, pos_threshold=2.0, yaw_threshold=0.5)
+    assert ok[0]["mispicked"] is False
+    assert ok[0]["deviated"] is True
+    assert ok[0]["max_position_m"] == pytest.approx(5.0)
+    # 抜けた後も yaw が 90 度ずれたまま
+    yaw[times >= 12.0] = math.pi / 2
+    bad = lm.turn_errors(times, pos, yaw, turns, after_sec=10.0, pos_threshold=2.0, yaw_threshold=0.5)
+    assert bad[0]["mispicked"] is True
+    # 抜けた後の記録が無ければ判定しない
+    none = lm.turn_errors(times, pos, yaw, [(40.0, 41.0, 1.0)], 10.0, 2.0, 0.5)
+    assert none[0]["mispicked"] is None
+    assert none[0]["deviated"] is None
+
+
+def test_gnss_weak_mask_by_sigma_and_staleness():
+    gps_t = np.array([1.0, 2.0, 3.0])
+    gps_sigma = np.array([0.3, 2.0, 0.3])
+    times = np.array([0.5, 1.5, 2.5, 3.5, 10.0])
+    weak = lm.gnss_weak_mask(times, gps_t, gps_sigma, sigma_threshold=1.0, stale_sec=3.0)
+    # 届く前・σ が大きい・古すぎるときは弱い
+    assert list(weak) == [True, False, True, False, True]

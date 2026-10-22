@@ -49,6 +49,7 @@ tools/
     ├── eval_localization_offline.py # 自己位置の監督を、再生評価の記録でオフライン評価する ([doc](./doc/localization_evaluation.md#監督のオフライン評価))
     ├── loc_dataset.py               # データセット定義 (datasets/localization/) の読込
     ├── compare_localization.py      # 変種ごとの評価結果の比較表
+    ├── analyze_particle_modes.py    # 再生評価の記録の AMCL の粒子を仮説に分け、仮説の数と正しい仮説の重みを時系列で出す
     ├── calib_wheel_odom.py          # ホイールオドメトリのスケール・バイアス・遅れを走行ログから推定
     ├── add_keepout_to_map.py        # 地図に進入禁止の長方形を足す (計画用地図にだけ進入禁止がある状況のシナリオ用)
     ├── run_slam_variant.sh          # パラメータ変種のオフラインSLAM実行〜評価までを一括実行
@@ -105,5 +106,6 @@ make test pkg=tools
 | `test_pose_graph.py` | `pose_graph.json` の読込・補間 |
 | `test_map_helpers.py` | 地図の読込と `map_list.txt` |
 | `test_compare_localization.py` | 変種の比較表 |
+| `test_particle_modes.py` | AMCL の粒子の仮説への分割 (`common/particle_modes.py`) |
 | `test_patch_params.py` | パラメータ YAML の書き換え |
 | `test_sim_gnss_transform.py` | シミュレータの `gnss_transform.yaml` の生成 |

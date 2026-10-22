@@ -77,10 +77,26 @@ def failure_rate(runs: List[Dict[str, Any]], threshold: float = FAILURE_P95_M) -
     return sum(1 for v in p95 if v > threshold) / len(p95)
 
 
+DEVIATED_LABEL = "角でずれた試行の割合"
+MISPICK_LABEL = "角で取り違えたままの試行の割合"
+
+
+def turn_rate(runs: List[Dict[str, Any]], key: str) -> Optional[float]:
+    """どれかの角で key (n_deviated か n_mispicked) が 1 以上だった試行の割合。判定できた試行が無ければ None。"""
+    judged = [run["turns"].get(key, 0) for run in runs
+              if run.get("turns", {}).get("n_judged", 0) > 0]
+    if not judged:
+        return None
+    return sum(1 for n in judged if n > 0) / len(judged)
+
+
 def summarize_variant(runs: List[Dict[str, Any]]) -> Dict[str, Optional[Tuple[float, float, float]]]:
     result: Dict[str, Optional[Tuple[float, float, float]]] = {}
     rate = failure_rate(runs)
     result[FAILURE_LABEL] = None if rate is None else (rate, rate, rate)
+    for label, key in ((DEVIATED_LABEL, "n_deviated"), (MISPICK_LABEL, "n_mispicked")):
+        rate = turn_rate(runs, key)
+        result[label] = None if rate is None else (rate, rate, rate)
     for label, path, _ in METRICS + CONSISTENCY_METRICS:
         values = [v for v in (get_path(run, path) for run in runs) if v is not None]
         result[label] = aggregate(values)
@@ -101,12 +117,15 @@ def render(variants: List[Tuple[str, int, Dict[str, Optional[Tuple[float, float,
     columns = METRICS + CONSISTENCY_METRICS
     lines = ["# 自己位置推定 変種の比較", "",
              "各セルは 試行の平均 (最小–最大)。位置・yaw・飛びは小さいほど良い。",
-             f"破綻した試行 = 位置誤差の p95 が {FAILURE_P95_M:g} m を超えた試行。", "",
-             f"| 変種 | 試行数 | {FAILURE_LABEL} | " + " | ".join(label for label, _, _ in columns) + " |",
-             "|---|---|---|" + "---|" * len(columns)]
+             f"破綻した試行 = 位置誤差の p95 が {FAILURE_P95_M:g} m を超えた試行。"
+             "角でずれた試行 = どれかの角で誤差が閾値を超えた試行。取り違えたまま = 角を抜けた後も"
+             "超えたままだった試行 (eval_localization.py)。", "",
+             f"| 変種 | 試行数 | {FAILURE_LABEL} | {DEVIATED_LABEL} | {MISPICK_LABEL} | " + " | ".join(label for label, _, _ in columns) + " |",
+             "|---|---|---|---|---|" + "---|" * len(columns)]
     for name, n_runs, summary in variants:
         cells = [format_cell(summary[label], digits) for label, _, digits in columns]
-        lines.append(f"| {name} | {n_runs} | {format_cell(summary[FAILURE_LABEL], 2)} | " + " | ".join(cells) + " |")
+        lines.append(f"| {name} | {n_runs} | {format_cell(summary[FAILURE_LABEL], 2)} | "
+                     f"{format_cell(summary[DEVIATED_LABEL], 2)} | {format_cell(summary[MISPICK_LABEL], 2)} | " + " | ".join(cells) + " |")
     lines += ["", f"基準 (先頭): `{variants[0][0]}`" if variants else ""]
     return "\n".join(lines) + "\n"
 
