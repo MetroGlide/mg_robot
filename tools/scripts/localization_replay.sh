@@ -52,7 +52,8 @@ fi
 BUILD_PKGS="${BUILD_PKGS:-slam_gnss_2d mg_msgs localization_supervisor_msgs localization_supervisor mg_localization_supervisor mg_bringup mg_navigation mg_drivers}"
 
 PLAY_TOPICS="/odom /scan_top_lidar /navpvt /gps/fix"
-RECORD_TOPICS="/tf /odom /odom/raw /ekf_global_odom /amcl_pose /amcl_pose_origin /odom/gps /localization/status /diagnostics"
+# /particle_cloud は、AMCL の仮説を見る解析と、記録を固定の入力にするオフラインの評価に使う
+RECORD_TOPICS="/tf /odom /odom/raw /ekf_global_odom /amcl_pose /amcl_pose_origin /particle_cloud /initialpose /odom/gps /localization/status /diagnostics"
 READY_TIMEOUT_SEC=180
 # 初期姿勢が AMCL に届かなかった試行をやり直す最大回数
 MAX_ATTEMPTS=2
