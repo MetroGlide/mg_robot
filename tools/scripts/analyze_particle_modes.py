@@ -5,12 +5,14 @@ analyze_particle_modes.py
 再生評価の記録 (run_localization_variant.sh の run_N/output) の /particle_cloud を、粒子の仮説 (峰) に分け、
 仮説の数・重みと、真値に近い仮説 (正しい仮説) の重みを時系列で出す。
 AMCL の粒子が角で割れて誤った方に収束するときに、正しい仮説がいつまで残っていたかを調べるのに使う。
+nav2 の AMCL はリサンプリングの後に粒子を出すので、仮説の重みは粒子の数の割合 (尤度の比ではない)。
 
 使い方:
   analyze_particle_modes.py <記録の bag> --gt-dir <SLAM 出力> [--start S --end E] [-o modes.csv]
 
 出力:
-  CSV (粒子の配信ごとの 1 行) と、同名の .md (仮説が割れた時間、正しい仮説が負けた・消えた時間の要約)
+  CSV (粒子の配信ごとの 1 行)、<CSV 名>_modes.csv (仮説ごとの 1 行)、
+  同名の .md (仮説が割れた時間、正しい仮説が負けた・消えた時間の要約)
 """
 
 import argparse
@@ -62,16 +64,21 @@ def analyze(clouds: List[Dict[str, Any]], gt_nodes: Optional[np.ndarray],
             args: argparse.Namespace) -> List[Dict[str, Any]]:
     rows = []
     for cloud in clouds:
-        modes = cluster_particles(cloud["poses"], cloud["weights"], args.cell, np.radians(args.cell_yaw_deg))
+        modes = cluster_particles(cloud["poses"], cloud["weights"], args.cell, np.radians(args.cell_yaw_deg),
+                                  np.radians(args.yaw_bin_deg), args.valley_ratio)
         major = [m for m in modes if m["weight"] >= args.min_weight]
         row: Dict[str, Any] = {"t": cloud["t"], "n_particles": int(cloud["poses"].shape[0]),
-                               "n_modes": len(major), "top_weight": major[0]["weight"] if major else 0.0}
+                               "n_modes": len(major), "top_weight": major[0]["weight"] if major else 0.0,
+                               "modes": modes}
         if gt_nodes is not None and modes:
             gt, valid = interpolate_nodes(gt_nodes, np.array([cloud["t"]]), stationary_dist=STATIONARY_DIST_M)
             if valid[0]:
                 means = np.array([m["mean"] for m in modes])
                 pos_err, yaw_err = lm.pose_errors(means, np.repeat(gt, len(modes), axis=0))
                 correct = (pos_err <= args.correct_position) & (np.abs(yaw_err) <= np.radians(args.correct_yaw_deg))
+                for mode, pe, ye, ok in zip(modes, pos_err, yaw_err, correct):
+                    mode.update({"position_err_m": float(pe), "yaw_err_deg": float(np.degrees(abs(ye))),
+                                 "correct": bool(ok)})
                 row.update({
                     "top_position_err_m": float(pos_err[0]),
                     "top_yaw_err_deg": float(np.degrees(abs(yaw_err[0]))),
@@ -79,6 +86,27 @@ def analyze(clouds: List[Dict[str, Any]], gt_nodes: Optional[np.ndarray],
                 })
         rows.append(row)
     return rows
+
+
+def write_modes_csv(path: str, rows: List[Dict[str, Any]], t0: float, min_weight: float) -> None:
+    """重みが min_weight 以上の仮説を、粒子の配信ごと・仮説ごとの行で書く。"""
+    fields = ["t", "rank", "weight", "n", "x", "y", "yaw_deg", "std_x_m", "std_y_m", "std_yaw_deg",
+              "position_err_m", "yaw_err_deg", "correct"]
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fields)
+        writer.writeheader()
+        for row in rows:
+            for rank, mode in enumerate(m for m in row["modes"] if m["weight"] >= min_weight):
+                std = np.sqrt(np.maximum(np.diag(mode["cov"]), 0.0))
+                writer.writerow({
+                    "t": f"{row['t'] - t0:.3f}", "rank": rank, "weight": f"{mode['weight']:.4f}", "n": mode["n"],
+                    "x": f"{mode['mean'][0]:.3f}", "y": f"{mode['mean'][1]:.3f}",
+                    "yaw_deg": f"{np.degrees(mode['mean'][2]):.1f}",
+                    "std_x_m": f"{std[0]:.3f}", "std_y_m": f"{std[1]:.3f}", "std_yaw_deg": f"{np.degrees(std[2]):.1f}",
+                    "position_err_m": f"{mode['position_err_m']:.3f}" if "position_err_m" in mode else "",
+                    "yaw_err_deg": f"{mode['yaw_err_deg']:.1f}" if "yaw_err_deg" in mode else "",
+                    "correct": mode.get("correct", ""),
+                })
 
 
 def spans(times: np.ndarray, flags: np.ndarray, max_gap: float) -> List[List[float]]:
@@ -97,7 +125,9 @@ def format_summary(rows: List[Dict[str, Any]], t0: float, args: argparse.Namespa
     gap = args.span_gap
     lines = ["# AMCL の粒子の仮説", "",
              f"- 粒子の配信: {len(rows)} 回 / 仮説とみなす重み {args.min_weight:g} 以上 / "
-             f"格子 {args.cell:g} m・{args.cell_yaw_deg:g} deg",
+             f"格子 {args.cell:g} m・{args.cell_yaw_deg:g} deg / 向きの谷 {args.valley_ratio:g} "
+             f"(区間 {args.yaw_bin_deg:g} deg)",
+             "- 重みは粒子の数の割合 (AMCL はリサンプリングの後に粒子を出す)",
              f"- 正しい仮説: 真値から {args.correct_position:g} m・{args.correct_yaw_deg:g} deg 以内", ""]
 
     def section(title: str, flags: np.ndarray) -> None:
@@ -127,9 +157,13 @@ def main() -> None:
     parser.add_argument("--end", type=float, default=0.0, help="解析の終了 (0 で末尾まで)")
     parser.add_argument("--cell", type=float, default=0.5, help="仮説を分ける格子の大きさ [m]")
     parser.add_argument("--cell-yaw-deg", type=float, default=15.0, help="仮説を分ける格子の向きの大きさ [deg]")
+    parser.add_argument("--yaw-bin-deg", type=float, default=10.0, help="向きの分布を見る区間の幅 [deg]")
+    parser.add_argument("--valley-ratio", type=float, default=0.5,
+                        help="向きの分布の谷が、低い方の山のこの割合未満なら別の仮説に分ける (0 で分けない)")
     parser.add_argument("--min-weight", type=float, default=0.05, help="仮説として数える重みの下限")
-    parser.add_argument("--correct-position", type=float, default=2.5, help="正しい仮説とみなす位置の差 [m]")
-    parser.add_argument("--correct-yaw-deg", type=float, default=20.0, help="正しい仮説とみなす向きの差 [deg]")
+    parser.add_argument("--correct-position", type=float, default=4.0,
+                        help="正しい仮説とみなす位置の差 [m] (真値と地図の局所的なずれより大きくする)")
+    parser.add_argument("--correct-yaw-deg", type=float, default=25.0, help="正しい仮説とみなす向きの差 [deg]")
     parser.add_argument("--span-gap", type=float, default=2.0, help="区間をつなぐ最大の間隔 [s]")
     parser.add_argument("-o", "--output", default=None, help="CSV の出力先 (既定: <bag>/../particle_modes.csv)")
     args = parser.parse_args()
@@ -150,13 +184,15 @@ def main() -> None:
         writer = csv.DictWriter(f, fieldnames=fields)
         writer.writeheader()
         for row in rows:
-            writer.writerow({**row, "t": f"{row['t'] - t0:.3f}"})
+            writer.writerow({**{k: row[k] for k in fields if k in row}, "t": f"{row['t'] - t0:.3f}"})
+    modes_path = os.path.splitext(output)[0] + "_modes.csv"
+    write_modes_csv(modes_path, rows, t0, args.min_weight)
     text = format_summary(rows, t0, args)
     md_path = os.path.splitext(output)[0] + ".md"
     with open(md_path, "w", encoding="utf-8") as f:
         f.write(text)
     print(text)
-    print(f"保存: {output}, {md_path}")
+    print(f"保存: {output}, {modes_path}, {md_path}")
 
 
 if __name__ == "__main__":

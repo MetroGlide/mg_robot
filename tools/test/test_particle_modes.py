@@ -31,6 +31,25 @@ def test_yaw_wraps_around_pi():
     assert abs(modes[0]["mean"][2]) == pytest.approx(math.pi, abs=0.02)
 
 
+def test_bimodal_yaw_fan_is_split_at_the_valley():
+    rng = np.random.default_rng(3)
+    # 向きに扇形に広がり、格子ではつながるが、向きの分布に 2 つの山がある群れ (角で割れかけた粒子)
+    poses = np.vstack([_blob(rng, [0.0, 0.0, math.radians(-110)], 600, sigma=(0.3, 0.3, math.radians(20))),
+                       _blob(rng, [0.0, 0.0, math.radians(-10)], 400, sigma=(0.3, 0.3, math.radians(20)))])
+    assert len(cluster_particles(poses, np.ones(1000), 0.5, math.radians(15), valley_ratio=0.0)) == 1
+    modes = cluster_particles(poses, np.ones(1000), 0.5, math.radians(15))
+    assert len(modes) == 2
+    assert modes[0]["weight"] == pytest.approx(0.6, abs=0.05)
+    assert math.degrees(modes[0]["mean"][2]) == pytest.approx(-110, abs=8)
+    assert math.degrees(modes[1]["mean"][2]) == pytest.approx(-10, abs=8)
+
+
+def test_unimodal_wide_fan_stays_one_mode():
+    rng = np.random.default_rng(4)
+    poses = _blob(rng, [0.0, 0.0, 0.0], 1000, sigma=(0.3, 0.3, math.radians(40)))
+    assert len(cluster_particles(poses, np.ones(1000), 0.5, math.radians(15))) == 1
+
+
 def test_weights_decide_order_and_empty_input():
     rng = np.random.default_rng(2)
     poses = np.vstack([_blob(rng, [0.0, 0.0, 0.0], 100), _blob(rng, [5.0, 0.0, 0.0], 100)])

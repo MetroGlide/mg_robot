@@ -113,6 +113,10 @@ docker run --rm -v $PWD:/app -v ~/ros2_data:/root/ros2_data mg_develop:latest \
 python3 tools/scripts/analyze_particle_modes.py <変種>/run_1/output --gt-dir <評価 bag の SLAM 出力>
 ```
 
+粒子は、位置と向きの格子の連結成分に分けたうえで、連結成分の中の向きの分布に深い谷があれば、さらに分けます (`--valley-ratio`)。角では粒子が向きに扇形に広がり、格子ではつながったまま 2 つの山になることがあるためです。仮説ごとの行 (重み・平均・標準偏差・真値からの誤差) は `<CSV 名>_modes.csv` に出ます。
+
+nav2 の AMCL はリサンプリングの後に粒子を出すので、仮説の重みは粒子の数の割合で、尤度の比ではありません。
+
 `--correct-position` は、真値と地図の座標のずれ (下記) より大きくします。
 
 ### スキャンを地図に重ねる
