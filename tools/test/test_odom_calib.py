@@ -139,6 +139,26 @@ def test_velocity_errors_are_small_after_fit_and_large_without():
     assert np.median(np.abs(w_raw)) > 0.005
 
 
+def test_fit_motion_alphas_recovers_nav2_diff_model_noise():
+    rng = np.random.default_rng(0)
+    alpha = {"alpha1": 0.05, "alpha2": 0.02, "alpha3": 0.03, "alpha4": 0.01}
+    odom_rel, gt_rel = [], []
+    for _ in range(4000):
+        # 1 回の更新ぶんの動きに、nav2 の差動モデルのノイズを足して真値にする
+        rot1, trans, rot2 = rng.uniform(-0.3, 0.3), rng.uniform(0.1, 0.4), rng.uniform(-0.3, 0.3)
+        sd_rot1 = math.sqrt(alpha["alpha1"] * rot1 ** 2 + alpha["alpha2"] * trans ** 2)
+        sd_rot2 = math.sqrt(alpha["alpha1"] * rot2 ** 2 + alpha["alpha2"] * trans ** 2)
+        sd_trans = math.sqrt(alpha["alpha3"] * trans ** 2 + alpha["alpha4"] * (rot1 ** 2 + rot2 ** 2))
+        g1 = rot1 + rng.normal(0, sd_rot1)
+        g2 = rot2 + rng.normal(0, sd_rot2)
+        gt_trans = trans + rng.normal(0, sd_trans)
+        odom_rel.append([trans * math.cos(rot1), trans * math.sin(rot1), rot1 + rot2])
+        gt_rel.append([gt_trans * math.cos(g1), gt_trans * math.sin(g1), g1 + g2])
+    fit = oc.fit_motion_alphas(np.array(odom_rel), np.array(gt_rel), trim=1.0)
+    for key, value in alpha.items():
+        assert fit[key] == pytest.approx(value, rel=0.25), key
+
+
 def test_steps_between_out_of_range_is_none():
     odom = np.array([[0.0, 0.0, 0.0, 0.0], [1.0, 1.0, 0.0, 0.0]])
     assert oc.steps_between(odom, -0.5, 0.5) is None

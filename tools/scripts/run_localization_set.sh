@@ -8,7 +8,8 @@
 #
 # オプション:
 #   --set <名前|パス>   評価セット (tools/datasets/localization/sets/<名前>.txt。既定 robustness)
-#   --jobs N            同時に実行する条件の数 (既定 4。1 条件で Docker コンテナ 1 つ)
+#   --jobs N            同時に実行する条件の数 (既定 4。1 条件で Docker コンテナ 1 つ。並列の変種も含めて 6 程度まで)
+#                       条件は、前の条件のビルドが終わってから順に起動する
 #   --only ラベル,...   指定したラベルの条件だけ実行する
 #
 # 残りの引数は、各条件の行の引数の後ろに付けて run_localization_variant.sh に渡す (例: --runs 3 --monitor supervisor)。
@@ -74,7 +75,13 @@ while read -r label dataset rest; do
   fi
   echo "[$NAME] $label: 開始 ($dataset)"
   run_one "$label" "$dataset" "${extra[@]}" &
+  pid=$!
   running=$((running + 1))
+  # 各コンテナは起動時にパッケージをビルドする。同時にビルドすると負荷で極端に遅くなるので、
+  # この条件のビルドが終わって再生が始まる (または条件が終わる) まで、次の条件を起動しない
+  while kill -0 "$pid" 2>/dev/null && ! grep -q 'run 1/' "$LOG_DIR/$label.log" 2>/dev/null; do
+    sleep 5
+  done
 done < "$SET_FILE"
 wait
 echo "[$NAME] すべての条件が終わりました。集計: python3 tools/scripts/compare_localization_set.py --set $SET $NAME"

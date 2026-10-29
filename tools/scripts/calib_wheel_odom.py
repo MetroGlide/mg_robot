@@ -89,6 +89,29 @@ def fit_at(steps_list, gt_rel, args) -> Tuple[np.ndarray, float]:
     return oc.fit_parameters(steps_list, gt_rel, yaw_weight=args.yaw_weight, huber_delta=args.huber)
 
 
+def amcl_alphas(
+    nodes: np.ndarray, odom: np.ndarray, theta: np.ndarray, time_offset: float, args: argparse.Namespace,
+) -> Dict[str, float]:
+    """真値の隣り合うノードの間ごとに、補正後のオドメトリと真値を比べて、差動モデルの alpha1〜4 を推定する。
+
+    ノードの間隔は AMCL の更新の間隔と同程度。真値を補間すると、旋回中は補間の誤差が回転量に比例して
+    alpha1 に乗るので、補間せずノードの時刻で区切る。
+    """
+    odom_rel, gt_rel = [], []
+    for k in range(nodes.shape[0] - 1):
+        t_a, t_b = nodes[k, 0], nodes[k + 1, 0]
+        if t_b - t_a > args.max_gap:
+            continue
+        if not (args.start <= t_a - nodes[0, 0] and (args.end <= 0.0 or t_b - nodes[0, 0] <= args.end)):
+            continue
+        steps = oc.steps_between(odom, t_a, t_b, time_offset)
+        if steps is None:
+            continue
+        odom_rel.append(oc.integrate(steps, *theta))
+        gt_rel.append(oc.gt_relative(nodes, oc.Window(k, k + 1, t_a, t_b)))
+    return oc.fit_motion_alphas(np.array(odom_rel), np.array(gt_rel))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="ホイールオドメトリのスケール・バイアス・遅れを走行ログから推定する")
     parser.add_argument("bag_path", help="生の /odom を含む rosbag")
@@ -102,6 +125,8 @@ def main() -> None:
                         metavar=("MIN", "MAX", "STEP"), help="時刻の遅れの探索範囲 [s]")
     parser.add_argument("--inflate", type=float, default=3.0,
                         help="速度の共分散の標準偏差にかける係数 (誤差が窓の間続く低周波成分なので余裕を見る)")
+    parser.add_argument("--alpha-margin", type=float, default=2.0,
+                        help="alpha の目安で、推定したノイズの標準偏差にかける係数 (alpha には 2 乗でかかる)")
     parser.add_argument("--start", type=float, default=0.0, help="使う区間の開始 (真値の先頭からの経過秒)")
     parser.add_argument("--end", type=float, default=0.0, help="使う区間の終了 (0 で最後まで)")
     parser.add_argument("-o", "--output", default=None, help="wheel_odom_corrector のパラメータ YAML の出力先")
@@ -140,6 +165,9 @@ def main() -> None:
             t_half, _ = fit_at(steps_list[sl], gt_rel[sl], args)
             halves.append((name, len(steps_list[sl]), t_half))
 
+    alphas = amcl_alphas(nodes, odom, theta, best_offset, args)
+    margin = args.alpha_margin ** 2
+
     before = window_errors(steps_list, gt_rel, [1.0, 1.0, 0.0], args.yaw_weight)
     after = window_errors(steps_list, gt_rel, theta, args.yaw_weight)
     path_length = float(sum(np.sum(np.hypot(s[:, 0], s[:, 1])) for s in steps_list))
@@ -170,6 +198,15 @@ def main() -> None:
         f"角速度 σ {sigma_w:.4f} rad/s (補正前 {np.sqrt(np.mean(w_err_raw ** 2)):.4f})",
         f"- 推奨: covariance_vx = **{cov_vx:.4f}**、covariance_vyaw = **{cov_vyaw:.4f}** "
         f"(σ を {args.inflate} 倍、下限 {MIN_SIGMA_V} m/s / {MIN_SIGMA_W} rad/s)", "",
+        "## AMCL の動きのノイズ (差動モデルの alpha) の目安", "",
+        f"真値の隣り合うノードの間 {int(alphas['n'])} 区間で、補正後のオドメトリを真値と比べた "
+        "(ノードの間隔は AMCL の更新の間隔と同程度)。目安は、推定した標準偏差を "
+        f"{args.alpha_margin} 倍した値 (区間ごとに独立なノイズとしての推定で、窓の間続く偏りは含まない)。", "",
+        "| | alpha1 (回転→回転) | alpha2 (並進→回転) | alpha3 (並進→並進) | alpha4 (回転→並進) |",
+        "|---|---|---|---|---|",
+        "| 推定 | " + " | ".join(f"{alphas[k]:.4f}" for k in ("alpha1", "alpha2", "alpha3", "alpha4")) + " |",
+        "| 目安 | " + " | ".join(
+            f"**{alphas[k] * margin:.4f}**" for k in ("alpha1", "alpha2", "alpha3", "alpha4")) + " |", "",
         "## 時刻の遅れの探索 (窓あたりの損失)", "",
         "| 遅れ[s] | " + " | ".join(f"{o:.2f}" for o, _ in curve) + " |",
         "|---|" + "---|" * len(curve),

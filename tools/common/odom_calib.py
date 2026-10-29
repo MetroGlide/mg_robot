@@ -10,7 +10,7 @@
 """
 
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -177,3 +177,58 @@ def window_velocity_errors(
         v_err[n] = (gt_list[n, 0] - pred[0]) / durations[n]
         w_err[n] = float(wrap_angle(gt_list[n, 2] - pred[2])) / durations[n]
     return v_err, w_err
+
+
+def diff_decompose(rel: np.ndarray) -> Tuple[float, float, float]:
+    """始点の座標系での相対移動 [dx, dy, dyaw] を、nav2 の差動モデルの (rot1, trans, rot2) に分ける。"""
+    trans = float(np.hypot(rel[0], rel[1]))
+    rot1 = 0.0 if trans < 0.01 else float(np.arctan2(rel[1], rel[0]))
+    return rot1, trans, float(wrap_angle(rel[2] - rot1))
+
+
+def rotation_noise(rot: float) -> float:
+    """nav2 の差動モデルが回転のノイズに使う大きさ (後退を前進と同じに扱う)。"""
+    return min(abs(float(wrap_angle(rot))), abs(float(wrap_angle(rot - np.pi))))
+
+
+def fit_motion_alphas(odom_rel: np.ndarray, gt_rel: np.ndarray, trim: float = 0.99) -> Dict[str, float]:
+    """区間ごとのオドメトリと真値の相対移動から、nav2 AMCL の差動モデルの alpha1〜4 を推定する。
+
+    nav2 のモデル: rot の標準偏差² = α1·rot² + α2·trans²、trans の標準偏差² = α3·trans² + α4·(rot1² + rot2²)。
+    rot1 と rot2 は独立に乱されるので、区間全体の向きの誤差 (rot1 + rot2) の分散は
+    α1·(rot1² + rot2²) + 2·α2·trans² になる。並進が小さい区間では rot1 の向きが定まらないため、
+    rot1 と rot2 を別々には比べず、区間全体の向きで比べる。
+    誤差の二乗を、これらの説明変数と定数項 (真値の補間の誤差を吸収する) に、非負の最小二乗で当てはめる。
+    trim: 誤差の二乗の大きい側からこの分位を超える区間を除く (真値やオドメトリの一時的な乱れ)。
+
+    Returns: {"alpha1".."alpha4", "n"}
+    """
+    rot_rows, rot_err, trans_rows, trans_err = [], [], [], []
+    for o, g in zip(odom_rel, gt_rel):
+        r1o, to, r2o = diff_decompose(o)
+        tg = float(np.hypot(g[0], g[1]))
+        n1, n2 = rotation_noise(r1o), rotation_noise(r2o)
+        rot_rows.append([n1 ** 2 + n2 ** 2, 2.0 * to ** 2, 1.0])
+        rot_err.append(float(wrap_angle(g[2] - o[2])) ** 2)
+        trans_rows.append([to ** 2, n1 ** 2 + n2 ** 2, 1.0])
+        trans_err.append((tg - to) ** 2)
+    a_rot = _nonnegative_fit(np.array(rot_rows), np.array(rot_err), trim)
+    a_trans = _nonnegative_fit(np.array(trans_rows), np.array(trans_err), trim)
+    return {"alpha1": a_rot[0], "alpha2": a_rot[1], "alpha3": a_trans[0], "alpha4": a_trans[1],
+            "n": float(len(trans_err))}
+
+
+def _nonnegative_fit(rows: np.ndarray, target: np.ndarray, trim: float) -> np.ndarray:
+    """係数を非負に制限した最小二乗 (負になった係数を 0 に固定して解き直す)。"""
+    keep = target <= np.quantile(target, trim)
+    rows, target = rows[keep], target[keep]
+    active = np.ones(rows.shape[1], dtype=bool)
+    coef = np.zeros(rows.shape[1])
+    for _ in range(rows.shape[1]):
+        sol, *_ = np.linalg.lstsq(rows[:, active], target, rcond=None)
+        coef[:] = 0.0
+        coef[active] = sol
+        if np.all(coef >= 0.0):
+            break
+        active &= coef > 0.0
+    return np.maximum(coef, 0.0)
