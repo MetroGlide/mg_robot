@@ -1,0 +1,11 @@
+# AMCL の向きが、オドメトリの示す動きから数秒かけてずれていくのを見る判定を足す (supervision.yaml に重ねる)。
+# 旋回中に AMCL の粒子が向きに広がり、誤った向きへ回りすぎる場合 (1 回の更新ごとのずれは amcl_jump の
+# しきい値より小さい) に、ずれ切る前に疑う。疑えば、基本設定と同じく AMCL を切り離し、推測航法などの候補で
+# 初期化し直す。window_sec は旋回 1 回分より短く、threshold_rad は正常なときの AMCL の向きの揺れより大きくする。
+# 位置は、窓の間の AMCL の補正 (GNSS が弱い場所での揺れ) で大きめに動くので、位置のしきい値は緩くする
+detectors:
+  amcl_yaw_drift:
+    type: pose_jump
+    sources: {pose: amcl, motion: odom}
+    params: {window_sec: 8.0, threshold_m: 3.0, threshold_rad: 0.35}
+    max_score: 10.0

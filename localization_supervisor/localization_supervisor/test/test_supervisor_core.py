@@ -131,6 +131,31 @@ def test_pose_jump_detects_only_new_jumps():
     assert detector.evaluate(store.snapshot(30.0)).status == Status.UNKNOWN
 
 
+def test_pose_jump_window_detects_slow_yaw_drift():
+    drive = Drive()
+    store = _store()
+    consecutive = _detector(PoseJump, 'jump', {'pose': 'amcl', 'motion': 'odom'})
+    windowed = _detector(PoseJump, 'drift', {'pose': 'amcl', 'motion': 'odom'}, window_sec=10.0, threshold_m=100.0)
+    results = {'jump': [], 'drift': []}
+    for i in range(25):
+        t = float(i)
+        store.add_motion('odom', drive.motion(t))
+        # 10 s 目から、1 標本あたり 0.05 rad (約 3 deg) ずつ向きが回りすぎていく (角での AMCL の回りすぎ)。
+        # ずれが育つと、誤った向きで進む分が位置の飛びにも出るので、直前との比較でも見つかるが、その手前までを見る
+        drift = 0.05 * max(0, i - 10)
+        store.add_pose('amcl', pose_sample(t, compose(drive.map(t), (0.0, 0.0, drift))))
+        snap = store.snapshot(t)
+        results['jump'].append(consecutive.evaluate(snap))
+        results['drift'].append(windowed.evaluate(snap))
+    assert all(r.status != Status.ANOMALY for r in results['jump'])
+    assert all(r.status != Status.ANOMALY for r in results['drift'][:15])
+    # 10 s の窓で 0.5 rad ずれた時点で、しきい値 (0.35 rad) を超える
+    assert results['drift'][20].status == Status.ANOMALY
+    assert results['drift'][20].values['jump_rad'] == pytest.approx(0.5, abs=1e-6)
+    # 最初の 10 s は比べる標本がない
+    assert all(r.status == Status.UNKNOWN for r in results['drift'][:10])
+
+
 def test_covariance_metrics():
     store = _store()
     store.add_pose('amcl', pose_sample(1.0, (0.0, 0.0, 0.0), std_xy=1.0))
