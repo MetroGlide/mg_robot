@@ -171,23 +171,51 @@ def test_detect_turns_ignores_straight_and_short_input():
     assert lm.detect_turns(straight[:1], math.radians(45), 5.0) == []
 
 
-def test_turn_errors_marks_mispick_only_when_error_persists():
-    times = np.arange(0.0, 30.0, 0.1)
+def test_deviation_episodes_uses_median_merges_gaps_and_marks_until_end():
+    times = np.arange(0.0, 60.0, 0.1)
+    pos = np.full(times.shape, 0.2)
+    yaw = np.zeros(times.shape)
+    # 一瞬の飛び (1 s の中の少数の標本) は、1 s ごとの中央値では数えない
+    pos[(times >= 5.0) & (times < 5.2)] = 50.0
+    # yaw のずれ 2 つ (間 5 s) は 1 つの事象にまとめる
+    yaw[(times >= 10.0) & (times < 15.0)] = 1.0
+    yaw[(times >= 20.0) & (times < 25.0)] = 1.0
+    # 最後までずれたまま
+    pos[times >= 50.0] = 8.0
+    episodes = lm.deviation_episodes(times, pos, yaw, 6.0, math.radians(30), merge_sec=10.0)
+    assert [(e["start_s"], e["end_s"]) for e in episodes] == [
+        pytest.approx((10.0, 25.0)), pytest.approx((50.0, 60.0))]
+    assert episodes[0]["max_yaw_rad"] == pytest.approx(1.0)
+    assert episodes[0]["until_end"] is False
+    assert episodes[1]["until_end"] is True
+    assert episodes[1]["max_position_m"] == pytest.approx(8.0)
+    # 間が merge_sec を超えれば分ける
+    assert len(lm.deviation_episodes(times, pos, yaw, 6.0, math.radians(30), merge_sec=2.0)) == 3
+    assert lm.deviation_episodes(times[:0], pos[:0], yaw[:0], 6.0, 0.5) == []
+
+
+def test_turn_errors_marks_mispick_only_when_deviation_persists():
+    times = np.arange(0.0, 40.0, 0.1)
     turns = [(10.0, 14.0, math.pi / 2)]
     pos = np.full(times.shape, 0.2)
     yaw = np.zeros(times.shape)
-    # 角の中だけ一瞬ずれても、抜けた後に戻れば取り違えではない
-    pos[(times > 11.0) & (times < 12.0)] = 5.0
-    ok = lm.turn_errors(times, pos, yaw, turns, after_sec=10.0, pos_threshold=2.0, yaw_threshold=0.5)
+    # 角の中だけずれても、抜けた後に戻れば取り違えではない
+    pos[(times >= 11.0) & (times < 13.0)] = 7.0
+    episodes = lm.deviation_episodes(times, pos, yaw, 6.0, 0.5)
+    ok = lm.turn_errors(times, pos, yaw, turns, 10.0, episodes)
     assert ok[0]["mispicked"] is False
     assert ok[0]["deviated"] is True
-    assert ok[0]["max_position_m"] == pytest.approx(5.0)
+    assert ok[0]["max_position_m"] == pytest.approx(7.0)
     # 抜けた後も yaw が 90 度ずれたまま
     yaw[times >= 12.0] = math.pi / 2
-    bad = lm.turn_errors(times, pos, yaw, turns, after_sec=10.0, pos_threshold=2.0, yaw_threshold=0.5)
+    episodes = lm.deviation_episodes(times, pos, yaw, 6.0, 0.5)
+    bad = lm.turn_errors(times, pos, yaw, turns, 10.0, episodes)
     assert bad[0]["mispicked"] is True
+    # 角から離れた事象は、その角のずれにしない
+    far = lm.turn_errors(times, pos, yaw, [(2.0, 4.0, 1.0)], 3.0, episodes)
+    assert far[0]["deviated"] is False
     # 抜けた後の記録が無ければ判定しない
-    none = lm.turn_errors(times, pos, yaw, [(40.0, 41.0, 1.0)], 10.0, 2.0, 0.5)
+    none = lm.turn_errors(times, pos, yaw, [(50.0, 51.0, 1.0)], 10.0, episodes)
     assert none[0]["mispicked"] is None
     assert none[0]["deviated"] is None
 

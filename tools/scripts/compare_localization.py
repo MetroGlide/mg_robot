@@ -3,7 +3,7 @@
 compare_localization.py
 
 再生評価 (run_localization_variant.sh) の出力を集め、変種ごとの主要な指標を比較表にする。
-各変種ディレクトリの run_*/eval_localization.json を読み、複数回の試行を 平均 (最小〜最大) にまとめる。
+各変種ディレクトリの run_*/eval_localization.json を読み、複数回の試行を 中央値 (最小〜最大) にまとめる。
 先頭に指定した変種を基準 (ベースライン) として表の先頭に置く。
 
 使い方:
@@ -28,7 +28,10 @@ METRICS: List[Tuple[str, Tuple[str, ...], int]] = [
     ("yaw の飛び p99[rad]", ("smoothness", "jump_yaw_rad", "p99"), 3),
     ("yaw の飛び 最大[rad]", ("smoothness", "jump_yaw_rad", "max"), 3),
     ("AMCL 遅延 中央値[s]", ("amcl", "latency_s", "median"), 3),
+    ("ずれた時間[s]", ("deviations", "total_sec"), 0),
     ("誤検知[回]", ("faults", "status", "false_detections"), 0),
+    ("止める要求[回]", ("hold", "count"), 0),
+    ("止める要求の時間[s]", ("hold", "total_sec"), 0),
 ]
 # NEES は 3 (自由度) に近いほど良いので、別の列として扱う
 CONSISTENCY_METRICS: List[Tuple[str, Tuple[str, ...], int]] = [
@@ -58,44 +61,34 @@ def load_runs(variant_dir: str) -> List[Dict[str, Any]]:
 
 
 def aggregate(values: List[float]) -> Optional[Tuple[float, float, float]]:
-    """(平均, 最小, 最大)。値が無ければ None。"""
+    """(中央値, 最小, 最大)。値が無ければ None。試行の 1 つが崩れても代表値が動かないよう中央値にする。"""
     if not values:
         return None
-    return sum(values) / len(values), min(values), max(values)
+    ordered = sorted(values)
+    mid = len(ordered) // 2
+    median = ordered[mid] if len(ordered) % 2 else (ordered[mid - 1] + ordered[mid]) / 2.0
+    return median, ordered[0], ordered[-1]
 
 
-FAILURE_LABEL = "破綻した試行の割合"
-# 位置誤差の p95 がこれを超えた試行を、破綻 (AMCL や EKF が大きくずれた) とみなす [m]
-FAILURE_P95_M = 3.0
+DEVIATED_LABEL = "ずれた試行の割合"
+UNRECOVERED_LABEL = "ずれたまま終わった試行の割合"
 
 
-def failure_rate(runs: List[Dict[str, Any]], threshold: float = FAILURE_P95_M) -> Optional[float]:
-    """位置誤差の p95 が threshold を超えた試行の割合。真値が無く判定できなければ None。"""
-    p95 = [v for v in (get_path(run, ("accuracy", "position_m", "p95")) for run in runs) if v is not None]
-    if not p95:
-        return None
-    return sum(1 for v in p95 if v > threshold) / len(p95)
+def deviation_rate(runs: List[Dict[str, Any]], key: str) -> Optional[float]:
+    """ずれた事象が key (n なら 1 件以上、until_end なら最後までずれたまま) だった試行の割合。
 
-
-DEVIATED_LABEL = "角でずれた試行の割合"
-MISPICK_LABEL = "角で取り違えたままの試行の割合"
-
-
-def turn_rate(runs: List[Dict[str, Any]], key: str) -> Optional[float]:
-    """どれかの角で key (n_deviated か n_mispicked) が 1 以上だった試行の割合。判定できた試行が無ければ None。"""
-    judged = [run["turns"].get(key, 0) for run in runs
-              if run.get("turns", {}).get("n_judged", 0) > 0]
+    真値が無く判定できた試行が無ければ None。
+    """
+    judged = [run["deviations"] for run in runs if "deviations" in run]
     if not judged:
         return None
-    return sum(1 for n in judged if n > 0) / len(judged)
+    return sum(1 for d in judged if d.get(key)) / len(judged)
 
 
 def summarize_variant(runs: List[Dict[str, Any]]) -> Dict[str, Optional[Tuple[float, float, float]]]:
     result: Dict[str, Optional[Tuple[float, float, float]]] = {}
-    rate = failure_rate(runs)
-    result[FAILURE_LABEL] = None if rate is None else (rate, rate, rate)
-    for label, key in ((DEVIATED_LABEL, "n_deviated"), (MISPICK_LABEL, "n_mispicked")):
-        rate = turn_rate(runs, key)
+    for label, key in ((DEVIATED_LABEL, "n"), (UNRECOVERED_LABEL, "until_end")):
+        rate = deviation_rate(runs, key)
         result[label] = None if rate is None else (rate, rate, rate)
     for label, path, _ in METRICS + CONSISTENCY_METRICS:
         values = [v for v in (get_path(run, path) for run in runs) if v is not None]
@@ -116,16 +109,16 @@ def render(variants: List[Tuple[str, int, Dict[str, Optional[Tuple[float, float,
     """変種ごとの集計を Markdown の表にする。"""
     columns = METRICS + CONSISTENCY_METRICS
     lines = ["# 自己位置推定 変種の比較", "",
-             "各セルは 試行の平均 (最小–最大)。位置・yaw・飛びは小さいほど良い。",
-             f"破綻した試行 = 位置誤差の p95 が {FAILURE_P95_M:g} m を超えた試行。"
-             "角でずれた試行 = どれかの角で誤差が閾値を超えた試行。取り違えたまま = 角を抜けた後も"
-             "超えたままだった試行 (eval_localization.py)。", "",
-             f"| 変種 | 試行数 | {FAILURE_LABEL} | {DEVIATED_LABEL} | {MISPICK_LABEL} | " + " | ".join(label for label, _, _ in columns) + " |",
-             "|---|---|---|---|---|" + "---|" * len(columns)]
+             "各セルは 試行の中央値 (最小–最大)。位置・yaw・飛びは小さいほど良い。",
+             "ずれた試行 = 推定が真値から大きくずれた事象が 1 件以上あった試行。ずれたまま終わった = "
+             "最後までずれたままだった試行 (eval_localization.py の deviations)。", "",
+             f"| 変種 | 試行数 | {DEVIATED_LABEL} | {UNRECOVERED_LABEL} | "
+             + " | ".join(label for label, _, _ in columns) + " |",
+             "|---|---|---|---|" + "---|" * len(columns)]
     for name, n_runs, summary in variants:
         cells = [format_cell(summary[label], digits) for label, _, digits in columns]
-        lines.append(f"| {name} | {n_runs} | {format_cell(summary[FAILURE_LABEL], 2)} | "
-                     f"{format_cell(summary[DEVIATED_LABEL], 2)} | {format_cell(summary[MISPICK_LABEL], 2)} | " + " | ".join(cells) + " |")
+        lines.append(f"| {name} | {n_runs} | {format_cell(summary[DEVIATED_LABEL], 2)} | "
+                     f"{format_cell(summary[UNRECOVERED_LABEL], 2)} | " + " | ".join(cells) + " |")
     lines += ["", f"基準 (先頭): `{variants[0][0]}`" if variants else ""]
     return "\n".join(lines) + "\n"
 

@@ -33,6 +33,8 @@ def test_get_path_handles_missing_and_non_numeric():
 def test_aggregate_and_format_cell():
     assert cl.aggregate([]) is None
     assert cl.aggregate([1.0, 3.0]) == (2.0, 1.0, 3.0)
+    # 試行の 1 つが崩れても、代表値 (中央値) は動かない
+    assert cl.aggregate([1.0, 100.0, 2.0]) == (2.0, 1.0, 100.0)
     assert cl.format_cell((2.0, 2.0, 2.0), 2) == "2.00"
     assert cl.format_cell((2.0, 1.0, 3.0), 1) == "2.0 (1.0–3.0)"
     assert cl.format_cell(None, 2) == "-"
@@ -55,16 +57,6 @@ def test_load_runs_and_render(tmp_path):
     assert "0.500 (0.400–0.600)" in text
 
 
-def test_failure_rate_counts_runs_with_large_p95():
-    runs = [_report(0.4), _report(9.0), _report(0.5), _report(4.0)]
-    assert cl.failure_rate(runs) == pytest.approx(0.5)
-    assert cl.failure_rate([]) is None
-    assert cl.failure_rate([{"smoothness": {}}]) is None
-    summary = cl.summarize_variant(runs)
-    assert summary[cl.FAILURE_LABEL][0] == pytest.approx(0.5)
-    assert "| 0.50 |" in cl.render([("v", 4, summary)])
-
-
 def test_dataset_definitions_are_valid():
     for name in ("same_run_043837", "map043837_eval051635", "map043837_eval051635_short",
                  "map043837_eval051635_movingstart", "map043837_eval051635_twist_glitch"):
@@ -76,14 +68,15 @@ def test_dataset_definitions_are_valid():
     assert load_dataset(resolve_dataset_path("map043837_eval051635"))["MAP_GT_DIR"] != ""
 
 
-def test_turn_rate_counts_runs_with_any_deviated_or_mispicked_turn():
-    runs = [{"turns": {"n_judged": 2, "n_deviated": 2, "n_mispicked": 1}},
-            {"turns": {"n_judged": 2, "n_deviated": 1, "n_mispicked": 0}},
-            {"turns": {"n_judged": 0, "n_deviated": 0, "n_mispicked": 0}},
+def test_deviation_rate_counts_runs_with_any_or_unrecovered_deviation():
+    runs = [{"deviations": {"n": 2, "until_end": True}},
+            {"deviations": {"n": 1, "until_end": False}},
+            {"deviations": {"n": 0, "until_end": False}},
             {}]
-    assert cl.turn_rate(runs, "n_mispicked") == pytest.approx(0.5)
-    assert cl.turn_rate(runs, "n_deviated") == pytest.approx(1.0)
-    assert cl.turn_rate([{}], "n_mispicked") is None
+    assert cl.deviation_rate(runs, "n") == pytest.approx(2 / 3)
+    assert cl.deviation_rate(runs, "until_end") == pytest.approx(1 / 3)
+    assert cl.deviation_rate([{}], "n") is None
     summary = cl.summarize_variant(runs)
-    assert summary[cl.MISPICK_LABEL][0] == pytest.approx(0.5)
-    assert summary[cl.DEVIATED_LABEL][0] == pytest.approx(1.0)
+    assert summary[cl.DEVIATED_LABEL][0] == pytest.approx(2 / 3)
+    assert summary[cl.UNRECOVERED_LABEL][0] == pytest.approx(1 / 3)
+    assert "| 0.67 | 0.33 |" in cl.render([("v", 4, summary)])

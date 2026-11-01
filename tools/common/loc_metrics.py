@@ -210,21 +210,62 @@ def detect_turns(nodes: np.ndarray, min_turn_rad: float, window_sec: float) -> L
     return turns
 
 
+def deviation_episodes(
+    times: np.ndarray,
+    pos_err: np.ndarray,
+    yaw_err: np.ndarray,
+    pos_threshold: float,
+    yaw_threshold: float,
+    bin_sec: float = 1.0,
+    merge_sec: float = 10.0,
+) -> List[Dict[str, Any]]:
+    """推定が真値から大きくずれた区間 (事象) を、時刻に沿って見つける。
+
+    bin_sec ごとの誤差の中央値が、位置 pos_threshold [m] か yaw yaw_threshold [rad] を超えた区間を
+    ずれとし、間が merge_sec 以下の区間はつなぐ。中央値にするのは、一瞬の飛びを数えないため。
+    真値の無い時間は判定しない (前後のずれた区間は、間が merge_sec 以下ならつながる)。
+
+    Returns:
+      事象ごとの start_s, end_s, max_position_m, max_yaw_rad (区間の中の中央値の最大)、
+      until_end (真値と比べられた最後の時刻までずれたまま)
+    """
+    if times.size == 0:
+        return []
+    bins = np.floor((times - times[0]) / bin_sec).astype(int)
+    keys, inverse = np.unique(bins, return_inverse=True)
+    bin_t = times[0] + keys * bin_sec
+    bin_pos = np.array([np.median(pos_err[inverse == i]) for i in range(keys.size)])
+    bin_yaw = np.array([np.median(np.abs(yaw_err[inverse == i])) for i in range(keys.size)])
+    bad = np.flatnonzero((bin_pos > pos_threshold) | (bin_yaw > yaw_threshold))
+    episodes: List[Dict[str, Any]] = []
+    if bad.size == 0:
+        return episodes
+    groups = np.split(bad, np.flatnonzero(np.diff(bin_t[bad]) > merge_sec + bin_sec) + 1)
+    for group in groups:
+        episodes.append({
+            "start_s": float(bin_t[group[0]]),
+            "end_s": float(bin_t[group[-1]] + bin_sec),
+            "max_position_m": float(bin_pos[group].max()),
+            "max_yaw_rad": float(bin_yaw[group].max()),
+            "until_end": bool(group[-1] == keys.size - 1),
+        })
+    return episodes
+
+
 def turn_errors(
     times: np.ndarray,
     pos_err: np.ndarray,
     yaw_err: np.ndarray,
     turns: List[Tuple[float, float, float]],
     after_sec: float,
-    pos_threshold: float,
-    yaw_threshold: float,
+    episodes: List[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
-    """角ごとに、角の中と抜けた後の誤差、ずれたか、取り違えたまま残ったかを返す。
+    """角ごとに、角の中と抜けた後の誤差と、ずれたか、取り違えたまま残ったかを返す。
 
-    deviated: 角の中から抜けた後 after_sec までに、誤差が一度でも位置 pos_threshold [m] か
-      yaw yaw_threshold [rad] を超えた (後で戻ったものも含む)
-    mispicked: 抜けた後の after_sec の間の誤差の中央値が、同じ閾値を超えた。一瞬の飛びではなく、
-      誤った姿勢に収束したまま残ったことを見るため中央値にする
+    判定は deviation_episodes の事象に従う (角は事象が起きた場所を示すだけ)。
+    deviated: 角の始まりから抜けた後 after_sec までに、事象が重なった (後で戻ったものも含む)
+    mispicked: その事象が、抜けた後 after_sec を過ぎても続いた (または最後までずれたまま)
+    抜けた後 after_sec の間に真値が無ければ、判定できない (None)。
     """
     results = []
     for start, end, dyaw in turns:
@@ -236,17 +277,14 @@ def turn_errors(
             entry["mispicked"] = None
             results.append(entry)
             continue
-        after_pos = float(np.median(pos_err[after]))
-        after_yaw = float(np.median(np.abs(yaw_err[after])))
-        max_pos = float(np.max(pos_err[during]))
-        max_yaw = float(np.max(np.abs(yaw_err[during])))
+        overlapping = [e for e in episodes if e["start_s"] < end + after_sec and e["end_s"] > start]
         entry.update({
-            "max_position_m": max_pos,
-            "max_yaw_rad": max_yaw,
-            "deviated": bool(max_pos > pos_threshold or max_yaw > yaw_threshold),
-            "after_position_m": after_pos,
-            "after_yaw_rad": after_yaw,
-            "mispicked": bool(after_pos > pos_threshold or after_yaw > yaw_threshold),
+            "max_position_m": float(np.max(pos_err[during])),
+            "max_yaw_rad": float(np.max(np.abs(yaw_err[during]))),
+            "after_position_m": float(np.median(pos_err[after])),
+            "after_yaw_rad": float(np.median(np.abs(yaw_err[after]))),
+            "deviated": bool(overlapping),
+            "mispicked": any(e["until_end"] or e["end_s"] > end + after_sec for e in overlapping),
         })
         results.append(entry)
     return results
