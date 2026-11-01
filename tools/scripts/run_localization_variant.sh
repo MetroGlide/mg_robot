@@ -15,6 +15,8 @@
 #   --profile <名前>         監督の設定に重ねるプロファイル (mg_localization_supervisor/config/supervision.yaml)
 #   --start S / --duration D 評価する区間 (データセットの値を上書き)
 #   --cpus N                 コンテナに使わせる CPU 数 (実機相当の負荷にしたいとき)
+#   --no-particles           AMCL の粒子 (/particle_cloud) を記録しない (記録の容量を抑える。仮説の解析や
+#                            記録を固定の入力にする評価に使わない試行で)
 #   --faults <yaml>          センサ入力に故障を注入する (tools/datasets/localization/faults/。復旧の評価用)
 #                            kidnap・amcl_drift は /initialpose を使うので、監督の external_reinit.topics を空にする
 #   --ekf-file / --nav2-file / --bridge-file / --odom-file / --supervisor-file <yaml>
@@ -65,6 +67,7 @@ BRIDGE_UPDATES=()
 ODOM_UPDATES=()
 SUPERVISOR_UPDATES=()
 FAULTS=""
+RECORD_PARTICLES="true"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -79,6 +82,7 @@ while [ $# -gt 0 ]; do
     --duration) DURATION_OVERRIDE="$2"; shift 2 ;;
     --cpus) CPUS="$2"; shift 2 ;;
     --faults) FAULTS="$2"; shift 2 ;;
+    --no-particles) RECORD_PARTICLES="false"; shift ;;
     --ekf-file) EKF_FILE="$2"; shift 2 ;;
     --nav2-file) AMCL_FILE="$2"; shift 2 ;;
     --bridge-file) BRIDGE_FILE="$2"; shift 2 ;;
@@ -155,7 +159,7 @@ DOCKER_ARGS=(run --rm --network host -e ROS_DOMAIN_ID="$DOMAIN_ID"
   -e GT_DIR="$GT_DIR" -e MAP_GT_DIR="$MAP_GT_DIR"
   -e VARIANT_DIR="/app/$VARIANT_REL" -e OUT_DIR="$OUT_DIR"
   -e RUNS="$RUNS" -e RATE="$RATE" -e START_OFFSET="$START_OFFSET" -e DURATION="$DURATION"
-  -e INIT_MODE="$INIT_MODE")
+  -e INIT_MODE="$INIT_MODE" -e RECORD_PARTICLES="$RECORD_PARTICLES")
 [ -n "$CPUS" ] && DOCKER_ARGS+=(--cpus "$CPUS")
 [ -n "$USE_INITIALIZER" ] && DOCKER_ARGS+=(-e USE_INITIALIZER="$USE_INITIALIZER")
 [ -n "$MONITOR" ] && DOCKER_ARGS+=(-e MONITOR="$MONITOR")

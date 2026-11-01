@@ -69,6 +69,7 @@ docker run --rm -v $PWD:/app -v ~/ros2_data:/root/ros2_data mg_develop:latest \
 | `--monitor none\|watchdog\|supervisor` | 自己位置の監視ノード。`--init` に応じて切り替わる (`gt` では `none`、`gnss` では `watchdog`) |
 | `--profile <名前>` | 監督の設定に重ねるプロファイル (`--monitor supervisor` のとき) |
 | `--faults <yaml>` | センサ入力に故障を注入して、復旧を評価する (`tools/datasets/localization/faults/`) |
+| `--no-particles` | AMCL の粒子 (`/particle_cloud`) を記録しない (記録の容量を抑える) |
 | `--start S` / `--duration D` | 評価する区間 (データセットの値を上書き) |
 | `--rate R` | 再生速度。処理が間に合わなくなるため実時間が基本 |
 | `--cpus N` | コンテナが使える CPU 数。開発 PC は実機より速いため、実機相当に絞って AMCL の遅延を見る |
@@ -109,7 +110,7 @@ docker run --rm -v $PWD:/app -v ~/ros2_data:/root/ros2_data mg_develop:latest \
 
 ### AMCL の粒子の仮説
 
-再生の記録には AMCL の粒子 (`/particle_cloud`) が入ります。`analyze_particle_modes.py` で、粒子を仮説 (峰) に分け、仮説が割れた時間と、真値に近い仮説 (正しい仮説) が負けた・消えた時間を出せます。角で誤った向きに収束するとき、正しい仮説がいつまで残っていたかを調べるのに使います。
+再生の記録には AMCL の粒子 (`/particle_cloud`) が入ります (`--no-particles` で外せます。記録の容量の大半を占めます)。`analyze_particle_modes.py` で、粒子を仮説 (峰) に分け、仮説が割れた時間と、真値に近い仮説 (正しい仮説) が負けた・消えた時間を出せます。角で誤った向きに収束するとき、正しい仮説がいつまで残っていたかを調べるのに使います。
 
 ```bash
 # コンテナ内で

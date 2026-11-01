@@ -27,6 +27,7 @@
 #   USE_INITIALIZER  GNSS から AMCL の初期姿勢を与えるノードを起動するか (既定: gt なら false、gnss なら true)
 #   MONITOR          自己位置の監視ノード none | watchdog | supervisor (既定: gt なら none、gnss なら watchdog)
 #   PROFILE          監督の設定に重ねるプロファイル (既定: 基本設定)
+#   RECORD_PARTICLES AMCL の粒子 (/particle_cloud) を記録するか (既定 true。記録の容量の大半を占める)
 #   BUILD_PKGS       起動前に増分ビルドするパッケージ
 # ROS の setup.bash は未定義の変数を参照するため、set -u は使わない
 set -eo pipefail
@@ -53,7 +54,8 @@ BUILD_PKGS="${BUILD_PKGS:-slam_gnss_2d mg_msgs localization_supervisor_msgs loca
 
 PLAY_TOPICS="/odom /scan_top_lidar /navpvt /gps/fix"
 # /particle_cloud は、AMCL の仮説を見る解析と、記録を固定の入力にするオフラインの評価に使う
-RECORD_TOPICS="/tf /odom /odom/raw /ekf_global_odom /amcl_pose /amcl_pose_origin /particle_cloud /initialpose /odom/gps /localization/status /diagnostics"
+RECORD_TOPICS="/tf /odom /odom/raw /ekf_global_odom /amcl_pose /amcl_pose_origin /initialpose /odom/gps /localization/status /diagnostics"
+[ "${RECORD_PARTICLES:-true}" = "true" ] && RECORD_TOPICS="$RECORD_TOPICS /particle_cloud"
 READY_TIMEOUT_SEC=180
 # 初期姿勢が AMCL に届かなかった試行をやり直す最大回数
 MAX_ATTEMPTS=2
