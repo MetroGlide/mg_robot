@@ -16,6 +16,7 @@
 #   --start S / --duration D 評価する区間 (データセットの値を上書き)
 #   --cpus N                 コンテナに使わせる CPU 数 (実機相当の負荷にしたいとき)
 #   --faults <yaml>          センサ入力に故障を注入する (tools/datasets/localization/faults/。復旧の評価用)
+#                            kidnap・amcl_drift は /initialpose を使うので、監督の external_reinit.topics を空にする
 #   --ekf-file / --nav2-file / --bridge-file / --odom-file / --supervisor-file <yaml>
 #                            パラメータファイルをリポジトリの既定ではなく、指定したファイルから複製する
 #                            (複数行のリストなど、1 行の書き換えでは変えられない変更に使う)
@@ -95,6 +96,12 @@ done
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
+
+# 故障の注入 (kidnap、amcl_drift) は /initialpose を使うので、監督が人による再初期化として受け入れないよう、
+# 外からの再初期化を見るトピックを空にする (sup.external_reinit.topics=... を渡せば、そちらが優先)
+if [ -n "$FAULTS" ]; then
+  SUPERVISOR_UPDATES=("external_reinit.topics=[]" "${SUPERVISOR_UPDATES[@]}")
+fi
 
 eval "$(python3 tools/scripts/loc_dataset.py "$DATASET")"
 [ -n "$START_OVERRIDE" ] && START_OFFSET="$START_OVERRIDE"

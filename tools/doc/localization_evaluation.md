@@ -135,6 +135,7 @@ python3 tools/scripts/plot_scan_on_map.py <評価 bag> --map <自己位置推定
 
 `--faults` で、再生中のセンサ入力に故障を注入して、検知と復旧を評価できます (`fault_injector.py`)。
 故障の定義は YAML で、時刻は再生開始からの経過秒です。
+kidnap と `amcl_drift` は `/initialpose` を使うので、監督が人による再初期化として受け入れないよう、`--faults` を指定すると監督の `external_reinit.topics` を空にします (`sup.external_reinit.topics=...` を渡せば、そちらが優先)。
 
 | 種類 | 内容 |
 | :--- | :--- |
@@ -211,6 +212,6 @@ develop コンテナで実行します (rosbag2_py を使うため)。出力は 
 
 - 検知の対象は姿勢をずらす故障だけです。標本が欠けるだけの故障の区間は、異常がない区間として誤検知を数えます。
 - 誤検知は「故障の区間の外で確認に移った回数」で、記録そのものが崩れていた試行 (`movingstart` の一部) では正しい検知も含みます。真値 (`eval_localization.json` の誤差) と突き合わせてください。
-- 記録済みの推定器の出力を使うので、監督が再初期化した後の挙動は `--apply-reset` の真似です。実際の推定器の収束は再生評価 (`run_localization_variant.sh`) で見ます。再生評価では、故障の注入が `/initialpose` を使うので、監督の `external_reinit.topics` を空にします (`sup.external_reinit.topics=[]`)。
+- 記録済みの推定器の出力を使うので、監督が再初期化した後の挙動は `--apply-reset` の真似です。実際の推定器の収束は再生評価 (`run_localization_variant.sh`) で見ます。
 - 記録に故障が含まれていた試行 (`--labels`) では、故障を注入する前の記録がないので、候補の誤差は真の姿勢と比べられません。
 - 判定の `allowance` は、正常な記録の `timeline.jsonl` の判定ごとの `score` の分布より上にします。
