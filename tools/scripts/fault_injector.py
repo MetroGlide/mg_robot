@@ -94,8 +94,10 @@ class FaultInjector(Node):
         return None
 
     def _on_odom(self, msg: Odometry) -> None:
-        if self._t0 is None:
-            self._t0 = self.get_clock().now().nanoseconds * 1e-9
+        # /clock を受け取る前の時計は 0 を返すので、それを起点にすると故障の時刻がずれる
+        now_ns = self.get_clock().now().nanoseconds
+        if self._t0 is None and now_ns > 0:
+            self._t0 = now_ns * 1e-9
         fault = self._active("odom_scale")
         scale_v = float(fault.params["v"]) if fault else 1.0
         scale_w = float(fault.params["w"]) if fault else 1.0
