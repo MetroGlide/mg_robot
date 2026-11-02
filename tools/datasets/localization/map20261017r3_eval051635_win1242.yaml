@@ -1,0 +1,14 @@
+# 評価セット focus_short の 1 つ。map20261017r3_eval051635 の区間のうち、元の区間の 330 s ごろに AMCL がずれる事象 (327-330 s は真値のノードが空き、330 s で真値が跳ぶ)の前後だけの短い区間。
+# 設定を反復して比べるときに再生の時間を短くする用。関門の判定は元の区間で行う。
+# 区間の途中から始めるので、初期姿勢は真値から与える (区間の始まりで真値が有効で、動いている時点)。
+name: map20261017r3_eval051635_win1242
+description: 反復用の短い区間 (地図 map_for20261017 の Region3、評価 051635 の 1242-1346 s)
+map:
+  localization_yaml: /root/ros2_data/map_for20261017/Region3_jikoichi.yaml
+  gnss_transform: /root/ros2_data/map_for20261017/gnss_transform.yaml
+  slam_dir: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_051635/20260921_2243
+eval:
+  bag: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_051635
+  slam_dir: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_051635/20260921_2243
+  start_offset: 1242.0
+  duration: 104.0

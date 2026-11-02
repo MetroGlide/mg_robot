@@ -1,0 +1,11 @@
+# 評価セット focus の事象の区間を、事象の前後だけに縮めた反復用の評価セット。設定を反復して比べるときに使い
+# (run_localization_queue.py の --min-runs と合わせて)、関門の判定は focus で行う。
+# 故障の注入と r4_043837 (ずれる事象の出ない区間) は、元の区間のまま含める。
+# 1 行に 1 条件: <ラベル> <データセット> [run_localization_variant.sh の引数 ...]
+r1_051635_w map20261017r1_eval051635_win270
+r3_051635_w160 map20261017r3_eval051635_win1032
+r3_051635_w330 map20261017r3_eval051635_win1242
+r5_043837_w map20261017r5_eval043837_win270
+r4_043837 map20261017r4_eval043837
+kidnap map043837_eval051635_short --faults tools/datasets/localization/faults/kidnap.yaml
+amcl_drift map043837_eval051635_short --faults tools/datasets/localization/faults/amcl_drift.yaml
