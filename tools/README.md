@@ -50,6 +50,7 @@ tools/
     ├── loc_dataset.py               # データセット定義 (datasets/localization/) の読込
     ├── compare_localization.py      # 変種ごとの評価結果の比較表
     ├── run_localization_set.sh      # 評価セット (datasets/localization/sets/) の全条件で変種を再生評価する
+    ├── run_localization_queue.py    # 複数の構成を、評価セットの全条件で試行単位の待ち行列にして再生評価する
     ├── compare_localization_set.py  # 評価セットの結果を、条件 × 名前の表にまとめる
     ├── analyze_particle_modes.py    # 再生評価の記録の AMCL の粒子を仮説に分け、仮説の数と正しい仮説の重みを時系列で出す
     ├── plot_scan_on_map.py          # スキャンを真値と推定の姿勢に置いて地図に重ねる (自己位置のずれの原因の調査)

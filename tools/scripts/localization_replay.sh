@@ -19,6 +19,8 @@
 #   MAP_GT_DIR       地図を作った走行の SLAM 出力 (別走行を評価するとき)
 #   FAULTS           故障定義 YAML (tools/datasets/localization/faults/)。センサ入力に故障を注入する
 #   RUNS             繰り返す回数 (既定 1)
+#   RUN_FROM         最初の試行の番号 (既定 1。RUN_FROM から RUNS までの試行を実行する。1 試行ずつ並列に回す用)
+#   SUMMARY          試行をまとめた summary.md を作るか (既定 true。1 試行ずつ回すときは、まとめる側で作る)
 #   RATE             再生速度 (既定 1.0。実時間での評価が基本)
 #   START_OFFSET     再生を始める bag 先頭からの経過秒 (既定 0)
 #   DURATION         再生する長さ [s] (既定 0 = 最後まで)
@@ -28,14 +30,27 @@
 #   MONITOR          自己位置の監視ノード none | watchdog | supervisor (既定: gt なら none、gnss なら watchdog)
 #   PROFILE          監督の設定に重ねるプロファイル (既定: 基本設定)
 #   RECORD_PARTICLES AMCL の粒子 (/particle_cloud) を記録するか (既定 true。記録の容量の大半を占める)
-#   BUILD_PKGS       起動前に増分ビルドするパッケージ
+#   BUILD_PKGS       起動前に増分ビルドするパッケージ (空ならビルドしない。ビルド済みのイメージで回す用)
+#   BUILD_ONLY       true ならビルドだけして終わる (ビルド済みのイメージを作る用。ほかの必須の変数は要らない)
 # ROS の setup.bash は未定義の変数を参照するため、set -u は使わない
 set -eo pipefail
+
+BUILD_PKGS="${BUILD_PKGS-slam_gnss_2d mg_msgs localization_supervisor_msgs localization_supervisor mg_localization_supervisor mg_bringup mg_navigation mg_drivers}"
+
+source /opt/ros/humble/setup.bash
+source /root/ros2_ws/install/setup.bash
+
+if [ "${BUILD_ONLY:-false}" = "true" ]; then
+  echo "[replay] パッケージを増分ビルドします: $BUILD_PKGS"
+  cd /root/ros2_ws && colcon build --symlink-install --packages-select $BUILD_PKGS
+  exit 0
+fi
 
 : "${BAG:?}" "${MAP_YAML:?}" "${GNSS_TRANSFORM:?}" "${GT_DIR:?}" "${VARIANT_DIR:?}" "${OUT_DIR:?}"
 MAP_GT_DIR="${MAP_GT_DIR:-}"
 FAULTS="${FAULTS:-}"
 RUNS="${RUNS:-1}"
+RUN_FROM="${RUN_FROM:-1}"
 RATE="${RATE:-1.0}"
 START_OFFSET="${START_OFFSET:-0}"
 DURATION="${DURATION:-0}"
@@ -50,7 +65,6 @@ else
   USE_INITIALIZER="${USE_INITIALIZER:-true}"
   MONITOR="${MONITOR:-watchdog}"
 fi
-BUILD_PKGS="${BUILD_PKGS:-slam_gnss_2d mg_msgs localization_supervisor_msgs localization_supervisor mg_localization_supervisor mg_bringup mg_navigation mg_drivers}"
 
 PLAY_TOPICS="/odom /scan_top_lidar /navpvt /gps/fix"
 # /particle_cloud は、AMCL の仮説を見る解析と、記録を固定の入力にするオフラインの評価に使う
@@ -60,14 +74,13 @@ READY_TIMEOUT_SEC=180
 # 初期姿勢が AMCL に届かなかった試行をやり直す最大回数
 MAX_ATTEMPTS=2
 
-source /opt/ros/humble/setup.bash
-source /root/ros2_ws/install/setup.bash
-
 mkdir -p "$OUT_DIR"
-echo "[replay] パッケージを増分ビルドします: $BUILD_PKGS"
-(cd /root/ros2_ws && colcon build --symlink-install --packages-select $BUILD_PKGS \
-  > "$OUT_DIR/build.log" 2>&1) || { echo "エラー: ビルドに失敗しました。$OUT_DIR/build.log を確認してください。" >&2; exit 1; }
-source /root/ros2_ws/install/setup.bash
+if [ -n "$BUILD_PKGS" ]; then
+  echo "[replay] パッケージを増分ビルドします: $BUILD_PKGS"
+  (cd /root/ros2_ws && colcon build --symlink-install --packages-select $BUILD_PKGS \
+    > "$OUT_DIR/build.log" 2>&1) || { echo "エラー: ビルドに失敗しました。$OUT_DIR/build.log を確認してください。" >&2; exit 1; }
+  source /root/ros2_ws/install/setup.bash
+fi
 
 # 実機や他のコンテナの ROS 通信と混ざらないようにする
 export ROS_LOCALHOST_ONLY=1
@@ -168,7 +181,7 @@ run_once() {
   if [ "$DURATION" != "0" ]; then
     local limit
     limit=$(python3 -c "print(int($DURATION / $RATE) + 5)")
-    play_cmd=(timeout -s INT "$limit" "${play_cmd[@]}")
+    play_cmd=(timeout -s INT -k 30 "$limit" "${play_cmd[@]}")
   fi
   setsid "${play_cmd[@]}" > "$run_dir/play.log" 2>&1 &
   PLAY_PID=$!
@@ -207,12 +220,13 @@ run_once() {
   [ -n "$MAP_GT_DIR" ] && eval_args+=(--map-gt-dir "$MAP_GT_DIR")
   [ -n "$FAULTS" ] && eval_args+=(--faults "$FAULTS")
   # この関数は until の条件として呼ばれ set -e が効かないため、失敗を明示的に検出する
-  python3 /app/tools/scripts/eval_localization.py "${eval_args[@]}" > "$run_dir/eval_localization.log" 2>&1 \
+  timeout -k 10 600 python3 /app/tools/scripts/eval_localization.py "${eval_args[@]}" \
+    > "$run_dir/eval_localization.log" 2>&1 \
     || { echo "エラー: 評価に失敗しました。$run_dir/eval_localization.log を確認してください。" >&2; exit 1; }
   echo "[replay] run $run/$RUNS: 評価を保存しました: $run_dir/eval_localization.md"
 }
 
-for run in $(seq 1 "$RUNS"); do
+for run in $(seq "$RUN_FROM" "$RUNS"); do
   attempt=1
   until run_once "$run"; do
     if [ "$attempt" -ge "$MAX_ATTEMPTS" ]; then
@@ -227,4 +241,6 @@ done
 # 使ったパラメータを残し、試行ごとの結果をまとめる
 mkdir -p "$OUT_DIR/params"
 cp "$VARIANT_DIR"/*.yaml "$OUT_DIR/params/"
-python3 /app/tools/scripts/compare_localization.py "$OUT_DIR" -o "$OUT_DIR/summary.md"
+if [ "${SUMMARY:-true}" = "true" ]; then
+  python3 /app/tools/scripts/compare_localization.py "$OUT_DIR" -o "$OUT_DIR/summary.md"
+fi

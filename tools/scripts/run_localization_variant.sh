@@ -7,6 +7,9 @@
 # オプション:
 #   --dataset <名前|パス>    データセット (tools/datasets/localization/。既定 map043837_eval051635_short)
 #   --runs N                 繰り返す回数 (既定 3。AMCL は乱数を使うため分布で比べる)
+#   --run-from K             試行 K から --runs までだけ実行し、summary.md は作らない
+#                            (1 試行ずつ並列に回す用。run_localization_queue.py が使う)
+#   --no-build               起動前にビルドしない (ビルド済みのイメージを IMAGE で渡すとき)
 #   --rate R                 再生速度 (既定 1.0。実時間で評価するのが基本)
 #   --init gt|gnss           初期姿勢 (既定 gt: 真値を与える / gnss: GNSS による初期化に任せる)
 #   --initializer true|false GNSS から AMCL の初期姿勢を与えるノード (既定: gt なら false、gnss なら true)
@@ -37,7 +40,7 @@
 #   tools/scripts/run_localization_variant.sh light_amcl amcl.max_particles=2000 amcl.max_beams=240 --cpus 4
 #
 # 出力: <評価 bag>/eval_loc/<データセット>/<名前>/{params/, run_N/, summary.md}
-# 環境変数: IMAGE (使う Docker イメージ。既定 mg_develop:latest)
+# 環境変数: IMAGE (使う Docker イメージ。既定 mg_develop:latest)、CONTAINER_NAME (コンテナの名前。外から止める用)
 set -euo pipefail
 
 usage() {
@@ -68,6 +71,8 @@ ODOM_UPDATES=()
 SUPERVISOR_UPDATES=()
 FAULTS=""
 RECORD_PARTICLES="true"
+RUN_FROM=""
+NO_BUILD="false"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -83,6 +88,8 @@ while [ $# -gt 0 ]; do
     --cpus) CPUS="$2"; shift 2 ;;
     --faults) FAULTS="$2"; shift 2 ;;
     --no-particles) RECORD_PARTICLES="false"; shift ;;
+    --run-from) RUN_FROM="$2"; shift 2 ;;
+    --no-build) NO_BUILD="true"; shift ;;
     --ekf-file) EKF_FILE="$2"; shift 2 ;;
     --nav2-file) AMCL_FILE="$2"; shift 2 ;;
     --bridge-file) BRIDGE_FILE="$2"; shift 2 ;;
@@ -119,7 +126,8 @@ if [ "$INIT_MODE" = "gt" ]; then
 fi
 
 # 変種のパラメータファイルを、リポジトリの値から複製して書き換える
-VARIANT_REL="tools/data/variants/loc_${NAME}"
+# 1 試行ずつ並列に回すときは、同じ変種の試行どうしでファイルを書き換え合わないよう、試行ごとに分ける
+VARIANT_REL="tools/data/variants/loc_${NAME}${RUN_FROM:+/run_$RUN_FROM}"
 mkdir -p "$VARIANT_REL"
 patch() {
   # $1: 元ファイル, $2: 出力ファイル名, 以降: node:key=value
@@ -161,6 +169,9 @@ DOCKER_ARGS=(run --rm --network host -e ROS_DOMAIN_ID="$DOMAIN_ID"
   -e RUNS="$RUNS" -e RATE="$RATE" -e START_OFFSET="$START_OFFSET" -e DURATION="$DURATION"
   -e INIT_MODE="$INIT_MODE" -e RECORD_PARTICLES="$RECORD_PARTICLES")
 [ -n "$CPUS" ] && DOCKER_ARGS+=(--cpus "$CPUS")
+[ -n "${CONTAINER_NAME:-}" ] && DOCKER_ARGS+=(--name "$CONTAINER_NAME")
+[ -n "$RUN_FROM" ] && DOCKER_ARGS+=(-e RUN_FROM="$RUN_FROM" -e SUMMARY=false)
+[ "$NO_BUILD" = "true" ] && DOCKER_ARGS+=(-e BUILD_PKGS=)
 [ -n "$USE_INITIALIZER" ] && DOCKER_ARGS+=(-e USE_INITIALIZER="$USE_INITIALIZER")
 [ -n "$MONITOR" ] && DOCKER_ARGS+=(-e MONITOR="$MONITOR")
 [ -n "$PROFILE" ] && DOCKER_ARGS+=(-e PROFILE="$PROFILE")
