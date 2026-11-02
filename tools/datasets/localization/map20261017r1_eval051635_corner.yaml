@@ -6,7 +6,7 @@
 # 評価する走行の SLAM 出力とアンカーが同じで回転も 0 (どちらも地図の座標 = UTM - アンカー) なので、
 # 真値の座標をそのまま使えるよう、slam_dir には評価する走行の SLAM 出力を書く。
 # ただし地図は切り貼りなので、場所によって真値と地図の座標が局所的にずれる (角の手前で約 1.5 m)。
-# 取り違えは位置ではなく主に向きで判定する (eval_localization.py の --mispick-position をそのずれより大きく)。
+# ずれは位置ではなく主に向きで判定する (eval_localization.py の --deviation-position をそのずれより大きく)。
 name: map20261017r1_eval051635_corner
 description: 角での取り違えの評価 (地図 map_for20261017 の Region1、評価 051635 の 0-400 s)
 map:
