@@ -213,7 +213,10 @@ def main() -> None:
             job.log.close()
             if status != 0:
                 if job.tries <= args.retries:
-                    print(f"[queue] 失敗したのでやり直します: {job.variant} run {job.run}", flush=True)
+                    # やり直しでログが上書きされないよう、失敗した回のログを残す
+                    kept = job.log.name.replace(".log", f"_try{job.tries}.log")
+                    os.replace(job.log.name, kept)
+                    print(f"[queue] 失敗したのでやり直します: {job.variant} run {job.run} ({kept})", flush=True)
                     pending.insert(0, job)
                 else:
                     print(f"[queue] 失敗: {job.variant} run {job.run} ({job.log.name})", flush=True)
