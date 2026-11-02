@@ -116,10 +116,11 @@ wait_ready() {
   return 1
 }
 
-# 1 回分の試行。初期姿勢が AMCL に届かず、試行が無効になったときは 1 を返す。
+# 1 回分の試行。真値の初期姿勢を送れないか AMCL に届かず、試行が無効になったときは 1 を返す。
 run_once() {
   local run="$1"
   local run_dir="$OUT_DIR/run_$run"
+  local init_status=0
   rm -rf "$run_dir"
   mkdir -p "$run_dir"
   echo "[replay] run $run/$RUNS: スタックを起動します"
@@ -175,8 +176,10 @@ run_once() {
   if [ "$INIT_MODE" = "gt" ]; then
     local init_args=(--gt-dir "$GT_DIR")
     [ -n "$MAP_GT_DIR" ] && init_args+=(--map-gt-dir "$MAP_GT_DIR")
-    timeout 120 python3 /app/tools/scripts/loc_init_pose.py "${init_args[@]}" \
+    # SIGTERM で終わらないことがあるので、猶予の後に強制終了する
+    timeout -k 10 120 python3 /app/tools/scripts/loc_init_pose.py "${init_args[@]}" \
       2>&1 | tee "$run_dir/init_pose.log"
+    init_status="${PIPESTATUS[0]}"
   fi
 
   # 再生の終了を待つ (グループごと起動したので、pid の終了で判定する)
@@ -189,8 +192,10 @@ run_once() {
   stop_group "$LAUNCH_PID"; LAUNCH_PID=""
 
   # AMCL は初期姿勢を受け取るたびに "Setting pose (<スタンプ>)" を出す。AMCL 自身の初期値のスタンプは 0
-  if [ "$INIT_MODE" = "gt" ] && ! grep -qE "Setting pose \([1-9]" "$run_dir/launch.log"; then
-    echo "[replay] run $run/$RUNS: 初期姿勢が AMCL に届きませんでした (この試行は無効)" >&2
+  # 監督が自分で初期化しても AMCL には姿勢が届くので、真値の初期姿勢を送れたかも見る
+  if [ "$INIT_MODE" = "gt" ] && { [ "$init_status" != "0" ] \
+       || ! grep -qE "Setting pose \([1-9]" "$run_dir/launch.log"; }; then
+    echo "[replay] run $run/$RUNS: 真値の初期姿勢を送れなかったか、AMCL に届きませんでした (この試行は無効)" >&2
     return 1
   fi
 
