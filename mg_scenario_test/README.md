@@ -26,6 +26,7 @@ make scenario-test SCENARIO=nav_basic_goal GUI=1    # Gazebo の GUI を表示 (
 make scenario-test-all TIER=smoke                   # 変更のたびに実行する短い確認 (約 6 分)
 make scenario-test-all                              # 回帰テスト全件 (約 20 分)
 make scenario-test-all REPEAT=3 TIER=smoke          # 繰り返して安定性を見る
+make scenario-test-all TIER=smoke LOCALIZATION_PRESET=robust  # 自己位置推定のプリセットを重ねたスタックで実行
 ```
 
 | ターゲット | 内容 |

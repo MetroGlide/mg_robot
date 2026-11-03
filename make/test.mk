@@ -36,14 +36,17 @@ _scenario_results = --results-dir /root/ros2_data/scenario_results/$$(date +%Y%m
 _scenario_domain_id := $(call env_value,SCENARIO_ROS_DOMAIN_ID)
 _remote_env = $(if $(ROBOT),-e ROS_DOMAIN_ID=$(or $(_scenario_domain_id),42) -e CYCLONEDDS_URI=file:///app/docker/cyclonedds/remote.xml -e MG_REMOTE_PEER=$(ROBOT),)
 _remote_arg = $(if $(ROBOT),--remote-stack http://$(ROBOT):8001)
-_scenario_run = $(COMPOSE) run --rm $(_remote_env) -e SCENARIO_ARGS
+# LOCALIZATION_PRESET=<名前> を指定すると、.env の値に代えて、自己位置推定のプリセットを重ねたスタックで実行する
+# (ROBOT 指定時は実機PCの .env が使われる)
+_preset_env = $(if $(LOCALIZATION_PRESET),-e LOCALIZATION_PRESET=$(LOCALIZATION_PRESET),)
+_scenario_run = $(COMPOSE) run --rm $(_remote_env) $(_preset_env) -e SCENARIO_ARGS
 
 # シミュレータ・ナビゲーションごと起動して 1 本実行する (既定はヘッドレス)。
 #   SCENARIO=<名前|パス>  必須。regression/・examples/ 配下のシナリオ名 (拡張子なし)、またはコンテナ内のパス
 #   GUI=1                 シミュレータの GUI を表示する
 #   PROFILE=<名前>        プロファイル (例: mg01)
 #   ROBOT=<実機PCのIP>    ナビゲーションスタックを実機PCで実行する
-scenario-test: ## シナリオを 1 本実行 [SCENARIO=<名前> GUI PROFILE ROBOT]
+scenario-test: ## シナリオを 1 本実行 [SCENARIO=<名前> GUI PROFILE ROBOT LOCALIZATION_PRESET]
 	$(_scenario_run)="run $(SCENARIO) $(_scenario_dirs) $(_scenario_results) $(_remote_arg) $(if $(GUI),--gui) $(if $(PROFILE),--profile $(PROFILE))" scenario-test
 
 # 回帰テスト (scenarios/regression) を、1 本ごとにスタックを起動し直して実行する。
@@ -53,7 +56,7 @@ scenario-test: ## シナリオを 1 本実行 [SCENARIO=<名前> GUI PROFILE ROB
 #   EXAMPLES=1       examples/ も含める
 #   KNOWN=1          known_issue タグ (既知の問題で失敗するシナリオ) も含める (既定は除外)
 #   GUI=1 / PROFILE=<名前> / ROBOT=<実機PCのIP>  scenario-test と同じ
-scenario-test-all: ## 回帰テストを一括実行 [TIER TAGS REPEAT EXAMPLES KNOWN GUI PROFILE ROBOT]
+scenario-test-all: ## 回帰テストを一括実行 [TIER TAGS REPEAT EXAMPLES KNOWN GUI PROFILE ROBOT LOCALIZATION_PRESET]
 	$(_scenario_run)="run-all $(_scenario_dir)/regression $(if $(EXAMPLES),$(_scenario_dir)/examples) $(_scenario_results) $(_remote_arg) $(if $(KNOWN),,--exclude-tags known_issue) $(if $(filter smoke,$(TIER)),--tags smoke) $(if $(TAGS),--tags $(TAGS)) $(if $(REPEAT),--repeat $(REPEAT)) $(if $(GUI),--gui) $(if $(PROFILE),--profile $(PROFILE))" scenario-test
 
 # make scenario-env の起動が前提。シミュレータを起動し直さずに繰り返し実行する。
