@@ -5,8 +5,9 @@ from typing import List
 
 import numpy as np
 
+from ..geometry import separated
 from ..interfaces import (
-    Candidate, CandidateGenerator, ParamSpec, RecoveryContext, SearchWindow, SourceKind)
+    Candidate, CandidateGenerator, ParamSpec, PoseSample, RecoveryContext, SearchWindow, SourceKind)
 from ..matcher.correlative import window_size
 from .common import base_points, grow_covariance, predict_from_anchor
 
@@ -52,6 +53,53 @@ class PoseSource(CandidateGenerator):
         cov[2, 2] = min(cov[2, 2], p['yaw_std_rad'] ** 2) if cov[2, 2] > 0.0 else p['yaw_std_rad'] ** 2
         self.status = 'ok'
         return [Candidate(sample.pose, cov, self.name)]
+
+
+class HypothesisModes(CandidateGenerator):
+    """姿勢の仮説の集合 (推定器の粒子の峰など) から、重みの大きい順に、互いに離れた仮説を最大 max_candidates 個、
+    候補にする。
+
+    推定器が誤った仮説に収束した後も、正しい仮説が少ない重みで残っていれば、その姿勢に戻せる。最も重い仮説
+    (推定器が今選んでいる姿勢に近い) も候補に入れ、どれを選ぶかは評価に任せる。仮説の時刻から今までの動きを
+    足し、共分散には下限をかける (粒子の群れは小さく固まっていることがある)。
+    """
+    SOURCES = {'hypotheses': SourceKind.HYPOTHESES}
+    PARAMS = {
+        'max_candidates': ParamSpec(int, 3),
+        'min_weight': ParamSpec(float, 0.05, 'これより軽い仮説は候補にしない'),
+        'separation_m': ParamSpec(float, 1.0),
+        'separation_rad': ParamSpec(float, 0.5),
+        'max_age_sec': ParamSpec(float, 3.0),
+        'min_std_m': ParamSpec(float, 0.3),
+        'min_std_yaw_rad': ParamSpec(float, 0.1),
+    }
+
+    def generate(self, context: RecoveryContext) -> List[Candidate]:
+        p = self.params
+        snapshot = context.snapshot
+        sample = snapshot.hypotheses(self.sources['hypotheses'], p['max_age_sec'])
+        if sample is None or not sample.hypotheses:
+            self.status = 'no_recent_sample'
+            return []
+        chosen = []
+        for hypothesis in sample.hypotheses:
+            if len(chosen) >= p['max_candidates'] or hypothesis.weight < p['min_weight']:
+                break
+            if all(separated(hypothesis.pose, other.pose, p['separation_m'], p['separation_rad']) for other in chosen):
+                chosen.append(hypothesis)
+        candidates = []
+        for rank, hypothesis in enumerate(chosen):
+            aligned = snapshot.align(PoseSample(sample.stamp, hypothesis.pose, hypothesis.cov))
+            if aligned is None:
+                continue
+            cov = np.array(aligned.cov, dtype=float, copy=True)
+            cov[0, 0] = max(cov[0, 0], p['min_std_m'] ** 2)
+            cov[1, 1] = max(cov[1, 1], p['min_std_m'] ** 2)
+            cov[2, 2] = max(cov[2, 2], p['min_std_yaw_rad'] ** 2)
+            candidates.append(Candidate(aligned.pose, cov, self.name,
+                                        info={'weight': hypothesis.weight, 'rank': float(rank)}))
+        self.status = 'ok' if candidates else ('cannot_align' if chosen else 'no_hypothesis')
+        return candidates
 
 
 class AnchorMotion(CandidateGenerator):

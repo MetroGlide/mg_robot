@@ -31,6 +31,7 @@ _ROS2_MODULES = [
     "mg_msgs",
     "mg_msgs.msg",
     "nav2_msgs",
+    "nav2_msgs.msg",
     "nav2_msgs.srv",
 ]
 

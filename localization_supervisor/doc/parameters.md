@@ -34,12 +34,13 @@
 ```yaml
 sources:
   <名前>:
-    kind: pose | motion | reference
+    kind: pose | motion | reference | hypotheses
     derived_from: [<名前>, ...]   # 融合の結果なら、元の情報源 (元は独立の情報源に限る)
     input: {type: <アダプタ>, ...} # 入力のアダプタとその引数 (plugins.md の入力のアダプタ)
 ```
 
 `derived_from` を持つ情報源は、疑わしい情報源の特定 (`blame`) に使わず、出力が汚れているか (`contaminated`) の判定に使う ([design.md](./design.md#疑わしい情報源の切り分け-blamecontaminated))。
+`reference` と `hypotheses` (推定器の粒子のような、姿勢の仮説の集合) も `blame` の対象にしない。仮説の判定の疑いは、その推定器の姿勢の情報源にかける。
 
 ## timeline
 

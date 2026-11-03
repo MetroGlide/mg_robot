@@ -116,7 +116,7 @@ class SupervisorConfig:
 
     def independent_sources(self) -> List[str]:
         return [name for name, source in self.sources.items()
-                if not source.derived_from and source.kind != SourceKind.REFERENCE]
+                if not source.derived_from and source.kind in (SourceKind.POSE, SourceKind.MOTION)]
 
     def derived_sources(self) -> Dict[str, List[str]]:
         return {name: list(source.derived_from) for name, source in self.sources.items() if source.derived_from}

@@ -32,6 +32,8 @@ _ROS2_MODULES = [
     "geometry_msgs.msg",
     "nav_msgs",
     "nav_msgs.msg",
+    "nav2_msgs",
+    "nav2_msgs.msg",
     "sensor_msgs",
     "sensor_msgs.msg",
     "std_msgs",

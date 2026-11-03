@@ -24,7 +24,7 @@ from localization_supervisor.core.interfaces import Detector, Evidence, ParamSpe
 
 class SpeedLimitCheck(Detector):
     SOURCES = {'pose': SourceKind.POSE}      # 引数の名前と、求める情報源の種類
-    SUBJECTS = ('pose',)                     # 異常のとき疑いをかける引数 (既定は reference 以外のすべて)
+    SUBJECTS = ('pose',)                     # 異常のとき疑いをかける引数 (既定は pose と motion のすべて)
     PARAMS = {'threshold': ParamSpec(float, None, '...')}
 
     def evaluate(self, snapshot) -> Evidence:
@@ -54,6 +54,8 @@ class SpeedLimitCheck(Detector):
 | `pose_history(name)` | 姿勢の標本の履歴 |
 | `motion_at(name, stamp)` | 動きの情報源の、その時刻の姿勢 (補間) |
 | `reference(name)` | 地図 (`occupancy`)・最新のスキャン (`scan`)・距離場のキャッシュ (`fields`) |
+| `hypotheses(name, max_age)` | 最新の仮説の集合 (`HypothesisSample`: 時刻と、重み・姿勢・共分散の `Hypothesis` の列。重みの大きい順、和は 1。時刻はそろえない) |
+| `align(sample, stamp)` | 姿勢の標本を `stamp` (既定は周期の時刻) に、動きの情報源で移す。移せなければ `None` |
 | `cached(key, compute)` | 同じ周期の中で計算を使い回す |
 
 ### 標準の判定
@@ -65,6 +67,7 @@ class SpeedLimitCheck(Detector):
 | `covariance` | `pose` | 自己申告の共分散の大きさ (`trace_xy` / `determinant_xy` / `max_eigenvalue_xy`) |
 | `scan_map` | `pose`, `reference` (疑うのは `pose`) | その姿勢でスキャンを地図に重ねた一致率を、正常なときの中央値と比べる。姿勢の周りでずらしたほうが合う量 (利得) も見られる |
 | `submap_map` | `pose`, `motion`, `reference` (疑うのは `pose`) | 直近の一定距離のスキャンを、動きに基づいて 1 枚の局所地図にまとめ (キーフレームに間引く)、その姿勢で地図に重ねる。一致率と、位置・向きをずらしたほうが合う量 (利得) を見る。照合は `interval_sec` ごとで、間の周期と、走行距離が足りない間は判定しない |
+| `hypothesis_split` | `pose`, `hypotheses` (疑うのは `pose`) | 推定器の仮説が割れているか。最も重い仮説から位置か向きで離れた仮説のうち、最も重いものの重みを見る。割れていても推定器が正しい方を選んでいることが多く、証拠としては弱い |
 
 推定器が同じスキャンと地図で推定しているとき、その推定器の姿勢でのスキャンの判定は推定器と独立ではない (誤った場所に収束していても一致率は良く見えやすい)。総合での重みは、この独立性を考えて決める ([design.md](./design.md#判定と-evidence))。
 スキャンの判定の値の大きさは、地図とセンサと環境で変わる。正しい姿勢での値の分布を、オフライン評価 (重み 0 で記録だけする) で確かめてから有効にする。
@@ -85,6 +88,7 @@ class SpeedLimitCheck(Detector):
 | `pose_source` | `pose` | 指定した情報源の今の姿勢。位置の標準偏差が上限以下の標本が指定の回数続くまで待つ。向きを持たない測位の向きの不確かさは、パラメータで与える |
 | `anchor_motion` | `motion` | 疑いが始まる前のアンカーに、その後の動きを足した姿勢 (推測航法)。動いた距離に比例して共分散を増やす |
 | `submap_match` | `motion`, `reference` | 上の姿勢の周りで、スキャン (動きでまとめた局所地図。バッファが足りなければ最新の 1 枚) を地図に照合し、一致の良い互いに離れた姿勢を複数。探す範囲は予測の共分散から決める |
+| `hypothesis_modes` | `hypotheses` | 仮説の集合から、重みの大きい順に互いに離れた仮説を複数。推定器が誤った仮説に収束した後も、正しい仮説が残っていれば候補に入る。仮説の時刻から今までの動きを足し、共分散に下限をかける |
 
 ## 復旧の候補を評価するもの (`CandidateScorer`)
 
@@ -141,6 +145,7 @@ class SpeedLimitCheck(Detector):
 | `odometry` | pose / motion | `nav_msgs/Odometry` (`topic`)。pose なら地図座標の姿勢と共分散、motion ならその座標での姿勢 |
 | `map_scan` | reference | `nav_msgs/OccupancyGrid` (`map_topic`) と `sensor_msgs/LaserScan` (`scan_topic`)。センサの取り付け位置は `sensor_pose` か、TF (`base_frame` → スキャンの frame) |
 | `occupancy_grid` | reference | `nav_msgs/OccupancyGrid` (`topic`) だけ。計画用地図など、安全の信号にだけ使う地図。`occupied_threshold` 以上のセルを致死とする |
+| `particle_cloud` | hypotheses | `nav2_msgs/ParticleCloud` (`topic`。AMCL の粒子)。粒子を、格子でつながる群れと、群れの中の向きの分布の谷で峰に分ける (`core/particle_modes.py`)。分けるのは `min_interval_sec` ごとに 1 回で、間の配信は捨てる。AMCL はリサンプリングの後に粒子を出すので、重みは粒子の数の割合 (尤度の比ではない) |
 
 ## イベントの出力 (`EventSink`)
 

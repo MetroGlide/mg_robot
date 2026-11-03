@@ -5,7 +5,8 @@
 
   - {type: pose_offset, source: amcl, at: 60.0, offset: {x: 3.0, y: 0.0, yaw: 0.0}}
         姿勢を地図座標でずらす (end を書かなければ、その後ずっと)。followers: {ekf: 0.5} で、融合の結果も
-        その割合だけずらす (推定器が引きずられた状態)
+        その割合だけずらす (推定器が引きずられた状態)。followers に仮説の集合の情報源 (推定器の粒子など) を
+        書くと、仮説もすべて同じだけずらす (推定器の信念ごとずれた状態)
   - {type: pose_drift, source: amcl, start: 40.0, end: 100.0, rate: {x: 0.05, y: 0.0, yaw: 0.0}}
         ずれを、1 秒あたり rate ずつ増やす。end の後はずれを保つ (hold: false なら元に戻す)。followers も使える
   - {type: source_drop, source: gnss, start: 100.0, end: 140.0}
@@ -22,7 +23,7 @@ from typing import Any, Dict, List, Mapping, Optional
 import numpy as np
 
 from .geometry import Pose2, wrap_angle
-from .interfaces import MotionSample, PoseSample, ScanSample, SourceKind
+from .interfaces import Hypothesis, HypothesisSample, MotionSample, PoseSample, ScanSample, SourceKind
 from .snapshot import SampleStore
 from .timeline import History
 
@@ -186,6 +187,17 @@ class FaultInjectingStore(SampleStore):
         if not self.injector.dropped(name, sample.stamp):
             super().add_motion(name, sample)
 
+    def add_hypotheses(self, name: str, sample: HypothesisSample) -> None:
+        if self.injector.dropped(name, sample.stamp):
+            return
+        offset = self.injector.pose_offset(name, sample.stamp)
+        if np.any(offset):
+            sample = HypothesisSample(sample.stamp, [
+                Hypothesis(h.weight, (h.pose[0] + offset[0], h.pose[1] + offset[1], wrap_angle(h.pose[2] + offset[2])),
+                           h.cov)
+                for h in sample.hypotheses])
+        super().add_hypotheses(name, sample)
+
     def set_scan(self, name: str, scan: ScanSample) -> None:
         if not self.injector.dropped(name, scan.stamp):
             super().set_scan(name, self.injector.scan(name, scan))
@@ -198,8 +210,10 @@ def validate_sources(faults: List[Fault], kinds: Mapping[str, SourceKind]) -> No
         if kind is None:
             raise ValueError(f'fault {fault.type}: unknown source {fault.source!r}')
         if fault.type in ('pose_offset', 'pose_drift'):
-            names = [fault.source] + list(fault.params.get('followers', {}))
-            if any(kinds.get(n) != SourceKind.POSE for n in names):
-                raise ValueError(f'fault {fault.type}: {names} must be pose sources')
+            if kind != SourceKind.POSE:
+                raise ValueError(f'fault {fault.type}: {fault.source!r} must be a pose source')
+            followers = list(fault.params.get('followers', {}))
+            if any(kinds.get(n) not in (SourceKind.POSE, SourceKind.HYPOTHESES) for n in followers):
+                raise ValueError(f'fault {fault.type}: followers {followers} must be pose or hypotheses sources')
         if fault.type.startswith('scan_') and kind != SourceKind.REFERENCE:
             raise ValueError(f'fault {fault.type}: {fault.source!r} must be a reference source')

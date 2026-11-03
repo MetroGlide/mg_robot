@@ -15,7 +15,7 @@ import numpy as np
 
 from .geometry import Pose2
 from .grid import LocalDistanceField, OccupancyMap, build_local_distance_field
-from .interfaces import MotionSample, PoseSample, ScanSample, SnapshotLike, SourceKind
+from .interfaces import HypothesisSample, MotionSample, PoseSample, ScanSample, SnapshotLike, SourceKind
 from .timeline import AlignmentConfig, History, MotionHistory, Timeline
 
 
@@ -97,11 +97,14 @@ class SampleStore:
         self.poses: Dict[str, History[PoseSample]] = {}
         self.motions: Dict[str, MotionHistory] = {}
         self.references: Dict[str, ReferenceData] = {}
+        self.hypotheses: Dict[str, History[HypothesisSample]] = {}
         for name, kind in self.kinds.items():
             if kind == SourceKind.POSE:
                 self.poses[name] = History(horizon_sec)
             elif kind == SourceKind.MOTION:
                 self.motions[name] = MotionHistory(horizon_sec, max_extrapolation_sec)
+            elif kind == SourceKind.HYPOTHESES:
+                self.hypotheses[name] = History(horizon_sec)
             else:
                 self.references[name] = ReferenceData()
         order = list(motion_priority) + [n for n in self.motions if n not in motion_priority]
@@ -131,6 +134,9 @@ class SampleStore:
 
     def add_motion(self, name: str, sample: MotionSample) -> None:
         self.motions[name].add(sample)
+
+    def add_hypotheses(self, name: str, sample: HypothesisSample) -> None:
+        self.hypotheses[name].add(sample)
 
     def set_map(self, name: str, occupancy: OccupancyMap) -> None:
         self.references[name].set_map(occupancy)
@@ -178,6 +184,17 @@ class Snapshot(SnapshotLike):
 
     def motion_at(self, name: str, stamp: float) -> Optional[Pose2]:
         return self._store.motions[name].at(stamp)
+
+    def hypotheses(self, name: str, max_age: Optional[float] = None) -> Optional[HypothesisSample]:
+        """最新の仮説の集合 (時刻は移さない)。max_age より古ければ None。"""
+        sample = self._store.hypotheses[name].latest()
+        if sample is None or (max_age is not None and self.stamp - sample.stamp > max_age):
+            return None
+        return sample
+
+    def align(self, sample: PoseSample, stamp: Optional[float] = None) -> Optional[PoseSample]:
+        """sample を stamp (既定は Snapshot の時刻) に、動きの情報源で移す。移せなければ None。"""
+        return self.timeline.align(sample, self.stamp if stamp is None else stamp)
 
     def reference(self, name: str) -> ReferenceData:
         return self._store.references[name]

@@ -26,7 +26,7 @@ def test_parse_rejects_invalid():
         parse_faults({'faults': [{'type': 'source_drop', 'source': 'gnss', 'start': 1.0}]})
     with pytest.raises(ValueError, match="'rate' is required"):
         parse_faults({'faults': [{'type': 'pose_drift', 'source': 'amcl', 'start': 1.0, 'end': 2.0}]})
-    with pytest.raises(ValueError, match='must be pose sources'):
+    with pytest.raises(ValueError, match='must be a pose source'):
         validate_sources(parse_faults({'faults': [
             {'type': 'pose_offset', 'source': 'odom', 'at': 1.0, 'offset': {'x': 1.0}}]}), KINDS)
 
