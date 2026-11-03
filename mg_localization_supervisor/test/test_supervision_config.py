@@ -48,6 +48,18 @@ def test_inputs_match_robot_topics():
     assert config.sources['map_scan'].kind == SourceKind.REFERENCE
 
 
+
+def test_particles_are_recorded_for_the_hypotheses():
+    """仮説の判定と候補をオフライン評価で確かめられるよう、粒子のトピックを走行の記録に入れている。"""
+    config = load_config(SUPERVISION)
+    recorded = (REPO_DIR / 'mg_navigation' / 'params' / 'record_topic_list.txt').read_text(encoding='utf-8').split()
+    particles = [s for s in config.sources.values() if s.kind == SourceKind.HYPOTHESES]
+    assert particles
+    assert all(s.input['topic'] in recorded for s in particles)
+    assert 'hypotheses' not in config.generators
+    assert 'hypotheses' in config.with_profile('hypotheses').generators
+
+
 def test_gnss_fallback_only_compares_amcl_and_gnss():
     config = load_config(SUPERVISION, 'gnss_fallback')
     assert list(config.enabled_detectors()) == ['amcl_gnss']

@@ -14,6 +14,11 @@ sources:
   gnss:
     kind: pose
     input: {type: odometry, topic: /odom/gps}
+  # AMCL の粒子を峰に分けた仮説の集合 (分けるのは min_interval_sec ごと)。角で誤った向きに収束した後も、
+  # 正しい向きの粒子が少数残ることが多い。格子は、峰を分ける大きさ (1 つの峰の広がりより大きく)
+  amcl_particles:
+    kind: hypotheses
+    input: {type: particle_cloud, topic: /particle_cloud, min_interval_sec: 1.0, cell_m: 0.5, cell_yaw_rad: 0.26}
   # EKF は AMCL・GNSS・オドメトリを融合した結果。疑わしい情報源の特定には使わず、出力が汚れているかの判定に使う
   ekf:
     kind: pose
@@ -106,6 +111,13 @@ detectors:
     params: {ratio_min: 0.35, baseline_min_samples: 5, gain_threshold: 0.5}
     allowance: 0.8
     vouch: [amcl]
+  # AMCL の粒子が、離れた姿勢の仮説に割れているか。割れても AMCL が正しい方を選ぶことが多いので、重み 0 で
+  # 記録だけする (正しい姿勢と、ずれたときの値の分布を確かめてから重みを決める)
+  amcl_split:
+    type: hypothesis_split
+    sources: {pose: amcl, hypotheses: amcl_particles}
+    params: {threshold: 0.2, separation_m: 1.0, separation_rad: 0.5}
+    weight: 0.0
 
 fusion:
   type: cusum
@@ -154,6 +166,13 @@ recovery:
     submap:
       type: submap_match
       sources: {motion: odom, reference: map_scan}
+    # AMCL の粒子の仮説のうち、重みの大きい順に互いに離れたもの (誤った仮説に収束しても、残った正しい仮説へ戻す)。
+    # プロファイル hypotheses で有効にする
+    hypotheses:
+      type: hypothesis_modes
+      sources: {hypotheses: amcl_particles}
+      params: {max_candidates: 3, min_weight: 0.05, separation_m: 1.0, separation_rad: 0.5}
+      enabled: false
 
   # 候補の評価 (0〜1)。重み付き平均で順位を付ける。
   # スキャンの照合は、廊下のように進行方向の位置が定まらない場所では、似た一致の候補が並ぶ。
@@ -251,3 +270,5 @@ profiles:
   notify_only: profiles/notify_only.yaml
   # AMCL の向きが、オドメトリの示す動きから数秒かけてずれていくのも疑う (旋回中の回りすぎ)
   yaw_drift: profiles/yaw_drift.yaml
+  # 復旧の候補に、AMCL の粒子の仮説を足す
+  hypotheses: profiles/hypotheses.yaml
