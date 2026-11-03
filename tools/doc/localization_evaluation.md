@@ -215,8 +215,8 @@ tools/scripts/run_localization_queue.py --set focus_short --runs 5 --min-runs 3 
 
 `eval_localization_offline.py` は、自己位置の監督のフレームワーク ([localization_supervisor](../../localization_supervisor/doc/design.md#オフライン評価)) の判定と総合を、再生評価の記録 (`run_N/output`) で実時間を待たずに回します。1 本あたり数秒で終わるので、判定のしきい値・重み・プロファイルを大量の事例で比べられます。
 
-- 入力: 記録した推定器の出力 (AMCL・EKF・GNSS・オドメトリ) と、データセットの評価 bag のスキャン、データセットの地図。設定は `mg_localization_supervisor/config/supervision.yaml` ([mg_localization_supervisor](../../mg_localization_supervisor/README.md#監督の構成-supervisionyaml))
-- `--faults`: 再生評価と同じ書式の故障を、**記録した標本に**注入します (`common/offline_faults.py` で変換)。kidnap と `amcl_drift` は AMCL の標本を、`gnss_bias` は GNSS の標本をずらし、`gnss_drop`・`scan_drop` は標本を欠かします。`odom_scale` は注入できません (記録した推定器の出力がオドメトリをすでに使っているため)
+- 入力: 記録した推定器の出力 (AMCL・EKF・GNSS・オドメトリと、記録していれば AMCL の粒子 `/particle_cloud`) と、データセットの評価 bag のスキャン、データセットの地図。設定は `mg_localization_supervisor/config/supervision.yaml` ([mg_localization_supervisor](../../mg_localization_supervisor/README.md#監督の構成-supervisionyaml))
+- `--faults`: 再生評価と同じ書式の故障を、**記録した標本に**注入します (`common/offline_faults.py` で変換)。kidnap と `amcl_drift` は AMCL の標本を、`gnss_bias` は GNSS の標本をずらし、`gnss_drop`・`scan_drop` は標本を欠かします。`odom_scale` は注入できません (記録した推定器の出力がオドメトリをすでに使っているため)。AMCL をずらすときは、AMCL の粒子 (設定の仮説の集合の情報源) も同じだけずらします (ずらさないと、粒子の仮説の判定と候補が、真の姿勢を知っていることになる)
 - `--followers ekf=<割合>`: AMCL のずれに、EKF もその割合だけ引きずられた状態にします (実際の推定器は AMCL に引きずられるため)
 - `--labels`: 記録したときに再生評価で注入されていた故障を、正解としてだけ使います (例: `kidnap_none` の変種の記録)
 - `--profile` を並べると、同じ入力でプロファイルを比べます (`''` は既定の設定。`consecutive` は今の監督ノードと同じ判定と回数。`notify_only` は自動復旧しない。`gnss_fallback` は以前の動作)
@@ -237,5 +237,5 @@ develop コンテナで実行します (rosbag2_py を使うため)。出力は 
 - 検知の対象は姿勢をずらす故障だけです。標本が欠けるだけの故障の区間は、異常がない区間として誤検知を数えます。
 - 誤検知は「故障の区間の外で確認に移った回数」で、記録そのものが崩れていた試行 (`movingstart` の一部) では正しい検知も含みます。真値 (`eval_localization.json` の誤差) と突き合わせてください。
 - 記録済みの推定器の出力を使うので、監督が再初期化した後の挙動は `--apply-reset` の真似です。実際の推定器の収束は再生評価 (`run_localization_variant.sh`) で見ます。
-- 記録に故障が含まれていた試行 (`--labels`) では、故障を注入する前の記録がないので、候補の誤差は真の姿勢と比べられません。
+- 記録に故障が含まれていた試行 (`--labels`) では、故障を注入する前の記録がないので、候補の誤差は真の姿勢と比べられません。`--gt` で、データセットの真値 (SLAM 出力) と比べます。故障を注入しない記録で実際にずれた事象 (角での誤収束) の、復旧の候補を確かめるのにも使います (再初期化ごとの差は `reinit_truth.json`、標準出力にプロファイルごとの表)。
 - 判定の `allowance` は、正常な記録の `timeline.jsonl` の判定ごとの `score` の分布より上にします。
