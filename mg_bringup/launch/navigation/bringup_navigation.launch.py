@@ -102,8 +102,9 @@ def generate_launch_description():
     supervisor_config_arg = launch_argument_creator.create(
         "supervisor_config", default=os.path.join(
             get_package_share_directory("mg_localization_supervisor"), "config", "supervision.yaml"))
+    # 監督の設定に重ねるプロファイル (mg_localization_supervisor/config/supervision.yaml の profiles。空は基本設定)
     localization_profile_arg = launch_argument_creator.create(
-        "localization_profile", default="")
+        "localization_profile", default=EnvironmentVariable("LOCALIZATION_PROFILE", default_value=""))
     # AMCL と EKF の params に重ねる自己位置推定のプリセット (mg_navigation/params/localization_presets/<名前>.yaml。
     # 空は重ねない)
     localization_preset_arg = launch_argument_creator.create(

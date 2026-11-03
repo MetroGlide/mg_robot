@@ -50,6 +50,7 @@ Docker のログのローテーション設定。compose の `${LOG_MAX_SIZE}` �
 | 変数 | 内容 |
 | :--- | :--- |
 | `LOCALIZATION_PRESET` | AMCL と EKF の params に重ねる自己位置推定のプリセット。`bringup_navigation.launch.py` の `localization_preset` 引数の既定値。空なら重ねない ([localization.md](../mg_navigation/doc/localization.md#自己位置推定のプリセット)) |
+| `LOCALIZATION_PROFILE` | 監督の設定に重ねるプロファイル。`bringup_navigation.launch.py` の `localization_profile` 引数の既定値。空なら基本設定 ([mg_localization_supervisor](../mg_localization_supervisor/README.md)) |
 
 ### SLAM の再最適化
 

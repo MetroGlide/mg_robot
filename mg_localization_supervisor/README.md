@@ -49,7 +49,7 @@ GNSS による初期化と監督ノードは、他のノードが立ち上がる
 
 - `localization_supervisor:=true` で、既定の監視 (`mg_navigation` の `amcl_watchdog_node`。共分散が大きければ GNSS で初期化し直す) のまま、監督ノードを並行して動かす。状態 `/localization/status` は監督ノードが出す (watchdog は出さない)。実機で通知の質を確かめるときに使う。watchdog と二重に再初期化しないよう、プロファイルは `notify_only` になる。
 - `localization_monitor:=supervisor` (既定) では、watchdog の代わりに監督ノードだけを動かし、基本設定の自動復旧を使う。watchdog と並行して動かすときは、プロファイル `notify_only` になる (二重に再初期化しない)。
-- 設定は `supervisor_config`、プロファイルは `localization_profile` で渡す。走行中は `ros2 service call /localization_supervisor_node/set_profile localization_supervisor_msgs/srv/SetProfile "{profile: gnss_fallback}"` で切り替えられる。
+- 設定は `supervisor_config`、プロファイルは `localization_profile` (既定は環境変数 `LOCALIZATION_PROFILE`) で渡す。走行中は `ros2 service call /localization_supervisor_node/set_profile localization_supervisor_msgs/srv/SetProfile "{profile: gnss_fallback}"` で切り替えられる。
 - GNSS による初期化 (`gnss_amcl_initializer_node`)・watchdog・人による `/initialpose`・`/set_pose` は、外からの再初期化として扱う (状態を戻して猶予を置く)。
 - 診断 `localization_supervisor_node: localization` は、集約で `/Robot/Localization/Monitor`。watchdog と並行して動かすときは、watchdog の診断も同じ集約に入る (悪いほうのレベルになる)。Web UI の「自己位置」のタイルに、状態・疑わしい情報源・異常の判定・障害物の中かが出る。
 - シーケンサを通らないゴール (手動のゴール) は、自動復旧の一時停止 (`pause_request`) でも止まらない。
