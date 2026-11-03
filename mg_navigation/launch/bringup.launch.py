@@ -50,6 +50,9 @@ def generate_launch_description():
             get_package_share_directory('mg_localization_supervisor'), 'config', 'supervision.yaml'))
     localization_profile_arg = launch_argument_creator.create(
         'localization_profile', default="")
+    # AMCL の params に重ねる自己位置推定のプリセット (params/localization_presets/<名前>.yaml。空は重ねない)
+    localization_preset_arg = launch_argument_creator.create(
+        'localization_preset', default="")
     use_waypoints_follower_arg = launch_argument_creator.create(
         'use_waypoints_follower', default="true")
     waypoints_load_path_arg = launch_argument_creator.create(
@@ -159,6 +162,7 @@ def generate_launch_description():
                               'localization_supervisor': localization_supervisor_arg.launch_config,
                               'supervisor_config': supervisor_config_arg.launch_config,
                               'localization_profile': localization_profile_arg.launch_config,
+                              'localization_preset': localization_preset_arg.launch_config,
                               'container_name': 'nav2_container'}.items()
         ),
 

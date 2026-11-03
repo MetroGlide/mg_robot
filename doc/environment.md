@@ -45,6 +45,12 @@ Docker のログのローテーション設定。compose の `${LOG_MAX_SIZE}` �
 | `ROSBAG_FILE` | 再生・解析する bag。`rosbag-replay`、`offline-slam-gnss-2d`、`bag-*` が使う |
 | `ROSBAG_TOPICS` | `rosbag-replay` で再生するトピック (空白区切り)。未設定なら全部。録画時の `/diagnostics`・`/diagnostics_agg`・`/events`・`/rosout` は、`/replay/` 以下に出す (いまのスタックの診断・イベントに混ざらないように) |
 
+### 自己位置推定
+
+| 変数 | 内容 |
+| :--- | :--- |
+| `LOCALIZATION_PRESET` | AMCL と EKF の params に重ねる自己位置推定のプリセット。`bringup_navigation.launch.py` の `localization_preset` 引数の既定値。空なら重ねない ([localization.md](../mg_navigation/doc/localization.md#自己位置推定のプリセット)) |
+
 ### SLAM の再最適化
 
 | 変数 | 内容 |

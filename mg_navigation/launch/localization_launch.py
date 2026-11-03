@@ -27,6 +27,7 @@ from launch_ros.actions import Node
 from launch_ros.descriptions import ComposableNode, ParameterFile
 from nav2_common.launch import RewrittenYaml
 
+from mg_navigation.localization_preset import preset_files
 from mg_utils.launch_argument import LaunchArgumentCreator
 
 
@@ -34,6 +35,7 @@ def generate_launch_description():
     # Get the launch directory
     bringup_dir = get_package_share_directory('nav2_bringup')
     supervisor_dir = get_package_share_directory('mg_localization_supervisor')
+    navigation_dir = get_package_share_directory('mg_navigation')
 
     arg = LaunchArgumentCreator()
     namespace = arg.create('namespace', default='', description='Top-level namespace').launch_config
@@ -72,6 +74,10 @@ def generate_launch_description():
         'localization_profile', default='',
         description='監督の設定に重ねるプロファイル (空は基本設定。監視が watchdog のときは、'
                     '二重に再初期化しないよう notify_only)').launch_config
+    localization_preset = arg.create(
+        'localization_preset', default='',
+        description='AMCL の params に重ねる自己位置推定のプリセット (params/localization_presets/<名前>.yaml。'
+                    '空は重ねない)').launch_config
     # watchdog と並行して動かす監督は、通知だけにする (どちらも再初期化すると互いに上書きする)
     supervisor_profile = PythonExpression([
         "'notify_only' if '", localization_monitor, "' == 'watchdog' and '", localization_profile,
@@ -107,68 +113,74 @@ def generate_launch_description():
     stdout_linebuf_envvar = SetEnvironmentVariable(
         'RCUTILS_LOGGING_BUFFERED_STREAM', '1')
 
-    load_nodes = GroupAction(
-        condition=IfCondition(PythonExpression(['not ', use_composition])),
-        actions=[
-            Node(
-                package='nav2_map_server',
-                executable='map_server',
-                name='map_server',
-                output='screen',
-                respawn=use_respawn,
-                respawn_delay=2.0,
-                parameters=[configured_params],
-                arguments=['--ros-args', '--log-level', log_level],
-                remappings=remappings),
-            Node(
-                package='nav2_amcl',
-                executable='amcl',
-                name='amcl',
-                output='screen',
-                respawn=use_respawn,
-                respawn_delay=2.0,
-                parameters=[configured_params],
-                arguments=['--ros-args', '--log-level', log_level],
-                remappings=remappings + [('amcl_pose', 'amcl_pose_origin')]),
-            Node(
-                package='nav2_lifecycle_manager',
-                executable='lifecycle_manager',
-                name='lifecycle_manager_localization',
-                output='screen',
-                arguments=['--ros-args', '--log-level', log_level],
-                parameters=[{'use_sim_time': use_sim_time},
-                            {'autostart': autostart},
-                            {'node_names': lifecycle_nodes},
-                            {'bond_timeout': 0.0},
-                            ])
-        ]
-    )
+    def create_localization_nodes(context):
+        """map_server・AMCL・lifecycle_manager を作る。プリセットがあれば、AMCL の params の後に重ねる。"""
+        amcl_params = [configured_params, *preset_files(
+            context.perform_substitution(localization_preset),
+            context.perform_substitution(localization_monitor), navigation_dir)]
+        load_nodes = GroupAction(
+            condition=IfCondition(PythonExpression(['not ', use_composition])),
+            actions=[
+                Node(
+                    package='nav2_map_server',
+                    executable='map_server',
+                    name='map_server',
+                    output='screen',
+                    respawn=use_respawn,
+                    respawn_delay=2.0,
+                    parameters=[configured_params],
+                    arguments=['--ros-args', '--log-level', log_level],
+                    remappings=remappings),
+                Node(
+                    package='nav2_amcl',
+                    executable='amcl',
+                    name='amcl',
+                    output='screen',
+                    respawn=use_respawn,
+                    respawn_delay=2.0,
+                    parameters=amcl_params,
+                    arguments=['--ros-args', '--log-level', log_level],
+                    remappings=remappings + [('amcl_pose', 'amcl_pose_origin')]),
+                Node(
+                    package='nav2_lifecycle_manager',
+                    executable='lifecycle_manager',
+                    name='lifecycle_manager_localization',
+                    output='screen',
+                    arguments=['--ros-args', '--log-level', log_level],
+                    parameters=[{'use_sim_time': use_sim_time},
+                                {'autostart': autostart},
+                                {'node_names': lifecycle_nodes},
+                                {'bond_timeout': 0.0},
+                                ])
+            ]
+        )
 
-    load_composable_nodes = LoadComposableNodes(
-        condition=IfCondition(use_composition),
-        target_container=container_name_full,
-        composable_node_descriptions=[
-            ComposableNode(
-                package='nav2_map_server',
-                plugin='nav2_map_server::MapServer',
-                name='map_server',
-                parameters=[configured_params],
-                remappings=remappings),
-            ComposableNode(
-                package='nav2_amcl',
-                plugin='nav2_amcl::AmclNode',
-                name='amcl',
-                parameters=[configured_params],
-                remappings=remappings + [('amcl_pose', 'amcl_pose_origin')]),
-            ComposableNode(
-                package='nav2_lifecycle_manager',
-                plugin='nav2_lifecycle_manager::LifecycleManager',
-                name='lifecycle_manager_localization',
-                parameters=[{'use_sim_time': use_sim_time,
-                             'autostart': autostart,
-                             'node_names': lifecycle_nodes}]),
-        ],
-    )
+        load_composable_nodes = LoadComposableNodes(
+            condition=IfCondition(use_composition),
+            target_container=container_name_full,
+            composable_node_descriptions=[
+                ComposableNode(
+                    package='nav2_map_server',
+                    plugin='nav2_map_server::MapServer',
+                    name='map_server',
+                    parameters=[configured_params],
+                    remappings=remappings),
+                ComposableNode(
+                    package='nav2_amcl',
+                    plugin='nav2_amcl::AmclNode',
+                    name='amcl',
+                    parameters=amcl_params,
+                    remappings=remappings + [('amcl_pose', 'amcl_pose_origin')]),
+                ComposableNode(
+                    package='nav2_lifecycle_manager',
+                    plugin='nav2_lifecycle_manager::LifecycleManager',
+                    name='lifecycle_manager_localization',
+                    parameters=[{'use_sim_time': use_sim_time,
+                                 'autostart': autostart,
+                                 'node_names': lifecycle_nodes}]),
+            ],
+        )
+        return [load_nodes, load_composable_nodes]
 
     change_amcl_publish_state_node = Node(
         package='mg_drivers',
@@ -227,8 +239,7 @@ def generate_launch_description():
     return LaunchDescription([
         stdout_linebuf_envvar,
         *arg.get_created_declare_launch_args(),
-        load_nodes,
-        load_composable_nodes,
+        OpaqueFunction(function=create_localization_nodes),
         change_amcl_publish_state_node,
         supervisor_launch,
         OpaqueFunction(function=create_watchdog),

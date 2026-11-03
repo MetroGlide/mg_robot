@@ -10,6 +10,7 @@ from launch.substitutions import (
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from ament_index_python.packages import get_package_share_directory
 
+from mg_navigation.localization_preset import preset_files
 from mg_utils import launch_argument
 
 
@@ -103,6 +104,10 @@ def generate_launch_description():
             get_package_share_directory("mg_localization_supervisor"), "config", "supervision.yaml"))
     localization_profile_arg = launch_argument_creator.create(
         "localization_profile", default="")
+    # AMCL と EKF の params に重ねる自己位置推定のプリセット (mg_navigation/params/localization_presets/<名前>.yaml。
+    # 空は重ねない)
+    localization_preset_arg = launch_argument_creator.create(
+        "localization_preset", default=EnvironmentVariable("LOCALIZATION_PRESET", default_value=""))
     nav2_params_file_arg = launch_argument_creator.create(
         "nav2_params_file", default=os.path.join(
             navigation_pkg_share, "params", "nav2_params.yaml"))
@@ -137,29 +142,35 @@ def generate_launch_description():
         }.items(),
     )
 
-    ekf_group = launch.actions.GroupAction(
-        [
-            Node(
-                package="robot_localization",
-                executable="ekf_node",
-                name="ekf_global_node",
-                output="screen",
-                parameters=[
-                    {"use_sim_time": simulation_arg.launch_config},
-                    PathJoinSubstitution(
-                        [drivers_pkg_share, "params",
-                            ekf_params_file_arg.launch_config]
-                    ),
-                ],
-                remappings=[
-                    ("odometry/filtered", ekf_odom_topic_arg.launch_config),
-                ],
-            ),
+    def create_ekf(context):
+        """EKF を作る。プリセットがあれば、EKF の params の後に重ねる。"""
+        return [launch.actions.GroupAction(
+            [
+                Node(
+                    package="robot_localization",
+                    executable="ekf_node",
+                    name="ekf_global_node",
+                    output="screen",
+                    parameters=[
+                        {"use_sim_time": simulation_arg.launch_config},
+                        PathJoinSubstitution(
+                            [drivers_pkg_share, "params",
+                                ekf_params_file_arg.launch_config]
+                        ),
+                        *preset_files(
+                            context.perform_substitution(localization_preset_arg.launch_config),
+                            context.perform_substitution(localization_monitor_arg.launch_config),
+                            navigation_pkg_share),
+                    ],
+                    remappings=[
+                        ("odometry/filtered", ekf_odom_topic_arg.launch_config),
+                    ],
+                ),
 
-        ],
-        condition=launch.conditions.IfCondition(
-            use_ekf_arg.launch_config),
-    )
+            ],
+            condition=launch.conditions.IfCondition(
+                use_ekf_arg.launch_config),
+        )]
 
     bridge_node = Node(
         package='slam_gnss_2d',
@@ -197,6 +208,7 @@ def generate_launch_description():
             "localization_supervisor": localization_supervisor_arg.launch_config,
             "supervisor_config": supervisor_config_arg.launch_config,
             "localization_profile": localization_profile_arg.launch_config,
+            "localization_preset": localization_preset_arg.launch_config,
         }.items(),
     )
 
@@ -205,7 +217,7 @@ def generate_launch_description():
             *launch_argument_creator.get_created_declare_launch_args(),
 
             launch_common,
-            ekf_group,
+            launch.actions.OpaqueFunction(function=create_ekf),
             bridge_node,
             launch_navigation,
         ]

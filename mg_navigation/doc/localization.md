@@ -73,6 +73,25 @@ AMCL の位置の共分散を監視し、大きい状態が続いたら、`gnss_
 - 診断 `amcl_watchdog_node: localization` (NORMAL=OK、DEGRADED=ERROR、その他=WARN。集約で `/Robot/Localization/Monitor`)
 - イベント: `localization.state_changed` (`from`、`to`、`reason`)、`localization.reinit_requested` (`attempt`、`metric`、`value`、`threshold`)、`localization.reinit_result` (`success`、`message`) ([doc/monitoring.md](../../doc/monitoring.md))
 
+## 自己位置推定のプリセット
+
+`localization_preset:=<名前>` (既定は環境変数 `LOCALIZATION_PRESET`。空なら何もしない) で、`params/localization_presets/<名前>.yaml` を、AMCL (`nav2_params.yaml`) と EKF (`mg_drivers/params/ekf_global.yaml`) の params の後に重ねる。書いたキーだけが変わる。
+プリセットは、監督 (`localization_monitor:=supervisor`) と組で使う。ほかの監視で指定すると、launch が起動の前に落ちる。
+
+| プリセット | 内容 |
+| :--- | :--- |
+| `robust` | AMCL の動きのノイズを下げ (角での向きの取り違えを減らす)、EKF が外れた AMCL を受け付けないようにする (ゲート)。EKF が AMCL を受け付けなくなったまま戻れなくならないよう、監督が初期化し直す。根拠は [localization_robustness.md](./localization_robustness.md) |
+
+実機で試すとき:
+
+- 切り替え: `.env` の `LOCALIZATION_PRESET` に名前を書き、ナビゲーションを起動し直す。シナリオテストは `make scenario-test-all TIER=smoke LOCALIZATION_PRESET=robust`。
+- 戻し方: `LOCALIZATION_PRESET` を空にして、起動し直す。
+- 見るもの:
+  - 監督の状態 `/localization/status` と、止める要求で止まった回数・時間。
+  - 角や GNSS の弱い場所での、オペレータから見たずれ。
+  - 旋回や滑りやすい場所で、AMCL の追従が遅れないか (動きのノイズを下げると、オドメトリが大きくずれたときに追いつきにくい)。
+- 記録: `record_bag:=true` の記録 (`params/record_topic_list.txt`) に、AMCL・EKF・監督の状態とイベント・粒子が入る。記録は、再生の評価 ([tools の localization_evaluation.md](../../tools/doc/localization_evaluation.md)) の入力にできる。
+
 ## 従来の構成に戻す
 
 - `localization_monitor:=watchdog` にすれば、従来の監視 (共分散による再初期化だけ)。

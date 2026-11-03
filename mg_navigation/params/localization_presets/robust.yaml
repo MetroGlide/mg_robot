@@ -1,0 +1,16 @@
+# 自己位置推定のプリセット robust: 角での AMCL の向きの取り違えと、外れた AMCL に EKF が付いていくことを減らす。
+# launch 引数 localization_preset:=robust (既定は環境変数 LOCALIZATION_PRESET) で、AMCL と EKF の params の後に重ねる。
+# 監督 (localization_monitor:=supervisor) と組で使う (EKF が AMCL を受け付けなくなったとき、監督が初期化し直して戻す)。
+# 根拠は mg_navigation/doc/localization_robustness.md。
+amcl:
+  ros__parameters:
+    # 動きのモデルのノイズ。実際のオドメトリの精度に比べて大きいと、旋回中に粒子の向きが広がり、角で取り違える
+    alpha1: 0.1
+    alpha2: 0.1
+    alpha3: 0.1
+    alpha4: 0.1
+
+ekf_global_node:
+  ros__parameters:
+    # AMCL の位置・向きのマハラノビス距離がこれを超えたら、EKF に入れない
+    pose0_rejection_threshold: 4.0
