@@ -163,9 +163,18 @@ class FaultInjectingStore(SampleStore):
         return None if aligned is None else aligned.pose
 
     def apply_reset(self, names: List[str], pose: Pose2, stamp: float) -> None:
-        """names の姿勢の、これ以降の標本を、stamp に pose にいたことになるようにずらす。"""
+        """names の情報源の、これ以降の標本を、stamp に pose にいたことになるようにずらす。
+
+        仮説の集合の情報源は、最も重い仮説が pose に来るよう、すべての仮説を同じだけずらす (初期化し直した
+        推定器の粒子は、選んだ姿勢の周りに集まる)。
+        """
         for name in names:
-            latest = self.poses[name].latest()
+            if name in self.hypotheses:
+                sample = self.hypotheses[name].latest()
+                top = sample.hypotheses[0] if sample is not None and sample.hypotheses else None
+                latest = None if top is None else PoseSample(sample.stamp, top.pose, top.cov)
+            else:
+                latest = self.poses[name].latest()
             aligned = None if latest is None else self.timeline.align(latest, stamp)
             if aligned is None:
                 continue
@@ -190,7 +199,7 @@ class FaultInjectingStore(SampleStore):
     def add_hypotheses(self, name: str, sample: HypothesisSample) -> None:
         if self.injector.dropped(name, sample.stamp):
             return
-        offset = self.injector.pose_offset(name, sample.stamp)
+        offset = self.injector.pose_offset(name, sample.stamp) + self._corrections.get(name, 0.0)
         if np.any(offset):
             sample = HypothesisSample(sample.stamp, [
                 Hypothesis(h.weight, (h.pose[0] + offset[0], h.pose[1] + offset[1], wrap_angle(h.pose[2] + offset[2])),

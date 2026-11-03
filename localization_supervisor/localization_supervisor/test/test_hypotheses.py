@@ -6,11 +6,12 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from localization_supervisor.core.anchors import Anchor, AnchorConfig, AnchorStore
 from localization_supervisor.core.config import parse_config
 from localization_supervisor.core.detectors import STANDARD_DETECTORS
 from localization_supervisor.core.faults import FaultInjectingStore, FaultInjector, parse_faults, validate_sources
 from localization_supervisor.core.interfaces import (
-    Hypothesis, HypothesisSample, MotionSample, RecoveryContext, SourceKind, Status)
+    Hypothesis, HypothesisSample, MotionSample, PoseSample, RecoveryContext, SourceKind, Status)
 from localization_supervisor.core.recovery import STANDARD_GENERATORS
 from localization_supervisor.core.snapshot import SampleStore
 from localization_supervisor.ros.adapters import AdapterContext, build_adapters
@@ -107,6 +108,17 @@ def test_pose_fault_moves_hypotheses_that_follow():
     assert store.snapshot(11.0).hypotheses('particles').hypotheses[0].pose == pytest.approx((4.0, 2.0, 0.5))
 
 
+def test_reset_moves_hypotheses_so_the_top_is_at_the_chosen_pose():
+    store = FaultInjectingStore(FaultInjector([], 0.0), KINDS, ('odom',))
+    store.add_motion('odom', MotionSample(5.0, (0.0, 0.0, 0.0)))
+    store.add_hypotheses('particles', _hypotheses(5.0, [(0.7, 1.0, 2.0, 0.0), (0.3, 4.0, 2.0, 0.0)]))
+    store.apply_reset(['particles'], (2.0, 2.0, 0.1), 5.0)
+    store.add_hypotheses('particles', _hypotheses(6.0, [(0.7, 1.0, 2.0, 0.0), (0.3, 4.0, 2.0, 0.0)]))
+    moved = store.snapshot(6.0).hypotheses('particles').hypotheses
+    assert moved[0].pose == pytest.approx((2.0, 2.0, 0.1))
+    assert moved[1].pose == pytest.approx((5.0, 2.0, 0.1))
+
+
 def test_hypotheses_cannot_be_the_source_of_a_pose_fault():
     faults = parse_faults({'faults': [{'type': 'pose_offset', 'source': 'particles', 'at': 1.0, 'offset': {'x': 1.0}}]})
     with pytest.raises(ValueError):
@@ -141,25 +153,45 @@ def test_split_is_normal_with_one_hypothesis_and_unknown_without():
 
 def _modes(**params):
     cls = STANDARD_GENERATORS['hypothesis_modes']
-    return cls('hypotheses', {**{k: s.default for k, s in cls.PARAMS.items()}, **params}, {'hypotheses': 'particles'})
+    return cls('hypotheses', {**{k: s.default for k, s in cls.PARAMS.items()}, **params},
+               {'hypotheses': 'particles', 'motion': 'odom'})
 
 
-def test_modes_proposes_separated_hypotheses_moved_to_now():
+def _anchors():
+    """90 s に地図の原点にいた (odom も原点)。"""
+    anchors = AnchorStore(AnchorConfig('amcl', 'odom'))
+    anchors.add(Anchor(90.0, PoseSample(90.0, (0.0, 0.0, 0.0), np.diag([0.01, 0.01, 0.001])), (0.0, 0.0, 0.0), 0.0))
+    return anchors
+
+
+def test_modes_proposes_hypotheses_near_dead_reckoning_moved_to_now():
     store = _store()
+    # 推測航法では (1, 0, 0) にいる。仮説の時刻 99 s から 100 s のあいだに x へ 1 m 動いた
     store.add_hypotheses('particles', _hypotheses(99.0, [
-        (0.5, 0.0, 0.0, 0.0), (0.3, 0.2, 0.0, 0.05), (0.15, 3.0, 0.0, 0.0), (0.05, 6.0, 0.0, 0.0)]))
-    # 99 s から 100 s のあいだに x へ 1 m 動いた
+        (0.4, 0.0, 0.0, 1.5),      # 誤った向き (推測航法の向きから離れている)
+        (0.3, 0.0, 0.0, 0.05),     # 正しい
+        (0.15, 0.2, 0.0, 0.0),     # 上と離れていない
+        (0.1, 2.0, 0.0, 0.0),      # 少し離れた位置
+        (0.08, 30.0, 0.0, 0.0),    # 遠くの似た場所
+        (0.02, 1.0, 0.0, 0.0)]))   # 軽い
     store.add_motion('odom', MotionSample(100.0, (1.0, 0.0, 0.0)))
-    generator = _modes(min_weight=0.1, max_candidates=3)
-    candidates = generator.generate(RecoveryContext(store.snapshot(100.0)))
+    generator = _modes(min_weight=0.05)
+    candidates = generator.generate(RecoveryContext(store.snapshot(100.0), anchors=_anchors()))
     assert generator.status == 'ok'
-    assert [c.info['weight'] for c in candidates] == pytest.approx([0.5, 0.15])
-    assert candidates[1].pose[0] == pytest.approx(4.0, abs=1e-6)
+    assert [c.info['weight'] for c in candidates] == pytest.approx([0.3, 0.1])
+    assert candidates[0].pose == pytest.approx((math.cos(0.05), math.sin(0.05), 0.05), abs=1e-6)
+    assert candidates[1].pose[0] == pytest.approx(3.0, abs=1e-6)
     assert candidates[0].cov[0, 0] == pytest.approx(0.3 ** 2)
 
 
 def test_modes_reports_why_it_has_no_candidate():
     store = _store()
     generator = _modes()
-    assert generator.generate(RecoveryContext(store.snapshot(100.0))) == []
+    assert generator.generate(RecoveryContext(store.snapshot(99.0), anchors=_anchors())) == []
     assert generator.status == 'no_recent_sample'
+    store.add_hypotheses('particles', _hypotheses(99.0, [(1.0, 0.0, 0.0, 0.0)]))
+    assert generator.generate(RecoveryContext(store.snapshot(99.0))) == []
+    assert generator.status == 'no_anchor_or_motion'
+    store.add_hypotheses('particles', _hypotheses(99.0, [(1.0, 20.0, 0.0, 0.0)]))
+    assert generator.generate(RecoveryContext(store.snapshot(99.0), anchors=_anchors())) == []
+    assert generator.status == 'no_hypothesis_near_prediction'

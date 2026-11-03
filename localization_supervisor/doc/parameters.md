@@ -139,7 +139,7 @@ recovery:
 | `retry_sec` | 候補を選べなかったとき、次に計画するまでの間隔 [s] |
 
 候補を作るものが 1 つもなければ、`recovery_enabled` は使えない。評価するものが 1 つもない (または、どれも評価できなかった) ときは、最初に作られた候補を選ぶ。
-`anchor_motion`・`submap_match`・`anchor_agreement` は `anchors` が、`footprint_free` は `safety` が要る。`anchors.motion` と、候補を作るものの `motion` の情報源は同じにする。
+`anchor_motion`・`submap_match`・`hypothesis_modes`・`anchor_agreement` は `anchors` が、`footprint_free` は `safety` が要る。`anchors.motion` と、候補を作るものの `motion` の情報源は同じにする。
 
 ## anchors
 

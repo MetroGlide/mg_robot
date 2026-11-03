@@ -138,9 +138,13 @@ class OfflineSession:
         self.options = options
         self.t0 = t0
         validate_sources(options.faults, config.kinds())
-        for name in options.apply_reset + ([options.truth] if options.truth else []):
-            if config.sources.get(name) is None or config.sources[name].kind != SourceKind.POSE:
-                raise ValueError(f'{name!r}: not a pose source')
+        for name in options.apply_reset:
+            if config.sources.get(name) is None or config.sources[name].kind not in (
+                    SourceKind.POSE, SourceKind.HYPOTHESES):
+                raise ValueError(f'{name!r}: not a pose or hypotheses source')
+        if options.truth and (config.sources.get(options.truth) is None
+                              or config.sources[options.truth].kind != SourceKind.POSE):
+            raise ValueError(f'{options.truth!r}: not a pose source')
         self.store: FaultInjectingStore = FaultInjectingStore(
             FaultInjector(options.faults, t0), config.kinds(), tuple(config.motion_priority),
             config.horizon_sec, config.max_extrapolation_sec, config.alignment)
