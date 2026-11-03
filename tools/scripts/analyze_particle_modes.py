@@ -23,15 +23,15 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 
-# tools パッケージルートの解決
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-if REPO_ROOT not in sys.path:
-    sys.path.insert(0, REPO_ROOT)
+for path in (REPO_ROOT, os.path.join(REPO_ROOT, "localization_supervisor", "localization_supervisor")):
+    if path not in sys.path:
+        sys.path.insert(0, path)
 
+from localization_supervisor.core.particle_modes import cluster_particles  # noqa: E402
 from tools.common import loc_metrics as lm  # noqa: E402
 from tools.common.bag import MessageDeserializer, open_reader  # noqa: E402
 from tools.common.geo import quaternion_to_yaw  # noqa: E402
-from tools.common.particle_modes import cluster_particles  # noqa: E402
 from tools.common.pose_graph import interpolate_nodes, load_slam_output  # noqa: E402
 
 # 真値の補間で、止まっているとみなす隣接ノード間の移動 [m] (eval_localization.py と同じ)

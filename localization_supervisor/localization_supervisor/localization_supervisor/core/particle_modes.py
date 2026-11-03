@@ -1,4 +1,4 @@
-"""AMCL の粒子 (nav2_msgs/ParticleCloud) を仮説 (峰) に分ける共通モジュール (numpy のみに依存)。
+"""重みつきの姿勢の集合 (AMCL の粒子など) を、仮説 (峰) に分ける。ROS に依存しない。
 
 粒子を (x, y, yaw) の格子に入れ、隣り合う格子 (yaw は一周つながる) をまとめた連結成分に分ける。
 向きに扇形に広がった粒子は 1 つの連結成分につながるため、連結成分の中の向きの分布に谷があれば、
@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Tuple
 
 import numpy as np
 
-from tools.common.loc_metrics import wrap_angle
+from .geometry import wrap_angle
 
 
 def cluster_particles(

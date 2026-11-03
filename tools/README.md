@@ -111,6 +111,5 @@ make test pkg=tools
 | `test_map_helpers.py` | 地図の読込と `map_list.txt` |
 | `test_compare_localization.py` | 変種の比較表 |
 | `test_compare_localization_set.py` | 評価セットの読み込みと、条件をまたいだ集計 |
-| `test_particle_modes.py` | AMCL の粒子の仮説への分割 (`common/particle_modes.py`) |
 | `test_patch_params.py` | パラメータ YAML の書き換え |
 | `test_sim_gnss_transform.py` | シミュレータの `gnss_transform.yaml` の生成 |

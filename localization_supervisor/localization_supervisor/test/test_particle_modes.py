@@ -3,7 +3,7 @@ import math
 import numpy as np
 import pytest
 
-from tools.common.particle_modes import cluster_particles
+from localization_supervisor.core.particle_modes import cluster_particles
 
 
 def _blob(rng, center, n, sigma=(0.1, 0.1, 0.05)):
