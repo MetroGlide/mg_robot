@@ -166,12 +166,12 @@ recovery:
     submap:
       type: submap_match
       sources: {motion: odom, reference: map_scan}
-    # AMCL の粒子の仮説のうち、重みの大きい順に互いに離れたもの (誤った仮説に収束しても、残った正しい仮説へ戻す)。
-    # プロファイル hypotheses で有効にする
+    # AMCL の粒子の仮説のうち、推測航法の姿勢に近いものを、重みの大きい順に (角で誤った向きに収束しても、残った
+    # 正しい向きの仮説へ戻す)。遠くの似た場所の仮説は、スキャンの一致が良くても使わない。プロファイル hypotheses で有効にする
     hypotheses:
       type: hypothesis_modes
-      sources: {hypotheses: amcl_particles}
-      params: {max_candidates: 3, min_weight: 0.05, separation_m: 1.0, separation_rad: 0.5}
+      sources: {hypotheses: amcl_particles, motion: odom}
+      params: {max_candidates: 3, min_weight: 0.05, max_distance_m: 3.0, max_yaw_rad: 0.5}
       enabled: false
 
   # 候補の評価 (0〜1)。重み付き平均で順位を付ける。
