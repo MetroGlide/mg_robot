@@ -85,3 +85,4 @@ AMCL の位置の共分散を監視し、大きい状態が続いたら、`gnss_
 
 パラメータの変更や復旧の仕組みは、rosbag と SLAM の出力 (地図・pose_graph) を使って、再生で評価する。実機を使わずに、同じ条件で変種を比べられる。
 手順は [tools の README](../../tools/README.md) の `run_localization_variant.sh` と `eval_localization.py` を参照。
+角でのずれについて確かめたことと、判断の根拠は [localization_robustness.md](./localization_robustness.md)。
