@@ -37,10 +37,13 @@ sources:
     kind: pose | motion | reference | hypotheses
     derived_from: [<名前>, ...]   # 融合の結果なら、元の情報源 (元は独立の情報源に限る)
     input: {type: <アダプタ>, ...} # 入力のアダプタとその引数 (plugins.md の入力のアダプタ)
+    hold: {distance_m: <m>, rotation_rad: <rad>}  # pose だけ。動いたときだけ標本を出す推定器 (下記)
 ```
 
 `derived_from` を持つ情報源は、疑わしい情報源の特定 (`blame`) に使わず、出力が汚れているか (`contaminated`) の判定に使う ([design.md](./design.md#疑わしい情報源の切り分け-blamecontaminated))。
 `reference` と `hypotheses` (推定器の粒子のような、姿勢の仮説の集合) も `blame` の対象にしない。仮説の判定の疑いは、その推定器の姿勢の情報源にかける。
+
+`hold` は、一定の距離か角度を動くまで推定を出さない推定器 (AMCL の `update_min_d` / `update_min_a` など) に書く。最後の標本の後の動き (動きの情報源で積算) が `distance_m` と `rotation_rad` (省略すると制限なし) の両方以下のあいだは、標本が判定の `max_age_sec` より古くても、今の時刻に移したものを使う。止まっているあいだも、その推定器と他の情報源を比べ続けられる (書かないと、止まっているあいだの判定は「分からない」になる)。値は推定器が推定を出す条件に合わせる。止まる直前の 1 回の外れ値も、止まっているあいだ残る (動いたときだけ出す情報源では、受け取る側にも同じだけ残っている)。
 
 ## timeline
 

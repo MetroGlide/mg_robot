@@ -175,12 +175,17 @@ class FaultInjectingStore(SampleStore):
                 latest = None if top is None else PoseSample(sample.stamp, top.pose, top.cov)
             else:
                 latest = self.poses[name].latest()
+                held = self.held(name)
+                if held is not None and (latest is None or held.stamp > latest.stamp):
+                    latest = held
             aligned = None if latest is None else self.timeline.align(latest, stamp)
             if aligned is None:
                 continue
             delta = np.array([pose[0] - aligned.pose[0], pose[1] - aligned.pose[1],
                               wrap_angle(pose[2] - aligned.pose[2])])
             self._corrections[name] = self._corrections.get(name, np.zeros(3)) + delta
+            if name in self.poses:
+                self.shift_held(name, delta)
 
     def add_pose(self, name: str, sample: PoseSample) -> None:
         self._originals[name].add(sample)

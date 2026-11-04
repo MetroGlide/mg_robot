@@ -25,6 +25,7 @@ from .recovery.planner import GeneratorConfig, ScorerConfig, SelectionConfig
 from .residuals import ResidualConfig
 from .safety import SafetyConfig
 from .scan_buffer import ScanBufferConfig
+from .snapshot import HoldConfig
 from .state_machine import MachineConfig
 from .timeline import AlignmentConfig
 
@@ -54,6 +55,7 @@ class SourceConfig:
     kind: SourceKind
     derived_from: List[str] = field(default_factory=list)
     input: Dict[str, Any] = field(default_factory=dict)
+    hold: Optional[HoldConfig] = None
 
 
 @dataclass
@@ -113,6 +115,9 @@ class SupervisorConfig:
 
     def kinds(self) -> Dict[str, SourceKind]:
         return {name: source.kind for name, source in self.sources.items()}
+
+    def holds(self) -> Dict[str, HoldConfig]:
+        return {name: source.hold for name, source in self.sources.items() if source.hold is not None}
 
     def independent_sources(self) -> List[str]:
         return [name for name, source in self.sources.items()
@@ -191,14 +196,14 @@ def _parse_sources(raw: Mapping[str, Any]) -> Dict[str, SourceConfig]:
     for name, body in raw.items():
         where = f'sources.{name}'
         body = _mapping(body, where)
-        _check_keys(body, {'kind', 'derived_from', 'input'}, where)
+        _check_keys(body, {'kind', 'derived_from', 'input', 'hold'}, where)
         try:
             kind = SourceKind(body.get('kind'))
         except ValueError as error:
             raise ConfigError(f'{where}.kind: expected one of {[k.value for k in SourceKind]}') from error
         sources[name] = SourceConfig(
             name, kind, _names(body.get('derived_from'), f'{where}.derived_from'),
-            _mapping(body.get('input'), f'{where}.input'))
+            _mapping(body.get('input'), f'{where}.input'), _parse_hold(body.get('hold'), kind, f'{where}.hold'))
     for name, source in sources.items():
         for parent in source.derived_from:
             if parent not in sources:
@@ -206,6 +211,19 @@ def _parse_sources(raw: Mapping[str, Any]) -> Dict[str, SourceConfig]:
             if sources[parent].derived_from:
                 raise ConfigError(f'sources.{name}.derived_from: {parent!r} is itself derived')
     return sources
+
+
+def _parse_hold(raw: Any, kind: SourceKind, where: str) -> Optional[HoldConfig]:
+    if raw is None:
+        return None
+    if kind != SourceKind.POSE:
+        raise ConfigError(f'{where}: only for pose sources')
+    raw = _mapping(raw, where)
+    _check_keys(raw, {'distance_m', 'rotation_rad'}, where)
+    if 'distance_m' not in raw:
+        raise ConfigError(f'{where}.distance_m: required')
+    return HoldConfig(
+        _number(raw, 'distance_m', 0.0, where), _number(raw, 'rotation_rad', HoldConfig.rotation_rad, where))
 
 
 def _bind_plugin(

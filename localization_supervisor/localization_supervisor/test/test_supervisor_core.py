@@ -15,7 +15,7 @@ from localization_supervisor.core.geometry import compose
 from localization_supervisor.core.interfaces import (
     CONTRACT_VERSION, Evidence, FusionResult, InstanceInfo, MotionSample, SourceKind, Status)
 from localization_supervisor.core.plugins import resolve_params
-from localization_supervisor.core.snapshot import SampleStore
+from localization_supervisor.core.snapshot import HoldConfig, SampleStore
 from localization_supervisor.core.state_machine import Action, MachineConfig, State, StateMachine
 from localization_supervisor.core.supervisor import Supervisor, make_store
 from localization_supervisor.core.timeline import AlignmentConfig
@@ -65,6 +65,81 @@ def test_align_outside_motion_history_is_unknown():
         store.add_motion('odom', drive.motion(float(i)))
     store.add_pose('amcl', pose_sample(2.0, drive.map(2.0)))
     assert store.snapshot(20.0).pose_aligned('amcl') is None
+
+
+def _held_store():
+    return SampleStore(KINDS, ('odom',), horizon_sec=5.0, alignment=AlignmentConfig(0.0, 0.0),
+                       holds={'amcl': HoldConfig(distance_m=0.25, rotation_rad=0.2)})
+
+
+def test_hold_keeps_the_last_pose_while_stationary_beyond_the_horizon():
+    store = _held_store()
+    store.add_pose('amcl', pose_sample(0.0, (1.0, 2.0, 0.3)))
+    for t in range(41):
+        store.add_motion('odom', MotionSample(float(t), (0.5, 0.0, 0.0)))
+        snap = store.snapshot(float(t))
+    assert snap.pose('amcl', max_age=3.0).pose == pytest.approx((1.0, 2.0, 0.3))
+    aligned, age = snap.pose_aligned('amcl', 3.0)
+    assert aligned.pose == pytest.approx((1.0, 2.0, 0.3))
+    assert age == pytest.approx(0.0)
+    assert snap.pose('gnss', max_age=3.0) is None
+
+
+def test_hold_follows_small_motion_and_ends_after_moving_too_far():
+    store = _held_store()
+    store.add_pose('amcl', pose_sample(0.0, (0.0, 0.0, 0.0)))
+    store.add_motion('odom', MotionSample(0.0, (0.0, 0.0, 0.0)))
+    for t in range(1, 5):
+        store.add_motion('odom', MotionSample(float(t), (0.0, 0.0, 0.0)))
+        store.snapshot(float(t))
+    store.add_motion('odom', MotionSample(5.0, (0.1, 0.0, 0.0)))
+    assert store.snapshot(5.0).pose('amcl', max_age=3.0).pose == pytest.approx((0.1, 0.0, 0.0))
+    store.add_motion('odom', MotionSample(6.0, (0.3, 0.0, 0.0)))
+    assert store.snapshot(6.0).pose('amcl', max_age=3.0) is None
+    store.add_motion('odom', MotionSample(7.0, (0.3, 0.0, 0.0)))
+    assert store.snapshot(7.0).pose('amcl', max_age=3.0) is None
+
+
+def test_hold_ends_after_turning_and_restarts_from_a_new_sample():
+    store = _held_store()
+    store.add_pose('amcl', pose_sample(0.0, (0.0, 0.0, 0.0)))
+    store.add_motion('odom', MotionSample(0.0, (0.0, 0.0, 0.0)))
+    store.add_motion('odom', MotionSample(5.0, (0.0, 0.0, 0.3)))
+    assert store.snapshot(5.0).pose('amcl', max_age=3.0) is None
+    store.add_pose('amcl', pose_sample(5.0, (2.0, 0.0, 0.3)))
+    for t in range(6, 10):
+        store.add_motion('odom', MotionSample(float(t), (0.0, 0.0, 0.3)))
+        snap = store.snapshot(float(t))
+    assert snap.pose('amcl', max_age=3.0).pose == pytest.approx((2.0, 0.0, 0.3))
+
+
+def test_hold_restarts_from_a_sample_that_arrives_later_than_its_stamp():
+    store = _held_store()
+    store.add_pose('amcl', pose_sample(0.0, (0.0, 0.0, 0.0)))
+    for t in range(6):
+        store.add_motion('odom', MotionSample(float(t), (0.0, 0.0, 0.0)))
+        store.snapshot(float(t))
+    store.add_pose('amcl', pose_sample(4.5, (5.0, 6.0, 0.0)))
+    for t in range(6, 10):
+        store.add_motion('odom', MotionSample(float(t), (0.0, 0.0, 0.0)))
+        snap = store.snapshot(float(t))
+    assert snap.pose('amcl', max_age=3.0).pose == pytest.approx((5.0, 6.0, 0.0))
+
+
+def test_hold_is_used_only_when_the_latest_sample_is_too_old():
+    store = _held_store()
+    store.add_pose('amcl', pose_sample(0.0, (0.0, 0.0, 0.0)))
+    store.add_motion('odom', MotionSample(0.0, (0.0, 0.0, 0.0)))
+    store.add_motion('odom', MotionSample(1.0, (0.0, 0.0, 0.0)))
+    snap = store.snapshot(1.0)
+    assert snap.pose('amcl', max_age=3.0).stamp == 0.0
+    assert snap.pose('amcl').stamp == 0.0
+    assert store.held('amcl').stamp == 1.0
+
+
+def test_hold_requires_a_pose_source():
+    with pytest.raises(ValueError, match='not a pose source'):
+        SampleStore(KINDS, ('odom',), holds={'odom': HoldConfig(0.25)})
 
 
 def test_motion_priority_falls_back_to_next_source():

@@ -6,6 +6,7 @@ from localization_supervisor.core.evaluation import TickRecord, evaluate, format
 from localization_supervisor.core.faults import (
     FaultInjectingStore, FaultInjector, parse_faults, validate_sources)
 from localization_supervisor.core.interfaces import MotionSample, SourceKind, Status
+from localization_supervisor.core.snapshot import HoldConfig
 from localization_supervisor.core.state_machine import State
 
 from supervisor_test_helpers import pose_sample, room_scan
@@ -102,3 +103,17 @@ def test_evaluation_detection_and_false_alarms():
 
 def test_evaluation_without_records():
     assert evaluate([], []).detected == 0
+
+
+def test_reset_moves_the_held_pose_of_a_stationary_source():
+    store = FaultInjectingStore(FaultInjector([], 0.0), KINDS, ('odom',), horizon_sec=5.0,
+                                holds={'amcl': HoldConfig(0.25, 0.2)})
+    store.add_pose('amcl', pose_sample(0.0, (1.0, 1.0, 0.0)))
+    for t in range(21):
+        store.add_motion('odom', MotionSample(float(t), (0.0, 0.0, 0.0)))
+        store.snapshot(float(t))
+    store.apply_reset(['amcl'], (3.0, 1.0, 0.2), 20.0)
+    store.add_motion('odom', MotionSample(21.0, (0.0, 0.0, 0.0)))
+    assert store.snapshot(21.0).pose('amcl', max_age=3.0).pose == pytest.approx((3.0, 1.0, 0.2))
+    store.add_pose('amcl', pose_sample(21.5, (1.0, 1.0, 0.0)))
+    assert store.snapshot(22.0).pose('amcl', max_age=3.0).pose == pytest.approx((3.0, 1.0, 0.2))

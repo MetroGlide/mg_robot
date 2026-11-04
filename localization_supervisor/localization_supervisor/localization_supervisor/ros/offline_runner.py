@@ -147,7 +147,7 @@ class OfflineSession:
             raise ValueError(f'{options.truth!r}: not a pose source')
         self.store: FaultInjectingStore = FaultInjectingStore(
             FaultInjector(options.faults, t0), config.kinds(), tuple(config.motion_priority),
-            config.horizon_sec, config.max_extrapolation_sec, config.alignment)
+            config.horizon_sec, config.max_extrapolation_sec, config.alignment, config.holds())
         adapters = build_adapters(config, self.store, context)
         for name, path in options.maps.items():
             if config.sources.get(name) is None or config.sources[name].kind != SourceKind.REFERENCE:

@@ -13,7 +13,7 @@ from typing import Any, Callable, Deque, Dict, Mapping, Optional, Tuple
 
 import numpy as np
 
-from .geometry import Pose2
+from .geometry import Pose2, wrap_angle
 from .grid import LocalDistanceField, OccupancyMap, build_local_distance_field
 from .interfaces import HypothesisSample, MotionSample, PoseSample, ScanSample, SnapshotLike, SourceKind
 from .timeline import AlignmentConfig, History, MotionHistory, Timeline
@@ -81,17 +81,40 @@ class ScaleHistory:
         return scale
 
 
+@dataclass
+class HoldConfig:
+    """動いたときだけ標本を出す姿勢の情報源 (AMCL など) の、最後の標本を今の推定として使い続ける範囲。
+
+    最後の標本の後の動き (動きの情報源で積算) が distance_m と rotation_rad の両方以下のあいだは、
+    標本が古くても、今の時刻に移したものを使う。
+    """
+    distance_m: float
+    rotation_rad: float = math.inf
+
+
+@dataclass
+class _Held:
+    sample: PoseSample
+    # 元の標本の時刻 (これより新しい標本が届いたら、そこから持ち直す)
+    origin: float
+    distance: float
+    rotation: float
+
+
 class SampleStore:
     """情報源ごとの標本の履歴。情報源の名前と種類は、設定から決まる。
 
     track_scale した姿勢の情報源は、受け取る側が分散に倍率をかけて配信するので、標本の位置の分散を、
     その時点で効いていた倍率で割って、倍率をかける前に戻してから残す (判定・候補・残差は、倍率に左右されない)。
+
+    holds に書いた姿勢の情報源は、snapshot のたびに、最後の標本をその時刻へ移して持っておく (HoldConfig)。
+    止まっているあいだに標本が古くなっても、判定が「分からない」にならない。
     """
 
     def __init__(
         self, kinds: Mapping[str, SourceKind], motion_priority: Tuple[str, ...] = (),
         horizon_sec: float = 30.0, max_extrapolation_sec: float = 0.5,
-        alignment: Optional[AlignmentConfig] = None,
+        alignment: Optional[AlignmentConfig] = None, holds: Optional[Mapping[str, HoldConfig]] = None,
     ) -> None:
         self.kinds = dict(kinds)
         self.poses: Dict[str, History[PoseSample]] = {}
@@ -111,6 +134,11 @@ class SampleStore:
         self.timeline = Timeline([(n, self.motions[n]) for n in order], alignment or AlignmentConfig())
         self._horizon_sec = horizon_sec
         self._scales: Dict[str, ScaleHistory] = {}
+        self._holds: Dict[str, HoldConfig] = dict(holds or {})
+        for name in self._holds:
+            if name not in self.poses:
+                raise ValueError(f'hold: {name!r} is not a pose source')
+        self._held: Dict[str, _Held] = {}
 
     def track_scale(self, name: str, delay_sec: float) -> None:
         """name の標本の分散に、受け取る側がかけた倍率を割り戻す。"""
@@ -144,7 +172,45 @@ class SampleStore:
     def set_scan(self, name: str, scan: ScanSample) -> None:
         self.references[name].scan = scan
 
+    def held(self, name: str) -> Optional[PoseSample]:
+        """name の最後の標本を、最後に snapshot した時刻へ移したもの。持っていなければ None。"""
+        held = self._held.get(name)
+        return None if held is None else held.sample
+
+    def shift_held(self, name: str, delta: Pose2) -> None:
+        """持っている標本を delta (x, y, yaw) だけずらす (推定器を初期化し直したことにする)。"""
+        held = self._held.get(name)
+        if held is not None:
+            pose = held.sample.pose
+            moved = (pose[0] + delta[0], pose[1] + delta[1], wrap_angle(pose[2] + delta[2]))
+            held.sample = PoseSample(held.sample.stamp, moved, held.sample.cov)
+
+    def _refresh_held(self, stamp: float) -> None:
+        for name, hold in self._holds.items():
+            latest = self.poses[name].latest()
+            if latest is None:
+                self._held.pop(name, None)
+                continue
+            held = self._held.get(name)
+            if held is None or held.origin < latest.stamp:
+                held = _Held(latest, latest.stamp, 0.0, 0.0)
+            if stamp <= held.sample.stamp:
+                self._held[name] = held
+                continue
+            motion = self.timeline.motion(held.sample.stamp, stamp)
+            aligned = None if motion is None else self.timeline.align(held.sample, stamp)
+            if motion is None or aligned is None:
+                self._held.pop(name, None)
+                continue
+            distance = held.distance + motion.distance
+            rotation = held.rotation + motion.rotation
+            if distance > hold.distance_m or rotation > hold.rotation_rad:
+                self._held.pop(name, None)
+                continue
+            self._held[name] = _Held(aligned, held.origin, distance, rotation)
+
     def snapshot(self, stamp: float) -> 'Snapshot':
+        self._refresh_held(stamp)
         return Snapshot(stamp, self)
 
 
@@ -159,11 +225,14 @@ class Snapshot(SnapshotLike):
         return self._store.timeline
 
     def pose(self, name: str, max_age: Optional[float] = None) -> Optional[PoseSample]:
-        """最新の標本 (時刻は移さない)。max_age より古ければ None。"""
+        """最新の標本 (時刻は移さない)。max_age より古ければ、持っている標本 (SampleStore.held) か None。"""
         sample = self._store.poses[name].latest()
-        if sample is None or (max_age is not None and self.stamp - sample.stamp > max_age):
+        if sample is None or max_age is None or self.stamp - sample.stamp <= max_age:
+            return sample
+        held = self._store.held(name)
+        if held is None or held.stamp < sample.stamp or self.stamp - held.stamp > max_age:
             return None
-        return sample
+        return held
 
     def pose_history(self, name: str) -> History[PoseSample]:
         return self._store.poses[name]

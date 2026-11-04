@@ -83,7 +83,7 @@ def make_store(config: SupervisorConfig, track_scales: bool = True) -> SampleSto
     False)。倍率の記録は note_scale で行う。"""
     store = SampleStore(
         config.kinds(), tuple(config.motion_priority), config.horizon_sec,
-        config.max_extrapolation_sec, config.alignment)
+        config.max_extrapolation_sec, config.alignment, config.holds())
     if track_scales:
         for residual in config.residuals.values():
             store.track_scale(residual.a, residual.scale_delay_sec)
