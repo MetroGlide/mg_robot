@@ -67,19 +67,29 @@ class OdomCorrector:
     """生のオドメトリ姿勢の増分を補正して積算し直す。"""
 
     def __init__(self, k_v: float, k_w: float, yaw_bias_per_meter: float,
-                 reset_jump_m: float) -> None:
+                 reset_jump_m: float, max_speed_mps: float = 0.0) -> None:
         self.k_v = k_v
         self.k_w = k_w
         self.yaw_bias_per_meter = yaw_bias_per_meter
         self.reset_jump_m = reset_jump_m
+        self.max_speed_mps = max_speed_mps
         self._prev_raw: Optional[Tuple[float, float, float]] = None
+        self._prev_stamp: Optional[float] = None
         self._pose: Tuple[float, float, float] = (0.0, 0.0, 0.0)
-        # 直近の update で、姿勢を生の姿勢に合わせ直した (最初のメッセージ、または姿勢が飛んだ) か
+        # 直近の update で、増分を捨てた (最初のメッセージ、または生の姿勢が飛んだ) か
         self.was_reset = True
 
-    def update(self, raw_x: float, raw_y: float, raw_yaw: float) -> Tuple[float, float, float]:
-        """生の姿勢を受け取り、補正した姿勢 (x, y, yaw) を返す。"""
+    def update(self, raw_x: float, raw_y: float, raw_yaw: float,
+               stamp: Optional[float] = None) -> Tuple[float, float, float]:
+        """生の姿勢を受け取り、補正した姿勢 (x, y, yaw) を返す。
+
+        1 メッセージの移動量が reset_jump_m + max_speed_mps * (前のメッセージからの時間) を超えたら、
+        生の姿勢が飛んだ (ドライバの再起動など) とみなし、その増分を捨てる。補正した姿勢は生の姿勢に
+        合わせ直さない。補正した姿勢と生の姿勢は走るほど離れるので、合わせ直すと odom フレームが跳ぶ。
+        stamp を渡さなければ、時間は 0 として扱う。
+        """
         self.was_reset = False
+        prev_stamp, self._prev_stamp = self._prev_stamp, stamp
         if self._prev_raw is None:
             self._prev_raw = (raw_x, raw_y, raw_yaw)
             self._pose = (raw_x, raw_y, raw_yaw)
@@ -90,9 +100,8 @@ class OdomCorrector:
         self._prev_raw = (raw_x, raw_y, raw_yaw)
         dx = raw_x - prev_x
         dy = raw_y - prev_y
-        if math.hypot(dx, dy) > self.reset_jump_m:
-            # ドライバの再起動などで姿勢が飛んだ。補正した姿勢を生の姿勢に合わせ直す
-            self._pose = (raw_x, raw_y, raw_yaw)
+        dt = max(stamp - prev_stamp, 0.0) if stamp is not None and prev_stamp is not None else 0.0
+        if math.hypot(dx, dy) > self.reset_jump_m + self.max_speed_mps * dt:
             self.was_reset = True
             return self._pose
 

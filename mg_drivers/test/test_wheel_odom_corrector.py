@@ -66,15 +66,28 @@ def test_turning_arc_is_corrected_in_body_frame():
     assert yaw == pytest.approx(math.pi / 2, abs=1e-9)
 
 
-def test_pose_jump_resyncs_to_raw_pose():
+def test_pose_jump_keeps_corrected_pose_continuous():
     corrector = OdomCorrector(1.05, 1.0, 0.0, 2.0)
     corrector.update(0.0, 0.0, 0.0)
-    corrector.update(0.5, 0.0, 0.0)
-    # ドライバの再起動で姿勢が (100, 50) に飛ぶ
-    assert corrector.update(100.0, 50.0, 1.0) == (100.0, 50.0, 1.0)
+    before = corrector.update(0.5, 0.0, 0.0)
+    # ドライバの再起動で生の姿勢が (100, 50) に飛んでも、補正した姿勢は動かない
+    assert corrector.update(100.0, 50.0, 1.0) == before
     x, y, yaw = corrector.update(100.0 + 0.1 * math.cos(1.0), 50.0 + 0.1 * math.sin(1.0), 1.0)
-    # 飛んだ後は、そこからの増分に k_v が掛かる
-    assert math.hypot(x - 100.0, y - 50.0) == pytest.approx(0.105, abs=1e-9)
+    # 飛んだ後は、そこからの増分に k_v が掛かる (向きは生の姿勢の向きの変化だけ進む)
+    assert math.hypot(x - before[0], y - before[1]) == pytest.approx(0.105, abs=1e-9)
+    assert yaw == pytest.approx(before[2], abs=1e-9)
+
+
+def test_motion_after_a_gap_is_not_a_jump():
+    corrector = OdomCorrector(1.0, 1.0, 0.0, 2.0, max_speed_mps=3.0)
+    corrector.update(0.0, 0.0, 0.0, stamp=10.0)
+    # メッセージが 3 秒途切れて、その間に 2.7 m 進んだ
+    x, _, _ = corrector.update(2.7, 0.0, 0.0, stamp=13.0)
+    assert not corrector.was_reset
+    assert x == pytest.approx(2.7, abs=1e-9)
+    # 同じ移動量でも、時間がなければ飛びとみなす
+    corrector.update(5.4, 0.0, 0.0, stamp=13.05)
+    assert corrector.was_reset
 
 
 def test_correct_twist():
