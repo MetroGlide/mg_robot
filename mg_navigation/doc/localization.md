@@ -82,15 +82,38 @@ AMCL の位置の共分散を監視し、大きい状態が続いたら、`gnss_
 | :--- | :--- |
 | `robust` | AMCL の動きのノイズを下げ (角での向きの取り違えを減らす)、EKF が外れた AMCL を受け付けないようにする (ゲート)。EKF が AMCL を受け付けなくなったまま戻れなくならないよう、監督が初期化し直す。根拠は [localization_robustness.md](./localization_robustness.md) |
 
-実機で試すとき:
+### 実機で試す
 
-- 切り替え: `.env` の `LOCALIZATION_PRESET` に名前を書き、ナビゲーションを起動し直す。シナリオテストは `make scenario-test-all TIER=smoke LOCALIZATION_PRESET=robust`。
-- 戻し方: `LOCALIZATION_PRESET` を空にして、起動し直す。
+前提は、監督が既定の監視 (`localization_monitor:=supervisor`) で、プロファイルが基本設定 (`LOCALIZATION_PROFILE` が空) であること。
+
+- 切り替え: `.env` の `LOCALIZATION_PRESET` に `robust` を書き、ナビゲーションを起動し直す。実機の前に、シミュレータで `make scenario-test-all TIER=smoke LOCALIZATION_PRESET=robust` と `make scenario-test-all TAGS=localization LOCALIZATION_PRESET=robust` が通ることを確かめる。
+- 戻し方 (軽い順):
+  - 監督の自動復旧だけ止める: `LOCALIZATION_PROFILE=notify_only` (検知と通知は残る)。
+  - プリセットを外す: `LOCALIZATION_PRESET` を空にする (AMCL と EKF が従来の params に戻る)。
+  - 監督ごと外す: [従来の構成に戻す](#従来の構成に戻す)。
+  - どれも、起動し直すと効く。
+- 走らせ方: 角でずれたことのある経路を、オペレータがすぐ止められる状態で走らせる。記録は `record_bag:=true` で残す。
 - 見るもの:
   - 監督の状態 `/localization/status` と、止める要求で止まった回数・時間。
-  - 角や GNSS の弱い場所での、オペレータから見たずれ。
+  - 角や GNSS の弱い場所での、オペレータから見たずれ。ずれたのに監督が `NORMAL` のままだった時刻と場所は、記録の評価で調べるので控えておく。
   - 旋回や滑りやすい場所で、AMCL の追従が遅れないか (動きのノイズを下げると、オドメトリが大きくずれたときに追いつきにくい)。
-- 記録: `record_bag:=true` の記録 (`params/record_topic_list.txt`) に、AMCL・EKF・監督の状態とイベント・粒子が入る。記録は、再生の評価 ([tools の localization_evaluation.md](../../tools/doc/localization_evaluation.md)) の入力にできる。
+  - 負荷: 監督のプロセスの CPU 使用率 (コンテナの中で `top -b -d 5 -n 12 -p $(pgrep -f localization_supervisor_node)`)。重ければ、`mg_localization_supervisor/config/supervision.yaml` から粒子の情報源 `amcl_particles` と、それを使う `amcl_split`・候補 `hypotheses` を外す (粒子は 1 つのメッセージが大きく、受け取るだけで負荷がかかる)。
+- 記録 (`params/record_topic_list.txt`) には、監督の入力 (AMCL・EKF・GNSS・オドメトリ・スキャン・地図・粒子) と、監督の状態とイベントが入る。
+
+### 実機の記録を調べる
+
+- 何が起きたか: `make log-events BAG=<記録> DOMAIN=localization TZ=+09:00` で、監督の状態の変化・判定の変化・再初期化を時刻順に並べる ([doc/monitoring.md](../../doc/monitoring.md))。
+- 設定を変えたらどうなったか: 記録を監督のオフライン評価にかけ、設定やプロファイルを変えて、判定と状態の時系列を比べる。記録には実際の再初期化の結果が入っているので、`--apply-reset` は付けない。真値がないので、ずれの大きさではなく、走行中に控えた時刻に監督が気づくか、それ以外の時刻に疑いを出さないかで比べる。
+
+  ```bash
+  ros2 run localization_supervisor offline_runner.py \
+      --config /app/mg_localization_supervisor/config/supervision.yaml [--profile <名前>] \
+      --bag <記録> --out <出力先>
+  ```
+
+  地図 (`/map`・`/planning_map`) は記録の最初にしか入っていないので、`--start` で途中から始めるときは、`--map map_scan=<map.yaml> --map planning_map=<map.yaml>` で地図を渡す (渡さないと、スキャンの判定が「分からない」のままになる)。
+  出力の `timeline.jsonl` (周期ごとの状態と判定の値)・`events.jsonl`・`report.md` は [localization_supervisor の design.md](../../localization_supervisor/doc/design.md#オフライン評価)。
+- 角でずれた区間は、SLAM の出力を真値にした再生の評価 ([tools の localization_evaluation.md](../../tools/doc/localization_evaluation.md)) のデータセットに足せる。
 
 ## 従来の構成に戻す
 
