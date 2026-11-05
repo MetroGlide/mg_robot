@@ -40,6 +40,8 @@ scenarios/
 | `full_lap_sequencer` | シミュレーション用 waypoint 9 個 (通過点と wait_trigger の停止点) を 1 周する |
 | `localization_gnss_denied` | 走行中に GNSS の配信を止めても (ブリッジの `change_publish_state`)、AMCL とホイールオドメトリだけでゴールへ到達し、停止位置の誤差が 0.5m 以内 |
 | `localization_kidnap_recovery` | 1 つ目のゴールに着いたあとロボットを別の場所へ移して (`teleport`。自己位置推定には通知しない) 止まったまま待つと、自己位置の監督が異常を確認して AMCL と EKF を初期化し直し (状態が `RECOVERING` を経て `NORMAL` に戻る。`localization_state`)、2 つ目のゴールへ到達する。到達はシミュレータ上の真の位置で判定する。監視は監督 (`localization_monitor: supervisor`。既定)。停止中の AMCL は更新されない(静止中は AMCL との比較が判定できない)ので、検知は走り出した後になる。所要は約 2.5 分 |
+| `localization_drift_driving` | 棚の列に沿った通路を走っている間に、自己位置推定を横へ少しずつずらしても (`localization_drift`。真の位置は動かさない)、ずれたまま長く走らず (`pose_error` の `max_deviated_distance_m`)、ゴールへ到達する。到達はシミュレータ上の真の位置で判定する。監督はプロファイル `fault_injection`、自己位置推定はプリセット `robust`。`known_issue` (下記) |
+| `localization_drift_stuck` | 棚の手前で止まっている間に、自己位置推定を棚の中へ少しずつずらしても、止まったままにならず、次のゴールへ到達する。止まっていると AMCL も GNSS も更新されず、推定の footprint が地図の棚にかかって経路を作れなくなる状況。監督・プリセットは `localization_drift_driving` と同じ。`known_issue` (下記) |
 | `keepout_escape` | 計画用地図にだけある進入禁止の領域 (`data/keepout/planning.yaml`。ウェアハウスの計画用地図の原点の周りの 2m 四方を進入禁止にしたもので、`tools/scripts/add_keepout_to_map.py` で作る。実際の世界には何もない) の中でスタートしても、自己位置が信頼できる (監督の状態が `NORMAL`) ので、BT のリカバリーの `EscapeKeepout` が領域の外の最も近い位置を始点に計画して領域から出て (`FindFreeStart` が SUCCESS)、ゴールへ到達する。監督が起動して状態を配信するまでは待つ。この段階が無いと、プランナが「始点が致死」で計画できず動けない |
 | `narrow_corridor_blocked` | 通れない幅 (0.5m) の狭い回廊へ経路を引かず、壁の外側を迂回して到達する。壁に接触しない (`obstacle_clearance`) |
 | `long_detour_rejected` | 計画用地図にだけある南北の長い壁 (`data/detour_wall/planning.yaml`。ウェアハウスの計画用地図の x=2〜3 を南端から北の棚の帯まで進入禁止にし、y=-1.25〜1.25 だけ通路として開けたもので、`tools/scripts/add_keepout_to_map.py` で作る) の通路を箱で塞ぐと、建物の反対側を回る約 50m の迂回路を `CommitPath` の遠回りの上限で棄却し、乗らずに待つ (「いまの活動」に `detour_rejected` が出る)。最初の引き直しで迂回路に乗らなかったあと、リカバリーを首振りまで何周かくり返すのを待ってから箱を除くと、通路を通って到達する。棄却した迂回路も planner_server が `/plan` に配信する (RViz の `Plan Candidate` で見える。Web UI と RViz の `Path` は採用した経路 `/navigation/committed_path` を出すので、迂回路は出ない)。計画用地図を `stack_args` で差し替えるので attach では使えない。物理的な壁だけではセンサで見えた範囲しか地図に載らず、経路が少しずつ延びるだけで棄却まで至らないため、壁は計画用地図に置く |
@@ -59,7 +61,11 @@ scenarios/
 
 ## 既知の問題
 
-`known_issue` タグ付きのシナリオは、現在ありません。
+`known_issue` タグ付きのシナリオ:
+
+- **`localization_drift_driving`、`localization_drift_stuck`**: 自己位置推定のロバスト化 ([localization_robustness.md](../../mg_navigation/doc/localization_robustness.md)) で、今の監督では戻せない失敗を再現する。対策ができたら、タグを外す。
+  - 走行中のずれ: AMCL と EKF がそろってずれ、正しい GNSS だけが食い違うので、監督は GNSS を疑って切り離し、推定はずれたまま走り続ける (例: 7 m)。
+  - 止まっている間のずれ: AMCL も GNSS も新しい値を出さないので、監督は判定の材料がなく疑わない。経路を作れずにナビゲーションが失敗する。
 
 このほか、シナリオにできなかった (または挙動が不安定で見送った) 項目:
 
