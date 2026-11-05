@@ -272,3 +272,5 @@ profiles:
   yaw_drift: profiles/yaw_drift.yaml
   # 復旧の候補に、AMCL の粒子の仮説を足す
   hypotheses: profiles/hypotheses.yaml
+  # シナリオ試験で /initialpose から故障を注入するとき (実機では使わない)
+  fault_injection: profiles/fault_injection.yaml
