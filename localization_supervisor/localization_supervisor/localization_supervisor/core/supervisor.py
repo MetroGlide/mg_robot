@@ -190,7 +190,12 @@ class Supervisor:
         self._grace_until = max(self._grace_until or now, now + duration)
 
     def external_reinit(self, now: float, topic: str) -> None:
-        """外から推定器が初期化し直された (人による上書き)。復旧をやめて、状態を NORMAL に戻し、捨てて猶予を置く。"""
+        """外から推定器が初期化し直された (人による上書き)。復旧をやめて、状態を NORMAL に戻し、捨てて猶予を置く。
+
+        今のプロファイルの external_reinit.topics にないトピックからのものは無視する。
+        """
+        if topic not in self.config.external_reinit_topics:
+            return
         before = self.machine.state
         self.machine = StateMachine(self.config.machine)
         self._suspect_since = None

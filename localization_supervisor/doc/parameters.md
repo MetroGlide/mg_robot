@@ -23,7 +23,7 @@
 | `residuals` | 2 つの姿勢の情報源の残差から求める、分散の倍率 (下記) |
 | `grace.startup_sec`、`grace.after_recovery_sec` | 起動直後・復旧直後に総合しない時間 [s] |
 | `grace.after_reset_sec` | 外からの再初期化・地図の切り替えの後に総合しない時間 [s] |
-| `external_reinit.topics` | 届いたら外からの再初期化として扱うトピック (`geometry_msgs/PoseWithCovarianceStamped`。ノード) |
+| `external_reinit.topics` | 届いたら外からの再初期化として扱うトピック (`geometry_msgs/PoseWithCovarianceStamped`。ノード)。プロファイルで減らせる |
 | `events.prefix` | イベントの名前の前置き (`<prefix>.state_changed`) |
 | `events.sink` | イベントの出力のプラグイン `{type, パラメータ...}` ([plugins.md](./plugins.md#イベントの出力-eventsink))。書かなければ `logfmt` |
 | `output.status_topic`、`output.diagnostic_name`、`output.hardware_id` | 状態のメッセージのトピック、診断の名前とハードウェア ID (ノード) |

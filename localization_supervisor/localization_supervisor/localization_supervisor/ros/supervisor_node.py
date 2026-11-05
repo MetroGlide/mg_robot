@@ -9,7 +9,8 @@
     profile     : 重ねるプロファイル (空は基本設定)。走行中に変えられる (サービス ~/set_profile でも)
   入力
     設定の sources.<名前>.input のアダプタが購読するトピックと TF
-    external_reinit.topics: 届いたら、人による上書きとして、状態を NORMAL に戻して猶予を置く
+    external_reinit.topics: 今のプロファイルのトピックに届いたら、人による上書きとして、状態を NORMAL に戻して
+                            猶予を置く (どのプロファイルのトピックも購読しておく)
   出力
     output.status_topic (LocalizationStatus)、診断 output.diagnostic_name、イベント (events.sink)
 """
@@ -96,7 +97,11 @@ class LocalizationSupervisorNode(Node):
         self._own = OwnMessages()
         self._resetters = build_resetters(config.resetters, self, self._own)
         self._actuators = build_actuators(config.actuators, self)
-        for topic in config.external_reinit_topics:
+        # 購読は起動時に作るので、どのプロファイルのトピックも購読し、使うかは今のプロファイルで決める
+        topics = dict.fromkeys(config.external_reinit_topics)
+        for name in config.profiles:
+            topics.update(dict.fromkeys(config.with_profile(name).external_reinit_topics))
+        for topic in topics:
             self.create_subscription(
                 PoseWithCovarianceStamped, topic, lambda msg, t=topic: self._on_external_reinit(t, msg), 10)
 

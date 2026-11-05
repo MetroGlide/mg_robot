@@ -20,7 +20,7 @@
 | :--- | :--- | :--- | :--- |
 | 購読 | 設定の `sources.<名前>.input` | アダプタごと | 情報源の標本 ([plugins.md](./plugins.md#入力のアダプタ-sourceadapter)) |
 | TF | アダプタが引く座標 | | センサの取り付け位置など |
-| 購読 | 設定の `external_reinit.topics` | `geometry_msgs/PoseWithCovarianceStamped` | 外からの再初期化 (下記) |
+| 購読 | 設定 (基本設定とすべてのプロファイル) の `external_reinit.topics` | `geometry_msgs/PoseWithCovarianceStamped` | 外からの再初期化 (下記) |
 | 配信 | 設定の `output.status_topic` | `localization_supervisor_msgs/LocalizationStatus` | 周期ごとの状態 |
 | 配信 | 設定の `recovery.resetters` | 送り先ごと | 選んだ姿勢 ([plugins.md](./plugins.md#再初期化の送り先-poseresetter)) |
 | 配信・サービス | 設定の `recovery.actuators` | 対処ごと | ゲートの開閉、一時停止の要求など ([plugins.md](./plugins.md#対処-actuator)) |
@@ -48,7 +48,7 @@
 
 ## 想定外への対処
 
-- **外からの再初期化**: `external_reinit.topics` に、監督以外から届いたら、人やほかのノードによる上書きとして扱う。状態を `NORMAL` に戻し (復旧は中断)、累積・判定の内部状態・アンカーを捨てて、`grace.after_reset_sec` の間は総合しない。イベント `<prefix>.external_reinit`。
+- **外からの再初期化**: `external_reinit.topics` に、監督以外から届いたら、人やほかのノードによる上書きとして扱う。状態を `NORMAL` に戻し (復旧は中断)、累積・判定の内部状態・アンカーを捨てて、`grace.after_reset_sec` の間は総合しない。イベント `<prefix>.external_reinit`。購読は起動時に作るので、どのプロファイルのトピックも購読し、今のプロファイルの `external_reinit.topics` にないトピックからのものは無視する (シナリオ試験で `/initialpose` から故障を注入するときに外す)。
 - **地図の切り替え**: 判定が使う地図が替わったら (最初に届いたときは除く)、同じように捨てて猶予を置く。イベント `<prefix>.map_changed`。
 - **時刻**: 周期の時刻はノードの時計 (`use_sim_time` に従う)。標本の時刻はメッセージの header。
 

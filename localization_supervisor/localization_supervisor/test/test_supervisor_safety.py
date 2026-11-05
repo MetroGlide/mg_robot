@@ -98,7 +98,7 @@ def test_supervisor_reports_lethal_and_events_on_change():
 
 
 def test_supervisor_external_reinit_resets_to_normal_with_grace():
-    config = parse_config(_raw())
+    config = parse_config(_raw(external_reinit={'topics': ['/initialpose']}))
     supervisor = Supervisor(config)
     store = make_store(config)
     drive = Drive()
@@ -112,6 +112,24 @@ def test_supervisor_external_reinit_resets_to_normal_with_grace():
     assert result.events[0].fields == {'topic': '/initialpose', 'state': 'DEGRADED'}
     assert result.last_event == 'external_reinit'
     assert not _feed(supervisor, store, drive, 6.5).in_grace
+
+
+def test_supervisor_external_reinit_ignores_topics_outside_profile():
+    # プロファイルが外したトピックからの再初期化は、状態を戻さない (故障の注入に使う)
+    raw = _raw(external_reinit={'topics': ['/initialpose', '/set_pose']})
+    config = parse_config(raw, profile='', profiles={'inject': {'external_reinit': {'topics': ['/set_pose']}}})
+    supervisor = Supervisor(config)
+    supervisor.set_profile('inject')
+    store = make_store(config)
+    drive = Drive()
+    results = [_feed(supervisor, store, drive, float(t), (3.0, 0.0, 0.0)) for t in range(3)]
+    assert results[-1].state == State.DEGRADED
+    supervisor.external_reinit(3.0, '/initialpose')
+    result = _feed(supervisor, store, drive, 3.0, (3.0, 0.0, 0.0))
+    assert result.state == State.DEGRADED and not result.in_grace
+    assert 'localization.external_reinit' not in [e.name for e in result.events]
+    supervisor.external_reinit(3.0, '/set_pose')
+    assert _feed(supervisor, store, drive, 3.0, (3.0, 0.0, 0.0)).state == State.NORMAL
 
 
 def test_supervisor_map_change_resets_detectors():
