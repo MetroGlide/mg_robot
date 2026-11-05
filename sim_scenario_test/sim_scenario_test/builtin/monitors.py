@@ -22,6 +22,7 @@ from sim_scenario_test.geometry import (
     Point,
     Pose,
     PoseSpec,
+    normalize_angle,
     polygon_circle_distance,
     polygon_polygon_distance,
     rectangle_vertices,
@@ -322,6 +323,97 @@ class ObstacleClearanceMonitor(TopicMonitor):
             f"(limit {self._spec.min_clearance} m, '{name}' at t={at:.1f}s, "
             f"robot speed {speed:.2f} m/s, position in robot frame ({x:.2f}, {y:.2f}); "
             f"{reference})")
+
+
+@dataclass
+class PoseErrorSpec:
+    # 推定 (TF の map -> base) と真の姿勢の差が、位置でこれ [m] か、向きでこれ [rad] を超えている間を
+    # 「ずれている」とみなす
+    deviation_m: float = 1.0
+    deviation_yaw: float = 0.35
+    # 位置の差の最大 [m] の上限 (省略時は判定しない)
+    max_error_m: Optional[float] = None
+    # ずれている間に、ロボットが実際に走った距離 [m] の上限 (省略時は判定しない)。
+    # ずれたまま走ることを測る
+    max_deviated_distance_m: Optional[float] = None
+    # 姿勢を比べる間隔 [s] (sim 時間)
+    sample_sec: float = 0.2
+    # 比べるタイミングの元になるトピック
+    topic: str = "/odom"
+
+    def validate(self, where: str) -> None:
+        if self.deviation_m <= 0.0 or self.deviation_yaw <= 0.0 or self.sample_sec <= 0.0:
+            raise ScenarioValidationError(
+                f"{where}: 'deviation_m', 'deviation_yaw' and 'sample_sec' must be > 0")
+
+
+@register_monitor("pose_error", PoseErrorSpec)
+class PoseErrorMonitor(TopicMonitor):
+    """自己位置推定とシミュレータ上の真の姿勢の差を監視する。
+
+    差の最大、ずれていた時間、ずれている間に実際に走った距離を出す。上限を指定すると判定する。
+    """
+    MSG_TYPE = Odometry
+
+    def __init__(self, ctx: "ScenarioContext", spec: PoseErrorSpec):
+        super().__init__(ctx, spec.topic)
+        self._spec = spec
+        # 真の姿勢を出せないバックエンドなら、ここで ScenarioError にする
+        ctx.backend.entity_pose(ctx.profile.sim.robot_entity)
+        self._samples = 0
+        self._last_time: Optional[float] = None
+        self._last_truth: Optional[Pose] = None
+        self._max_error = 0.0
+        self._max_yaw_error = 0.0
+        self._deviated_sec = 0.0
+        self._deviated_distance = 0.0
+        self._last_error = (0.0, 0.0)
+
+    def _truth(self) -> Optional[Pose]:
+        world_pose = self._ctx.backend.entity_pose(self._ctx.profile.sim.robot_entity)
+        if world_pose is None:
+            return None
+        return self._ctx.poses.to_map(PoseSpec(
+            "world", world_pose.x, world_pose.y, world_pose.z, world_pose.yaw))
+
+    def _on_msg(self, msg) -> None:
+        now = self._ctx.clock.now()
+        if self._last_time is not None and now - self._last_time < self._spec.sample_sec:
+            return
+        try:
+            estimate = self._ctx.poses.robot.get()
+        except ScenarioError:
+            return
+        truth = self._truth()
+        if truth is None:
+            return
+        error = estimate.distance_xy(truth)
+        yaw_error = abs(normalize_angle(estimate.yaw - truth.yaw))
+        deviated = error > self._spec.deviation_m or yaw_error > self._spec.deviation_yaw
+        if deviated and self._last_time is not None:
+            self._deviated_sec += now - self._last_time
+            self._deviated_distance += truth.distance_xy(self._last_truth)
+        self._samples += 1
+        self._max_error = max(self._max_error, error)
+        self._max_yaw_error = max(self._max_yaw_error, yaw_error)
+        self._last_error = (error, yaw_error)
+        self._last_time = now
+        self._last_truth = truth
+
+    def _evaluate(self) -> CheckResult:
+        if self._samples == 0:
+            return CheckResult("", ResultStatus.ERROR, "no pose was compared")
+        failed = (
+            (self._spec.max_error_m is not None and self._max_error > self._spec.max_error_m)
+            or (self._spec.max_deviated_distance_m is not None
+                and self._deviated_distance > self._spec.max_deviated_distance_m))
+        return CheckResult(
+            "", ResultStatus.FAILED if failed else ResultStatus.PASSED,
+            f"max error {self._max_error:.2f} m / {math.degrees(self._max_yaw_error):.0f} deg "
+            f"(limit {self._spec.max_error_m}), deviated {self._deviated_sec:.1f} s, "
+            f"travelled {self._deviated_distance:.2f} m while deviated "
+            f"(limit {self._spec.max_deviated_distance_m}), "
+            f"last error {self._last_error[0]:.2f} m / {math.degrees(self._last_error[1]):.0f} deg")
 
 
 @dataclass

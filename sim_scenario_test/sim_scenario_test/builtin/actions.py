@@ -6,10 +6,11 @@ import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from geometry_msgs.msg import PoseWithCovarianceStamped
 from std_srvs.srv import SetBool
 
 from sim_scenario_test.errors import ScenarioError, ScenarioValidationError
-from sim_scenario_test.geometry import Pose, PoseSpec
+from sim_scenario_test.geometry import Pose, PoseSpec, quaternion_from_yaw
 from sim_scenario_test.nav2 import call_service
 from sim_scenario_test.registry import register_action
 
@@ -104,6 +105,71 @@ def set_initial_pose(
 ) -> None:
     """自己位置推定に初期位置 (/initialpose) を与える。"""
     ctx.nav2.publish_initial_pose(ctx.poses.to_map(spec.pose))
+
+
+@dataclass
+class DriftRate:
+    # 1 秒あたりのずれ (地図座標) [m/s]、[rad/s]
+    x: float = 0.0
+    y: float = 0.0
+    yaw: float = 0.0
+
+
+@dataclass
+class LocalizationDriftSpec:
+    rate: DriftRate
+    duration_sec: float
+    # この間隔 [s] (sim 時間) ごとに、ずらした姿勢を送る
+    interval_sec: float = 1.0
+    # ずらした姿勢を送る先 (自己位置推定の初期姿勢)
+    topic: str = "/initialpose"
+    # 送る姿勢の共分散 (小さいほど、粒子がずらした姿勢に集まる)
+    cov_xy: float = 0.01
+    cov_yaw: float = 0.003
+
+    def validate(self, where: str) -> None:
+        if self.duration_sec <= 0.0 or self.interval_sec <= 0.0:
+            raise ScenarioValidationError(
+                f"{where}: 'duration_sec' and 'interval_sec' must be > 0")
+
+
+@register_action("localization_drift", LocalizationDriftSpec)
+def localization_drift(
+    ctx: "ScenarioContext", spec: LocalizationDriftSpec, stop: threading.Event
+) -> None:
+    """自己位置推定を少しずつずらす (推定器が誤った姿勢へ引きずられる状況の再現)。
+
+    interval_sec ごとに、シミュレータ上の真の姿勢に rate * (開始からの経過時間) を足した姿勢を topic に送る。
+    推定器がスキャンで戻そうとしても、ずれは時間とともに増える。終わった後は送らない (推定器に任せる)。
+    真の姿勢は変えない。topic を外からの再初期化として扱う監視があれば、それを外して使う。
+    """
+    key = f"localization_drift:{spec.topic}"
+    if key not in ctx.extensions:
+        ctx.extensions[key] = ctx.node.create_publisher(PoseWithCovarianceStamped, spec.topic, 10)
+    pub = ctx.extensions[key]
+    start = ctx.clock.now()
+    while not stop.is_set():
+        elapsed = min(ctx.clock.now() - start, spec.duration_sec)
+        world = ctx.backend.entity_pose(ctx.profile.sim.robot_entity)
+        if world is not None:
+            truth = ctx.poses.to_map(PoseSpec("world", world.x, world.y, world.z, world.yaw))
+            msg = PoseWithCovarianceStamped()
+            msg.header.frame_id = ctx.profile.frames.map
+            msg.header.stamp = ctx.node.get_clock().now().to_msg()
+            msg.pose.pose.position.x = truth.x + spec.rate.x * elapsed
+            msg.pose.pose.position.y = truth.y + spec.rate.y * elapsed
+            qx, qy, qz, qw = quaternion_from_yaw(truth.yaw + spec.rate.yaw * elapsed)
+            msg.pose.pose.orientation.x = qx
+            msg.pose.pose.orientation.y = qy
+            msg.pose.pose.orientation.z = qz
+            msg.pose.pose.orientation.w = qw
+            msg.pose.covariance[0] = spec.cov_xy
+            msg.pose.covariance[7] = spec.cov_xy
+            msg.pose.covariance[35] = spec.cov_yaw
+            pub.publish(msg)
+        if elapsed >= spec.duration_sec:
+            return
+        ctx.clock.sleep(spec.interval_sec, stop)
 
 
 @register_action("clear_costmaps")

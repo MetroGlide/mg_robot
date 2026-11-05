@@ -1,6 +1,7 @@
 """monitor・spawn 確認・respawn 収束確認の単体テスト。"""
 from __future__ import annotations
 
+import math
 import threading
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -568,3 +569,72 @@ def test_bt_node_trigger_fires_on_matching_status():
     assert not trigger.poll()
     callback(_bt_msg(("Spin", "RUNNING")))
     assert trigger.poll()
+
+
+def test_pose_error_monitor_measures_distance_travelled_while_deviated():
+    from sim_scenario_test.builtin.monitors import PoseErrorMonitor, PoseErrorSpec
+    backend = FakeBackend()
+    robot = FakeRobot(Pose(0.0, 0.0))
+    ctx = _scenario_ctx(backend, robot)
+    clock = {"t": 0.0}
+    ctx.clock.now = lambda: clock["t"]
+    backend.true_poses["robot"] = Pose(0.0, 0.0)
+    monitor = PoseErrorMonitor(ctx, PoseErrorSpec(deviation_m=1.0, max_deviated_distance_m=1.5))
+    assert monitor.result().status == ResultStatus.ERROR
+    # 真の姿勢は x 方向に 1 m/s で進み、推定は 2 s 目から y に 2 m ずれる
+    for t in range(6):
+        clock["t"] = float(t)
+        backend.true_poses["robot"] = Pose(float(t), 0.0)
+        robot.pose = Pose(float(t), 2.0 if t >= 2 else 0.0)
+        monitor._callback(None)
+    result = monitor.result()
+    # ずれた標本 (2〜5 s) までの区間を数える: 1〜5 s の 4 区間 (4 m)
+    assert result.status == ResultStatus.FAILED
+    assert "max error 2.00 m" in result.message and "travelled 4.00 m while deviated" in result.message
+    assert "deviated 4.0 s" in result.message
+
+
+def test_pose_error_monitor_skips_samples_within_interval():
+    from sim_scenario_test.builtin.monitors import PoseErrorMonitor, PoseErrorSpec
+    backend = FakeBackend()
+    ctx = _scenario_ctx(backend, FakeRobot(Pose(0.0, 0.5)))
+    clock = {"t": 0.0}
+    ctx.clock.now = lambda: clock["t"]
+    backend.true_poses["robot"] = Pose()
+    monitor = PoseErrorMonitor(ctx, PoseErrorSpec(sample_sec=1.0, max_error_m=0.4))
+    monitor._callback(None)
+    clock["t"] = 0.5
+    ctx.poses.robot.pose = Pose(0.0, 3.0)
+    monitor._callback(None)
+    # 間隔の内側の標本は比べない
+    result = monitor.result()
+    assert result.status == ResultStatus.FAILED and "max error 0.50 m" in result.message
+
+
+def _pose_msg():
+    return SimpleNamespace(
+        header=SimpleNamespace(),
+        pose=SimpleNamespace(
+            pose=SimpleNamespace(position=SimpleNamespace(), orientation=SimpleNamespace()),
+            covariance=[0.0] * 36))
+
+
+def test_localization_drift_sends_truth_plus_growing_offset(monkeypatch):
+    from sim_scenario_test.builtin.actions import DriftRate, LocalizationDriftSpec, localization_drift
+    monkeypatch.setattr("sim_scenario_test.builtin.actions.PoseWithCovarianceStamped", _pose_msg)
+    backend = FakeBackend()
+    ctx = _scenario_ctx(backend)
+    clock = {"t": 0.0}
+    ctx.clock.now = lambda: clock["t"]
+    ctx.clock.sleep = lambda sec, stop=None: clock.__setitem__("t", clock["t"] + sec)
+    backend.true_poses["robot"] = Pose(1.0, 2.0, 0.0, 0.0)
+    pub = MagicMock()
+    ctx.extensions["localization_drift:/initialpose"] = pub
+    localization_drift(
+        ctx, LocalizationDriftSpec(rate=DriftRate(y=0.1, yaw=0.01), duration_sec=3.0), threading.Event())
+    sent = [c.args[0] for c in pub.publish.call_args_list]
+    # 0, 1, 2, 3 s 目に送り、ずれは経過時間に比例する (真の姿勢は変えない)
+    assert [round(m.pose.pose.position.y, 6) for m in sent] == [2.0, 2.1, 2.2, 2.3]
+    assert all(m.pose.pose.position.x == pytest.approx(1.0) for m in sent)
+    assert sent[-1].pose.pose.orientation.z == pytest.approx(math.sin(0.03 / 2.0))
+    assert not [c for c in backend.calls if c[0] == "set_pose"]

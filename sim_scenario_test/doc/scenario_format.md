@@ -102,6 +102,7 @@ run:
 | `despawn` | `obstacle` | 障害物を削除する |
 | `move_obstacle` | `obstacle`, `to`, `speed`=1.0 [m/s], `rate_hz`=5 | 配置済みの障害物を現在位置から `to` まで等速で直線移動させる |
 | `call_set_bool` | `service`, `value` | `std_srvs/SetBool` を呼ぶ (センサの配信停止など故障の注入) |
+| `localization_drift` | `rate` (`x`, `y` [m/s]、`yaw` [rad/s]。地図座標), `duration_sec`, `interval_sec`=1.0, `topic`=/initialpose, `cov_xy`=0.01, `cov_yaw`=0.003 | 自己位置推定を少しずつずらす (推定器が誤った姿勢へ引きずられる状況の再現)。`interval_sec` ごとに、シミュレータ上の真の姿勢に `rate` × 開始からの経過時間を足した姿勢を `topic` に送る (推定器がスキャンで戻そうとしても、ずれは時間とともに増える)。`duration_sec` が過ぎたら送るのをやめ、推定器に任せる。真の姿勢は変えない。`topic` を外からの再初期化として扱う監視があれば、それを外して使う |
 | `delay` | `sec` | sim 時間で待つ |
 | `log` | `message` | ログとイベントに記録する |
 
@@ -146,6 +147,7 @@ timeline:
 | `max_stop_duration` | `max_stop_sec`=省略, `min_stop_sec`=0, `speed_threshold`=0.05, `include_turning`=false, `turn_threshold`=0.1, `from_goal_started`=0, `until_goal_reached`=0, `after_timeline`=省略, `topic`=/odom | 区間 (指定ゴールの開始から指定ゴールの到達まで。`after_timeline` を指定すると、その項目が発火するまでは区間に入らない) の連続した停止時間を判定。`include_turning` が true なら、その場の回転 (`resume_within` と同じ判定) は停止に数えない。`max_stop_sec` 超で FAILED (通過点で止まらないこと)、`min_stop_sec` 未満で FAILED (一時停止で止まること) |
 
 | `resume_within` | `after_timeline` (timeline[].name), `max_sec`, `speed_threshold`=0.05, `min_moving_sec`=0.5, `include_turning`=false, `turn_threshold`=0.1, `topic`=/odom | 指定したタイムライン項目が発火してから、並進速度が `speed_threshold` 以上 (`include_turning` が true なら、角速度が `turn_threshold` [rad/s] 以上でもよい) の状態が `min_moving_sec` 続き始めるまでの時間を判定 (一瞬の速度は数えない)。`include_turning` が false のときは、回転を始めた時刻も結果に添える。`max_sec` 超、または走り出さなければ FAILED。項目が発火しなければ ERROR (障害物を除いてから走行を再開するまでの時間の確認) |
+| `pose_error` | `deviation_m`=1.0, `deviation_yaw`=0.35 [rad], `max_error_m`=省略, `max_deviated_distance_m`=省略, `sample_sec`=0.2, `topic`=/odom | 自己位置推定 (TF の map → base) とシミュレータ上の真の姿勢の差を `sample_sec` ごとに比べ、差の最大、ずれていた (位置で `deviation_m` か向きで `deviation_yaw` を超えた) 時間、ずれている間にロボットが実際に走った距離を出す。`max_error_m` を超えたか、ずれている間に走った距離が `max_deviated_distance_m` を超えたら FAILED (ずれたまま走ることを測る)。真の姿勢を出せないバックエンドでは ERROR |
 
 ロボット固有の monitor はプラグインが提供します。
 
