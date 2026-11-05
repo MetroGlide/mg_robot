@@ -114,3 +114,48 @@ class LocalizationStateMonitor(TopicMonitor):
             return CheckResult(
                 "", ResultStatus.FAILED, f"{result.message}, but ended in {last} (expected {self._spec.ends_in})")
         return CheckResult("", ResultStatus.PASSED, f"{result.message}, ended in {last}")
+
+
+@dataclass
+class LocalizationHoldSpec:
+    # 監督が走行を止める要求 (hold_requested) を出していた時間の合計の上限 [s] (sim 時間。省略時は判定しない)
+    max_total_sec: Optional[float] = None
+    # true なら、走行の終わりに要求が解けていること (止まったままでないこと) も判定する
+    ends_released: bool = True
+    topic: str = "/localization/status"
+
+
+@register_monitor("localization_hold", LocalizationHoldSpec)
+class LocalizationHoldMonitor(TopicMonitor):
+    """自己位置の監督が走行を止める要求を出していた回数と時間の合計を測る。"""
+    MSG_TYPE = LocalizationStatus
+
+    def __init__(self, ctx: "ScenarioContext", spec: LocalizationHoldSpec):
+        super().__init__(ctx, spec.topic)
+        self._spec = spec
+        self._received = 0
+        self._count = 0
+        self._total = 0.0
+        self._since: Optional[float] = None
+
+    def _on_msg(self, msg) -> None:
+        self._received += 1
+        now = self._ctx.clock.now()
+        if msg.hold_requested and self._since is None:
+            self._since = now
+            self._count += 1
+        elif not msg.hold_requested and self._since is not None:
+            self._total += now - self._since
+            self._since = None
+
+    def _evaluate(self) -> CheckResult:
+        if self._received == 0:
+            return CheckResult("", ResultStatus.ERROR, f"no message on {self._spec.topic}")
+        total = self._total + (self._ctx.clock.now() - self._since if self._since is not None else 0.0)
+        holding = self._since is not None
+        failed = ((self._spec.max_total_sec is not None and total > self._spec.max_total_sec)
+                  or (self._spec.ends_released and holding))
+        return CheckResult(
+            "", ResultStatus.FAILED if failed else ResultStatus.PASSED,
+            f"hold requested {self._count} time(s), {total:.1f} s in total "
+            f"(limit {self._spec.max_total_sec})" + (", still holding at the end" if holding else ""))
