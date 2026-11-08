@@ -6,7 +6,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription
 from launch_ros.actions import Node
 from launch.substitutions import (
-    EnvironmentVariable, IfElseSubstitution, LaunchConfiguration, PathJoinSubstitution)
+    EnvironmentVariable, IfElseSubstitution, LaunchConfiguration, PathJoinSubstitution, PythonExpression)
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from ament_index_python.packages import get_package_share_directory
 
@@ -105,6 +105,10 @@ def generate_launch_description():
     # 監督の設定に重ねるプロファイル (mg_localization_supervisor/config/supervision.yaml の profiles。空は基本設定)
     localization_profile_arg = launch_argument_creator.create(
         "localization_profile", default=EnvironmentVariable("LOCALIZATION_PROFILE", default_value=""))
+    # localization_profile の後に重ねるプロファイル (シナリオ試験の故障の注入用。localization_profile は環境変数で
+    # 比べる構成を選ぶのに残す)
+    localization_test_profile_arg = launch_argument_creator.create(
+        "localization_test_profile", default="")
     # AMCL と EKF の params に重ねる自己位置推定のプリセット (mg_navigation/params/localization_presets/<名前>.yaml。
     # 空は重ねない)
     localization_preset_arg = launch_argument_creator.create(
@@ -208,7 +212,9 @@ def generate_launch_description():
             "localization_monitor": localization_monitor_arg.launch_config,
             "localization_supervisor": localization_supervisor_arg.launch_config,
             "supervisor_config": supervisor_config_arg.launch_config,
-            "localization_profile": localization_profile_arg.launch_config,
+            "localization_profile": PythonExpression([
+                "','.join(p for p in ('", localization_profile_arg.launch_config, "', '",
+                localization_test_profile_arg.launch_config, "') if p)"]),
             "localization_preset": localization_preset_arg.launch_config,
         }.items(),
     )

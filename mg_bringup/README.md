@@ -55,6 +55,7 @@ compose のサービス (`make slam`、`make navigation` など) は、ここの
 | `localization_supervisor` | `true` で、監視が `watchdog` のまま、監督ノードを並行して通知だけで動かす |
 | `supervisor_config` | 監督の設定ファイル |
 | `localization_profile` | 監督の設定に重ねるプロファイル (空は基本設定。監視が `watchdog` のときは `notify_only`) |
+| `localization_test_profile` | `localization_profile` の後に重ねるプロファイル (シナリオ試験の故障の注入用。`localization_profile` は環境変数で比べる構成を選ぶのに残す) |
 | `nav2_params_file` | Nav2 のパラメータ |
 | `use_slam_gnss_bridge` | GNSS ブリッジ (`/odom/gps`) を起動するか |
 | `bridge_params_file` | GNSS ブリッジのパラメータ |

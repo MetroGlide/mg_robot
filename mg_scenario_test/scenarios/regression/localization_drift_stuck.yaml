@@ -16,7 +16,7 @@ timeout: 360
 stack_args:
   localization_monitor: supervisor
   localization_preset: robust
-  localization_profile: fault_injection
+  localization_test_profile: fault_injection
 
 setup:
   - respawn: { pose: { x: -4.0, y: 7.3, yaw: 0.0 }, settle_sec: 3.0 }
