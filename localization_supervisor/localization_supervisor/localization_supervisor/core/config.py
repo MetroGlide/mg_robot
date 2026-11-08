@@ -130,7 +130,7 @@ class SupervisorConfig:
         return {name: d for name, d in self.detectors.items() if d.enabled}
 
     def with_profile(self, profile: str) -> 'SupervisorConfig':
-        """プロファイルを重ねた設定。'' は基本設定。"""
+        """プロファイルを重ねた設定。'' は基本設定。カンマで区切ると、左から順に重ねる。"""
         return parse_config(self.raw, profile=profile, profiles=self.profiles)
 
 
@@ -425,6 +425,16 @@ def _detector_names(names: List[str], detectors: Mapping[str, DetectorConfig], w
     return [name for name in names if detectors[name].enabled]
 
 
+def profile_names(profile: str) -> List[str]:
+    """プロファイルの指定を名前の列にする。カンマで区切ると、左から順に重ねる。'' は基本設定。"""
+    names = [name.strip() for name in profile.split(',')] if profile else []
+    if any(not name for name in names):
+        raise ConfigError(f'profile {profile!r}: empty name')
+    if len(set(names)) != len(names):
+        raise ConfigError(f'profile {profile!r}: duplicated name')
+    return names
+
+
 def parse_config(
     raw: Mapping[str, Any], profile: str = '', profiles: Optional[Mapping[str, Mapping[str, Any]]] = None,
 ) -> SupervisorConfig:
@@ -432,13 +442,13 @@ def parse_config(
     raw = _mapping(raw, 'config')
     profiles = dict(profiles or {})
     merged = dict(raw)
-    if profile:
-        if profile not in profiles:
-            raise ConfigError(f'profile {profile!r} is not defined (profiles: {sorted(profiles)})')
-        override = _mapping(profiles[profile], f'profiles.{profile}')
+    for name in profile_names(profile):
+        if name not in profiles:
+            raise ConfigError(f'profile {name!r} is not defined (profiles: {sorted(profiles)})')
+        override = _mapping(profiles[name], f'profiles.{name}')
         if 'profiles' in override or 'version' in override:
-            raise ConfigError(f'profiles.{profile}: cannot override version or profiles')
-        merged = merge(raw, override)
+            raise ConfigError(f'profiles.{name}: cannot override version or profiles')
+        merged = merge(merged, override)
     _check_keys(merged, TOP_LEVEL_KEYS, 'config')
     if merged.get('version') != CONTRACT_VERSION:
         raise ConfigError(f'version: expected {CONTRACT_VERSION}, got {merged.get("version")!r}')

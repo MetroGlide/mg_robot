@@ -126,6 +126,27 @@ def test_profiles_overlay_and_replace_plugin_type():
         base.with_profile('nope')
 
 
+def test_profiles_stack_left_to_right():
+    profiles = {'strict': {'detectors': {'amcl_gnss': {'params': {'threshold': 3.0}}},
+                           'external_reinit': {'topics': ['/a', '/b']}},
+                'looser': {'detectors': {'amcl_gnss': {'params': {'threshold': 4.0}}}},
+                'inject': {'external_reinit': {'topics': ['/b']}}}
+    base = parse_config(_raw(), profiles=profiles)
+    stacked = base.with_profile('strict, inject')
+    assert stacked.detectors['amcl_gnss'].params['threshold'] == 3.0
+    # リストは後のプロファイルで置き換わる
+    assert stacked.external_reinit_topics == ['/b']
+    assert stacked.profile == 'strict, inject'
+    assert base.with_profile('strict,looser').detectors['amcl_gnss'].params['threshold'] == 4.0
+    assert base.with_profile('looser,strict').detectors['amcl_gnss'].params['threshold'] == 3.0
+    with pytest.raises(ConfigError, match="'nope' is not defined"):
+        base.with_profile('strict,nope')
+    with pytest.raises(ConfigError, match='empty name'):
+        base.with_profile('strict,')
+    with pytest.raises(ConfigError, match='duplicated'):
+        base.with_profile('strict,strict')
+
+
 def test_merge_replaces_lists_and_other_types():
     assert merge({'a': {'b': 1, 'c': [1]}}, {'a': {'c': [2]}}) == {'a': {'b': 1, 'c': [2]}}
     assert merge({'f': {'type': 'x', 'params': {'p': 1}}}, {'f': {'type': 'y'}}) == {'f': {'type': 'y'}}

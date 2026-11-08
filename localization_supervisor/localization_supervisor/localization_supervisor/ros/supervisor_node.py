@@ -56,22 +56,27 @@ class TfContext(TfBufferContext):
 
 
 def check_node_supports(config: SupervisorConfig) -> None:
-    """基本設定とすべてのプロファイルが、このノードで動かせるか。
+    """基本設定とすべてのプロファイルが、このノードで動かせるか。"""
+    for name in [''] + list(config.profiles):
+        check_profile_supported(config, name)
+
+
+def check_profile_supported(config: SupervisorConfig, name: str) -> None:
+    """プロファイル (カンマで区切った重ね合わせも) が、このノードで動かせるか。
 
     - 入力のアダプタ・再初期化の送り先・対処は起動時に基本設定で作るので、プロファイルで変えることはできない
     - recovery_enabled には、再初期化の送り先 (recovery.resetters) が要る
     """
-    for name in [''] + list(config.profiles):
-        profiled = config.with_profile(name)
-        where = f'profiles.{name}' if name else 'config'
-        if profiled.sources != config.sources:
-            raise ConfigError(f'{where}: cannot change sources (adapters are built at startup)')
-        if profiled.resetters != config.resetters or profiled.actuators != config.actuators:
-            raise ConfigError(f'{where}: cannot change recovery.resetters or recovery.actuators '
-                              '(they are built at startup)')
-        if profiled.machine.recovery_enabled and not profiled.resetters:
-            raise ConfigError(f'{where}: state_machine.recovery_enabled requires recovery.resetters '
-                              '(where to send the reinitialized pose)')
+    profiled = config.with_profile(name)
+    where = f'profiles.{name}' if name else 'config'
+    if profiled.sources != config.sources:
+        raise ConfigError(f'{where}: cannot change sources (adapters are built at startup)')
+    if profiled.resetters != config.resetters or profiled.actuators != config.actuators:
+        raise ConfigError(f'{where}: cannot change recovery.resetters or recovery.actuators '
+                          '(they are built at startup)')
+    if profiled.machine.recovery_enabled and not profiled.resetters:
+        raise ConfigError(f'{where}: state_machine.recovery_enabled requires recovery.resetters '
+                          '(where to send the reinitialized pose)')
 
 
 class LocalizationSupervisorNode(Node):
@@ -83,8 +88,10 @@ class LocalizationSupervisorNode(Node):
             raise ConfigError('parameter config_file is required')
         config = load_config(config_file)
         check_node_supports(config)
+        self._config = config
         self._supervisor = Supervisor(config)
         if profile:
+            check_profile_supported(config, profile)
             self._supervisor.set_profile(profile)
         self.add_on_set_parameters_callback(self._on_parameters)
 
@@ -132,6 +139,7 @@ class LocalizationSupervisorNode(Node):
         try:
             for param in params:
                 if param.name == 'profile':
+                    check_profile_supported(self._config, param.value)
                     self._supervisor.set_profile(param.value)
                 elif param.name == 'config_file':
                     raise ValueError('config_file cannot be changed while running')

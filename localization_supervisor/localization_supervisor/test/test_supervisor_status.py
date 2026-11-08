@@ -10,7 +10,7 @@ from localization_supervisor.core.state_machine import State
 from localization_supervisor.core.status import CheckView, StatusView, localization_health, status_view
 from localization_supervisor.core.supervisor import Supervisor, make_store
 from localization_supervisor.ros.event_sinks import LogfmtEventSink, build_event_sink
-from localization_supervisor.ros.supervisor_node import check_node_supports
+from localization_supervisor.ros.supervisor_node import check_node_supports, check_profile_supported
 
 from supervisor_test_helpers import Drive, pose_sample
 
@@ -111,3 +111,12 @@ def test_node_rejects_recovery_without_resetters_and_source_changes_in_profiles(
                                                                      'topic': '/other'}}}}
     with pytest.raises(ConfigError, match='sources'):
         check_node_supports(config)
+
+
+def test_node_checks_stacked_profiles():
+    config = _config(recovery={**GNSS_RECOVERY, 'resetters': [{'type': 'amcl'}]})
+    config.profiles['a'] = {'state_machine': {'recovery_enabled': True}}
+    config.profiles['b'] = {'grace': {'startup_sec': 1.0}}
+    check_profile_supported(config, 'a,b')
+    with pytest.raises(ConfigError, match='not defined'):
+        check_profile_supported(config, 'a,c')
