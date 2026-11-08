@@ -83,7 +83,7 @@ class MgSequencerSpec:
     countdown_ms: int = 0
     # waypoint 1 つあたりの制限 (sim 時間の秒)
     waypoint_timeout_sec: float = 300.0
-    # この秒数 IDLE のまま進まない場合は ERROR とする (start 忘れの検出)
+    # この秒数 IDLE のまま進まない場合は ERROR とする (start 忘れの検出)。一時停止の要求で IDLE に留まる間は数えない
     idle_stall_sec: float = 10.0
     hooks: Dict[int, WaypointHooks] = field(default_factory=dict)
 
@@ -138,6 +138,19 @@ class MgSequencerDriver(RunDriver):
             ctx.logger.info(f"[mg_sequencer] waypoint {wp.index} ({seq + 1}/{total})")
             ctx.run_actions(hooks.before, ctx.abort_event)
             if spec.auto_start and (seq == spec.start_index or self._client.state == "IDLE"):
+                # 一時停止の要求 (例: 自己位置の監督) が出ている間、シーケンサは start を受け付けない
+                if self._client.paused:
+                    ctx.logger.info(f"[mg_sequencer] waiting for the pause to be released "
+                                    f"before waypoint {wp.index}")
+                    if not self._client.wait_unpaused(
+                            spec.waypoint_timeout_sec, ctx.abort_event, ctx.clock.now):
+                        if ctx.abort_event.is_set():
+                            return self._aborted(total, reached, seq)
+                        reason = (f"pause was not released within "
+                                  f"{spec.waypoint_timeout_sec:.0f}s at waypoint {wp.index}")
+                        ctx.events.emit("goal_failed", index=seq, waypoint_index=wp.index,
+                                        reason=reason)
+                        return Outcome(total, reached, seq, reason)
                 countdown = hooks.countdown_ms if hooks.countdown_ms is not None \
                     else spec.countdown_ms
                 self._client.start(countdown)

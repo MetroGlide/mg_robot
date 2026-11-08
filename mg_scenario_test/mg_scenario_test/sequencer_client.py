@@ -58,9 +58,14 @@ class SequencerClient:
         with self._lock:
             return self._tracker.index
 
+    @property
+    def paused(self) -> bool:
+        with self._lock:
+            return self._tracker.paused
+
     def _on_status(self, msg: SequencerStatus) -> None:
         with self._lock:
-            self._tracker.update(msg.state, msg.current_index, time.monotonic())
+            self._tracker.update(msg.state, msg.current_index, time.monotonic(), msg.is_paused)
 
     def wait_for_service(self, timeout_sec: float) -> bool:
         return self._start_client.wait_for_service(timeout_sec=timeout_sec)
@@ -141,6 +146,23 @@ class SequencerClient:
             if clock_now() > deadline or abort_event.is_set():
                 return Progress.WAITING
             time.sleep(_POLL_SEC)
+
+    def wait_unpaused(
+        self,
+        timeout_sec: float,
+        abort_event: threading.Event,
+        clock_now: Callable[[], float],
+    ) -> bool:
+        """一時停止の要求が解けるまで待つ。timeout_sec は clock_now (sim 時間) で測る。
+
+        解けたら True、タイムアウトか abort_event による中断なら False を返す。
+        """
+        deadline = clock_now() + timeout_sec
+        while self.paused:
+            if clock_now() > deadline or abort_event.is_set():
+                return False
+            time.sleep(_POLL_SEC)
+        return True
 
     def fetch_waypoints(self, timeout_sec: float = 5.0) -> Optional[List]:
         """latched な ~/waypoints トピックから WaypointInfo のリストを取得する。"""

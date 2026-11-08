@@ -29,7 +29,8 @@ run:
 
 1. 開始時に `~/stop` → `set_next_waypoint_index(start_index)` (反映を確認) → `~/start`。
 2. waypoint を通過した後、sequencer が `wait_trigger` で IDLE になっていたら、`hooks.<n>.before` を実行してから `~/start` を呼ぶ。
-3. sequencer が IDLE のまま `idle_stall_sec` 進まなければ ERROR (start 忘れの検出)。
+3. `~/start` を呼ぶ前に一時停止の要求 (`is_paused`。例: 自己位置の監督の止める要求) が出ていれば、解けるまで待つ (シーケンサは要求の間 start を受け付けない)。`waypoint_timeout_sec` 解けなければ失敗。
+4. sequencer が IDLE のまま `idle_stall_sec` 進まなければ ERROR (start 忘れの検出)。一時停止の要求で IDLE に留まる間は数えない。
 
 `auto_start: false` にすると、start / index 設定はシナリオ側 (`sequencer_start` など) で行います。
 
