@@ -83,6 +83,13 @@ def test_all_of_parses_nested_triggers():
         _parse(timeline=bad)
 
 
+def test_wait_for_parses_trigger():
+    scenario = _parse(setup=[{"wait_for": {"trigger": {"at_time": {"sec": 1}}, "timeout_sec": 5}}])
+    assert scenario.setup[0].spec.trigger.name == "at_time"
+    with pytest.raises(ScenarioValidationError, match="timeout_sec"):
+        _parse(setup=[{"wait_for": {"trigger": {"at_time": {"sec": 1}}, "timeout_sec": 0}}])
+
+
 def test_negative_delay():
     with pytest.raises(ScenarioValidationError, match="sec"):
         _parse(setup=[{"delay": {"sec": -1}}])

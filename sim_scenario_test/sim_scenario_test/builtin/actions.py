@@ -9,10 +9,12 @@ from typing import TYPE_CHECKING
 from geometry_msgs.msg import PoseWithCovarianceStamped
 from std_srvs.srv import SetBool
 
+from sim_scenario_test.engine.timeline import instantiate_trigger
 from sim_scenario_test.errors import ScenarioError, ScenarioValidationError
 from sim_scenario_test.geometry import Pose, PoseSpec, quaternion_from_yaw
 from sim_scenario_test.nav2 import call_service
 from sim_scenario_test.registry import register_action
+from sim_scenario_test.spec import TriggerCall
 
 if TYPE_CHECKING:
     from sim_scenario_test.context import ScenarioContext
@@ -298,6 +300,33 @@ class DelaySpec:
 def delay(ctx: "ScenarioContext", spec: DelaySpec, stop: threading.Event) -> None:
     """sim 時間で sec 秒待つ。"""
     ctx.clock.sleep(spec.sec, stop)
+
+
+@dataclass
+class WaitForSpec:
+    trigger: TriggerCall
+    # この秒数 (sim 時間) で成立しなければ ScenarioError
+    timeout_sec: float = 60.0
+
+    def validate(self, where: str) -> None:
+        if self.timeout_sec <= 0.0:
+            raise ScenarioValidationError(f"{where}: 'timeout_sec' must be > 0")
+
+
+@register_action("wait_for", WaitForSpec)
+def wait_for(ctx: "ScenarioContext", spec: WaitForSpec, stop: threading.Event) -> None:
+    """trigger が成立するまで待つ (waypoint のフックの中で、故障の注入の前に準備を待つなど)。
+
+    trigger はこの action を始めた時点で作るので、それより前の出来事は見ない。
+    """
+    trigger = instantiate_trigger(ctx, spec.trigger)
+    deadline = ctx.clock.now() + spec.timeout_sec
+    while not trigger.poll():
+        if stop.is_set():
+            return
+        if ctx.clock.now() > deadline:
+            raise ScenarioError(f"wait_for: {spec.trigger.name} not satisfied within {spec.timeout_sec:.0f}s")
+        time.sleep(0.05)
 
 
 @dataclass

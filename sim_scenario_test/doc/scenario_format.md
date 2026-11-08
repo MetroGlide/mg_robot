@@ -104,6 +104,7 @@ run:
 | `call_set_bool` | `service`, `value` | `std_srvs/SetBool` を呼ぶ (センサの配信停止など故障の注入) |
 | `localization_drift` | `rate` (`x`, `y` [m/s]、`yaw` [rad/s]。地図座標), `duration_sec`, `interval_sec`=1.0, `topic`=/initialpose, `cov_xy`=0.01, `cov_yaw`=0.003 | 自己位置推定を少しずつずらす (推定器が誤った姿勢へ引きずられる状況の再現)。`interval_sec` ごとに、シミュレータ上の真の姿勢に `rate` × 開始からの経過時間を足した姿勢を `topic` に送る (推定器がスキャンで戻そうとしても、ずれは時間とともに増える)。`duration_sec` が過ぎたら送るのをやめ、推定器に任せる。真の姿勢は変えない。`topic` を外からの再初期化として扱う監視があれば、それを外して使う |
 | `delay` | `sec` | sim 時間で待つ |
+| `wait_for` | `trigger` (トリガー 1 つ), `timeout_sec`=60 | トリガーが成立するまで待つ。`timeout_sec` (sim 時間) で成立しなければエラー。トリガーは action を始めた時点で作るので、それより前の出来事は見ない (例: waypoint のフックで、故障の注入の前に自己位置の監督の準備を待つ) |
 | `log` | `message` | ログとイベントに記録する |
 
 ## trigger (`timeline[].when` / `until`)
