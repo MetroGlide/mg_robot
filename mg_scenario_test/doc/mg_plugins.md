@@ -52,13 +52,14 @@ sequencer が `ERROR` になったら FAILED です。
 | 型 | パラメータ | 成立条件 |
 |---|---|---|
 | `sequencer_state` | `state`, `index`=省略可, `namespace` | sequencer の状態が `state` (`IDLE` / `NAVIGATING` / `ON_ARRIVING` / `GOAL_REACHED` / `SUSPENDED` / `ERROR` 等) になった (`index` 指定時は current_index も一致) |
+| `localization_ready` | `for_sec`=5.0, `checks`=[] (判定のインスタンスの名前), `topic`=/localization/status | 自己位置の監督が `NORMAL` で猶予 (`in_grace`) の外である状態が `for_sec` 続き、`checks` の判定がどれも一度は `UNKNOWN` 以外になった。故障を注入する前に、監督の起動と GNSS による初期化が済むのを待つのに使う (GNSS は走り出すまで出ないので、`checks: [amcl_gnss]` は走行中に成立する) |
 
 ## monitor
 
 | 型 | パラメータ | 判定 |
 |---|---|---|
 | `collision_monitor_action` | `action` (`STOP` / `SLOWDOWN` / `APPROACH`), `expect`=occurs (`occurs`/`never`), `topic`=/collision_monitor_state | `nav2_msgs/CollisionMonitorState` (`nav2_pkg/nav2_msgs` の型。新しい collision monitor と一緒に取り込んだもの) で、collision_monitor がその action を発動した回数から判定 |
-| `localization_state` | `state` (`NORMAL` / `SUSPECT` / `ISOLATED` / `RECOVERING` / `DEGRADED`), `expect`=occurs (`occurs`/`never`), `ends_in`=省略可 (走行後の最後の状態), `topic`=/localization/status | 自己位置の監督の状態 (`localization_supervisor_msgs/LocalizationStatus`) がその状態になった配信の回数から判定。`ends_in` を指定すると、最後に受信した状態がそれであること (復旧して戻ったこと) も判定する。監督ノードを起動するシナリオ (`stack_args` の `localization_monitor: supervisor`) で使う |
+| `localization_state` | `state` (`NORMAL` / `SUSPECT` / `ISOLATED` / `RECOVERING` / `DEGRADED`), `expect`=occurs (`occurs`/`never`), `ends_in`=省略可 (走行後の最後の状態), `blame`=省略可 (疑わしい情報源の名前), `topic`=/localization/status | 自己位置の監督の状態 (`localization_supervisor_msgs/LocalizationStatus`) がその状態になった配信の回数から判定。`blame` を指定すると、疑わしい情報源がそれである配信だけを数える (正しい原因で復旧したか)。`ends_in` を指定すると、最後に受信した状態がそれであること (復旧して戻ったこと) も判定する。監督ノードを起動するシナリオ (`stack_args` の `localization_monitor: supervisor`) で使う |
 | `navigation_activity` | `code` (`mg_msgs/NavigationActivity` の code。例 `paused` / `trigger_wait` / `action` / `recovery` / `obstacle_stop` / `detour_rejected`), `expect`=occurs (`occurs`/`never`), `topic`=/waypoint_sequencer_node/activity | シーケンサの「いまの活動」がその code になった回数から判定。シーケンサ経由の走行 (`mg_sequencer`) でだけ出る (`nav2_goals` は対象外) |
 | `localization_hold` | `max_total_sec`=省略, `ends_released`=true, `topic`=/localization/status | 自己位置の監督が走行を止める要求 (`hold_requested`) を出していた回数と時間の合計を出す。合計が `max_total_sec` を超えたら FAILED。`ends_released` が true なら、走行の終わりに要求が解けていない (止まったまま) ときも FAILED |
 
