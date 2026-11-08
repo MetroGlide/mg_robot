@@ -560,6 +560,22 @@ def test_resume_within_can_count_turning_as_motion():
     assert result.status == ResultStatus.PASSED and "moved 1.0" in result.message
 
 
+def test_all_of_trigger_fires_after_each_has_fired_once():
+    from sim_scenario_test.builtin.triggers import AllOf, AllOfSpec
+    states = {"a": False, "b": False}
+
+    def call(name):
+        entry = SimpleNamespace(impl=lambda ctx, spec: SimpleNamespace(poll=lambda: states[name]))
+        return SimpleNamespace(entry=entry, spec=None)
+
+    trigger = AllOf(MagicMock(), AllOfSpec(triggers=[call("a"), call("b")]))
+    states["a"] = True
+    assert not trigger.poll()
+    # a はもう成立しなくても、一度成立したので数える
+    states["a"], states["b"] = False, True
+    assert trigger.poll()
+
+
 def test_bt_node_trigger_fires_on_matching_status():
     from sim_scenario_test.builtin.triggers import BtNodeTrigger, BtNodeTriggerSpec
     ctx = MagicMock()

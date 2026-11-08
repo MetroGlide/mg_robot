@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import threading
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, List, Literal
 
 from nav2_msgs.msg import BehaviorTreeLog
 from rclpy.qos import qos_profile_sensor_data
 
+from sim_scenario_test.engine.timeline import instantiate_trigger
 from sim_scenario_test.geometry import PoseSpec
 from sim_scenario_test.registry import register_trigger
+from sim_scenario_test.spec import TriggerCall
 
 if TYPE_CHECKING:
     from sim_scenario_test.context import ScenarioContext
@@ -134,3 +136,26 @@ class BtNodeTrigger:
 
     def poll(self) -> bool:
         return self._occurred.is_set()
+
+
+@dataclass
+class AllOfSpec:
+    triggers: List[TriggerCall]
+
+
+@register_trigger("all_of", AllOfSpec)
+class AllOf:
+    """triggers のすべてが一度は成立したら成立する (成立した順は問わない)。
+
+    例: 監督の準備ができ (localization_ready)、かつ通路に入った (robot_near) ら故障を注入する。
+    """
+
+    def __init__(self, ctx: "ScenarioContext", spec: AllOfSpec):
+        self._triggers = [instantiate_trigger(ctx, call) for call in spec.triggers]
+        self._fired = [False] * len(self._triggers)
+
+    def poll(self) -> bool:
+        for i, trigger in enumerate(self._triggers):
+            if not self._fired[i] and trigger.poll():
+                self._fired[i] = True
+        return all(self._fired)

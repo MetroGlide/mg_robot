@@ -117,6 +117,7 @@ run:
 | `robot_travelled` | `distance` | 走行開始からのロボットの移動距離 (経路長) が `distance` [m] に達した |
 | `robot_near` | `x`, `y`, `radius`, `frame`=map (`map`/`world`) | ロボットが指定点から `radius` [m] 以内 |
 | `bt_node` | `node`, `status`=RUNNING (`IDLE`/`RUNNING`/`SUCCESS`/`FAILURE`), `topic`=/behavior_tree_log | BT のノードが指定の状態になった (例: リカバリーの `Spin` が始まった)。トリガーを作った時点 (タイムラインの開始) より後の状態だけを見る |
+| `all_of` | `triggers` (トリガーのリスト) | `triggers` のすべてが一度は成立した (順は問わない)。例: 自己位置の監督の準備ができ、かつ指定の場所に入ったら |
 
 `robot_travelled` / `robot_near` は速度や RTF に左右されないので、`at_time` より再現性が高くなります。
 
