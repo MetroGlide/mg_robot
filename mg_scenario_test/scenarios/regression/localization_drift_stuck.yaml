@@ -1,41 +1,46 @@
 version: "2.0"
 name: localization_drift_stuck
 description: >
-  棚の手前で止まっている間に、自己位置推定を棚の中へ少しずつずらす (推定器が誤った姿勢へ引きずられる状況の
-  再現。真の位置は動かさない)。止まっていると AMCL も GNSS も更新されないので、ずれは残り、推定の footprint が
-  地図の棚にかかって次の経路を作れなくなる。止まったままにならず、自己位置の監督が戻して次のゴールへ着くことを
-  確かめる。
+  棚の手前でシーケンサが止まっている間に、自己位置推定を棚の中へ少しずつずらす (推定器が誤った姿勢へ
+  引きずられる状況の再現。真の位置は動かさない)。止まっていると AMCL も GNSS も更新されないので、ずれは残り、
+  推定の footprint が地図の棚にかかって次の経路を作れなくなる。止まったままにならず、自己位置の監督が戻して
+  シーケンサが次のゴールへ着くことを確かめる。
   到達の判定はシミュレータ上の真の位置で行う。ずらす注入は /initialpose を使うので、監督はプロファイル
-  fault_injection で /initialpose を外からの再初期化として扱わない。自己位置推定はプリセット robust。
-  監督の起動の猶予と GNSS による初期化が済むよう、走行の前に待つ。
+  fault_injection (localization_test_profile で、環境変数で選ぶプロファイルの後に重ねる) で /initialpose を外からの
+  再初期化として扱わない。自己位置推定はプリセット robust。
+  監督の準備 (GNSS による初期化と猶予) は、GNSS が出る走行中 (通過点 1 の後) に待ち、止まってから注入する。
 profile: mg01
 world: warehouse
-tags: [localization, drift, known_issue]
+tags: [localization, drift, mg_sequencer, known_issue]
 timeout: 360
 
 stack_args:
+  waypoints_load_path: "pkg://mg_scenario_test/scenarios/data/drift_stop_waypoints.yaml"
   localization_monitor: supervisor
   localization_preset: robust
   localization_test_profile: fault_injection
 
 setup:
-  - respawn: { pose: { x: -4.0, y: 7.3, yaw: 0.0 }, settle_sec: 3.0 }
-  - delay: { sec: 40.0 }
+  - respawn: { pose: { x: -4.0, y: 3.0, yaw: 3.1416 }, settle_sec: 3.0 }
 
 monitors:
-  - pose_error: { deviation_m: 1.0, max_deviated_distance_m: 3.0 }
+  - pose_error: { deviation_m: 1.0, max_deviated_distance_m: 3.0, max_deviated_sec: 30.0 }
   - localization_hold: {}
+  - localization_state: { state: RECOVERING, blame: amcl }
 
 run:
-  nav2_goals:
-    goal_timeout_sec: 150.0
-    goals:
-      - pose: { x: 0.0, y: 7.3, yaw: 0.0 }
+  mg_sequencer:
+    waypoints_file: "pkg://mg_scenario_test/scenarios/data/drift_stop_waypoints.yaml"
+    waypoint_timeout_sec: 150.0
+    hooks:
+      1:
         after:
+          - wait_for: { trigger: { localization_ready: { checks: [amcl_gnss] } }, timeout_sec: 60.0 }
+      3:
+        before:
           # 止まっている間に、推定を棚 (y 8 m 付近から) の中へずらす
           - localization_drift: { rate: { y: 0.1 }, duration_sec: 12.0 }
           - delay: { sec: 5.0 }
-      - pose: { x: 10.0, y: 7.3, yaw: 0.0 }
 
 expect:
   - reached_all

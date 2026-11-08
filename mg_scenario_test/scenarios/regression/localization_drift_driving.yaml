@@ -1,40 +1,45 @@
 version: "2.0"
 name: localization_drift_driving
 description: >
-  棚の列に沿った通路を走っている間に、自己位置推定を横へ少しずつずらす (推定器が誤った姿勢へ引きずられる
-  状況の再現。真の位置は動かさない)。AMCL と EKF がそろってずれ、正しい GNSS だけが食い違う。
-  ずれたまま長く走らず、自己位置の監督が戻してゴールへ着くことを確かめる。
+  棚の列に沿った通路をシーケンサで走っている間に、自己位置推定を横へ少しずつずらす (推定器が誤った姿勢へ
+  引きずられる状況の再現。真の位置は動かさない)。AMCL と EKF がそろってずれ、正しい GNSS だけが食い違う。
+  ずれたまま長く走らず、自己位置の監督が AMCL を疑って戻し、ゴールへ着くことを確かめる。
   到達の判定はシミュレータ上の真の位置で行う。ずらす注入は /initialpose を使うので、監督はプロファイル
-  fault_injection で /initialpose を外からの再初期化として扱わない。自己位置推定はプリセット robust。
-  監督の起動の猶予と GNSS による初期化が済むよう、走行の前に待つ。
+  fault_injection (localization_test_profile で、環境変数で選ぶプロファイルの後に重ねる) で /initialpose を外からの
+  再初期化として扱わない。自己位置推定はプリセット robust。
+  通路に入る前に開けた場所を走り、監督の準備 (GNSS による初期化と猶予) ができて通路に入ってから注入する。
 profile: mg01
 world: warehouse
-tags: [localization, drift, known_issue]
+tags: [localization, drift, mg_sequencer, known_issue]
 timeout: 300
 
 stack_args:
+  waypoints_load_path: "pkg://mg_scenario_test/scenarios/data/drift_aisle_waypoints.yaml"
   localization_monitor: supervisor
   localization_preset: robust
   localization_test_profile: fault_injection
 
 setup:
-  - respawn: { pose: { x: -4.0, y: 6.5, yaw: 0.0 }, settle_sec: 3.0 }
-  - delay: { sec: 40.0 }
+  - respawn: { pose: { x: -4.0, y: 3.0, yaw: 3.1416 }, settle_sec: 3.0 }
 
 monitors:
-  # ずらし終えた後、監督が戻すまでに走る距離の上限
-  - pose_error: { deviation_m: 1.0, max_deviated_distance_m: 3.0 }
+  # ずらし終えた後、監督が戻すまでに走る距離と、ずれていた時間の上限
+  - pose_error: { deviation_m: 1.0, max_deviated_distance_m: 3.0, max_deviated_sec: 20.0 }
   - localization_hold: {}
+  - localization_state: { state: RECOVERING, blame: amcl }
 
 run:
-  nav2_goals:
-    goal_timeout_sec: 200.0
-    goals:
-      - pose: { x: 11.0, y: 6.5, yaw: 0.0 }
+  mg_sequencer:
+    waypoints_file: "pkg://mg_scenario_test/scenarios/data/drift_aisle_waypoints.yaml"
+    waypoint_timeout_sec: 200.0
 
 timeline:
   - name: drift
-    when: { robot_travelled: { distance: 1.5 } }
+    when:
+      all_of:
+        triggers:
+          - localization_ready: { checks: [amcl_gnss] }
+          - robot_near: { x: -3.0, y: 6.5, radius: 1.5 }
     do:
       - localization_drift: { rate: { y: 0.15 }, duration_sec: 12.0 }
 
