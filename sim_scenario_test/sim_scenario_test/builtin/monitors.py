@@ -336,6 +336,8 @@ class PoseErrorSpec:
     # ずれている間に、ロボットが実際に走った距離 [m] の上限 (省略時は判定しない)。
     # ずれたまま走ることを測る
     max_deviated_distance_m: Optional[float] = None
+    # ずれていた時間の合計 [s] の上限 (sim 時間。省略時は判定しない)。止まったままずれていることを測る
+    max_deviated_sec: Optional[float] = None
     # 姿勢を比べる間隔 [s] (sim 時間)
     sample_sec: float = 0.2
     # 比べるタイミングの元になるトピック
@@ -406,11 +408,14 @@ class PoseErrorMonitor(TopicMonitor):
         failed = (
             (self._spec.max_error_m is not None and self._max_error > self._spec.max_error_m)
             or (self._spec.max_deviated_distance_m is not None
-                and self._deviated_distance > self._spec.max_deviated_distance_m))
+                and self._deviated_distance > self._spec.max_deviated_distance_m)
+            or (self._spec.max_deviated_sec is not None
+                and self._deviated_sec > self._spec.max_deviated_sec))
         return CheckResult(
             "", ResultStatus.FAILED if failed else ResultStatus.PASSED,
             f"max error {self._max_error:.2f} m / {math.degrees(self._max_yaw_error):.0f} deg "
-            f"(limit {self._spec.max_error_m}), deviated {self._deviated_sec:.1f} s, "
+            f"(limit {self._spec.max_error_m}), deviated {self._deviated_sec:.1f} s "
+            f"(limit {self._spec.max_deviated_sec}), "
             f"travelled {self._deviated_distance:.2f} m while deviated "
             f"(limit {self._spec.max_deviated_distance_m}), "
             f"last error {self._last_error[0]:.2f} m / {math.degrees(self._last_error[1]):.0f} deg")

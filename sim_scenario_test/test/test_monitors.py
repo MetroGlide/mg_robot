@@ -594,6 +594,28 @@ def test_pose_error_monitor_measures_distance_travelled_while_deviated():
     assert "deviated 4.0 s" in result.message
 
 
+def test_pose_error_monitor_limits_deviated_time_while_stationary():
+    from sim_scenario_test.builtin.monitors import PoseErrorMonitor, PoseErrorSpec
+    backend = FakeBackend()
+    robot = FakeRobot(Pose(0.0, 0.0))
+    ctx = _scenario_ctx(backend, robot)
+    clock = {"t": 0.0}
+    ctx.clock.now = lambda: clock["t"]
+    backend.true_poses["robot"] = Pose(0.0, 0.0)
+    monitor = PoseErrorMonitor(ctx, PoseErrorSpec(
+        deviation_m=1.0, max_deviated_distance_m=1.0, max_deviated_sec=3.0))
+    # 真の姿勢は動かず、推定は 1 s 目から y に 2 m ずれたまま
+    for t in range(6):
+        clock["t"] = float(t)
+        robot.pose = Pose(0.0, 2.0 if t >= 1 else 0.0)
+        monitor._callback(None)
+    result = monitor.result()
+    # 走った距離は 0 で距離の上限は超えないが、ずれた標本 (1〜5 s) までの 5 区間が上限を超える
+    assert result.status == ResultStatus.FAILED
+    assert "deviated 5.0 s (limit 3.0)" in result.message
+    assert "travelled 0.00 m while deviated" in result.message
+
+
 def test_pose_error_monitor_skips_samples_within_interval():
     from sim_scenario_test.builtin.monitors import PoseErrorMonitor, PoseErrorSpec
     backend = FakeBackend()
