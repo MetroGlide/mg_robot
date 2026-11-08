@@ -676,3 +676,20 @@ def test_localization_drift_sends_truth_plus_growing_offset(monkeypatch):
     assert all(m.pose.pose.position.x == pytest.approx(1.0) for m in sent)
     assert sent[-1].pose.pose.orientation.z == pytest.approx(math.sin(0.03 / 2.0))
     assert not [c for c in backend.calls if c[0] == "set_pose"]
+
+
+def test_localization_spread_sends_once_with_wide_covariance(monkeypatch):
+    from sim_scenario_test.builtin.actions import LocalizationSpreadSpec, PoseOffset, localization_spread
+    monkeypatch.setattr("sim_scenario_test.builtin.actions.PoseWithCovarianceStamped", _pose_msg)
+    backend = FakeBackend()
+    ctx = _scenario_ctx(backend)
+    backend.true_poses["robot"] = Pose(1.0, 2.0, 0.0, 0.0)
+    pub = MagicMock()
+    ctx.extensions["localization_spread:/initialpose"] = pub
+    localization_spread(ctx, LocalizationSpreadSpec(
+        offset=PoseOffset(x=2.0, yaw=0.2), sigma=PoseOffset(2.0, 0.5, 0.1)), threading.Event())
+    (msg,) = [c.args[0] for c in pub.publish.call_args_list]
+    assert (msg.pose.pose.position.x, msg.pose.pose.position.y) == pytest.approx((3.0, 2.0))
+    assert msg.pose.pose.orientation.z == pytest.approx(math.sin(0.1))
+    assert [msg.pose.covariance[i] for i in (0, 7, 35)] == pytest.approx([4.0, 0.25, 0.01])
+    assert not [c for c in backend.calls if c[0] == "set_pose"]

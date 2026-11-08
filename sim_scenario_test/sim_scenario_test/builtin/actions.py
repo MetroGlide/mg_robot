@@ -174,6 +174,59 @@ def localization_drift(
         ctx.clock.sleep(spec.interval_sec, stop)
 
 
+@dataclass
+class PoseOffset:
+    # 地図座標 [m]、[rad]
+    x: float = 0.0
+    y: float = 0.0
+    yaw: float = 0.0
+
+
+@dataclass
+class LocalizationSpreadSpec:
+    # 真の姿勢からずらす量 (広げた分布の中心)
+    offset: PoseOffset = dataclasses.field(default_factory=PoseOffset)
+    # 広げる標準偏差 [m]、[rad]
+    sigma: PoseOffset = dataclasses.field(default_factory=lambda: PoseOffset(1.5, 1.5, 0.3))
+    topic: str = "/initialpose"
+
+    def validate(self, where: str) -> None:
+        if min(self.sigma.x, self.sigma.y, self.sigma.yaw) < 0.0:
+            raise ScenarioValidationError(f"{where}: 'sigma' must be >= 0")
+
+
+@register_action("localization_spread", LocalizationSpreadSpec)
+def localization_spread(
+    ctx: "ScenarioContext", spec: LocalizationSpreadSpec, stop: threading.Event
+) -> None:
+    """自己位置推定の分布を 1 回だけ広げ、推定器に峰を選び直させる (尤度が割れて誤った峰が勝つ状況の再現)。
+
+    シミュレータ上の真の姿勢に offset を足した姿勢を中心に、sigma の共分散で topic に 1 回送る。
+    真の姿勢は変えない。topic を外からの再初期化として扱う監視があれば、それを外して使う。
+    """
+    world = ctx.backend.entity_pose(ctx.profile.sim.robot_entity)
+    if world is None:
+        raise ScenarioError("localization_spread: true pose of the robot is not available")
+    truth = ctx.poses.to_map(PoseSpec("world", world.x, world.y, world.z, world.yaw))
+    key = f"localization_spread:{spec.topic}"
+    if key not in ctx.extensions:
+        ctx.extensions[key] = ctx.node.create_publisher(PoseWithCovarianceStamped, spec.topic, 10)
+    msg = PoseWithCovarianceStamped()
+    msg.header.frame_id = ctx.profile.frames.map
+    msg.header.stamp = ctx.node.get_clock().now().to_msg()
+    msg.pose.pose.position.x = truth.x + spec.offset.x
+    msg.pose.pose.position.y = truth.y + spec.offset.y
+    qx, qy, qz, qw = quaternion_from_yaw(truth.yaw + spec.offset.yaw)
+    msg.pose.pose.orientation.x = qx
+    msg.pose.pose.orientation.y = qy
+    msg.pose.pose.orientation.z = qz
+    msg.pose.pose.orientation.w = qw
+    msg.pose.covariance[0] = spec.sigma.x ** 2
+    msg.pose.covariance[7] = spec.sigma.y ** 2
+    msg.pose.covariance[35] = spec.sigma.yaw ** 2
+    ctx.extensions[key].publish(msg)
+
+
 @register_action("clear_costmaps")
 def clear_costmaps(ctx: "ScenarioContext", spec: None, stop: threading.Event) -> None:
     """Nav2 のグローバル・ローカルコストマップをクリアする。"""
