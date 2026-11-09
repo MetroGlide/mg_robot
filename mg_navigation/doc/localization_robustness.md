@@ -1,6 +1,6 @@
 # 自己位置推定のロバスト化: 検証の記録と判断の根拠
 
-角などで自己位置がずれる問題について、何を確かめ、何が分かり、なぜ今の進め方にしたかを書く。構成と使い方は [localization.md](./localization.md)、評価の道具の使い方は [tools の localization_evaluation.md](../../tools/doc/localization_evaluation.md)。
+角などで自己位置がずれる問題について、何を確かめ、何が分かり、なぜ今の進め方にしたかを書く。構成と使い方は [localization.md](./localization.md)、評価の道具の使い方は [tools の localization_evaluation.md](../../tools/doc/localization_evaluation.md)、失敗の台帳と完了基準は [localization_failure_ledger.md](./localization_failure_ledger.md)。
 数値は検証の時点の結果の例で、設定値の正は yaml (`mg_navigation/params/nav2_params.yaml`、`mg_drivers/params/ekf_global.yaml`)。
 
 ## 問題
