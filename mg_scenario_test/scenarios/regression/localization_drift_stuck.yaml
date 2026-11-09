@@ -26,7 +26,7 @@ setup:
 monitors:
   # 暫定の基準。見かけの食い込みが起きない試行は試験になっていない (ERROR)
   - localization_outcome: { max_missed_distance_m: 3.0, max_false_hold_sec: 30.0, require_deviation: true }
-  - map_overlap: { footprint: [[0.4, 0.25], [0.4, -0.25], [-0.2, -0.3], [-0.2, 0.3]], require_overlap: true, max_overlap_sec: 60.0 }
+  - map_overlap: { require_overlap: true, max_overlap_sec: 60.0 }
   # 以下は診断の記録 (合否に使わない)
   - pose_error: { deviation_m: 1.0 }
   - localization_hold: { ends_released: false }

@@ -46,7 +46,7 @@
 
 - 上限の値は暫定で、シナリオの yaml を正とする。弱い条件の実測を見て決め直す。
 - 構成の比較は 1 本の線の合否でなく、基準の構成との対応のある比較と、弱い条件の強さを変えた応答で見る。
-- 角でのずれは必ず含める (`localization_corner_drift` と、角に効く弱い条件)。
+- 角でのずれは必ず含める (`localization_corner_drift`、`localization_corner_odom`、`localization_corner_weak`)。見かけの食い込みは `localization_map_shift` で作る。
 - 再生は開ループなので、見逃し (止める要求とずれの関係)、ずれた時間、誤停止を見る。監督がどの情報源を疑ったか (`blame`) は診断の記録で、合否に使わない。
 
 ## NEES の読み方
