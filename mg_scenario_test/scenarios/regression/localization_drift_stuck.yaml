@@ -24,9 +24,12 @@ setup:
   - respawn: { pose: { x: -4.0, y: 3.0, yaw: 3.1416 }, settle_sec: 3.0 }
 
 monitors:
-  - pose_error: { deviation_m: 1.0, max_deviated_distance_m: 3.0, max_deviated_sec: 30.0 }
-  - localization_hold: {}
-  - localization_state: { state: RECOVERING, blame: amcl }
+  # 暫定の基準。見かけの食い込みが起きない試行は試験になっていない (ERROR)
+  - localization_outcome: { max_missed_distance_m: 3.0, max_false_hold_sec: 30.0, require_deviation: true }
+  - map_overlap: { footprint: [[0.4, 0.25], [0.4, -0.25], [-0.2, -0.3], [-0.2, 0.3]], require_overlap: true, max_overlap_sec: 60.0 }
+  # 以下は診断の記録 (合否に使わない)
+  - pose_error: { deviation_m: 1.0 }
+  - localization_hold: { ends_released: false }
 
 run:
   mg_sequencer:

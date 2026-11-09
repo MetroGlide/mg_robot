@@ -41,6 +41,7 @@ scenarios/
 | `localization_gnss_denied` | 走行中に GNSS の配信を止めても (ブリッジの `change_publish_state`)、AMCL とホイールオドメトリだけでゴールへ到達し、停止位置の誤差が 0.5m 以内 |
 | `localization_kidnap_recovery` | 1 つ目のゴールに着いたあとロボットを別の場所へ移して (`teleport`。自己位置推定には通知しない) 止まったまま待つと、自己位置の監督が異常を確認して AMCL と EKF を初期化し直し (状態が `RECOVERING` を経て `NORMAL` に戻る。`localization_state`)、2 つ目のゴールへ到達する。到達はシミュレータ上の真の位置で判定する。監視は監督 (`localization_monitor: supervisor`。既定)。停止中の AMCL は更新されない(静止中は AMCL との比較が判定できない)ので、検知は走り出した後になる。所要は約 2.5 分 |
 | `localization_drift_driving` | 棚の列に沿った通路をシーケンサで走っている間に、自己位置推定を横へ少しずつずらしても (`localization_drift`。真の位置は動かさない)、ずれたまま長く走らず (`pose_error` の `max_deviated_distance_m`・`max_deviated_sec`)、監督が AMCL を疑って戻し (`localization_state` の `blame`)、ゴールへ到達する。到達はシミュレータ上の真の位置で判定する。通路の前に開けた場所を走り、監督の準備 (GNSS による初期化と猶予。`localization_ready`) ができて通路に入ってから (`all_of`) 注入する。監督はプロファイル `fault_injection` (`localization_test_profile`)、自己位置推定はプリセット `robust`。`known_issue` (下記) |
+| `localization_corner_drift` | warehouse を 1 周する経路の複数の角で、自己位置推定の向きを少しずつずらしても (`localization_drift`)、ずれたまま走り続けず (`localization_outcome`)、止まったままにならず (`max_stop_duration`、`map_overlap`)、最後まで走りきる。注入は状態遷移と復旧の回帰。`known_issue` (下記) |
 | `localization_drift_stuck` | 棚の手前でシーケンサが止まっている間に、自己位置推定を棚の中へ少しずつずらしても、止まったままにならず、次のゴールへ到達する。止まっていると AMCL も GNSS も更新されず、推定の footprint が地図の棚にかかって経路を作れなくなる状況。監督の準備は走行中に待つ (`wait_for`)。監督・プリセットは `localization_drift_driving` と同じ。`known_issue` (下記) |
 | `keepout_escape` | 計画用地図にだけある進入禁止の領域 (`data/keepout/planning.yaml`。ウェアハウスの計画用地図の原点の周りの 2m 四方を進入禁止にしたもので、`tools/scripts/add_keepout_to_map.py` で作る。実際の世界には何もない) の中でスタートしても、自己位置が信頼できる (監督の状態が `NORMAL`) ので、BT のリカバリーの `EscapeKeepout` が領域の外の最も近い位置を始点に計画して領域から出て (`FindFreeStart` が SUCCESS)、ゴールへ到達する。監督が起動して状態を配信するまでは待つ。この段階が無いと、プランナが「始点が致死」で計画できず動けない |
 | `narrow_corridor_blocked` | 通れない幅 (0.5m) の狭い回廊へ経路を引かず、壁の外側を迂回して到達する。壁に接触しない (`obstacle_clearance`) |
@@ -63,7 +64,7 @@ scenarios/
 
 `known_issue` タグ付きのシナリオ:
 
-- **`localization_drift_driving`、`localization_drift_stuck`**: 自己位置推定のロバスト化 ([localization_robustness.md](../../mg_navigation/doc/localization_robustness.md)) で、今の監督では戻せない失敗を再現する。対策ができたら、タグを外す。
+- **`localization_corner_drift`、`localization_drift_driving`、`localization_drift_stuck`**: 自己位置推定のロバスト化 ([localization_robustness.md](../../mg_navigation/doc/localization_robustness.md)) で、今の監督では戻せない失敗を再現する。対策ができたら、タグを外す。
   - 走行中のずれ: AMCL と EKF がそろってずれ、正しい GNSS だけが食い違うので、監督は GNSS を疑って切り離し、推定はずれたまま走り続ける (例: 7 m)。
   - 止まっている間のずれ: AMCL も GNSS も新しい値を出さないので、監督は判定の材料がなく疑わない。経路を作れずにナビゲーションが失敗する。
 

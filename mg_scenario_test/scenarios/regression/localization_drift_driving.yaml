@@ -23,10 +23,13 @@ setup:
   - respawn: { pose: { x: -4.0, y: 3.0, yaw: 3.1416 }, settle_sec: 3.0 }
 
 monitors:
-  # ずらし終えた後、監督が戻すまでに走る距離と、ずれていた時間の上限
-  - pose_error: { deviation_m: 1.0, max_deviated_distance_m: 3.0, max_deviated_sec: 20.0 }
-  - localization_hold: {}
-  - localization_state: { state: RECOVERING, blame: amcl }
+  # 暫定の基準: ずれたまま止める要求なしで走る距離、止まったままの時間、見かけの食い込み
+  - localization_outcome: { max_missed_distance_m: 3.0, max_false_hold_sec: 30.0, require_deviation: true }
+  - max_stop_duration: { max_stop_sec: 60.0, until_goal_reached: 2 }
+  - map_overlap: { footprint: [[0.4, 0.25], [0.4, -0.25], [-0.2, -0.3], [-0.2, 0.3]], max_overlap_sec: 60.0 }
+  # 以下は診断の記録 (合否に使わない)
+  - pose_error: { deviation_m: 1.0 }
+  - localization_hold: { ends_released: false }
 
 run:
   mg_sequencer:
