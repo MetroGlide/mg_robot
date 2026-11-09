@@ -16,6 +16,25 @@ def is_active(fault: Fault, t_rel: float) -> bool:
     return (not fault.is_instant) and fault.start <= t_rel < fault.end
 
 
+def is_gated_on(fault: Fault, abs_w: float) -> bool:
+    """旋回の速さの条件 min_abs_w があるとき、それを満たしているか (条件がなければ常に真)。"""
+    return abs_w >= float(fault.params.get("min_abs_w", 0.0))
+
+
+def thin_scan(ranges: np.ndarray, keep_every: int) -> np.ndarray:
+    """LaserScan の距離を keep_every 本に 1 本だけ残し、他を無限遠 (欠測) にする。"""
+    masked = np.full(ranges.shape, np.inf)
+    masked[::keep_every] = ranges[::keep_every]
+    return masked
+
+
+def limit_scan_range(ranges: np.ndarray, max_range: float) -> np.ndarray:
+    """max_range より遠い距離を無限遠 (欠測) にする。"""
+    masked = ranges.copy()
+    masked[~(masked <= max_range)] = np.inf
+    return masked
+
+
 def mask_scan_sector(
     ranges: np.ndarray, angle_min: float, angle_increment: float, sector_deg: Tuple[float, float],
 ) -> np.ndarray:

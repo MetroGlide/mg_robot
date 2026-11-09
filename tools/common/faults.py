@@ -11,6 +11,13 @@
     - {type: odom_scale, start: 400.0, end: 420.0, v: 1.0, w: 1.3}
     - {type: scan_drop, start: 500.0, end: 520.0, sector_deg: [-90.0, 90.0]}
     - {type: amcl_drift, start: 600.0, end: 660.0, rate: {x: 0.05, y: 0.0, yaw: 0.0}}
+    - {type: scan_thin, start: 0.0, end: 100.0, keep_every: 4}
+    - {type: scan_range, start: 0.0, end: 100.0, max_range: 8.0}
+    - {type: gnss_noise, start: 0.0, end: 100.0, sigma: 1.0}
+    - {type: odom_scale, start: 0.0, end: 100000.0, v: 1.0, w: 1.15, min_abs_w: 0.15}
+
+区間で作用する故障は、min_abs_w [rad/s] を指定すると、ロボットの旋回の速さがそれ以上の間だけ作用する
+(時刻を決めずに角へ注入できる。再生と Gazebo で同じ定義を使える)。
 
 amcl_drift は AMCL を少しずつずらす (rate は 1 秒あたりの地図座標でのずれ)。再生評価では interval 秒
 (既定 1.0) ごとに、AMCL の推定を rate * interval だけずらした姿勢を /initialpose に送る。
@@ -30,6 +37,9 @@ REQUIRED_PARAMS: Dict[str, List[str]] = {
     "odom_scale": ["v", "w"],
     "scan_drop": ["sector_deg"],
     "amcl_drift": ["rate"],
+    "scan_thin": ["keep_every"],
+    "scan_range": ["max_range"],
+    "gnss_noise": ["sigma"],
 }
 INSTANT_TYPES = {"kidnap"}
 

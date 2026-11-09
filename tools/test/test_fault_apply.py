@@ -53,3 +53,22 @@ def test_set_carrier_solution_keeps_other_bits():
     assert fa.set_carrier_solution(flags, "float") == 0x01 | (1 << 6)
     assert fa.set_carrier_solution(flags, "none") == 0x01
     assert fa.set_carrier_solution(0x01, "fixed") == 0x01 | (2 << 6)
+
+
+def test_is_gated_on_uses_min_abs_w():
+    gated = _fault(type="odom_scale", start=0.0, end=10.0, v=1.0, w=1.1, min_abs_w=0.2)
+    plain = _fault(type="odom_scale", start=0.0, end=10.0, v=1.0, w=1.1)
+    assert not fa.is_gated_on(gated, 0.1)
+    assert fa.is_gated_on(gated, 0.2)
+    assert fa.is_gated_on(plain, 0.0)
+
+
+def test_thin_scan_keeps_every_nth():
+    result = fa.thin_scan(np.array([1.0, 2.0, 3.0, 4.0, 5.0]), 2)
+    assert result[0] == 1.0 and result[2] == 3.0 and result[4] == 5.0
+    assert np.isinf(result[1]) and np.isinf(result[3])
+
+
+def test_limit_scan_range_drops_far_and_nan():
+    result = fa.limit_scan_range(np.array([1.0, 9.0, np.nan]), 5.0)
+    assert result[0] == 1.0 and np.isinf(result[1]) and np.isinf(result[2])
