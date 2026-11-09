@@ -25,6 +25,7 @@ make bag-eval-localization BAG=<bag> GT_DIR=<評価 bag の SLAM 出力> MAP_GT_
 | 滑らかさ | `map→odom` の更新でロボットの姿勢が飛ぶ大きさ (AMCL / GNSS の補正が Nav2 に与える影響) |
 | 精度 | 真値 (`pose_graph.json`) との位置・yaw の誤差。全体と時間窓ごと |
 | NEES | EKF の共分散が誤差に見合うか (自由度 3 の一貫した推定なら平均 3、95% が 7.8 以下) |
+| NEES の残差 | 地図と真値の局所的な偏り (誤差の移動中央値、窓幅は `--nees-offset-window`) を除いた NEES。読み方は [台帳](../../mg_navigation/doc/localization_failure_ledger.md#nees-の読み方) |
 | EKF と odom | EKF の速度とホイールオドメトリ速度の差・遅れ、EKF の σ |
 | AMCL | σ、遅延 (bag の記録時刻と header が同じ時計のときのみ)、届いた時点の推定姿勢との差 |
 | ずれた事象 | 推定が真値から大きくずれた区間。1 s ごとの誤差の中央値が、位置か yaw の閾値を超えた区間で、近い区間はつなぐ。時刻に沿って数えるので、角の外や、真値が途中で欠けた後の事象も数える。事象ごとに、最後までずれたままか、始まる前の GNSS の σ を出し、閾値を変えたときの件数 (感度) も出す |
