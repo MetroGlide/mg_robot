@@ -49,6 +49,9 @@ class Scenario:
     # プロファイルの stack.args を、このシナリオ用に上書き・追加する launch 引数 (run / run-all のみ)。
     # 値は変数展開される (例: waypoints_load_path: "pkg://.../data/x.yaml")
     stack_args: Dict[str, str] = field(default_factory=dict)
+    # プロファイルの sim.launch.args を、このシナリオ用に上書き・追加する launch 引数。
+    # シミュレータを起動し直す実行でだけ使い、起動済みのシミュレータへの attach では使わない
+    sim_args: Dict[str, str] = field(default_factory=dict)
     obstacles: Dict[str, ObstacleSpec] = field(default_factory=dict)
     setup: List[ActionCall] = field(default_factory=list)
     timeline: List[TimelineEntry] = field(default_factory=list)

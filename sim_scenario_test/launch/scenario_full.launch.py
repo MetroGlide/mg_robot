@@ -31,7 +31,8 @@ def _setup(context, *args, **kwargs):
         scenario.world, LaunchConfiguration("headless").perform(context), "scenario.world")
     actions = []
     if profile.sim.launch is not None:
-        actions.append(include_launch(profile.sim.launch, variables, "profile.sim.launch.args"))
+        actions.append(include_launch(
+            profile.sim.launch, variables, "profile.sim.launch.args", scenario.sim_args))
     actions += backend_launch_actions(profile, variables)
     # 実機PCなど別の場所でスタックを起動する場合 (--remote-stack) は include しない
     launch_stack = LaunchConfiguration("launch_stack").perform(context) == "true"

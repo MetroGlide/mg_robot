@@ -25,6 +25,10 @@ expect: [...]                  # 判定。省略時は reached_all
 teardown: [...]                # 走行後に実行する action (生成した障害物は自動で削除される)
 ```
 
+## sim_args
+
+プロファイルの `sim.launch.args` を、このシナリオ用に上書き・追加する launch 引数。書き方と変数展開は `stack_args` と同じ。シミュレータを起動し直す実行 (`make scenario-test`、`make scenario-test-all`) でだけ使われ、起動済みのシミュレータへの attach では使われない。
+
 ## stack_args
 
 プロファイルの `stack.args` (ナビゲーションスタックの launch 引数) を、シナリオごとに上書き・追加します
@@ -150,7 +154,7 @@ timeline:
 | `max_stop_duration` | `max_stop_sec`=省略, `min_stop_sec`=0, `speed_threshold`=0.05, `include_turning`=false, `turn_threshold`=0.1, `from_goal_started`=0, `until_goal_reached`=0, `after_timeline`=省略, `topic`=/odom | 区間 (指定ゴールの開始から指定ゴールの到達まで。`after_timeline` を指定すると、その項目が発火するまでは区間に入らない) の連続した停止時間を判定。`include_turning` が true なら、その場の回転 (`resume_within` と同じ判定) は停止に数えない。`max_stop_sec` 超で FAILED (通過点で止まらないこと)、`min_stop_sec` 未満で FAILED (一時停止で止まること) |
 
 | `resume_within` | `after_timeline` (timeline[].name), `max_sec`, `speed_threshold`=0.05, `min_moving_sec`=0.5, `include_turning`=false, `turn_threshold`=0.1, `topic`=/odom | 指定したタイムライン項目が発火してから、並進速度が `speed_threshold` 以上 (`include_turning` が true なら、角速度が `turn_threshold` [rad/s] 以上でもよい) の状態が `min_moving_sec` 続き始めるまでの時間を判定 (一瞬の速度は数えない)。`include_turning` が false のときは、回転を始めた時刻も結果に添える。`max_sec` 超、または走り出さなければ FAILED。項目が発火しなければ ERROR (障害物を除いてから走行を再開するまでの時間の確認) |
-| `map_overlap` | `footprint`, `map_topic`=/planning_map, `occupied_threshold`=65, `require_overlap`=false, `max_overlap_sec`=省略, `ends_clear`=true, `sample_sec`=0.2, `topic`=/odom | 推定の footprint が事前地図の占有セルにかかり、真の footprint はかかっていない状態 (見かけの食い込み) の回数と最長の時間を測る。`max_overlap_sec` を超えるか、終わりに残っていれば FAILED。`require_overlap` なら、一度も起きない試行は ERROR |
+| `map_overlap` | `map_topic`=/planning_map, `occupied_threshold`=65, `require_overlap`=false, `max_overlap_sec`=省略, `ends_clear`=true, `sample_sec`=0.2, `topic`=/odom | 推定の footprint (`profile.robot.footprint`) が事前地図の占有セルにかかり、真の footprint はかかっていない状態 (見かけの食い込み) の回数と最長の時間を測る。`max_overlap_sec` を超えるか、終わりに残っていれば FAILED。`require_overlap` なら、一度も起きない試行は ERROR |
 | `pose_error` | `deviation_m`=1.0, `deviation_yaw`=0.35 [rad], `max_error_m`=省略, `max_deviated_distance_m`=省略, `max_deviated_sec`=省略, `sample_sec`=0.2, `topic`=/odom | 自己位置推定 (TF の map → base) とシミュレータ上の真の姿勢の差を `sample_sec` ごとに比べ、差の最大、ずれていた (位置で `deviation_m` か向きで `deviation_yaw` を超えた) 時間、ずれている間にロボットが実際に走った距離を出す。`max_error_m` を超えたか、ずれている間に走った距離が `max_deviated_distance_m` を超えたか (ずれたまま走ることを測る)、ずれていた時間の合計が `max_deviated_sec` を超えたら (止まったままずれていることを測る) FAILED。真の姿勢を出せないバックエンドでは ERROR |
 
 ロボット固有の monitor はプラグインが提供します。
