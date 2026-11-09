@@ -4,7 +4,8 @@
   driver          : mg_sequencer
   action          : sequencer_start / sequencer_set_index / sequencer_stop / sequencer_pause
   trigger         : sequencer_state / localization_ready
-  monitor         : collision_monitor_action / navigation_activity / localization_state / localization_hold
+  monitor         : collision_monitor_action / navigation_activity / localization_state / localization_hold /
+                    localization_outcome
   waypoint_format : mg (mg_waypoint_navigation の waypoint.yaml)
 """
 from __future__ import annotations

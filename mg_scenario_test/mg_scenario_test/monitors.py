@@ -10,7 +10,10 @@ from localization_supervisor_msgs.msg import LocalizationStatus
 from mg_msgs.msg import NavigationActivity
 from nav2_msgs.msg import CollisionMonitorState
 from sim_scenario_test.builtin.monitors import TopicMonitor, occurrence_result
+from nav_msgs.msg import Odometry
 from sim_scenario_test.engine.result import CheckResult, ResultStatus
+from sim_scenario_test.errors import ScenarioError, ScenarioValidationError
+from sim_scenario_test.geometry import Pose, PoseSpec, normalize_angle
 from rclpy.qos import qos_profile_sensor_data
 from sim_scenario_test.registry import register_monitor, register_trigger
 
@@ -171,6 +174,109 @@ class LocalizationHoldMonitor(TopicMonitor):
             "", ResultStatus.FAILED if failed else ResultStatus.PASSED,
             f"hold requested {self._count} time(s), {total:.1f} s in total "
             f"(limit {self._spec.max_total_sec})" + (", still holding at the end" if holding else ""))
+
+
+@dataclass
+class LocalizationOutcomeSpec:
+    # 推定と真の姿勢の差が、位置でこれ [m] か、向きでこれ [rad] を超えている間を「ずれている」とみなす
+    deviation_m: float = 1.0
+    deviation_yaw: float = 0.35
+    # ずれているのに止める要求が出ないまま走った距離の上限 [m] (省略時は判定しない)
+    max_missed_distance_m: Optional[float] = None
+    # ずれていないのに止める要求を出していた時間の合計の上限 [s] (省略時は判定しない)
+    max_false_hold_sec: Optional[float] = None
+    # ずれが起きることを必須にする (起きなければ、試験になっていないので ERROR)
+    require_deviation: bool = False
+    sample_sec: float = 0.2
+    topic: str = "/odom"
+    status_topic: str = "/localization/status"
+
+    def validate(self, where: str) -> None:
+        if self.deviation_m <= 0.0 or self.deviation_yaw <= 0.0 or self.sample_sec <= 0.0:
+            raise ScenarioValidationError(
+                f"{where}: 'deviation_m', 'deviation_yaw' and 'sample_sec' must be > 0")
+
+
+@register_monitor("localization_outcome", LocalizationOutcomeSpec)
+class LocalizationOutcomeMonitor(TopicMonitor):
+    """真のずれと監督の止める要求の組み合わせで、走行を見逃し・誤停止・復旧中に分けて測る。
+
+    合否は監督が誰を疑ったかではなく、外から見える振る舞いで決める。
+    """
+    MSG_TYPE = Odometry
+
+    def __init__(self, ctx: "ScenarioContext", spec: LocalizationOutcomeSpec):
+        super().__init__(ctx, spec.topic)
+        self._spec = spec
+        ctx.backend.entity_pose(ctx.profile.sim.robot_entity)
+        self._status_sub = None
+        self._hold = False
+        self._last_time: Optional[float] = None
+        self._last_truth: Optional[Pose] = None
+        self._samples = 0
+        self._deviated_sec = 0.0
+        self._missed_distance = 0.0
+        self._false_hold_sec = 0.0
+        self._recovering_sec = 0.0
+
+    def start(self) -> None:
+        super().start()
+        self._status_sub = self._ctx.node.create_subscription(
+            LocalizationStatus, self._spec.status_topic, self._on_status, qos_profile_sensor_data)
+
+    def stop(self) -> None:
+        super().stop()
+        if self._status_sub is not None:
+            self._ctx.node.destroy_subscription(self._status_sub)
+            self._status_sub = None
+
+    def _on_status(self, msg) -> None:
+        with self._lock:
+            self._hold = msg.hold_requested
+
+    def _on_msg(self, msg) -> None:
+        now = self._ctx.clock.now()
+        if self._last_time is not None and now - self._last_time < self._spec.sample_sec:
+            return
+        try:
+            estimate = self._ctx.poses.robot.get()
+        except ScenarioError:
+            return
+        world_pose = self._ctx.backend.entity_pose(self._ctx.profile.sim.robot_entity)
+        if world_pose is None:
+            return
+        truth = self._ctx.poses.to_map(PoseSpec(
+            "world", world_pose.x, world_pose.y, world_pose.z, world_pose.yaw))
+        deviated = (estimate.distance_xy(truth) > self._spec.deviation_m
+                    or abs(normalize_angle(estimate.yaw - truth.yaw)) > self._spec.deviation_yaw)
+        if self._last_time is not None:
+            dt = now - self._last_time
+            if deviated:
+                self._deviated_sec += dt
+            if deviated and self._hold:
+                self._recovering_sec += dt
+            elif deviated:
+                self._missed_distance += truth.distance_xy(self._last_truth)
+            elif self._hold:
+                self._false_hold_sec += dt
+        self._samples += 1
+        self._last_time = now
+        self._last_truth = truth
+
+    def _evaluate(self) -> CheckResult:
+        if self._samples == 0:
+            return CheckResult("", ResultStatus.ERROR, "no pose was compared")
+        if self._spec.require_deviation and self._deviated_sec == 0.0:
+            return CheckResult("", ResultStatus.ERROR, "no deviation occurred (the test did not exercise it)")
+        failed = ((self._spec.max_missed_distance_m is not None
+                   and self._missed_distance > self._spec.max_missed_distance_m)
+                  or (self._spec.max_false_hold_sec is not None
+                      and self._false_hold_sec > self._spec.max_false_hold_sec))
+        return CheckResult(
+            "", ResultStatus.FAILED if failed else ResultStatus.PASSED,
+            f"deviated {self._deviated_sec:.1f} s, drove {self._missed_distance:.2f} m without a hold "
+            f"(limit {self._spec.max_missed_distance_m}), hold while deviated {self._recovering_sec:.1f} s, "
+            f"false hold {self._false_hold_sec:.1f} s (limit {self._spec.max_false_hold_sec})")
 
 
 @dataclass

@@ -5,12 +5,15 @@ from unittest.mock import MagicMock
 from mg_scenario_test.monitors import (
     LocalizationHoldMonitor,
     LocalizationHoldSpec,
+    LocalizationOutcomeMonitor,
+    LocalizationOutcomeSpec,
     LocalizationReady,
     LocalizationReadySpec,
     LocalizationStateMonitor,
     LocalizationStateSpec,
 )
 from sim_scenario_test.engine.result import ResultStatus
+from sim_scenario_test.geometry import Pose
 
 
 def _status(hold):
@@ -86,3 +89,44 @@ def test_localization_ready_waits_for_settled_normal_and_checks():
     assert not trigger.poll()
     clock["t"] = 9.0
     assert trigger.poll()
+
+
+def _outcome(**kwargs):
+    ctx = MagicMock()
+    clock = {"t": 0.0}
+    ctx.clock.now = lambda: clock["t"]
+    ctx.poses.to_map = lambda spec: Pose(spec.x, spec.y, spec.z, spec.yaw)
+    truth = {"pose": Pose(0.0, 0.0)}
+    ctx.backend.entity_pose = lambda _: truth["pose"]
+    return LocalizationOutcomeMonitor(ctx, LocalizationOutcomeSpec(**kwargs)), clock, ctx, truth
+
+
+def test_localization_outcome_separates_missed_driving_from_recovery():
+    monitor, clock, ctx, truth = _outcome(max_missed_distance_m=1.5, require_deviation=True)
+    # 1 m/s で進む。1〜3 s はずれて要求なし (見逃し)、3〜4 s はずれて要求あり (復旧中)
+    for t, offset, hold in ((0, 0.0, False), (1, 0.0, False), (2, 2.0, False), (3, 2.0, False), (4, 2.0, True)):
+        clock["t"] = float(t)
+        truth["pose"] = Pose(float(t), 0.0)
+        ctx.poses.robot.get.return_value = Pose(float(t), offset)
+        monitor._on_status(_status(hold))
+        monitor._callback(None)
+    result = monitor.result()
+    assert result.status == ResultStatus.FAILED
+    assert "drove 2.00 m without a hold" in result.message and "hold while deviated 1.0 s" in result.message
+
+
+def test_localization_outcome_counts_false_hold_and_reports_no_deviation():
+    monitor, clock, ctx, truth = _outcome(max_false_hold_sec=0.5, require_deviation=True)
+    ctx.poses.robot.get.return_value = Pose(0.0, 0.0)
+    monitor._on_status(_status(True))
+    for t in (0.0, 1.0):
+        clock["t"] = t
+        monitor._callback(None)
+    assert monitor.result().status == ResultStatus.ERROR
+    relaxed, clock, ctx, truth = _outcome(max_false_hold_sec=0.5)
+    ctx.poses.robot.get.return_value = Pose(0.0, 0.0)
+    relaxed._on_status(_status(True))
+    for t in (0.0, 1.0):
+        clock["t"] = t
+        relaxed._callback(None)
+    assert relaxed.result().status == ResultStatus.FAILED
