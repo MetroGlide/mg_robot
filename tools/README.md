@@ -55,6 +55,7 @@ tools/
     ├── analyze_particle_modes.py    # 再生評価の記録の AMCL の粒子を仮説に分け、仮説の数と正しい仮説の重みを時系列で出す
     ├── plot_scan_on_map.py          # スキャンを真値と推定の姿勢に置いて地図に重ねる (自己位置のずれの原因の調査)
     ├── calib_wheel_odom.py          # ホイールオドメトリのスケール・バイアス・遅れを走行ログから推定
+    ├── degrade_localization_map.py  # 測位用地図の加工 (線を太く、消す、局所的にずらす。AMCL が弱い状況の評価用)
     ├── add_keepout_to_map.py        # 地図に進入禁止の長方形を足す (計画用地図にだけ進入禁止がある状況のシナリオ用)
     ├── run_slam_variant.sh          # パラメータ変種のオフラインSLAM実行〜評価までを一括実行
     ├── patch_params.py              # コメント付きパラメータ YAML の値を書き換え
