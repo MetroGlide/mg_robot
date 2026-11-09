@@ -423,8 +423,6 @@ class PoseErrorMonitor(TopicMonitor):
 
 @dataclass
 class MapOverlapSpec:
-    # ロボットの footprint (base 座標系の多角形 [[x, y], ...])
-    footprint: List[List[float]]
     # 事前地図 (nav_msgs/OccupancyGrid)。推定の footprint がこの占有セルにかかるかを見る
     map_topic: str = "/planning_map"
     # 占有とみなす OccupancyGrid の値の下限
@@ -439,8 +437,6 @@ class MapOverlapSpec:
     topic: str = "/odom"
 
     def validate(self, where: str) -> None:
-        if len(self.footprint) < 3:
-            raise ScenarioValidationError(f"{where}: 'footprint' needs at least 3 points")
         if self.sample_sec <= 0.0:
             raise ScenarioValidationError(f"{where}: 'sample_sec' must be > 0")
 
@@ -464,6 +460,9 @@ class MapOverlapMonitor(TopicMonitor):
     def __init__(self, ctx: "ScenarioContext", spec: MapOverlapSpec):
         super().__init__(ctx, spec.topic)
         self._spec = spec
+        self._footprint = [list(v) for v in ctx.profile.robot.footprint]
+        if not self._footprint:
+            raise ScenarioError("map_overlap: profile.robot.footprint is not defined")
         ctx.backend.entity_pose(ctx.profile.sim.robot_entity)
         self._map_sub = None
         self._map: Optional[OccupancyGrid] = None
@@ -491,13 +490,13 @@ class MapOverlapMonitor(TopicMonitor):
         with self._lock:
             self._map = msg
             step = msg.info.resolution / 2.0
-            xs = [p[0] for p in self._spec.footprint]
-            ys = [p[1] for p in self._spec.footprint]
+            xs = [p[0] for p in self._footprint]
+            ys = [p[1] for p in self._footprint]
             self._points = [
                 (min(xs) + i * step, min(ys) + j * step)
                 for i in range(int((max(xs) - min(xs)) / step) + 1)
                 for j in range(int((max(ys) - min(ys)) / step) + 1)
-                if _point_in_polygon(min(xs) + i * step, min(ys) + j * step, self._spec.footprint)]
+                if _point_in_polygon(min(xs) + i * step, min(ys) + j * step, self._footprint)]
 
     def _overlaps(self, pose: Pose) -> bool:
         info = self._map.info

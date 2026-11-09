@@ -711,8 +711,8 @@ def _map_overlap(**kwargs):
     clock = {"t": 0.0}
     ctx.clock.now = lambda: clock["t"]
     backend.true_poses["robot"] = Pose(0.5, 1.0)
-    square = [[0.1, 0.1], [0.1, -0.1], [-0.1, -0.1], [-0.1, 0.1]]
-    monitor = MapOverlapMonitor(ctx, MapOverlapSpec(footprint=square, **kwargs))
+    ctx.profile.robot.footprint = [[0.1, 0.1], [0.1, -0.1], [-0.1, -0.1], [-0.1, 0.1]]
+    monitor = MapOverlapMonitor(ctx, MapOverlapSpec(**kwargs))
     monitor._on_map(_grid())
     return monitor, clock, robot
 
