@@ -106,6 +106,41 @@ def nees(errors: np.ndarray, cov6: np.ndarray) -> np.ndarray:
     return result
 
 
+def local_offset(
+    times: np.ndarray,
+    errors: np.ndarray,
+    window_sec: float,
+    excluded: np.ndarray,
+    grid_sec: float = 5.0,
+) -> np.ndarray:
+    """誤差の時系列から、ゆっくり変わる偏り (地図と真値の局所的なずれ) を求める。
+
+    Args:
+      times: (N,) 昇順の時刻 [s]
+      errors: (N, K) 誤差
+      window_sec: 偏りとみなす中央値の窓幅 [s]
+      excluded: (N,) 真の標本は偏りの計算に使わない (ずれの事象を偏りに吸収させないため)
+      grid_sec: 偏りを計算する間隔 [s]。その間は線形補間する
+    Returns:
+      (N, K) の偏り。使える標本がなければ nan
+    """
+    offsets = np.full(errors.shape, np.nan)
+    kept_times = times[~excluded]
+    kept = errors[~excluded]
+    if kept_times.size == 0:
+        return offsets
+    grid = np.arange(times[0], times[-1] + grid_sec, grid_sec)
+    lo = np.searchsorted(kept_times, grid - window_sec / 2.0, side="left")
+    hi = np.searchsorted(kept_times, grid + window_sec / 2.0, side="right")
+    filled = hi > lo
+    if not np.any(filled):
+        return offsets
+    medians = np.array([np.median(kept[i:j], axis=0) for i, j in zip(lo[filled], hi[filled])])
+    for k in range(errors.shape[1]):
+        offsets[:, k] = np.interp(times, grid[filled], medians[:, k])
+    return offsets
+
+
 def best_lag(
     ref_times: np.ndarray,
     ref_values: np.ndarray,

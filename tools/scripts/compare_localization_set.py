@@ -37,6 +37,7 @@ ERROR_METRICS: List[Tuple[str, Tuple[str, ...], int]] = [
     ("止める要求[回]", ("hold", "count"), 0),
     ("止める要求の時間[s]", ("hold", "total_sec"), 0),
     ("NEES 平均 (理想 3)", ("nees", "mean"), 2),
+    ("偏りを除いた NEES 中央値 (事象の外)", ("nees", "residual_outside_episodes", "median"), 2),
 ]
 # 「悪くならない」の許容差: 指標ごとの (絶対量, 基準に対する割合)。基準の中央値 + max(絶対量, 割合 × 基準) を
 # 超えたら悪くなったとする。評価の前に決めておく値で、3 回の試行のばらつき程度より大きくする。

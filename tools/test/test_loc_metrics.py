@@ -73,6 +73,22 @@ def test_nees_of_consistent_error_is_dof():
     assert np.nanmean(result) == pytest.approx(3.0, abs=0.2)
 
 
+def test_local_offset_follows_slow_bias_and_ignores_excluded_episode():
+    times = np.arange(0.0, 200.0, 0.5)
+    errors = np.stack([1.0 + times / 100.0, np.zeros_like(times)], axis=1)
+    excluded = (times >= 90.0) & (times < 110.0)
+    errors[excluded, 0] += 30.0
+    offsets = lm.local_offset(times, errors, 40.0, excluded)
+    assert offsets[int(np.searchsorted(times, 100.0)), 0] == pytest.approx(2.0, abs=0.2)
+    assert offsets[int(np.searchsorted(times, 150.0)), 0] == pytest.approx(2.5, abs=0.2)
+
+
+def test_local_offset_without_usable_samples_is_nan():
+    times = np.arange(0.0, 10.0)
+    offsets = lm.local_offset(times, np.zeros((10, 3)), 20.0, np.ones(10, dtype=bool))
+    assert np.all(np.isnan(offsets))
+
+
 def test_nees_singular_covariance_is_nan():
     result = lm.nees(np.ones((1, 3)), np.zeros((1, 36)))
     assert np.isnan(result[0])

@@ -303,17 +303,8 @@ def evaluate_smoothness(map_odom: np.ndarray, odom_base: np.ndarray) -> Dict[str
     }
 
 
-def evaluate_nees(ekf: np.ndarray, gt_nodes: np.ndarray) -> Dict[str, Any]:
-    gt_poses, valid = interpolate_nodes(gt_nodes, ekf[:, 0], stationary_dist=STATIONARY_DIST_M)
-    if not np.any(valid):
-        return {"n": 0}
-    est = ekf[valid, 1:4]
-    err = np.stack([
-        est[:, 0] - gt_poses[valid, 0],
-        est[:, 1] - gt_poses[valid, 1],
-        lm.wrap_angle(est[:, 2] - gt_poses[valid, 2]),
-    ], axis=1)
-    values = lm.nees(err, ekf[valid, 6:42])
+def summarize_nees(err: np.ndarray, cov6: np.ndarray) -> Dict[str, Any]:
+    values = lm.nees(err, cov6)
     values = values[np.isfinite(values)]
     if values.size == 0:
         return {"n": 0}
@@ -324,6 +315,34 @@ def evaluate_nees(ekf: np.ndarray, gt_nodes: np.ndarray) -> Dict[str, Any]:
         "fraction_within_chi2_95": float(np.mean(values <= CHI2_95_DOF3)),
         "expected_mean": 3.0,
     }
+
+
+def evaluate_nees(
+    ekf: np.ndarray, gt_nodes: np.ndarray, episodes: List[Dict[str, Any]], offset_window: float,
+) -> Dict[str, Any]:
+    gt_poses, valid = interpolate_nodes(gt_nodes, ekf[:, 0], stationary_dist=STATIONARY_DIST_M)
+    if not np.any(valid):
+        return {"n": 0}
+    times = ekf[valid, 0]
+    est = ekf[valid, 1:4]
+    cov6 = ekf[valid, 6:42]
+    err = np.stack([
+        est[:, 0] - gt_poses[valid, 0],
+        est[:, 1] - gt_poses[valid, 1],
+        lm.wrap_angle(est[:, 2] - gt_poses[valid, 2]),
+    ], axis=1)
+    report = summarize_nees(err, cov6)
+    # 真値は地図と局所的にずれるので、その偏りを除いた残差で、共分散が推定の揺らぎに見合っているかを見る。
+    # ずれの事象の間は偏りの計算から外し、事象そのものは残差に残す
+    excluded = np.zeros(times.shape, dtype=bool)
+    for e in episodes:
+        excluded |= (times >= e["start_s"]) & (times <= e["end_s"])
+    residual = err - lm.local_offset(times, err, offset_window, excluded)
+    residual[:, 2] = lm.wrap_angle(residual[:, 2])
+    report["residual"] = summarize_nees(residual, cov6)
+    report["residual"]["offset_window_sec"] = offset_window
+    report["residual_outside_episodes"] = summarize_nees(residual[~excluded], cov6[~excluded])
+    return report
 
 
 def evaluate_ekf_vs_odom(ekf: np.ndarray, odom: np.ndarray) -> Dict[str, Any]:
@@ -439,7 +458,14 @@ def format_summary(report: Dict[str, Any]) -> str:
     if nees and nees.get("n", 0) > 0:
         lines += ["## NEES (自由度 3 の一貫した推定なら平均 3、95% が 7.8 以下)", "",
                   f"- 平均 {nees['mean']:.2f} / 中央値 {nees['median']:.2f} / "
-                  f"7.8 以下の割合 {nees['fraction_within_chi2_95'] * 100:.0f}% (N={nees['n']})", ""]
+                  f"7.8 以下の割合 {nees['fraction_within_chi2_95'] * 100:.0f}% (N={nees['n']})"]
+        for label, key in (("地図と真値の偏りを除いた残差", "residual"),
+                           ("同、ずれの事象の外", "residual_outside_episodes")):
+            part = nees.get(key)
+            if part and part.get("n", 0) > 0:
+                lines.append(f"- {label}: 平均 {part['mean']:.2f} / 中央値 {part['median']:.2f} / "
+                             f"7.8 以下の割合 {part['fraction_within_chi2_95'] * 100:.0f}% (N={part['n']})")
+        lines.append("")
 
     ev = report.get("ekf_vs_odom")
     if ev and ev.get("n", 0) > 0:
@@ -594,6 +620,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="ずれ (事象) とみなす、1 s ごとの yaw 誤差の中央値 [deg]")
     parser.add_argument("--deviation-merge-sec", type=float, default=10.0,
                         help="この時間以下の間をおいたずれの区間を、1 つの事象にまとめる [s]")
+    parser.add_argument("--nees-offset-window", type=float, default=60.0,
+                        help="NEES の残差で、地図と真値の局所的な偏りとして除く中央値の窓幅 [s]")
     parser.add_argument("--gnss-weak-sigma", type=float, default=1.0, help="GNSS が弱いとみなす σ [m]")
     parser.add_argument("--gnss-stale-sec", type=float, default=3.0, help="GNSS が届いていないとみなす間隔 [s]")
     parser.add_argument("--map-frame", default="map")
@@ -652,7 +680,7 @@ def main() -> None:
         report["turns"] = evaluate_turns(gt_nodes, t_from, t_to, gt_times, gt_pos_err, gt_yaw_err, episodes, args)
         report["gnss_weak"] = evaluate_gnss_weak(gt_times, gt_pos_err, as_array(data.gps, 2), args)
         if ekf.size:
-            report["nees"] = evaluate_nees(ekf, gt_nodes)
+            report["nees"] = evaluate_nees(ekf, gt_nodes, episodes, args.nees_offset_window)
 
     if args.faults:
         report["faults"] = evaluate_faults(
