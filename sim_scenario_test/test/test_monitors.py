@@ -693,3 +693,49 @@ def test_localization_spread_sends_once_with_wide_covariance(monkeypatch):
     assert msg.pose.pose.orientation.z == pytest.approx(math.sin(0.1))
     assert [msg.pose.covariance[i] for i in (0, 7, 35)] == pytest.approx([4.0, 0.25, 0.01])
     assert not [c for c in backend.calls if c[0] == "set_pose"]
+
+
+def _grid():
+    from types import SimpleNamespace
+    # 原点 (0, 0)、解像度 0.1 m、20x20 セル。x 1.0〜2.0 m を占有にする
+    data = [100 if 10 <= col < 20 else 0 for _ in range(20) for col in range(20)]
+    origin = SimpleNamespace(position=SimpleNamespace(x=0.0, y=0.0))
+    return SimpleNamespace(info=SimpleNamespace(resolution=0.1, width=20, height=20, origin=origin), data=data)
+
+
+def _map_overlap(**kwargs):
+    from sim_scenario_test.builtin.monitors import MapOverlapMonitor, MapOverlapSpec
+    backend = FakeBackend()
+    robot = FakeRobot(Pose(0.5, 1.0))
+    ctx = _scenario_ctx(backend, robot)
+    clock = {"t": 0.0}
+    ctx.clock.now = lambda: clock["t"]
+    backend.true_poses["robot"] = Pose(0.5, 1.0)
+    square = [[0.1, 0.1], [0.1, -0.1], [-0.1, -0.1], [-0.1, 0.1]]
+    monitor = MapOverlapMonitor(ctx, MapOverlapSpec(footprint=square, **kwargs))
+    monitor._on_map(_grid())
+    return monitor, clock, robot
+
+
+def test_map_overlap_measures_apparent_overlap_and_requires_it():
+    monitor, clock, robot = _map_overlap(require_overlap=True, max_overlap_sec=5.0)
+    clock["t"] = 1.0
+    monitor._callback(None)
+    assert monitor.result().status == ResultStatus.ERROR     # 起きていない
+    robot.pose = Pose(1.5, 1.0)
+    for t in (2.0, 4.0):
+        clock["t"] = t
+        monitor._callback(None)
+    robot.pose = Pose(0.5, 1.0)
+    clock["t"] = 5.0
+    monitor._callback(None)
+    result = monitor.result()
+    assert result.status == ResultStatus.PASSED and "1 time(s), longest 3.0 s" in result.message
+
+
+def test_map_overlap_fails_when_overlap_remains_at_end():
+    monitor, clock, robot = _map_overlap()
+    robot.pose = Pose(1.5, 1.0)
+    clock["t"] = 1.0
+    monitor._callback(None)
+    assert monitor.result().status == ResultStatus.FAILED
