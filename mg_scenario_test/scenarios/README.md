@@ -45,6 +45,7 @@ scenarios/
 | `localization_corner_odom` | warehouse 1 周で、旋回中だけオドメトリの回転を大きく出す (`sim_args` の `sensor_fault_file`)。AMCL が自分で角の回りすぎを起こす条件で走りきる。`known_issue` (下記) |
 | `localization_corner_weak` | `localization_corner_odom` に、旋回中のスキャンの間引きと距離の制限を加える。`known_issue` (下記) |
 | `localization_map_shift` | 測位用の地図だけ東側の棚と壁をずらし、推定の footprint が計画用地図の棚にかかる見かけの食い込みを起こす (`map_overlap`)。そこから戻って走りきる。`known_issue` (下記) |
+| `localization_garden_lap` | 植栽に囲まれた garden の 1 周 (角 6 回) を注入なしで走る。LiDAR の点が植栽で不安定で、測位用の地図の植栽は点を散らした太い帯。AMCL が自分でずれる条件で走りきる。`_thick` は帯をさらに太くした段階、`_true` は散らさない対照 (ずれを必須にしない)。走行は bag に記録する (`record_topics`)。`known_issue` (下記) |
 | `localization_drift_stuck` | 棚の手前でシーケンサが止まっている間に、自己位置推定を棚の中へ少しずつずらしても、止まったままにならず、次のゴールへ到達する。止まっていると AMCL も GNSS も更新されず、推定の footprint が地図の棚にかかって経路を作れなくなる状況。監督の準備は走行中に待つ (`wait_for`)。監督・プリセットは `localization_drift_driving` と同じ。`known_issue` (下記) |
 | `keepout_escape` | 計画用地図にだけある進入禁止の領域 (`data/keepout/planning.yaml`。ウェアハウスの計画用地図の原点の周りの 2m 四方を進入禁止にしたもので、`tools/scripts/add_keepout_to_map.py` で作る。実際の世界には何もない) の中でスタートしても、自己位置が信頼できる (監督の状態が `NORMAL`) ので、BT のリカバリーの `EscapeKeepout` が領域の外の最も近い位置を始点に計画して領域から出て (`FindFreeStart` が SUCCESS)、ゴールへ到達する。監督が起動して状態を配信するまでは待つ。この段階が無いと、プランナが「始点が致死」で計画できず動けない |
 | `narrow_corridor_blocked` | 通れない幅 (0.5m) の狭い回廊へ経路を引かず、壁の外側を迂回して到達する。壁に接触しない (`obstacle_clearance`) |
@@ -67,7 +68,7 @@ scenarios/
 
 `known_issue` タグ付きのシナリオ:
 
-- **`localization_corner_odom`、`localization_corner_weak`、`localization_map_shift`、`localization_corner_drift`、`localization_drift_driving`、`localization_drift_stuck`**: 自己位置推定のロバスト化 ([localization_robustness.md](../../mg_navigation/doc/localization_robustness.md)) で、今の監督では戻せない失敗を再現する。対策ができたら、タグを外す。
+- **`localization_garden_lap`、`localization_garden_lap_thick`、`localization_corner_odom`、`localization_corner_weak`、`localization_map_shift`、`localization_corner_drift`、`localization_drift_driving`、`localization_drift_stuck`**: 自己位置推定のロバスト化 ([localization_robustness.md](../../mg_navigation/doc/localization_robustness.md)) で、今の監督では戻せない失敗を再現する。対策ができたら、タグを外す。
   - 走行中のずれ: AMCL と EKF がそろってずれ、正しい GNSS だけが食い違うので、監督は GNSS を疑って切り離し、推定はずれたまま走り続ける (例: 7 m)。
   - 止まっている間のずれ: AMCL も GNSS も新しい値を出さないので、監督は判定の材料がなく疑わない。経路を作れずにナビゲーションが失敗する。
 

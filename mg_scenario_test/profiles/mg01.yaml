@@ -50,6 +50,13 @@ readiness:
     - lifecycle_manager_navigation
 
 worlds:
+  garden:
+    sim_world: garden
+    sdf: pkg://mg_simulation/worlds/garden.sdf
+    localization_map: pkg://mg_simulation/maps/garden/localization.yaml
+    planning_map: pkg://mg_simulation/maps/garden/planning.yaml
+    waypoints: pkg://mg_simulation/maps/garden/waypoints.yaml
+    gnss_transform: pkg://mg_simulation/maps/garden/gnss_transform.yaml   # tools/scripts/make_sim_gnss_transform.py で生成
   warehouse:
     sim_world: warehouse
     sdf: pkg://mg_simulation/worlds/warehouse.sdf
