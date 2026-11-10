@@ -9,7 +9,7 @@ rosbag の再生では、注入の対象のトピックを /fault/ 以下へ付�
   /fault/odom            -> /odom/raw           odom_scale (ホイールのスリップ)
   /fault/navpvt          -> /navpvt             gnss_bias / gnss_drop / gnss_noise
   /fault/gps/fix         -> /gps/fix            同上 (Gazebo の navsat)
-  /fault/scan_top_lidar  -> /scan_top_lidar     scan_drop / scan_thin / scan_range
+  /fault/scan_top_lidar  -> /scan_top_lidar     scan_drop / scan_thin / scan_range / scan_jitter
 Gazebo では、ブリッジの出力を /fault/ 以下にして、このノードが中継する (--odom-out /odom)。
 kidnap は、その時刻の推定姿勢 (EKF) をずらした姿勢を /initialpose に送り、AMCL だけをずらす。
 amcl_drift は、区間の中で interval 秒ごとに、AMCL の推定 (/amcl_pose_origin) を rate * interval だけずらした
@@ -172,6 +172,10 @@ class FaultInjector(Node):
         fault = self._active("scan_range")
         if fault:
             ranges = fa.limit_scan_range(ranges, float(fault.params["max_range"]))
+            changed = True
+        fault = self._active("scan_jitter")
+        if fault:
+            ranges = fa.jitter_scan(ranges, float(fault.params["ratio"]), float(fault.params["depth_m"]), self._rng)
             changed = True
         fault = self._active("scan_thin")
         if fault:

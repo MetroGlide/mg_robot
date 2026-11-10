@@ -35,6 +35,17 @@ def limit_scan_range(ranges: np.ndarray, max_range: float) -> np.ndarray:
     return masked
 
 
+def jitter_scan(ranges: np.ndarray, ratio: float, depth_m: float, rng: np.random.Generator) -> np.ndarray:
+    """ratio の割合のビームを選び、半分を無限遠 (欠測) に、残りを 0〜depth_m だけ遠くする。"""
+    result = ranges.copy()
+    chosen = rng.uniform(size=ranges.size) < ratio
+    drop = chosen & (rng.uniform(size=ranges.size) < 0.5)
+    stretch = chosen & ~drop
+    result[stretch] += rng.uniform(0.0, depth_m, size=int(stretch.sum()))
+    result[drop] = np.inf
+    return result
+
+
 def mask_scan_sector(
     ranges: np.ndarray, angle_min: float, angle_increment: float, sector_deg: Tuple[float, float],
 ) -> np.ndarray:

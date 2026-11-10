@@ -72,3 +72,13 @@ def test_thin_scan_keeps_every_nth():
 def test_limit_scan_range_drops_far_and_nan():
     result = fa.limit_scan_range(np.array([1.0, 9.0, np.nan]), 5.0)
     assert result[0] == 1.0 and np.isinf(result[1]) and np.isinf(result[2])
+
+
+def test_jitter_scan_drops_or_stretches_only_chosen_beams():
+    ranges = np.full(10000, 2.0)
+    result = fa.jitter_scan(ranges, 0.3, 0.8, np.random.default_rng(0))
+    changed = result != 2.0
+    assert 0.25 < changed.mean() < 0.35
+    finite = result[changed & np.isfinite(result)]
+    assert np.all((finite > 2.0) & (finite <= 2.8))
+    assert 0.4 < np.isinf(result[changed]).mean() < 0.6

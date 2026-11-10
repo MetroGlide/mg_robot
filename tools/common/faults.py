@@ -14,6 +14,10 @@
     - {type: scan_thin, start: 0.0, end: 100.0, keep_every: 4}
     - {type: scan_range, start: 0.0, end: 100.0, max_range: 8.0}
     - {type: gnss_noise, start: 0.0, end: 100.0, sigma: 1.0}
+    - {type: scan_jitter, start: 0.0, end: 100.0, ratio: 0.3, depth_m: 0.8}
+
+scan_jitter は、毎回のスキャンで ratio の割合のビームを選び、半分は欠測に、残りは距離を 0〜depth_m 伸ばす
+(植栽の葉が揺れて、手前と奥の当たりが入れ替わる状況)。
     - {type: odom_scale, start: 0.0, end: 100000.0, v: 1.0, w: 1.15, min_abs_w: 0.15}
 
 区間で作用する故障は、min_abs_w [rad/s] を指定すると、ロボットの旋回の速さがそれ以上の間だけ作用する
@@ -40,6 +44,7 @@ REQUIRED_PARAMS: Dict[str, List[str]] = {
     "scan_thin": ["keep_every"],
     "scan_range": ["max_range"],
     "gnss_noise": ["sigma"],
+    "scan_jitter": ["ratio", "depth_m"],
 }
 INSTANT_TYPES = {"kidnap"}
 
