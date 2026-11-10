@@ -4,7 +4,7 @@ description: >
   植栽に囲まれた garden の 1 周 (角が 6 回) を、注入なしでシーケンサで走る。2D LiDAR が植栽を見て点が不安定になり、
   測位用の地図の植栽は点を散らした太い帯で、角の外側には植栽を切って遠くの壁や柱が見える場所がある
   (mg_simulation/worlds/garden_layout.yaml)。AMCL が自分でずれる条件で、ずれたまま走り続けず、人の操作なしで走りきることを
-  確かめる。対照として、測位用の地図は LiDAR に映る要素をそのまま描いたもの (localization_true.yaml。散らさない)。ずれは必須にしない。自己位置推定はプリセット robust、監督あり。
+  確かめる。対照として、測位用の地図は LiDAR に映る要素をそのまま描いたもの (localization_true.yaml。散らさない)。ずれは必須にしない。自己位置推定の構成は環境変数 LOCALIZATION_PRESET で選ぶ (元の設定と robust を同じ条件で比べる)。監督あり。
 profile: mg01
 world: garden
 tags: [localization, weak, corner, garden, mg_sequencer, known_issue]
@@ -14,7 +14,6 @@ record_topics: [/scan_top_lidar, /tf, /tf_static, /particle_cloud, /amcl_pose_or
 
 stack_args:
   localization_monitor: supervisor
-  localization_preset: robust
   map_path: "pkg://mg_simulation/maps/garden/localization_true.yaml"
 
 setup:
