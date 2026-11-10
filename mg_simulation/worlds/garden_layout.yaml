@@ -1,0 +1,64 @@
+# garden ワールドの配置。tools/scripts/make_garden_world.py が、ワールド (garden.sdf)、地図 (maps/garden/)、
+# waypoint をここから作る。変えたら作り直す:
+#   python3 tools/scripts/make_garden_world.py mg_simulation/worlds/garden_layout.yaml \
+#       --world mg_simulation/worlds/garden.sdf --map-dir mg_simulation/maps/garden
+#   python3 tools/scripts/make_sim_gnss_transform.py mg_simulation/worlds/garden.sdf \
+#       -o mg_simulation/maps/garden/gnss_transform.yaml
+#
+# 経路の両側を植栽 (細い箱を散らした帯) で囲む。角の外側の一部は植栽を切り、遠くの壁や柱が見えるようにして、
+# 角を抜けると見える物が入れ替わるようにする。
+seed: 7
+resolution: 0.05
+map_margin_m: 3.0
+# 2D LiDAR の走査面の高さ [m]。これより低い要素は LiDAR に映らないので、測位用の地図にも描かない
+scan_height_m: 0.63
+
+# 経路 (地図座標 [m])。最初の点はスタート、以降の点が waypoint になる (最後の点で止まる)
+route:
+  - [0.0, 0.0]
+  - [22.0, 0.0]
+  - [22.0, 14.0]
+  - [10.0, 14.0]
+  - [10.0, 22.0]
+  - [-4.0, 22.0]
+  - [-4.0, 2.0]
+  - [-1.0, 0.0]
+
+hedge:
+  # 経路の中心からの距離で、帯の内側の端 [m] と奥行き [m]
+  inner_m: 1.6
+  depth_m: 1.0
+  # 要素の密度 [個/m2]、大きさ (長辺) [m]、高さ [m] の範囲
+  density_per_m2: 8.0
+  size_m: [0.05, 0.25]
+  height_m: [0.2, 1.4]
+
+# 植栽を切る場所 (中心と半径)。角の外側を開けて、遠くの物が見えるようにする
+hedge_gaps:
+  - {at: [24.0, -2.0], radius_m: 3.0}
+  - {at: [8.0, 24.0], radius_m: 3.0}
+  - {at: [-6.0, 12.0], radius_m: 3.5}
+
+# 壁 (線分、厚さ、高さ)
+walls:
+  - {from: [28.0, -8.0], to: [28.0, 6.0], thickness_m: 0.2, height_m: 2.5}
+  - {from: [2.0, 28.0], to: [14.0, 28.0], thickness_m: 0.2, height_m: 2.5}
+  - {from: [6.0, 4.5], to: [16.0, 4.5], thickness_m: 0.2, height_m: 2.0}
+
+# 柱 (木の幹など)
+posts:
+  - {at: [-10.0, 8.0], radius_m: 0.15}
+  - {at: [-10.0, 11.0], radius_m: 0.15}
+  - {at: [-10.0, 14.0], radius_m: 0.15}
+  - {at: [-10.0, 17.0], radius_m: 0.15}
+
+# 測位用の地図。SLAM で植栽を溜めた地図のように、要素の周りに点を散らす (smear_m は散らす幅の標準偏差 [m])。
+# 散らす幅ごとに localization<suffix>.yaml を作る (AMCL が弱い条件の強さの段階)
+localization_variants:
+  - {suffix: "_true", smear_m: 0.0}
+  - {suffix: "", smear_m: 0.25, points_per_element: 6}
+  - {suffix: "_thick", smear_m: 0.5, points_per_element: 10}
+
+spherical_coordinates:
+  latitude_deg: -22.986687
+  longitude_deg: -43.202501
