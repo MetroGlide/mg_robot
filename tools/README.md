@@ -34,6 +34,7 @@ tools/
     ├── plot_gnss_trajectory.py      # GNSS 軌跡・Fix状態・精度円・地図比較 (make bag-plot-gnss)
     ├── plot_lidar_scans.py          # LiDAR スキャン点群の 2D 画像化 (make bag-plot-scans)
     ├── generate_static_transforms.py # 対応点からの UTM -> map 剛体変換 (x,y,yaw) 算出
+    ├── make_garden_world.py         # 植栽に囲まれた経路のワールドと地図を、配置の定義から作る (AMCL が弱い条件の再現用)
     ├── make_sim_gnss_transform.py   # シミュレータのワールド SDF から、GNSS ブリッジ用の gnss_transform.yaml を作る
     ├── rosbag_modify_base.py        # rosbag 内特定トピック修正 (共分散付与等)
     ├── bag_to_json.py               # rosbag メッセージの JSON ダンプ
