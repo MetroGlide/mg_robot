@@ -33,11 +33,15 @@ hedge:
   size_m: [0.05, 0.25]
   height_m: [0.2, 1.4]
 
-# 植栽を切る場所 (中心と半径)。角の外側を開けて、遠くの物が見えるようにする
+# 植栽を切る場所 (中心と半径)。角の外側を開けて、遠くの物が見えるようにする (角を抜けると見える物が入れ替わる)
 hedge_gaps:
   - {at: [24.0, -2.0], radius_m: 3.0}
-  - {at: [8.0, 24.0], radius_m: 3.0}
+  - {at: [24.0, 16.0], radius_m: 3.0}
+  - {at: [8.0, 12.0], radius_m: 2.5}
+  - {at: [12.0, 24.0], radius_m: 3.0}
+  - {at: [-6.0, 24.0], radius_m: 3.0}
   - {at: [-6.0, 12.0], radius_m: 3.5}
+  - {at: [-6.0, 0.0], radius_m: 3.0}
 
 # 壁 (線分、厚さ、高さ)
 walls:
@@ -45,19 +49,26 @@ walls:
   - {from: [2.0, 28.0], to: [14.0, 28.0], thickness_m: 0.2, height_m: 2.5}
   - {from: [6.0, 4.5], to: [16.0, 4.5], thickness_m: 0.2, height_m: 2.0}
 
-# 柱 (木の幹など)
+# 柱 (木の幹など)。角の外側の遠くにも置く
 posts:
+  - {at: [31.0, 18.0], radius_m: 0.2}
+  - {at: [33.0, 13.0], radius_m: 0.2}
+  - {at: [16.0, 30.0], radius_m: 0.2}
+  - {at: [-12.0, 27.0], radius_m: 0.2}
+  - {at: [-12.0, -4.0], radius_m: 0.2}
+  - {at: [-8.0, -7.0], radius_m: 0.2}
   - {at: [-10.0, 8.0], radius_m: 0.15}
   - {at: [-10.0, 11.0], radius_m: 0.15}
   - {at: [-10.0, 14.0], radius_m: 0.15}
   - {at: [-10.0, 17.0], radius_m: 0.15}
 
 # 測位用の地図。SLAM で植栽を溜めた地図のように、要素の周りに点を散らす (smear_m は散らす幅の標準偏差 [m])。
-# 散らす幅ごとに localization<suffix>.yaml を作る (AMCL が弱い条件の強さの段階)
+# 地図を作った後に植栽が変わった状況として、keep_ratio の割合の要素だけを描き、ワールドにない要素を
+# ghost_ratio の割合だけ描く。段階ごとに localization<suffix>.yaml を作る (AMCL が弱い条件の強さの段階)
 localization_variants:
   - {suffix: "_true", smear_m: 0.0}
-  - {suffix: "", smear_m: 0.25, points_per_element: 6}
-  - {suffix: "_thick", smear_m: 0.5, points_per_element: 10}
+  - {suffix: "", smear_m: 0.25, points_per_element: 6, keep_ratio: 0.7, ghost_ratio: 0.15}
+  - {suffix: "_thick", smear_m: 0.5, points_per_element: 10, keep_ratio: 0.6, ghost_ratio: 0.25}
 
 spherical_coordinates:
   latitude_deg: -22.986687

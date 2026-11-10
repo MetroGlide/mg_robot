@@ -93,7 +93,7 @@ GNSS ブリッジ (`slam_gnss_nav_bridge`) のシミュレータ用パラメー�
 
 | ファイル | 内容 |
 | :--- | :--- |
-| `localization.yaml` | 測位用の地図。LiDAR に映る植栽の要素の周りに点を散らす (SLAM で植栽を溜めた地図の再現) |
+| `localization.yaml` | 測位用の地図。LiDAR に映る植栽の要素の周りに点を散らす (SLAM で植栽を溜めた地図の再現)。地図を作った後に植栽が変わった状況として、一部の要素を描かず、ワールドにない要素を描く |
 | `localization_thick.yaml`、`localization_true.yaml` | 散らす幅を大きくしたもの、散らさないもの (強さの段階と対照) |
 | `planning.yaml` | 計画用の地図。植栽は帯を埋めたもの |
 | `waypoints.yaml` | ウェイポイント (経路の角) |
