@@ -25,6 +25,10 @@ expect: [...]                  # 判定。省略時は reached_all
 teardown: [...]                # 走行後に実行する action (生成した障害物は自動で削除される)
 ```
 
+## record_topics
+
+走行の間 rosbag に記録するトピックの一覧。結果のディレクトリの `bag/` に入る。`sim_args` と同じく、シミュレータを起動し直す実行でだけ使われる。記録は再生評価の道具 (例: `tools/scripts/analyze_scan_conditions.py`、`analyze_particle_modes.py`) で解析できる。
+
 ## sim_args
 
 プロファイルの `sim.launch.args` を、このシナリオ用に上書き・追加する launch 引数。書き方と変数展開は `stack_args` と同じ。シミュレータを起動し直す実行 (`make scenario-test`、`make scenario-test-all`) でだけ使われ、起動済みのシミュレータへの attach では使われない。
