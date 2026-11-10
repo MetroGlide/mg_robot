@@ -13,7 +13,9 @@ Gazebo で再現するために使う。同じ定義と乱数の種からは、�
   SDF                     : 植栽の要素 (細い箱)、壁、柱を置いたワールド
   planning.yaml/.pgm      : 計画用の地図。植栽は帯 (要素の範囲を埋めたもの)、壁と柱は実寸
   localization<名>.yaml   : 測位用の地図。走査面の高さに届く要素の周りに、点を散らして描く
-                            (SLAM で植栽を溜めた地図の再現)。散らす幅ごとに 1 枚 (localization_variants)
+                            (SLAM で植栽を溜めた地図の再現)。散らす幅ごとに 1 枚 (localization_variants)。
+                            地図を作った後に植栽が変わった状況として、一部の要素を地図に描かず (keep_ratio)、
+                            ワールドにない要素を地図にだけ描く (ghost_ratio)
   waypoints.yaml          : 経路の角を通る waypoint (mg_waypoint_navigation の version 2.0)
 
 配置の YAML の項目は、mg_simulation/worlds/garden_layout.yaml の注釈を参照。
@@ -229,7 +231,13 @@ def write_maps(directory: str, layout: Dict, elements: List[Dict], rng: np.rando
     for variant in layout["localization_variants"]:
         raster = Raster(low, high, resolution)
         smear = float(variant["smear_m"])
-        for e in visible:
+        kept = [e for e in visible if rng.uniform() < float(variant.get("keep_ratio", 1.0))]
+        ghosts = int(len(visible) * float(variant.get("ghost_ratio", 0.0)))
+        if ghosts:
+            ghost_layout = {**layout, "hedge": {**hedge, "density_per_m2": float(hedge["density_per_m2"])
+                                                * ghosts / max(len(elements), 1)}}
+            kept += make_hedge_elements(ghost_layout, rng)
+        for e in kept:
             raster.mark_box(e["x"], e["y"], e["yaw"], e["sx"], e["sy"])
             if smear > 0.0:
                 count = int(variant.get("points_per_element", 6))
