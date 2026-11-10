@@ -8,6 +8,8 @@ world: warehouse
 tags: [localization, weak, corner, mg_sequencer, known_issue]
 timeout: 500
 
+record_topics: [/scan_top_lidar, /tf, /tf_static, /particle_cloud, /amcl_pose_origin, /localization/status, /odom]
+
 sim_args:
   sensor_fault_file: "pkg://mg_scenario_test/scenarios/data/faults/corner_odom.yaml"
 
