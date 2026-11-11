@@ -49,6 +49,12 @@ readiness:
     - lifecycle_manager_localization
     - lifecycle_manager_navigation
 
+# どの自己位置推定の構成 (プリセット・監督のプロファイル) で走ったかを result.json に残す
+record_parameters:
+  amcl: [alpha1, alpha2, alpha3, alpha4, alpha5, max_particles, max_beams, sigma_hit, z_hit, z_rand]
+  ekf_global_node: [pose0_rejection_threshold]
+  localization_supervisor_node: [profile]
+
 worlds:
   garden:
     sim_world: garden
