@@ -31,10 +31,9 @@ import csv
 import math
 import os
 import sys
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 import numpy as np
-from scipy import ndimage
 from scipy.spatial import cKDTree
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -42,85 +41,8 @@ if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
 from tools.common import loc_metrics as lm  # noqa: E402
-from tools.common.bag import MessageDeserializer, open_reader  # noqa: E402
-from tools.common.geo import quaternion_to_yaw  # noqa: E402
-from tools.common.map import load_map_info  # noqa: E402
-
-
-class OccupancyMap:
-    def __init__(self, map_yaml: str, close_radius: float, occupied_thresh: float = 0.65) -> None:
-        pixels, origin, resolution, _ = load_map_info(map_yaml)
-        if pixels.ndim == 3:
-            pixels = pixels[..., 0]
-        # 画像の行 0 が上 (y 最大) なので、行 0 が y 最小になるよう反転する
-        self.occupied = ((255.0 - pixels.astype(float)) / 255.0 > occupied_thresh)[::-1]
-        self.resolution = resolution
-        self.origin = np.array(origin[:2])
-        # 占有までの距離 [m]
-        self.distance = ndimage.distance_transform_edt(~self.occupied) * resolution
-        cells = int(round(close_radius / resolution))
-        y, x = np.ogrid[-cells:cells + 1, -cells:cells + 1]
-        self.closed = ndimage.binary_closing(self.occupied, structure=x * x + y * y <= cells * cells) \
-            if cells > 0 else self.occupied
-
-    def cells(self, xy: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        col = np.floor((xy[:, 0] - self.origin[0]) / self.resolution).astype(int)
-        row = np.floor((xy[:, 1] - self.origin[1]) / self.resolution).astype(int)
-        inside = (row >= 0) & (row < self.occupied.shape[0]) & (col >= 0) & (col < self.occupied.shape[1])
-        return row, col, inside
-
-    def distance_at(self, xy: np.ndarray) -> np.ndarray:
-        row, col, inside = self.cells(xy)
-        result = np.full(xy.shape[0], np.inf)
-        result[inside] = self.distance[row[inside], col[inside]]
-        return result
-
-    def closed_at(self, xy: np.ndarray) -> np.ndarray:
-        row, col, inside = self.cells(xy)
-        result = np.zeros(xy.shape[0], dtype=bool)
-        result[inside] = self.closed[row[inside], col[inside]]
-        return result
-
-    def run_length(self, xy: np.ndarray, direction: np.ndarray, max_len: float) -> np.ndarray:
-        """各点から、方向 direction の前後に (点の間を埋めた) 占有が続く長さ [m]。占有の上にない点は nan。"""
-        step = self.resolution / 2.0
-        offsets = np.arange(step, max_len + 1e-9, step)
-        result = np.full(xy.shape[0], np.nan)
-        on = self.closed_at(xy)
-        for i in np.nonzero(on)[0]:
-            length = 0.0
-            for sign in (1.0, -1.0):
-                points = xy[i] + sign * offsets[:, None] * direction[i]
-                occupied = self.closed_at(points)
-                broken = np.nonzero(~occupied)[0]
-                length += offsets[broken[0]] - step if broken.size else max_len
-            result[i] = length + step
-        return result
-
-
-def read_poses(bag_path: str, map_frame: str, odom_frame: str, base_frame: str) -> Tuple[np.ndarray, np.ndarray]:
-    """/tf の map->odom と odom->base を合成した map->base の姿勢列 (時刻, [x, y, yaw])。"""
-    reader = open_reader(bag_path, topics=["/tf"])
-    deserializer = MessageDeserializer({t.name: t.type for t in reader.get_all_topics_and_types()})
-    map_odom: List[List[float]] = []
-    odom_base: List[List[float]] = []
-    while reader.has_next():
-        name, raw, _ = reader.read_next()
-        for tf in deserializer.deserialize(name, raw).transforms:
-            pair = (tf.header.frame_id, tf.child_frame_id)
-            if pair not in ((map_frame, odom_frame), (odom_frame, base_frame)):
-                continue
-            q = tf.transform.rotation
-            row = [tf.header.stamp.sec + tf.header.stamp.nanosec * 1e-9, tf.transform.translation.x,
-                   tf.transform.translation.y, quaternion_to_yaw(q.x, q.y, q.z, q.w)]
-            (map_odom if pair[0] == map_frame else odom_base).append(row)
-    if not map_odom or not odom_base:
-        raise SystemExit(f"エラー: {bag_path} の /tf に {map_frame}->{odom_frame} と {odom_frame}->{base_frame} が必要です。")
-    mo = np.array(sorted(map_odom))
-    ob = np.array(sorted(odom_base))
-    idx = lm.hold_index(mo[:, 0], ob[:, 0])
-    valid = idx >= 0
-    return ob[valid, 0], lm.compose(mo[idx[valid], 1:4], ob[valid, 1:4])
+from tools.common.bag import MessageDeserializer, open_reader, read_map_base_poses  # noqa: E402
+from tools.common.scan_map import OccupancyMap, beam_geometry, interpolate_pose, parse_pose  # noqa: E402
 
 
 def read_scans(bag_path: str, topic: str, every: int) -> List[Dict]:
@@ -142,16 +64,6 @@ def read_scans(bag_path: str, topic: str, every: int) -> List[Dict]:
     return scans
 
 
-def interpolate_pose(times: np.ndarray, poses: np.ndarray, t: float) -> Optional[np.ndarray]:
-    i = int(np.searchsorted(times, t))
-    if i <= 0 or i >= times.size or times[i] - times[i - 1] > 0.5:
-        return None
-    a = (t - times[i - 1]) / (times[i] - times[i - 1])
-    yaw = poses[i - 1, 2] + a * lm.wrap_angle(poses[i, 2] - poses[i - 1, 2])
-    xy = poses[i - 1, :2] + a * (poses[i, :2] - poses[i - 1, :2])
-    return np.array([xy[0], xy[1], yaw])
-
-
 def jaccard(a: set, b: set) -> float:
     return len(a & b) / len(a | b) if (a or b) else float("nan")
 
@@ -165,10 +77,9 @@ def analyze(scans: List[Dict], times: np.ndarray, poses: np.ndarray, grid: Occup
         pose = interpolate_pose(times, poses, scan["t"])
         if pose is None:
             continue
-        sensor = lm.compose(pose[None, :], lidar[None, :])[0]
-        beam_yaw = sensor[2] + scan["angles"]
+        sensor_xy, beam_yaw = beam_geometry(pose, lidar, scan["angles"])
         direction = np.stack([np.cos(beam_yaw), np.sin(beam_yaw)], axis=1)
-        points = sensor[:2] + scan["ranges"][:, None] * direction
+        points = sensor_xy + scan["ranges"][:, None] * direction
         near = grid.distance_at(points) <= args.match_dist
         run = grid.run_length(points[near], direction[near], args.max_thickness)
         cells = set(map(tuple, np.floor(points / args.view_cell).astype(int)))
@@ -236,13 +147,6 @@ def format_summary(rows: List[Dict], t0: float, args: argparse.Namespace) -> str
     return "\n".join(lines)
 
 
-def parse_pose(text: str) -> List[float]:
-    values = [float(v) for v in text.split(",")]
-    if len(values) != 3:
-        raise argparse.ArgumentTypeError(f"X,Y,YAW で指定してください: {text}")
-    return values
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(description="2D LiDAR の観測が、地図に対して位置を決めやすいかを時系列で測る")
     parser.add_argument("scan_bag", help="スキャンを記録した bag")
@@ -268,7 +172,7 @@ def main() -> None:
     parser.add_argument("-o", "--output", default=None, help="CSV の出力先 (既定: <pose-bag>/../scan_conditions.csv)")
     args = parser.parse_args()
 
-    times, poses = read_poses(args.pose_bag, args.map_frame, args.odom_frame, args.base_frame)
+    times, poses = read_map_base_poses(args.pose_bag, args.map_frame, args.odom_frame, args.base_frame)
     scans = read_scans(args.scan_bag, args.scan_topic, args.every)
     if not scans:
         raise SystemExit("エラー: スキャンがありません。")

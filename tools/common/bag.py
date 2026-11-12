@@ -9,6 +9,9 @@ import yaml
 from rclpy.serialization import deserialize_message
 from rosidl_runtime_py.utilities import get_message
 
+from tools.common import loc_metrics as lm
+from tools.common.geo import quaternion_to_yaw
+
 
 def detect_storage_id(bag_path: str) -> str:
     """rosbagのパスから storage_id ('mcap' または 'sqlite3') を自動判定する。"""
@@ -157,3 +160,30 @@ def message_to_dict(msg: Any) -> Any:
         return msg.tolist()
     else:
         return msg
+
+
+def read_map_base_poses(
+    bag_path: str, map_frame: str, odom_frame: str, base_frame: str
+) -> Tuple[np.ndarray, np.ndarray]:
+    """/tf の map->odom と odom->base を合成した map->base の姿勢列 (時刻, [x, y, yaw])。"""
+    reader = open_reader(bag_path, topics=["/tf"])
+    deserializer = MessageDeserializer({t.name: t.type for t in reader.get_all_topics_and_types()})
+    map_odom: List[List[float]] = []
+    odom_base: List[List[float]] = []
+    while reader.has_next():
+        name, raw, _ = reader.read_next()
+        for tf in deserializer.deserialize(name, raw).transforms:
+            pair = (tf.header.frame_id, tf.child_frame_id)
+            if pair not in ((map_frame, odom_frame), (odom_frame, base_frame)):
+                continue
+            q = tf.transform.rotation
+            row = [tf.header.stamp.sec + tf.header.stamp.nanosec * 1e-9, tf.transform.translation.x,
+                   tf.transform.translation.y, quaternion_to_yaw(q.x, q.y, q.z, q.w)]
+            (map_odom if pair[0] == map_frame else odom_base).append(row)
+    if not map_odom or not odom_base:
+        raise SystemExit(f"エラー: {bag_path} の /tf に {map_frame}->{odom_frame} と {odom_frame}->{base_frame} が必要です。")
+    mo = np.array(sorted(map_odom))
+    ob = np.array(sorted(odom_base))
+    idx = lm.hold_index(mo[:, 0], ob[:, 0])
+    valid = idx >= 0
+    return ob[valid, 0], lm.compose(mo[idx[valid], 1:4], ob[valid, 1:4])
