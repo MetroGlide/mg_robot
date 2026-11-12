@@ -1,0 +1,15 @@
+# map20261017r1_eval051635_win270 の角の取り違えが、地図にない物の点から来るかを切り分ける。
+# スキャンを、ずれなかった再生の姿勢で地図の占有から遠い端点を欠測にしたものに置き換えた (tools/scripts/rewrite_scans.py
+# --mode keep-matched。姿勢は eval_loc/map20261017r1_eval051635_win270/a1_robust_r1_051635_w/run_1/output、
+# --lidar-pose 0.23,0,3.14159 --end 445)。ほかのトピックと区間は元の記録と同じ。
+name: map20261017r1_eval051635_win270_keepmatched
+description: 角の区間で、地図にない物の点を除いたスキャン (地図 Region1、評価 051635 の 270-440 s)
+map:
+  localization_yaml: /root/ros2_data/map_for20261017/Region1_jikoichi.yaml
+  gnss_transform: /root/ros2_data/map_for20261017/gnss_transform.yaml
+  slam_dir: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_051635/20260921_2243
+eval:
+  bag: /root/ros2_data/rosbag/TC2026/20260913/derived/051635_r1_keepmatched
+  slam_dir: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_051635/20260921_2243
+  start_offset: 270.0
+  duration: 170.0

@@ -1,0 +1,6 @@
+# 角の取り違え (map20261017r1_eval051635 の 355 s ごろ) が、観測のどの性質から来るかを切り分ける評価セット。
+# 同じ区間で、スキャンだけを tools/scripts/rewrite_scans.py で書き換えたものと比べる
+# 1 行に 1 条件: <ラベル> <データセット> [run_localization_variant.sh の引数 ...]
+orig map20261017r1_eval051635_win270
+keepmatched map20261017r1_eval051635_win270_keepmatched
+raycast map20261017r1_eval051635_win270_raycast

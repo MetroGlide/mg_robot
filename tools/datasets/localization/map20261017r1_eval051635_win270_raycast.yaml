@@ -1,0 +1,15 @@
+# map20261017r1_eval051635_win270 の角の取り違えが、地図の形と動きのモデルだけで起きるかを切り分ける。
+# スキャンを、ずれなかった再生の姿勢から測位用の地図 (Region1) へ光線を飛ばした雑音のないものに置き換えた
+# (tools/scripts/rewrite_scans.py --mode raycast。姿勢は eval_loc/map20261017r1_eval051635_win270/
+# a1_robust_r1_051635_w/run_1/output、--lidar-pose 0.23,0,3.14159 --end 445)。オドメトリと GNSS は元の記録のまま。
+name: map20261017r1_eval051635_win270_raycast
+description: 角の区間で、地図への光線追跡で作ったスキャン (地図 Region1、評価 051635 の 270-440 s)
+map:
+  localization_yaml: /root/ros2_data/map_for20261017/Region1_jikoichi.yaml
+  gnss_transform: /root/ros2_data/map_for20261017/gnss_transform.yaml
+  slam_dir: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_051635/20260921_2243
+eval:
+  bag: /root/ros2_data/rosbag/TC2026/20260913/derived/051635_r1_raycast
+  slam_dir: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_051635/20260921_2243
+  start_offset: 270.0
+  duration: 170.0
