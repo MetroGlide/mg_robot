@@ -11,6 +11,8 @@ from rosidl_runtime_py.utilities import get_message
 
 from tools.common import loc_metrics as lm
 from tools.common.geo import quaternion_to_yaw
+from tools.common.pose_graph import NODE_MAX_GAP_SEC, load_slam_output
+from tools.common.scan_map import MAX_POSE_GAP_SEC
 
 
 def detect_storage_id(bag_path: str) -> str:
@@ -187,3 +189,20 @@ def read_map_base_poses(
     idx = lm.hold_index(mo[:, 0], ob[:, 0])
     valid = idx >= 0
     return ob[valid, 0], lm.compose(mo[idx[valid], 1:4], ob[valid, 1:4])
+
+
+def read_reference_poses(
+    pose_bag: Optional[str], pose_graph_dir: Optional[str], map_frame: str, odom_frame: str, base_frame: str
+) -> Tuple[np.ndarray, np.ndarray, float]:
+    """基準の姿勢列 (時刻, [x, y, yaw]) と、補間を許す間隔の上限 [s] を返す。
+
+    pose_bag は記録の /tf (map->base)。pose_graph_dir は slam_gnss_2d の出力 (pose_graph.json のキーフレーム。
+    座標はその SLAM 地図の座標系)。どちらか一方を渡す。
+    """
+    if (pose_bag is None) == (pose_graph_dir is None):
+        raise SystemExit("エラー: 姿勢は --pose-bag と --pose-graph のどちらか一方で指定してください。")
+    if pose_bag is not None:
+        times, poses = read_map_base_poses(pose_bag, map_frame, odom_frame, base_frame)
+        return times, poses, MAX_POSE_GAP_SEC
+    nodes, _, _ = load_slam_output(pose_graph_dir)
+    return nodes[:, 0], nodes[:, 1:4], NODE_MAX_GAP_SEC

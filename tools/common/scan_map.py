@@ -26,12 +26,29 @@ class OccupancyMap:
         self.occupied = ((255.0 - pixels.astype(float)) / 255.0 > occupied_thresh)[::-1]
         self.resolution = resolution
         self.origin = np.array(origin[:2])
+        self._close_cells = int(round(close_radius / resolution))
+        self._update()
+
+    def _update(self) -> None:
+        """占有から、距離と点の間を埋めた占有を作り直す。"""
         # 占有までの距離 [m]
-        self.distance = ndimage.distance_transform_edt(~self.occupied) * resolution
-        cells = int(round(close_radius / resolution))
+        self.distance = ndimage.distance_transform_edt(~self.occupied) * self.resolution
+        cells = self._close_cells
         y, x = np.ogrid[-cells:cells + 1, -cells:cells + 1]
         self.closed = ndimage.binary_closing(self.occupied, structure=x * x + y * y <= cells * cells) \
             if cells > 0 else self.occupied
+        # 点の間を埋めた占有までの距離 [m] (光線追跡で、まばらな占有の帯の隙間を光線が抜けないようにする)
+        self.closed_distance = ndimage.distance_transform_edt(~self.closed) * self.resolution \
+            if cells > 0 else self.distance
+
+    def clear_near(self, xy: np.ndarray, radius: float) -> None:
+        """点列 xy から radius [m] 以内の占有を消す (地図を作った走行で一緒に映った人などを、光線追跡の前に除く)。"""
+        mask = np.zeros_like(self.occupied)
+        row, col, inside = self.cells(xy)
+        mask[row[inside], col[inside]] = True
+        near = ndimage.distance_transform_edt(~mask) * self.resolution <= radius
+        self.occupied = self.occupied & ~near
+        self._update()
 
     def cells(self, xy: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         col = np.floor((xy[:, 0] - self.origin[0]) / self.resolution).astype(int)
@@ -39,11 +56,11 @@ class OccupancyMap:
         inside = (row >= 0) & (row < self.occupied.shape[0]) & (col >= 0) & (col < self.occupied.shape[1])
         return row, col, inside
 
-    def distance_at(self, xy: np.ndarray) -> np.ndarray:
-        """占有までの距離 [m]。地図の外は inf。"""
+    def distance_at(self, xy: np.ndarray, closed: bool = False) -> np.ndarray:
+        """占有 (closed なら点の間を埋めた占有) までの距離 [m]。地図の外は inf。"""
         row, col, inside = self.cells(xy)
         result = np.full(xy.shape[0], np.inf)
-        result[inside] = self.distance[row[inside], col[inside]]
+        result[inside] = (self.closed_distance if closed else self.distance)[row[inside], col[inside]]
         return result
 
     def closed_at(self, xy: np.ndarray) -> np.ndarray:
@@ -72,6 +89,7 @@ class OccupancyMap:
         """origin (x, y) から各向き yaws へ光線を飛ばし、占有に当たるまでの距離 [m] を返す。当たらなければ inf。
 
         占有までの距離だけ進む (sphere tracing)。占有から半格子以内に入ったら当たりとする。
+        close_radius を与えて作った地図では、点の間を埋めた占有に当てる。
         """
         hit_dist = self.resolution * 0.5
         direction = np.stack([np.cos(yaws), np.sin(yaws)], axis=1)
@@ -81,7 +99,7 @@ class OccupancyMap:
         while np.any(active):
             idx = np.nonzero(active)[0]
             points = origin[None, :] + travelled[idx, None] * direction[idx]
-            dist = self.distance_at(points)
+            dist = self.distance_at(points, closed=True)
             hit = dist <= hit_dist
             result[idx[hit]] = travelled[idx[hit]]
             # 地図の外 (inf) と最大距離を超えたものは当たりなし
@@ -93,10 +111,11 @@ class OccupancyMap:
         return result
 
 
-def interpolate_pose(times: np.ndarray, poses: np.ndarray, t: float) -> Optional[np.ndarray]:
-    """時刻 t の姿勢を前後の姿勢から線形に補間する。前後が無いか、間が MAX_POSE_GAP_SEC より空けば None。"""
+def interpolate_pose(times: np.ndarray, poses: np.ndarray, t: float,
+                     max_gap: float = MAX_POSE_GAP_SEC) -> Optional[np.ndarray]:
+    """時刻 t の姿勢を前後の姿勢から線形に補間する。前後が無いか、間が max_gap [s] より空けば None。"""
     i = int(np.searchsorted(times, t))
-    if i <= 0 or i >= times.size or times[i] - times[i - 1] > MAX_POSE_GAP_SEC:
+    if i <= 0 or i >= times.size or times[i] - times[i - 1] > max_gap:
         return None
     a = (t - times[i - 1]) / (times[i] - times[i - 1])
     yaw = poses[i - 1, 2] + a * lm.wrap_angle(poses[i, 2] - poses[i - 1, 2])

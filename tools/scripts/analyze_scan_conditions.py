@@ -7,11 +7,12 @@ analyze_scan_conditions.py
 実機の記録とシミュレーションを比べるのに使う。
 
 使い方:
-  analyze_scan_conditions.py <スキャンの bag> --pose-bag <推定の bag> --map <測位用 map.yaml>
+  analyze_scan_conditions.py <スキャンの bag> (--pose-bag <推定の bag> | --pose-graph <SLAM 出力>) --map <map.yaml>
       [--start S --end E] [--lidar-pose X,Y,YAW] [-o scan_conditions.csv]
 
 - 姿勢は --pose-bag の /tf (map->odom と odom->base) から取る (例: ずれなかった再生評価の出力。
-  地図に合った姿勢で、地図との照合を見るため)。同じ bag に両方があれば、同じパスを渡す
+  地図に合った姿勢で、地図との照合を見るため)。同じ bag に両方があれば、同じパスを渡す。
+  SLAM 地図と比べるときは --pose-graph にその SLAM 出力を渡す (キーフレームの姿勢は SLAM 地図の座標系)
 - --lidar-pose は base 座標系での LiDAR の姿勢 (x, y [m], yaw [rad])
 
 スキャンごとの指標:
@@ -41,7 +42,7 @@ if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
 from tools.common import loc_metrics as lm  # noqa: E402
-from tools.common.bag import MessageDeserializer, open_reader, read_map_base_poses  # noqa: E402
+from tools.common.bag import MessageDeserializer, open_reader, read_reference_poses  # noqa: E402
 from tools.common.scan_map import OccupancyMap, beam_geometry, interpolate_pose, parse_pose  # noqa: E402
 
 
@@ -74,7 +75,7 @@ def analyze(scans: List[Dict], times: np.ndarray, poses: np.ndarray, grid: Occup
     history: List[Dict] = []
     rows = []
     for scan in scans:
-        pose = interpolate_pose(times, poses, scan["t"])
+        pose = interpolate_pose(times, poses, scan["t"], args.max_pose_gap)
         if pose is None:
             continue
         sensor_xy, beam_yaw = beam_geometry(pose, lidar, scan["angles"])
@@ -150,7 +151,8 @@ def format_summary(rows: List[Dict], t0: float, args: argparse.Namespace) -> str
 def main() -> None:
     parser = argparse.ArgumentParser(description="2D LiDAR の観測が、地図に対して位置を決めやすいかを時系列で測る")
     parser.add_argument("scan_bag", help="スキャンを記録した bag")
-    parser.add_argument("--pose-bag", required=True, help="/tf (map->odom、odom->base) を記録した bag")
+    parser.add_argument("--pose-bag", default=None, help="/tf (map->odom、odom->base) を記録した bag")
+    parser.add_argument("--pose-graph", default=None, help="姿勢を pose_graph.json のキーフレームから取る SLAM 出力")
     parser.add_argument("--map", required=True, help="測位用の地図 (map.yaml)")
     parser.add_argument("--scan-topic", default="/scan_top_lidar")
     parser.add_argument("--lidar-pose", type=parse_pose, default=[0.0, 0.0, 0.0],
@@ -169,10 +171,12 @@ def main() -> None:
     parser.add_argument("--map-frame", default="map")
     parser.add_argument("--odom-frame", default="odom")
     parser.add_argument("--base-frame", default="base_footprint")
-    parser.add_argument("-o", "--output", default=None, help="CSV の出力先 (既定: <pose-bag>/../scan_conditions.csv)")
+    parser.add_argument("-o", "--output", default=None,
+                        help="CSV の出力先 (既定: <pose-bag または pose-graph>/../scan_conditions.csv)")
     args = parser.parse_args()
 
-    times, poses = read_map_base_poses(args.pose_bag, args.map_frame, args.odom_frame, args.base_frame)
+    times, poses, args.max_pose_gap = read_reference_poses(
+        args.pose_bag, args.pose_graph, args.map_frame, args.odom_frame, args.base_frame)
     scans = read_scans(args.scan_bag, args.scan_topic, args.every)
     if not scans:
         raise SystemExit("エラー: スキャンがありません。")
@@ -183,7 +187,8 @@ def main() -> None:
     if not rows:
         raise SystemExit("エラー: 姿勢と時刻の合うスキャンがありません。")
 
-    output = args.output or os.path.join(os.path.dirname(os.path.abspath(args.pose_bag)), "scan_conditions.csv")
+    output = args.output or os.path.join(
+        os.path.dirname(os.path.abspath(args.pose_bag or args.pose_graph)), "scan_conditions.csv")
     fields = ["t", "x", "y", "yaw", "yaw_rate"] + METRICS
     with open(output, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fields)

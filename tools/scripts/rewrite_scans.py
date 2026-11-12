@@ -7,7 +7,7 @@ rewrite_scans.py
 データセットの eval.bag に出力を書く)。
 
 使い方:
-  rewrite_scans.py <入力 bag> -o <出力 bag> --pose-bag <姿勢の bag> --mode keep-matched|raycast --map <map.yaml>
+  rewrite_scans.py <入力 bag> -o <出力 bag> (--pose-bag <姿勢の bag> | --pose-graph <SLAM 出力>) --mode keep-matched|raycast --map <map.yaml>
       [--lidar-pose X,Y,YAW] [--end E] [--match-dist D] [--noise-std S] [--seed N]
 
 モード:
@@ -18,7 +18,8 @@ rewrite_scans.py
                  (車体に遮られる向きなど)
 
 - 正しい姿勢は --pose-bag の /tf (map->odom と odom->base) から取る (例: ずれなかった再生評価の出力)。
-  姿勢が無い時刻のスキャンは書き換えずに写し、件数を表示する
+  --pose-graph に SLAM 出力を渡すと、そのキーフレームの姿勢 (その SLAM 地図の座標系) を補間して使う
+  (SLAM 地図を世界とする raycast 用)。姿勢が無い時刻のスキャンは書き換えずに写し、件数を表示する
 - --end は入力 bag の先頭からの経過秒で、そこまでのメッセージだけを写す (0 で末尾まで)
 """
 
@@ -38,7 +39,7 @@ from tools.common.bag import (  # noqa: E402
     detect_storage_id,
     open_reader,
     open_writer,
-    read_map_base_poses,
+    read_reference_poses,
 )
 from tools.common.scan_map import (  # noqa: E402
     OccupancyMap,
@@ -57,7 +58,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="記録のスキャンを地図と姿勢で書き換えた bag を作る")
     parser.add_argument("input", help="入力 bag")
     parser.add_argument("-o", "--output", required=True, help="出力 bag (存在しないこと)")
-    parser.add_argument("--pose-bag", required=True, help="正しい姿勢の /tf (map->odom、odom->base) を記録した bag")
+    parser.add_argument("--pose-bag", default=None, help="正しい姿勢の /tf (map->odom、odom->base) を記録した bag")
+    parser.add_argument("--pose-graph", default=None, help="正しい姿勢を pose_graph.json のキーフレームから取る SLAM 出力")
     parser.add_argument("--mode", required=True, choices=MODES)
     parser.add_argument("--map", required=True, help="keep-matched は照合する地図、raycast は世界とする地図 (map.yaml)")
     parser.add_argument("--scan-topic", default="/scan_top_lidar")
@@ -65,6 +67,14 @@ def main() -> None:
                         help="base 座標系での LiDAR の姿勢 X,Y,YAW [m, m, rad]")
     parser.add_argument("--end", type=float, default=0.0, help="写す区間の終わり (入力 bag の先頭からの経過秒。0 で末尾まで)")
     parser.add_argument("--match-dist", type=float, default=0.2, help="keep-matched で地図に一致したとみなす距離 [m]")
+    parser.add_argument("--close-radius", type=float, default=0.0,
+                        help="raycast の前に占有の点の間を埋める半径 [m] (まばらな帯の隙間を光線が抜けないように。0 で埋めない)")
+    parser.add_argument("--max-pose-gap", type=float, default=0.0,
+                        help="姿勢を補間してよい間隔の上限 [s] (0 で姿勢の種類ごとの既定。キーフレームは止まっている間に"
+                             "出ないので、ほぼ止まっている区間も書き換えたいときに広げる)")
+    parser.add_argument("--clear-path-radius", type=float, default=0.0,
+                        help="raycast の前に、正しい姿勢の軌跡からこの半径 [m] 以内の占有を消す (地図を作った走行で"
+                             "台車を押す人などが軌跡沿いに映った地図用。0 で消さない)")
     parser.add_argument("--noise-std", type=float, default=0.0, help="raycast で距離に足す雑音の標準偏差 [m]")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--map-frame", default="map")
@@ -74,8 +84,12 @@ def main() -> None:
     if os.path.exists(args.output):
         raise SystemExit(f"エラー: 出力 {args.output} が既にあります。")
 
-    times, poses = read_map_base_poses(args.pose_bag, args.map_frame, args.odom_frame, args.base_frame)
-    grid = OccupancyMap(args.map)
+    times, poses, max_gap = read_reference_poses(
+        args.pose_bag, args.pose_graph, args.map_frame, args.odom_frame, args.base_frame)
+    max_gap = args.max_pose_gap or max_gap
+    grid = OccupancyMap(args.map, args.close_radius)
+    if args.clear_path_radius > 0.0:
+        grid.clear_near(poses[:, :2], args.clear_path_radius)
     lidar = np.array(args.lidar_pose)
     rng = np.random.default_rng(args.seed)
 
@@ -96,7 +110,7 @@ def main() -> None:
             break
         if topic == args.scan_topic:
             msg = deserializer.deserialize(topic, raw)
-            pose = interpolate_pose(times, poses, msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9)
+            pose = interpolate_pose(times, poses, msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9, max_gap)
             if pose is None:
                 kept += 1
             else:
