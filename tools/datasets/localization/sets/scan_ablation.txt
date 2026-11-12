@@ -4,3 +4,4 @@
 orig map20261017r1_eval051635_win270
 keepmatched map20261017r1_eval051635_win270_keepmatched
 raycast map20261017r1_eval051635_win270_raycast
+selfmap_raycast map20261017r1_eval051635_win270_selfmap_raycast
