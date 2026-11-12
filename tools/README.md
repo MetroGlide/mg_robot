@@ -55,6 +55,8 @@ tools/
     ├── compare_localization_set.py  # 評価セットの結果を、条件 × 名前の表にまとめる
     ├── analyze_particle_modes.py    # 再生評価の記録の AMCL の粒子を仮説に分け、仮説の数と正しい仮説の重みを時系列で出す
     ├── plot_scan_on_map.py          # スキャンを真値と推定の姿勢に置いて地図に重ねる (自己位置のずれの原因の調査)
+    ├── analyze_scan_conditions.py   # スキャンが地図に対して位置を決めやすいか (一致率・帯の太さ・不安定さ・視界の重なり) を時系列で測る
+    ├── rewrite_scans.py             # 記録のスキャンを、地図にない点を除く・地図への光線追跡に置き換える (ずれの原因の切り分け)
     ├── calib_wheel_odom.py          # ホイールオドメトリのスケール・バイアス・遅れを走行ログから推定
     ├── degrade_localization_map.py  # 測位用地図の加工 (線を太く、消す、局所的にずらす。AMCL が弱い状況の評価用)
     ├── add_keepout_to_map.py        # 地図に進入禁止の長方形を足す (計画用地図にだけ進入禁止がある状況のシナリオ用)
@@ -111,6 +113,7 @@ make test pkg=tools
 | `test_offline_faults.py` | 故障注入の定義の、監督のオフライン評価への変換 |
 | `test_pose_graph.py` | `pose_graph.json` の読込・補間 |
 | `test_map_helpers.py` | 地図の読込と `map_list.txt` |
+| `test_scan_map.py` | スキャンと地図の突き合わせ・光線追跡 (`common/scan_map.py`) |
 | `test_compare_localization.py` | 変種の比較表 |
 | `test_compare_localization_set.py` | 評価セットの読み込みと、条件をまたいだ集計 |
 | `test_patch_params.py` | パラメータ YAML の書き換え |
