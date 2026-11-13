@@ -38,6 +38,28 @@ def test_clear_near_removes_occupied_around_path(tmp_path):
     assert abs(grid.raycast(np.array([2.0, 2.0]), np.array([0.0]), 0.05, 30.0)[0] - 3.0) < 0.1
 
 
+def test_save_keeps_cleared_occupancy_and_unknown(tmp_path):
+    grid = _grid(tmp_path)
+    # 未知の画素 (205) を 1 つ置いた地図で作り直し、壁の一部を消して保存する
+    pixels = np.array(Image.open(tmp_path / "map.pgm"))
+    pixels[0, 0] = 205
+    Image.fromarray(pixels).save(tmp_path / "map.pgm")
+    grid = OccupancyMap(str(tmp_path / "map.yaml"))
+    grid.clear_near(np.array([[5.05, 2.0]]), 1.0)
+    grid.save(str(tmp_path / "cleared.yaml"))
+    saved = OccupancyMap(str(tmp_path / "cleared.yaml"))
+    assert np.array_equal(saved.occupied, grid.occupied)
+    assert np.allclose(saved.origin, grid.origin) and saved.resolution == grid.resolution
+    assert np.array(Image.open(tmp_path / "cleared.pgm"))[0, 0] == 205
+    # 切り出すと、範囲の内側は同じ場所に同じ占有が残る
+    grid.save(str(tmp_path / "crop.yaml"), [3.0, 1.0, 7.0, 4.0])
+    crop = OccupancyMap(str(tmp_path / "crop.yaml"))
+    assert crop.occupied.shape == (30, 40) and np.allclose(crop.origin, [3.0, 1.0])
+    points = np.array([[5.05, 1.5], [5.05, 3.5], [4.0, 2.0]])
+    assert np.array_equal(crop.distance_at(points) == 0.0, grid.distance_at(points) == 0.0)
+    assert np.array_equal(crop.occupied, grid.occupied[10:40, 30:70])
+
+
 def test_raycast_ranges_keep_invalid_beams(tmp_path):
     grid = _grid(tmp_path)
     ranges = np.array([1.0, np.inf, 1.0])

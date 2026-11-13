@@ -5,9 +5,12 @@
 - beam_geometry: スキャンのビームの、地図座標での始点と向き
 """
 import argparse
+import os
 from typing import List, Optional, Tuple
 
 import numpy as np
+import yaml
+from PIL import Image
 from scipy import ndimage
 
 from tools.common import loc_metrics as lm
@@ -22,6 +25,8 @@ class OccupancyMap:
         pixels, origin, resolution, _ = load_map_info(map_yaml)
         if pixels.ndim == 3:
             pixels = pixels[..., 0]
+        self._pixels = pixels
+        self._occupied_thresh = occupied_thresh
         # 画像の行 0 が上 (y 最大) なので、行 0 が y 最小になるよう反転する
         self.occupied = ((255.0 - pixels.astype(float)) / 255.0 > occupied_thresh)[::-1]
         self.resolution = resolution
@@ -49,6 +54,33 @@ class OccupancyMap:
         near = ndimage.distance_transform_edt(~mask) * self.resolution <= radius
         self.occupied = self.occupied & ~near
         self._update()
+
+    def save(self, out_yaml: str, bounds: Optional[List[float]] = None) -> None:
+        """clear_near で消した占有を空き (254) にした地図を、元の地図と同じ形式 (pgm と map.yaml) で保存する。
+
+        未知などそれ以外の画素は元のまま。光線追跡の世界と同じ地図で測位する対照に使う。
+        bounds [x_min, y_min, x_max, y_max] [m] を与えると、その範囲 (地図の内側) だけを切り出す
+        (大きな地図は AMCL が尤度場を作る間、最初のスキャンの処理が止まるため)。
+        """
+        pixels = self._pixels.copy()
+        source = (255.0 - pixels.astype(float)) / 255.0 > self._occupied_thresh
+        pixels[source & ~self.occupied[::-1]] = 254
+        rows, cols = self.occupied.shape
+        row0, row1, col0, col1 = 0, rows, 0, cols
+        if bounds is not None:
+            col0 = max(int(np.floor((bounds[0] - self.origin[0]) / self.resolution)), 0)
+            row0 = max(int(np.floor((bounds[1] - self.origin[1]) / self.resolution)), 0)
+            col1 = min(int(np.ceil((bounds[2] - self.origin[0]) / self.resolution)), cols)
+            row1 = min(int(np.ceil((bounds[3] - self.origin[1]) / self.resolution)), rows)
+        # 画像の行は上が y 最大
+        pixels = pixels[rows - row1:rows - row0, col0:col1]
+        origin = self.origin + self.resolution * np.array([col0, row0])
+        image = os.path.splitext(os.path.basename(out_yaml))[0] + ".pgm"
+        Image.fromarray(pixels.astype(np.uint8)).save(os.path.join(os.path.dirname(out_yaml), image))
+        with open(out_yaml, "w", encoding="utf-8") as f:
+            yaml.safe_dump({"image": image, "mode": "trinary", "resolution": float(self.resolution),
+                            "origin": [float(origin[0]), float(origin[1]), 0.0], "negate": 0,
+                            "occupied_thresh": self._occupied_thresh, "free_thresh": 0.25}, f)
 
     def cells(self, xy: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         col = np.floor((xy[:, 0] - self.origin[0]) / self.resolution).astype(int)

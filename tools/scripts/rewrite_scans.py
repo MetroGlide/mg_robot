@@ -8,7 +8,8 @@ rewrite_scans.py
 
 使い方:
   rewrite_scans.py <入力 bag> -o <出力 bag> (--pose-bag <姿勢の bag> | --pose-graph <SLAM 出力>) --mode keep-matched|raycast --map <map.yaml>
-      [--lidar-pose X,Y,YAW] [--end E] [--match-dist D] [--noise-std S] [--seed N]
+      [--lidar-pose X,Y,YAW] [--end E] [--match-dist D] [--clear-path-radius R] [--save-world <map.yaml>]
+      [--noise-std S] [--seed N]
 
 モード:
   keep-matched : 正しい姿勢で、端点が地図 (--map) の占有から --match-dist より遠いビームを欠測 (inf) にする。
@@ -75,6 +76,12 @@ def main() -> None:
     parser.add_argument("--clear-path-radius", type=float, default=0.0,
                         help="raycast の前に、正しい姿勢の軌跡からこの半径 [m] 以内の占有を消す (地図を作った走行で"
                              "台車を押す人などが軌跡沿いに映った地図用。0 で消さない)")
+    parser.add_argument("--save-world", default=None,
+                        help="--clear-path-radius で消した後の地図をこの map.yaml に保存する (光線追跡の世界と同じ地図で"
+                             "測位する対照用)")
+    parser.add_argument("--save-world-bounds", default=None,
+                        help="--save-world で切り出す範囲 X_MIN,Y_MIN,X_MAX,Y_MAX [m] (区間の軌跡に LiDAR の最大距離より"
+                             "広い余白を足す。大きな地図は AMCL が最初のスキャンで尤度場を作る間止まる)")
     parser.add_argument("--noise-std", type=float, default=0.0, help="raycast で距離に足す雑音の標準偏差 [m]")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--map-frame", default="map")
@@ -90,6 +97,10 @@ def main() -> None:
     grid = OccupancyMap(args.map, args.close_radius)
     if args.clear_path_radius > 0.0:
         grid.clear_near(poses[:, :2], args.clear_path_radius)
+    if args.save_world:
+        bounds = [float(v) for v in args.save_world_bounds.split(",")] if args.save_world_bounds else None
+        grid.save(args.save_world, bounds)
+        print(f"世界の地図を保存: {args.save_world}")
     lidar = np.array(args.lidar_pose)
     rng = np.random.default_rng(args.seed)
 
