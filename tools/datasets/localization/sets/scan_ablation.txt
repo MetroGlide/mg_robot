@@ -1,7 +1,16 @@
 # 角の取り違え (map20261017r1_eval051635 の 355 s ごろ) が、観測のどの性質から来るかを切り分ける評価セット。
-# 同じ区間で、スキャンだけを tools/scripts/rewrite_scans.py で書き換えたものと比べる
+# 同じ区間で、スキャンを tools/scripts/rewrite_scans.py で、GNSS を tools/scripts/rewrite_gnss.py で書き換えたものと比べる。
+# 光線追跡のスキャンが記録でずれない所でずれすぎないかを見る、角の前後の区間 (w090、w450) も含む
 # 1 行に 1 条件: <ラベル> <データセット> [run_localization_variant.sh の引数 ...]
 orig map20261017r1_eval051635_win270
 keepmatched map20261017r1_eval051635_win270_keepmatched
 raycast map20261017r1_eval051635_win270_raycast
 selfmap_raycast map20261017r1_eval051635_win270_selfmap_raycast
+selfmap_control selfmap_eval051635_win270_selfmap_raycast
+orig_w090 map20261017r1_eval051635_win090
+selfmap_w090 map20261017r1_eval051635_win090_selfmap_raycast
+orig_w450 map20261017r1_eval051635_win450
+selfmap_w450 map20261017r1_eval051635_win450_selfmap_raycast
+truthgnss map20261017r1_eval051635_win270_selfmap_truthgnss
+truthgnss_white map20261017r1_eval051635_win270_selfmap_truthgnss --faults tools/datasets/localization/faults/gnss_noise_white.yaml
+truthgnss_markov map20261017r1_eval051635_win270_selfmap_truthgnss --faults tools/datasets/localization/faults/gnss_noise_markov.yaml

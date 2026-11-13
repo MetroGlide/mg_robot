@@ -1,0 +1,4 @@
+# 真値に置き換えた GNSS (tools/scripts/rewrite_gnss.py) に、毎回独立な雑音を足す。時刻は再生開始からの経過秒。
+# sigma は記録の単独測位の真値に対する誤差の標準偏差の目安 (rewrite_gnss.py が表示する)。
+faults:
+  - {type: gnss_noise, start: 0.0, end: 100000.0, sigma: 1.0}

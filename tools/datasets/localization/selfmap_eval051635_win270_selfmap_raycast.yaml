@@ -1,0 +1,17 @@
+# map20261017r1_eval051635_win270_selfmap_raycast の対照。スキャンは同じ (SLAM 地図への光線追跡) で、測位も
+# 光線を飛ばした世界と同じ地図 (SLAM 地図から軌跡沿い 0.8 m の占有を消したもの) で行う。GNSS の変換も SLAM 出力のもの。
+# 地図と世界が一致するので、ずれが戻らないのが地図と現場の食い違いによるか (戻るなら食い違い、戻らないなら形か作り方) を見る。
+# 地図は tools/scripts/rewrite_scans.py に B2 と同じ引数と --save-world を付けて保存した。区間の軌跡に LiDAR の最大距離
+# (30 m) より広い 35 m の余白を足した範囲に切り出している (--save-world-bounds=-167,3.7,-9,141.1)。SLAM 地図の
+# 全体だと AMCL が最初のスキャンで尤度場を作る間 (約 20 s) 止まり、初期姿勢が遅れて入るため。
+name: selfmap_eval051635_win270_selfmap_raycast
+description: SLAM 地図への光線追跡のスキャンを同じ地図で測位する対照 (評価 051635 の 270-440 s)
+map:
+  localization_yaml: /root/ros2_data/rosbag/TC2026/20260913/derived/051635_selfmap_world/map_clear08_w270.yaml
+  gnss_transform: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_051635/20260921_2243/gnss_transform.yaml
+  slam_dir: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_051635/20260921_2243
+eval:
+  bag: /root/ros2_data/rosbag/TC2026/20260913/derived/051635_selfmap_raycast_clear08_gap15
+  slam_dir: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_051635/20260921_2243
+  start_offset: 270.0
+  duration: 170.0
