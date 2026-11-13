@@ -1,7 +1,7 @@
 """故障注入の計算 (numpy のみに依存)。fault_injector.py から使う。"""
 
 import math
-from typing import Tuple
+from typing import Optional, Tuple
 
 import numpy as np
 
@@ -65,6 +65,32 @@ def shift_latlon(lat_deg: float, lon_deg: float, dx_m: float, dy_m: float) -> Tu
     dlat = dy_m / METERS_PER_DEGREE_LAT
     dlon = dx_m / (METERS_PER_DEGREE_LAT * math.cos(math.radians(lat_deg)))
     return lat_deg + dlat, lon_deg + dlon
+
+
+class GnssNoise:
+    """GNSS の位置の雑音 (東, 北) [m]。tau [s] が正なら 1 次のガウス・マルコフ過程 (偏りが tau 程度続く単独測位の
+    誤差)、0 なら毎回独立な白色雑音。どちらも各軸の標準偏差は sigma。
+
+    同じ測位から出る 2 つのメッセージ (/navpvt と /gps/fix) に同じ値を返すため、前回から same_sec [s] 以内の
+    呼び出しには前回の値を返す。
+    """
+
+    def __init__(self, rng: np.random.Generator, same_sec: float = 0.2) -> None:
+        self._rng = rng
+        self._same_sec = same_sec
+        self._t: Optional[float] = None
+        self._value = np.zeros(2)
+
+    def sample(self, t: float, sigma: float, tau: float) -> np.ndarray:
+        if self._t is not None and abs(t - self._t) <= self._same_sec:
+            return self._value
+        if tau > 0.0 and self._t is not None:
+            rho = math.exp(-max(t - self._t, 0.0) / tau)
+            self._value = rho * self._value + math.sqrt(1.0 - rho * rho) * self._rng.normal(0.0, sigma, 2)
+        else:
+            self._value = self._rng.normal(0.0, sigma, 2)
+        self._t = t
+        return self._value
 
 
 def set_carrier_solution(flags: int, carrier: str) -> int:

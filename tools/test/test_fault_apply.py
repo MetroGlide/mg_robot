@@ -82,3 +82,17 @@ def test_jitter_scan_drops_or_stretches_only_chosen_beams():
     finite = result[changed & np.isfinite(result)]
     assert np.all((finite > 2.0) & (finite <= 2.8))
     assert 0.4 < np.isinf(result[changed]).mean() < 0.6
+
+
+def test_gnss_noise_same_fix_and_correlation():
+    noise = fa.GnssNoise(np.random.default_rng(0))
+    first = noise.sample(0.0, 1.0, 30.0).copy()
+    # 同じ測位の 2 つのメッセージには同じ値
+    assert np.array_equal(noise.sample(0.05, 1.0, 30.0), first)
+    values = np.array([noise.sample(float(t), 1.0, 30.0).copy() for t in range(1, 20001)])
+    assert 0.8 < values.std() < 1.2
+    # 1 s 離れた値の相関は exp(-1/30) に近く、白色 (tau = 0) ではほぼ 0
+    rho = np.corrcoef(values[:-1, 0], values[1:, 0])[0, 1]
+    assert abs(rho - math.exp(-1.0 / 30.0)) < 0.03
+    white = np.array([noise.sample(float(t), 1.0, 0.0).copy() for t in range(30000, 32000)])
+    assert abs(np.corrcoef(white[:-1, 0], white[1:, 0])[0, 1]) < 0.1

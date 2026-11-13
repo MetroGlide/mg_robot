@@ -58,6 +58,7 @@ class FaultInjector(Node):
         self._logged = set()
         self._abs_w = 0.0
         self._rng = np.random.default_rng()
+        self._gnss_noise = fa.GnssNoise(self._rng)
         self._kidnap_done = set()
         self._amcl_pose: Optional[PoseWithCovarianceStamped] = None
         self._drift_last: Dict[int, float] = {}
@@ -135,7 +136,8 @@ class FaultInjector(Node):
             dy += float(fault.params["bias"].get("y", 0.0))
         fault = self._active("gnss_noise")
         if fault:
-            noise = self._rng.normal(0.0, float(fault.params["sigma"]), 2)
+            noise = self._gnss_noise.sample(self._t_rel(), float(fault.params["sigma"]),
+                                            float(fault.params.get("tau", 0.0)))
             dx += float(noise[0])
             dy += float(noise[1])
         return dx, dy

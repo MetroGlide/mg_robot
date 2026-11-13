@@ -13,11 +13,13 @@
     - {type: amcl_drift, start: 600.0, end: 660.0, rate: {x: 0.05, y: 0.0, yaw: 0.0}}
     - {type: scan_thin, start: 0.0, end: 100.0, keep_every: 4}
     - {type: scan_range, start: 0.0, end: 100.0, max_range: 8.0}
-    - {type: gnss_noise, start: 0.0, end: 100.0, sigma: 1.0}
+    - {type: gnss_noise, start: 0.0, end: 100.0, sigma: 1.0, tau: 30.0}
     - {type: scan_jitter, start: 0.0, end: 100.0, ratio: 0.3, depth_m: 0.8}
 
 scan_jitter は、毎回のスキャンで ratio の割合のビームを選び、半分は欠測に、残りは距離を 0〜depth_m 伸ばす
 (植栽の葉が揺れて、手前と奥の当たりが入れ替わる状況)。
+gnss_noise は、東・北に標準偏差 sigma [m] の雑音を足す。tau [s] (省略で 0) を与えると、偏りが tau 程度続く
+1 次のガウス・マルコフ過程にする (単独測位の誤差の形)。0 なら毎回独立。
     - {type: odom_scale, start: 0.0, end: 100000.0, v: 1.0, w: 1.15, min_abs_w: 0.15}
 
 区間で作用する故障は、min_abs_w [rad/s] を指定すると、ロボットの旋回の速さがそれ以上の間だけ作用する

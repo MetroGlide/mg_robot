@@ -147,6 +147,7 @@ kidnap と `amcl_drift` は `/initialpose` を使うので、監督が人によ�
 | `kidnap` | その時刻の推定姿勢をずらした姿勢を `/initialpose` に送り、AMCL だけをずらす |
 | `gnss_bias` | `/navpvt` の位置にバイアスを乗せる (`carr_soln` で解の種類も変えられる) |
 | `gnss_drop` | `/navpvt` を止める |
+| `gnss_noise` | GNSS の位置に雑音を足す。`tau` を与えると偏りが `tau` 秒程度続く形 (単独測位の誤差)、省略すると毎回独立。同じ測位の `/navpvt` と `/gps/fix` には同じ雑音を足す。雑音のない GNSS は `rewrite_gnss.py` で記録の GNSS を真値に置き換えて作る |
 | `odom_scale` | 生のオドメトリの並進・旋回を拡大する (ホイールのスリップ。生じたずれはその後も残る) |
 | `scan_drop` | LiDAR のスキャンの一部の角度を欠測にする |
 | `amcl_drift` | 区間の中で `interval` 秒ごとに、AMCL の推定を `rate`×`interval` だけずらした姿勢を `/initialpose` に送り、AMCL を少しずつずらす (送るたびに粒子は送った姿勢の周りに撒き直される) |
