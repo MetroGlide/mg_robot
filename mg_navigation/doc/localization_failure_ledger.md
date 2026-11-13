@@ -42,6 +42,7 @@
 ### 今の構成での扱い
 
 watchdog の構成は、AMCL の共分散が大きいときに GNSS で再初期化する。監督の構成は [mg_localization_supervisor](../../mg_localization_supervisor/README.md)。
+「確かめ方」は監督の構成の列についてのもの。watchdog の構成の列は、すべて実装を読んだ見立てで、試していない。
 
 | # | watchdog の構成 | 監督の構成 (プリセット `robust` と組) | 確かめ方 |
 | :--- | :--- | :--- | :--- |
