@@ -96,6 +96,8 @@ class RobotNearSpec:
     y: float
     radius: float
     frame: Literal["map", "world"] = "map"
+    # tf: 自己位置推定の姿勢。sim: シミュレータ上の真の姿勢 (推定がずれる試験で場所を決めるとき)
+    pose_source: Literal["tf", "sim"] = "tf"
 
 
 @register_trigger("robot_near", RobotNearSpec)
@@ -106,9 +108,18 @@ class RobotNear:
         self._ctx = ctx
         self._spec = spec
         self._target = ctx.poses.to_map(PoseSpec(frame=spec.frame, x=spec.x, y=spec.y))
+        if spec.pose_source == "sim":
+            # 真の姿勢を出せないバックエンドなら、ここで ScenarioError にする
+            ctx.backend.entity_pose(ctx.profile.sim.robot_entity)
 
     def poll(self) -> bool:
-        robot = self._ctx.poses.robot.get()
+        if self._spec.pose_source == "sim":
+            world = self._ctx.backend.entity_pose(self._ctx.profile.sim.robot_entity)
+            if world is None:
+                return False
+            robot = self._ctx.poses.to_map(PoseSpec("world", world.x, world.y, world.z, world.yaw))
+        else:
+            robot = self._ctx.poses.robot.get()
         return robot.distance_xy(self._target) <= self._spec.radius
 
 

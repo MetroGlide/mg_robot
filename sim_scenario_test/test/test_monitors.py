@@ -438,6 +438,20 @@ def test_obstacle_clearance_can_use_the_true_robot_pose():
     assert sim_monitor.result().status == ResultStatus.FAILED
 
 
+def test_robot_near_can_use_the_true_robot_pose():
+    from sim_scenario_test.builtin.triggers import RobotNear, RobotNearSpec
+    # 自己位置推定は目標の近くにいると思っているが、真の姿勢は離れている
+    robot = FakeRobot(Pose(5.0, 0.0))
+    ctx = _clearance_ctx(robot)
+    entity = ctx.profile.sim.robot_entity
+    ctx.backend.true_poses[entity] = Pose(0.0, 0.0)
+    by_tf = RobotNear(ctx, RobotNearSpec(x=5.0, y=0.0, radius=1.0))
+    by_sim = RobotNear(ctx, RobotNearSpec(x=5.0, y=0.0, radius=1.0, pose_source="sim"))
+    assert by_tf.poll() and not by_sim.poll()
+    ctx.backend.true_poses[entity] = Pose(4.5, 0.0)
+    assert by_sim.poll()
+
+
 def test_obstacle_clearance_true_pose_needs_backend_support():
     from sim_scenario_test.builtin.monitors import (
         ObstacleClearanceMonitor, ObstacleClearanceSpec)

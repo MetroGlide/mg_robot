@@ -125,7 +125,7 @@ run:
 | `goal_reached` | `index` | `index` 番目のゴールに到達 |
 | `goal_failed` | `index` | `index` 番目のゴールへの走行が失敗 |
 | `robot_travelled` | `distance` | 走行開始からのロボットの移動距離 (経路長) が `distance` [m] に達した |
-| `robot_near` | `x`, `y`, `radius`, `frame`=map (`map`/`world`) | ロボットが指定点から `radius` [m] 以内 |
+| `robot_near` | `x`, `y`, `radius`, `frame`=map (`map`/`world`), `pose_source`=tf (`tf`/`sim`) | ロボットが指定点から `radius` [m] 以内。`pose_source: sim` はシミュレータ上の真の姿勢で判定する (自己位置推定がずれる試験で、注入の場所を真の位置で決めるとき) |
 | `bt_node` | `node`, `status`=RUNNING (`IDLE`/`RUNNING`/`SUCCESS`/`FAILURE`), `topic`=/behavior_tree_log | BT のノードが指定の状態になった (例: リカバリーの `Spin` が始まった)。トリガーを作った時点 (タイムラインの開始) より後の状態だけを見る |
 | `all_of` | `triggers` (トリガーのリスト) | `triggers` のすべてが一度は成立した (順は問わない)。例: 自己位置の監督の準備ができ、かつ指定の場所に入ったら |
 
