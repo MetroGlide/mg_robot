@@ -1,0 +1,43 @@
+version: "2.0"
+name: anomaly_gnss_building
+description: >
+  異常パターン 7 (建物の横で、GNSS が良い精度を申告したまま誤った座標を出す)。warehouse の 1 周のうち、東の通路
+  (x 約 10 m の南向き) を走る間だけ、GNSS を西 (棚の側) へ 3.5 m ずらす。申告の精度は良いまま。
+  入れ切りの場所は真の位置で決める。対照は anomaly_baseline。構成は LOCALIZATION_CONFIG で選ぶ。
+profile: mg01
+world: warehouse
+tags: [localization, anomaly, mg_sequencer, known_issue]
+timeout: 600
+
+sim_args:
+  sensor_fault_file: "pkg://mg_scenario_test/scenarios/data/faults/anomaly_gnss_building.yaml"
+
+setup:
+  - respawn: { pose: { x: 0.0, y: 0.0, yaw: 0.0 }, settle_sec: 3.0 }
+
+monitors:
+  # 合否の上限は置かず、構成どうしの比較のために値を残す
+  - pose_error: { deviation_m: 1.0 }
+  - max_stop_duration: { max_stop_sec: 60.0, from_goal_started: 2, until_goal_reached: 8 }
+  - map_overlap: { max_overlap_sec: 60.0 }
+  - localization_hold: { ends_released: false }
+
+run:
+  mg_sequencer:
+    waypoints_file: "{world.waypoints}"
+    waypoint_timeout_sec: 200.0
+
+timeline:
+  - name: building_on
+    when: { robot_near: { x: 10.0, y: -8.0, radius: 1.5, pose_source: sim } }
+    do:
+      - call_set_bool: { service: /fault_injector/trigger/building, value: true }
+  - name: building_off
+    when: { robot_near: { x: 9.0, y: -21.0, radius: 1.5, pose_source: sim } }
+    required: false
+    do:
+      - call_set_bool: { service: /fault_injector/trigger/building, value: false }
+
+expect:
+  - reached_all
+  - time_limit: { sec: 600 }

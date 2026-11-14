@@ -1,0 +1,8 @@
+# 異常パターン 7 の、AMCL が弱っている区間と重なる場合。
+# anomaly_gnss_building.yaml に、同じ区間でスキャンの距離を制限する (近くに特徴がなく、AMCL の共分散が広がる。
+# GNSS での再初期化が、誤った GNSS と重なる)。
+faults:
+  - {type: gnss_noise, start: 0.0, end: 100000.0, sigma: 0.3, tau: 30.0}
+  - {type: gnss_accuracy, start: 0.0, end: 100000.0, std_m: 0.5}
+  - {type: gnss_bias, trigger: building, bias: {x: -3.5, y: 0.0}}
+  - {type: scan_range, trigger: building, max_range: 2.0}

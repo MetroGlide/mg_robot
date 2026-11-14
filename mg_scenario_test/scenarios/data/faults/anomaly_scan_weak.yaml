@@ -1,0 +1,6 @@
+# 基準の GNSS に、trigger weak の間だけスキャンの距離を制限する (AMCL が弱る区間)。
+# 異常パターン 9 の試験で、変換のずれた GNSS での再初期化を起こすのに使う。
+faults:
+  - {type: gnss_noise, start: 0.0, end: 100000.0, sigma: 0.3, tau: 30.0}
+  - {type: gnss_accuracy, start: 0.0, end: 100000.0, std_m: 0.5}
+  - {type: scan_range, trigger: weak, max_range: 2.0}

@@ -28,6 +28,7 @@ make scenario-test-all                              # 回帰テスト全件 (約
 make scenario-test-all REPEAT=3 TIER=smoke          # 繰り返して安定性を見る
 make scenario-test-all TIER=smoke LOCALIZATION_PRESET=robust  # 自己位置推定のプリセットを重ねたスタックで実行
 make scenario-test-all TAGS=localization LOCALIZATION_PROFILE=hypotheses  # 監督のプロファイルを重ねて実行
+make scenario-test-all TAGS=anomaly KNOWN=1 LOCALIZATION_CONFIG=current  # 比べる構成 (current / supervisor / new) を選んで実行
 ```
 
 | ターゲット | 内容 |

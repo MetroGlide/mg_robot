@@ -1,0 +1,7 @@
+# 異常パターン 7 (建物の横で、GNSS が良い精度を申告したまま誤った座標を出す)。
+# 基準の GNSS (anomaly_baseline.yaml と同じ) に、trigger building の間だけ、西 (棚の側) へ 3.5 m の偏りを足す。
+# 申告の精度は基準のまま (良いまま)。
+faults:
+  - {type: gnss_noise, start: 0.0, end: 100000.0, sigma: 0.3, tau: 30.0}
+  - {type: gnss_accuracy, start: 0.0, end: 100000.0, std_m: 0.5}
+  - {type: gnss_bias, trigger: building, bias: {x: -3.5, y: 0.0}}

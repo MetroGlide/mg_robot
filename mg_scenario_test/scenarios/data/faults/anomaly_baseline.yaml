@@ -1,0 +1,7 @@
+# 異常パターンの試験の基準の GNSS (anomaly タグのシナリオに共通)。
+# Gazebo の navsat は雑音がなく、申告の精度も極端に良いので、偏りが続く雑音と、申告の精度を与える。
+# 申告は、監督の GNSS の候補の上限 (supervision.yaml の recovery.generators.gnss.max_std_m) より小さくする
+# (大きいと、どの試行でも GNSS の候補がなくなり、異常の影響と区別できない)。
+faults:
+  - {type: gnss_noise, start: 0.0, end: 100000.0, sigma: 0.3, tau: 30.0}
+  - {type: gnss_accuracy, start: 0.0, end: 100000.0, std_m: 0.5}
