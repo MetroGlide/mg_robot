@@ -9,6 +9,7 @@
   odom_scale -> 直せない (記録済みの EKF・AMCL はすでにオドメトリを使っているため)
   gnss_noise -> 直せない (再生評価だけで使う)
   gnss_accuracy -> 直せない (同上)
+  gnss_bias_field -> 直せない (同上)
 """
 
 from typing import Any, Dict, List, Mapping, Optional

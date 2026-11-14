@@ -34,6 +34,16 @@ NavPVT の h_acc)。位置は変えないので、gnss_bias や gnss_noise と�
 「誤差と申告がともに悪くなる」を作る。
     - {type: gnss_accuracy, start: 0.0, end: 100.0, std_m: 0.5}
 
+gnss_bias_field は、場所で変わる GNSS のずれ (地図の歪みや、地図と GNSS の手合わせの誤差) を作る。points の
+地図座標 [x, y] に置いたずれ [bx, by] (東, 北) [m] を、距離 length_m [m] (省略で 10) のガウスの重みで
+なめらかに補間する。場所は、ずらす前の GNSS の位置を anchor (地図の原点の緯度経度) からの東・北の距離に直して決める
+(地図の座標が東・北に揃っているとみなす)。
+    - {type: gnss_bias_field, start: 0.0, end: 100000.0, anchor: {latitude: 35.0, longitude: 139.0},
+       length_m: 8.0, points: [[0.0, 0.0, 1.5, -1.0], [10.0, -20.0, -2.5, 0.5]]}
+
+同じ種類の故障が同時に作用するときは、定義の順で最初のものだけを使う (gnss_bias と gnss_bias_field は別の種類
+なので足し合わせる)。trigger の故障で常時の故障を一時的に置き換えるときは、trigger の故障を先に書く。
+
 区間の故障は、start と end の代わりに trigger: <名前> を与えると、時刻ではなく外からの指示で入れ切りする
 (Gazebo のシナリオで、ロボットが指定の場所に来たときに入れる)。trigger は allow_triggers を指定して
 読み込んだときだけ使える。再生評価は時刻でしか入れられないので、trigger があれば読み込みで失敗させる。
@@ -59,6 +69,7 @@ REQUIRED_PARAMS: Dict[str, List[str]] = {
     "gnss_noise": ["sigma"],
     "scan_jitter": ["ratio", "depth_m"],
     "gnss_accuracy": ["std_m"],
+    "gnss_bias_field": ["anchor", "points"],
 }
 INSTANT_TYPES = {"kidnap"}
 

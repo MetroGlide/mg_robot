@@ -7,7 +7,7 @@ fault_injector.py
 
 rosbag の再生では、注入の対象のトピックを /fault/ 以下へ付け替えて配信し、このノードが中継する。
   /fault/odom            -> /odom/raw           odom_scale (ホイールのスリップ)
-  /fault/navpvt          -> /navpvt             gnss_bias / gnss_drop / gnss_noise / gnss_accuracy
+  /fault/navpvt          -> /navpvt             gnss_bias / gnss_bias_field / gnss_drop / gnss_noise / gnss_accuracy
   /fault/gps/fix         -> /gps/fix            同上 (Gazebo の navsat)
   /fault/scan_top_lidar  -> /scan_top_lidar     scan_drop / scan_thin / scan_range / scan_jitter
 Gazebo では、ブリッジの出力を /fault/ 以下にして、このノードが中継する (--odom-out /odom)。
@@ -146,13 +146,20 @@ class FaultInjector(Node):
         out.twist.twist.angular.z = msg.twist.twist.angular.z * scale_w
         self._odom_pub.publish(out)
 
-    def _gnss_offset(self) -> Tuple[float, float]:
-        """いま作用している GNSS のバイアスとノイズの合計 (東, 北) [m]。"""
+    def _gnss_offset(self, lat_deg: float, lon_deg: float) -> Tuple[float, float]:
+        """いま作用している GNSS のバイアスとノイズの合計 (東, 北) [m]。lat_deg・lon_deg はずらす前の位置。"""
         dx, dy = 0.0, 0.0
         fault = self._active("gnss_bias")
         if fault:
             dx += float(fault.params["bias"].get("x", 0.0))
             dy += float(fault.params["bias"].get("y", 0.0))
+        fault = self._active("gnss_bias_field")
+        if fault:
+            anchor = fault.params["anchor"]
+            x, y = fa.local_east_north(lat_deg, lon_deg, float(anchor["latitude"]), float(anchor["longitude"]))
+            bx, by = fa.bias_field(fault.params["points"], x, y, float(fault.params.get("length_m", 10.0)))
+            dx += bx
+            dy += by
         fault = self._active("gnss_noise")
         if fault:
             noise = self._gnss_noise.sample(self._t_rel(), float(fault.params["sigma"]),
@@ -164,7 +171,7 @@ class FaultInjector(Node):
     def _on_navpvt(self, msg: NavPVT) -> None:
         if self._active("gnss_drop"):
             return
-        dx, dy = self._gnss_offset()
+        dx, dy = self._gnss_offset(msg.lat * 1e-7, msg.lon * 1e-7)
         if dx != 0.0 or dy != 0.0:
             lat, lon = fa.shift_latlon(msg.lat * 1e-7, msg.lon * 1e-7, dx, dy)
             msg.lat = int(round(lat * 1e7))
@@ -181,7 +188,7 @@ class FaultInjector(Node):
     def _on_navsat(self, msg: NavSatFix) -> None:
         if self._active("gnss_drop"):
             return
-        dx, dy = self._gnss_offset()
+        dx, dy = self._gnss_offset(msg.latitude, msg.longitude)
         if dx != 0.0 or dy != 0.0:
             msg.latitude, msg.longitude = fa.shift_latlon(msg.latitude, msg.longitude, dx, dy)
         fault = self._active("gnss_accuracy")

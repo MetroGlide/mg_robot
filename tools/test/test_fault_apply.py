@@ -104,3 +104,28 @@ def test_horizontal_covariance_keeps_vertical():
     assert out[0] == out[4] == 0.25
     assert out[1] == out[3] == 0.0
     assert out[8] == 9.0 and cov[0] == 4.0
+
+
+def test_bias_field_matches_points_and_interpolates():
+    points = [[0.0, 0.0, 2.0, 0.0], [20.0, 0.0, -2.0, 1.0]]
+    bx, by = fa.bias_field(points, 0.0, 0.0, 3.0)
+    assert bx == pytest.approx(2.0, abs=1e-6) and by == pytest.approx(0.0, abs=1e-6)
+    bx, by = fa.bias_field(points, 10.0, 0.0, 3.0)
+    assert bx == pytest.approx(0.0, abs=1e-6) and by == pytest.approx(0.5, abs=1e-6)
+    # どの点からも遠いときは、最も近い点のずれ
+    assert fa.bias_field(points, 500.0, 0.0, 3.0) == pytest.approx((-2.0, 1.0))
+
+
+def test_local_east_north_inverts_shift_latlon():
+    lat0, lon0 = -22.986687, -43.202501
+    lat, lon = fa.shift_latlon(lat0, lon0, 12.0, -7.0)
+    east, north = fa.local_east_north(lat, lon, lat0, lon0)
+    assert east == pytest.approx(12.0, abs=1e-3) and north == pytest.approx(-7.0, abs=1e-3)
+
+
+def test_parse_bias_field_requires_anchor_and_points():
+    with pytest.raises(ValueError):
+        parse_faults({"faults": [{"type": "gnss_bias_field", "start": 0.0, "end": 1.0, "points": []}]})
+    faults = parse_faults({"faults": [{"type": "gnss_bias_field", "start": 0.0, "end": 1.0,
+                                       "anchor": {"latitude": 0.0, "longitude": 0.0}, "points": []}]})
+    assert faults[0].type == "gnss_bias_field"

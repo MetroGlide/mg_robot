@@ -67,6 +67,26 @@ def shift_latlon(lat_deg: float, lon_deg: float, dx_m: float, dy_m: float) -> Tu
     return lat_deg + dlat, lon_deg + dlon
 
 
+def local_east_north(lat_deg: float, lon_deg: float, lat0_deg: float, lon0_deg: float) -> Tuple[float, float]:
+    """緯度経度を、基準の緯度経度からの東・北の距離 [m] に直す (数百 m の範囲の近似)。"""
+    east = (lon_deg - lon0_deg) * METERS_PER_DEGREE_LAT * math.cos(math.radians(lat0_deg))
+    north = (lat_deg - lat0_deg) * METERS_PER_DEGREE_LAT
+    return east, north
+
+
+def bias_field(points: list, x: float, y: float, length_m: float) -> Tuple[float, float]:
+    """points ([x, y, bx, by] の並び) のずれを、(x, y) からの距離のガウスの重みで補間する。"""
+    data = np.asarray(points, dtype=float).reshape(-1, 4)
+    d2 = (data[:, 0] - x) ** 2 + (data[:, 1] - y) ** 2
+    weights = np.exp(-0.5 * d2 / (length_m * length_m))
+    total = float(weights.sum())
+    if total < 1e-12:
+        # どの点からも遠いときは、最も近い点のずれを使う
+        nearest = int(np.argmin(d2))
+        return float(data[nearest, 2]), float(data[nearest, 3])
+    return float(weights @ data[:, 2] / total), float(weights @ data[:, 3] / total)
+
+
 class GnssNoise:
     """GNSS の位置の雑音 (東, 北) [m]。tau [s] が正なら 1 次のガウス・マルコフ過程 (偏りが tau 程度続く単独測位の
     誤差)、0 なら毎回独立な白色雑音。どちらも各軸の標準偏差は sigma。
