@@ -94,8 +94,9 @@ def generate_launch_description():
     # GNSS から AMCL の初期姿勢を与えるノードと、自己位置の監視ノード (none | watchdog | supervisor)
     use_gnss_amcl_initializer_arg = launch_argument_creator.create(
         "use_gnss_amcl_initializer", default="true")
+    # 既定は環境変数 LOCALIZATION_MONITOR (書かなければ supervisor。空にすると監視ノードが起動しない)
     localization_monitor_arg = launch_argument_creator.create(
-        "localization_monitor", default="supervisor")
+        "localization_monitor", default=EnvironmentVariable("LOCALIZATION_MONITOR", default_value="supervisor"))
     # 監視が watchdog のとき、監督ノードを並行して通知だけで動かすか
     localization_supervisor_arg = launch_argument_creator.create(
         "localization_supervisor", default="false")

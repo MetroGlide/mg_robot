@@ -38,8 +38,22 @@ _remote_env = $(if $(ROBOT),-e ROS_DOMAIN_ID=$(or $(_scenario_domain_id),42) -e 
 _remote_arg = $(if $(ROBOT),--remote-stack http://$(ROBOT):8001)
 # LOCALIZATION_PRESET=<名前> / LOCALIZATION_PROFILE=<名前> を指定すると、.env の値に代えて、自己位置推定のプリセットを
 # 重ねた / 監督のプロファイルを重ねたスタックで実行する (ROBOT 指定時は実機PCの .env が使われる)
-_preset_env = $(if $(LOCALIZATION_PRESET),-e LOCALIZATION_PRESET=$(LOCALIZATION_PRESET),) \
-              $(if $(LOCALIZATION_PROFILE),-e LOCALIZATION_PROFILE=$(LOCALIZATION_PROFILE),)
+# LOCALIZATION_CONFIG=<名前> は、比べる構成 (監視・プリセット・プロファイルの組) をまとめて選ぶ
+# (mg_navigation/doc/localization_failure_ledger.md の「比べる構成」)。個別の変数を書けば、そちらが優先する。
+#   current     実機の今の構成 (v2.1 相当)。watchdog だけ、プリセットなし
+#   supervisor  launch の既定。監督 (基本設定)、プリセットなし
+#   new         監督とプリセット robust
+_loc_monitor_current = watchdog
+_loc_monitor_supervisor = supervisor
+_loc_monitor_new = supervisor
+_loc_preset_new = robust
+_loc_config_check = $(if $(LOCALIZATION_CONFIG),$(if $(filter current supervisor new,$(LOCALIZATION_CONFIG)),,$(error LOCALIZATION_CONFIG は current / supervisor / new のどれかです)))
+_loc_monitor = $(or $(LOCALIZATION_MONITOR),$(_loc_monitor_$(LOCALIZATION_CONFIG)))
+_loc_preset = $(or $(LOCALIZATION_PRESET),$(_loc_preset_$(LOCALIZATION_CONFIG)))
+_preset_env = $(_loc_config_check) \
+              $(if $(_loc_monitor),-e LOCALIZATION_MONITOR=$(_loc_monitor),) \
+              $(if $(LOCALIZATION_CONFIG),-e LOCALIZATION_PRESET=$(_loc_preset),$(if $(LOCALIZATION_PRESET),-e LOCALIZATION_PRESET=$(LOCALIZATION_PRESET),)) \
+              $(if $(LOCALIZATION_CONFIG),-e LOCALIZATION_PROFILE=$(LOCALIZATION_PROFILE),$(if $(LOCALIZATION_PROFILE),-e LOCALIZATION_PROFILE=$(LOCALIZATION_PROFILE),))
 _scenario_run = $(COMPOSE) run --rm $(_remote_env) $(_preset_env) -e SCENARIO_ARGS
 
 # シミュレータ・ナビゲーションごと起動して 1 本実行する (既定はヘッドレス)。
@@ -47,7 +61,7 @@ _scenario_run = $(COMPOSE) run --rm $(_remote_env) $(_preset_env) -e SCENARIO_AR
 #   GUI=1                 シミュレータの GUI を表示する
 #   PROFILE=<名前>        プロファイル (例: mg01)
 #   ROBOT=<実機PCのIP>    ナビゲーションスタックを実機PCで実行する
-scenario-test: ## シナリオを 1 本実行 [SCENARIO=<名前> GUI PROFILE ROBOT LOCALIZATION_PRESET LOCALIZATION_PROFILE]
+scenario-test: ## シナリオを 1 本実行 [SCENARIO=<名前> GUI PROFILE ROBOT LOCALIZATION_CONFIG LOCALIZATION_MONITOR LOCALIZATION_PRESET LOCALIZATION_PROFILE]
 	$(_scenario_run)="run $(SCENARIO) $(_scenario_dirs) $(_scenario_results) $(_remote_arg) $(if $(GUI),--gui) $(if $(PROFILE),--profile $(PROFILE))" scenario-test
 
 # 回帰テスト (scenarios/regression) を、1 本ごとにスタックを起動し直して実行する。
@@ -57,7 +71,7 @@ scenario-test: ## シナリオを 1 本実行 [SCENARIO=<名前> GUI PROFILE ROB
 #   EXAMPLES=1       examples/ も含める
 #   KNOWN=1          known_issue タグ (既知の問題で失敗するシナリオ) も含める (既定は除外)
 #   GUI=1 / PROFILE=<名前> / ROBOT=<実機PCのIP>  scenario-test と同じ
-scenario-test-all: ## 回帰テストを一括実行 [TIER TAGS REPEAT EXAMPLES KNOWN GUI PROFILE ROBOT LOCALIZATION_PRESET LOCALIZATION_PROFILE]
+scenario-test-all: ## 回帰テストを一括実行 [TIER TAGS REPEAT EXAMPLES KNOWN GUI PROFILE ROBOT LOCALIZATION_CONFIG LOCALIZATION_MONITOR LOCALIZATION_PRESET LOCALIZATION_PROFILE]
 	$(_scenario_run)="run-all $(_scenario_dir)/regression $(if $(EXAMPLES),$(_scenario_dir)/examples) $(_scenario_results) $(_remote_arg) $(if $(KNOWN),,--exclude-tags known_issue) $(if $(filter smoke,$(TIER)),--tags smoke) $(if $(TAGS),--tags $(TAGS)) $(if $(REPEAT),--repeat $(REPEAT)) $(if $(GUI),--gui) $(if $(PROFILE),--profile $(PROFILE))" scenario-test
 
 # make scenario-env の起動が前提。シミュレータを起動し直さずに繰り返し実行する。
