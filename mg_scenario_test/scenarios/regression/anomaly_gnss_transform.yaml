@@ -4,11 +4,14 @@ description: >
   異常パターン 9 (緯度経度から地図座標への変換のずれ)。GNSS の変換を、平行移動 3 m と回転 0.02 rad ずらしたものに
   替えて 1 周する (scenarios/data/anomaly_gnss_transform/)。GNSS の精度は良いまま、全区間で地図とずれる。
   GNSS による初期化は走り出してから働くので、起動時にずれた位置へ撒かれる場合も含む。対照は anomaly_baseline。
-  構成は LOCALIZATION_CONFIG で選ぶ。
+  構成は LOCALIZATION_CONFIG で選ぶ。調整に使わない変種 (anomaly_holdout)。場所で変わるずれ (anomaly_gnss_field)
+  と違う、全区間で一律のずれ。
 profile: mg01
 world: warehouse
-tags: [localization, anomaly, mg_sequencer, known_issue]
+tags: [localization, anomaly_holdout, mg_sequencer, known_issue]
 timeout: 600
+
+record_topics: [/sim_scenario_test/entity_poses, /amcl_pose_origin, /odom/gps, /ekf_global_odom, /odom, /localization/status, /cmd_vel, /initialpose, /rosout]
 
 sim_args:
   sensor_fault_file: "pkg://mg_scenario_test/scenarios/data/faults/anomaly_baseline.yaml"

@@ -10,6 +10,8 @@ world: warehouse
 tags: [localization, anomaly, mg_sequencer, known_issue]
 timeout: 600
 
+record_topics: [/sim_scenario_test/entity_poses, /amcl_pose_origin, /odom/gps, /ekf_global_odom, /odom, /localization/status, /cmd_vel, /initialpose, /rosout]
+
 sim_args:
   sensor_fault_file: "pkg://mg_scenario_test/scenarios/data/faults/anomaly_gnss_building_weak.yaml"
 

@@ -1,0 +1,53 @@
+version: "2.0"
+name: anomaly_gnss_roof_exit
+description: >
+  異常パターン 16 (変換の誤差のある場所で、屋根を抜けた直後に申告だけ高精度の GNSS が入る)。anomaly_gnss_field の
+  場所で変わるずれに加えて、西の通路の南側を「屋根の下」(GNSS の雑音と申告が悪く、スキャンも近くしか見えない) にする。
+  屋根を抜けると申告の精度だけが高精度になり、スキャンの制限はその後しばらく続く (AMCL が戻りきらないうちに
+  誤った「高精度」の GNSS が入る)。対照は anomaly_baseline。構成は LOCALIZATION_CONFIG で選ぶ。
+profile: mg01
+world: warehouse
+tags: [localization, anomaly, mg_sequencer, known_issue]
+timeout: 600
+
+record_topics: [/sim_scenario_test/entity_poses, /amcl_pose_origin, /odom/gps, /ekf_global_odom, /odom, /localization/status, /cmd_vel, /initialpose, /rosout]
+
+sim_args:
+  sensor_fault_file: "pkg://mg_scenario_test/scenarios/data/faults/anomaly_gnss_roof_exit.yaml"
+
+setup:
+  - respawn: { pose: { x: 0.0, y: 0.0, yaw: 0.0 }, settle_sec: 3.0 }
+
+monitors:
+  # 合否の上限は置かず、構成どうしの比較のために値を残す
+  - pose_error: { deviation_m: 1.0 }
+  - max_stop_duration: { max_stop_sec: 60.0, from_goal_started: 2, until_goal_reached: 8 }
+  - map_overlap: { max_overlap_sec: 60.0 }
+  - localization_hold: { ends_released: false }
+
+run:
+  mg_sequencer:
+    waypoints_file: "{world.waypoints}"
+    waypoint_timeout_sec: 200.0
+
+timeline:
+  - name: roof_on
+    when: { robot_near: { x: -4.6, y: -20.0, radius: 1.5, pose_source: sim } }
+    do:
+      - call_set_bool: { service: /fault_injector/trigger/roof, value: true }
+      - call_set_bool: { service: /fault_injector/trigger/weak, value: true }
+  - name: roof_exit
+    when: { robot_near: { x: -5.0, y: -14.0, radius: 1.5, pose_source: sim } }
+    required: false
+    do:
+      - call_set_bool: { service: /fault_injector/trigger/roof, value: false }
+      - call_set_bool: { service: /fault_injector/trigger/exit, value: true }
+  - name: weak_off
+    when: { robot_near: { x: -5.3, y: -7.0, radius: 1.5, pose_source: sim } }
+    required: false
+    do:
+      - call_set_bool: { service: /fault_injector/trigger/weak, value: false }
+
+expect:
+  - reached_all
+  - time_limit: { sec: 600 }

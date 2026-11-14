@@ -4,10 +4,13 @@ description: >
   異常パターン 9 の、AMCL が弱っている区間と重なる場合。anomaly_gnss_transform の変換のずれに加えて、西の通路
   (x 約 -5 m の北向き) を走る間だけ、スキャンの距離を 2 m に制限する。GNSS による再初期化が起きると、
   ずれた GNSS (棚の側) へ撒かれる。対照は anomaly_baseline。構成は LOCALIZATION_CONFIG で選ぶ。
+  調整に使わない変種 (anomaly_holdout)。
 profile: mg01
 world: warehouse
-tags: [localization, anomaly, mg_sequencer, known_issue]
+tags: [localization, anomaly_holdout, mg_sequencer, known_issue]
 timeout: 600
+
+record_topics: [/sim_scenario_test/entity_poses, /amcl_pose_origin, /odom/gps, /ekf_global_odom, /odom, /localization/status, /cmd_vel, /initialpose, /rosout]
 
 sim_args:
   sensor_fault_file: "pkg://mg_scenario_test/scenarios/data/faults/anomaly_scan_weak.yaml"

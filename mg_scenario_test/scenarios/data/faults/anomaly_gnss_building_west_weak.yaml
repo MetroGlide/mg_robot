@@ -1,0 +1,7 @@
+# 調整に使わない変種 (anomaly_gnss_building_weak と、場所・向き・大きさを変えたもの)。
+# 西の通路で、GNSS を東 (棚の側) へ 3 m ずらし、同じ区間でスキャンの距離を制限する。
+faults:
+  - {type: gnss_noise, start: 0.0, end: 100000.0, sigma: 0.3, tau: 30.0}
+  - {type: gnss_accuracy, start: 0.0, end: 100000.0, std_m: 0.5}
+  - {type: gnss_bias, trigger: building_west, bias: {x: 3.0, y: 0.0}}
+  - {type: scan_range, trigger: building_west, max_range: 2.0}
