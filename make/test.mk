@@ -1,7 +1,7 @@
 ##@ テスト (単体テスト・UI 検査・シナリオテスト)
 
 .PHONY: test ui-lint ui-test \
-        scenario-test scenario-test-all scenario-test-attach scenario-validate scenario-env scenario-env-stop
+        scenario-test scenario-test-all scenario-test-attach scenario-validate scenario-env scenario-env-stop scenario-plot
 
 # develop コンテナで pytest を実行する (Python のテストのみ。C++ の gtest は colcon test)。
 #   pkg=<パッケージ>  特定パッケージのテストだけ実行する (例: pkg=mg_waypoint_navigation。
@@ -90,3 +90,12 @@ scenario-env-stop: ## scenario-env を停止
 # シミュレータ不要。同梱シナリオの YAML を検証する。
 scenario-validate: ## シナリオ YAML を静的検証 (シミュレータ不要)
 	$(_scenario_run)="validate $(_scenario_dir)" --no-deps scenario-test
+
+# シナリオの結果を図にする (tools/scripts/plot_scenario.py)。パスは develop コンテナ内 (ホストの ~/ros2_data は /root/ros2_data)。
+#   RESULT=<dir>                  1 回分の結果、または日時のディレクトリ。各結果に scenario_plot.png を出す (記録 bag/ が要る)
+#   COMPARE="<dir>=<名前> ..."     構成ごとの日時のディレクトリを、シナリオごとに並べる (最初の dir に compare.png)
+#   例: make scenario-plot RESULT=/root/ros2_data/scenario_results/20261115_120000
+#       make scenario-plot COMPARE="/root/ros2_data/scenario_results/A=current /root/ros2_data/scenario_results/B=new"
+scenario-plot: ## シナリオの結果を図にする [RESULT=<dir> | COMPARE="<dir>=<名前> ..."]
+	$(COMPOSE) run --rm --no-deps develop python3 /app/tools/scripts/plot_scenario.py \
+	  $(if $(COMPARE),compare $(COMPARE),run $(RESULT))

@@ -10,6 +10,8 @@
 
 1. **日本語でのコミュニケーション**
    - チャットでの回答、コードへのコメント、ドキュメントの記述（Artifacts含む）はすべて**日本語**で行ってください。
+   - 和語を使わず、熟語とカタカナ語で説明すること。
+   - セッション内での用語定義は避け、一般的な専門用語を使用すること。定義した用語は毎回簡潔に説明すること。
 2. **計画の事前合意**
    - ユーザーから「計画」や「方針」を求められた場合、勝手にコード編集などの実装フェーズへ進まないでください。まずは提案を行い、ユーザーの合意を得てから次のステップに進んでください。
 3. **ファイル・Git操作の制限**
@@ -55,6 +57,7 @@ make scenario-validate  # シナリオYAMLの静的検証（シミュレータ�
 make scenario-test SCENARIO=<名前|パス>  # Gazebo+Nav2を起動して1本実行（ヘッドレス、GUI=1で表示）。詳細は mg_scenario_test/README.md
 make scenario-test-all TIER=smoke  # 回帰テストをスタック起動し直しで一括実行（TIER省略で全件。実装変更後はsmokeを実行）
 make scenario-test SCENARIO=<名前> ROBOT=<実機PCのIP>  # シミュレータは開発PC、ナビゲーションスタックは実機PCで実行（scenario-test-allにも指定可。mg_scenario_test/README.md）
+make scenario-plot RESULT=<結果のdir>  # 記録つきのシナリオの結果を図にする (COMPARE="<dir>=<名前> ..." で構成どうしを比較)
 make scenario-env GUI=1  # attach用にシミュレータ+ナビゲーションを起動したままにする（make scenario-test-attach で起動し直さずに実行。Web UI の Scenario Test ページからも操作可）
 ```
 
@@ -186,6 +189,7 @@ make test pkg=mg_waypoint_navigation
 | `tools/scripts/eval_localization.py`<br>(`make bag-eval-localization`) | 自己位置推定の評価（滑らかさ・真値との誤差・NEES・AMCL遅延・故障からの復旧） |
 | `tools/scripts/run_localization_variant.sh` | 自己位置推定のパラメータ変種をrosbag再生で評価（センサ故障の注入にも対応）。データセットは`tools/datasets/localization/` |
 | `tools/scripts/eval_localization_offline.py` | 自己位置の監督の判定と総合を、再生評価の記録で実時間を待たずに評価（記録した標本への故障注入、プロファイルの比較） |
+| `tools/scripts/plot_scenario.py`<br>(`make scenario-plot`) | シナリオテストの結果 (記録つき) の軌跡・時系列と、構成どうしの比較を図にする |
 | `tools/scripts/calib_wheel_odom.py` | 走行ログとSLAM出力からホイールオドメトリのスケール・バイアス・遅れを推定 |
 
 ### 解析結果・可視化画像の保存先切り替え
