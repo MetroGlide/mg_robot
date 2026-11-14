@@ -7,13 +7,15 @@ fault_injector.py
 
 rosbag の再生では、注入の対象のトピックを /fault/ 以下へ付け替えて配信し、このノードが中継する。
   /fault/odom            -> /odom/raw           odom_scale (ホイールのスリップ)
-  /fault/navpvt          -> /navpvt             gnss_bias / gnss_drop / gnss_noise
+  /fault/navpvt          -> /navpvt             gnss_bias / gnss_drop / gnss_noise / gnss_accuracy
   /fault/gps/fix         -> /gps/fix            同上 (Gazebo の navsat)
   /fault/scan_top_lidar  -> /scan_top_lidar     scan_drop / scan_thin / scan_range / scan_jitter
 Gazebo では、ブリッジの出力を /fault/ 以下にして、このノードが中継する (--odom-out /odom)。
 kidnap は、その時刻の推定姿勢 (EKF) をずらした姿勢を /initialpose に送り、AMCL だけをずらす。
 amcl_drift は、区間の中で interval 秒ごとに、AMCL の推定 (/amcl_pose_origin) を rate * interval だけずらした
 姿勢を /initialpose に送り、AMCL を少しずつずらす (送るたびに粒子は送った姿勢の周りに撒き直される)。
+--allow-triggers のとき、trigger: <名前> の故障は、サービス /fault_injector/trigger/<名前> (std_srvs/SetBool)
+で入れ切りする (Gazebo のシナリオの call_set_bool から呼ぶ)。
 """
 
 import argparse
@@ -31,6 +33,7 @@ from rclpy.parameter import Parameter
 from rclpy.qos import qos_profile_sensor_data
 from rclpy.time import Time
 from sensor_msgs.msg import LaserScan, NavSatFix
+from std_srvs.srv import SetBool
 from ublox_msgs.msg import NavPVT
 
 # tools パッケージルートの解決と、ホイールオドメトリの補正計算 (ROS 非依存) の利用
@@ -80,8 +83,22 @@ class FaultInjector(Node):
         self.create_subscription(LaserScan, "/fault/scan_top_lidar", self._on_scan, qos_profile_sensor_data)
         self.create_subscription(PoseWithCovarianceStamped, "/amcl_pose_origin", self._on_amcl, 10)
         self.create_timer(0.1, self._on_timer)
+        # 外からの指示で入れ切りする故障の、いまの入/切
+        self._triggers: Dict[str, bool] = {}
+        for name in sorted({f.trigger for f in faults if f.trigger is not None}):
+            self._triggers[name] = False
+            self.create_service(SetBool, f"~/trigger/{name}", self._trigger_callback(name))
         self.get_logger().info(
-            "fault_injector started: " + ", ".join(f"{f.type}@{f.start:g}" for f in faults))
+            "fault_injector started: " + ", ".join(
+                f"{f.type}@{f.trigger}" if f.trigger else f"{f.type}@{f.start:g}" for f in faults))
+
+    def _trigger_callback(self, name: str):
+        def callback(request: SetBool.Request, response: SetBool.Response) -> SetBool.Response:
+            self._triggers[name] = bool(request.data)
+            self.get_logger().info(f"trigger {name} -> {'on' if request.data else 'off'} at t={self._t_rel()}")
+            response.success = True
+            return response
+        return callback
 
     def _t_rel(self) -> Optional[float]:
         if self._t0 is None:
@@ -93,6 +110,8 @@ class FaultInjector(Node):
         if t is None:
             return None
         for index, fault in enumerate(self._faults):
+            if fault.trigger is not None and not self._triggers[fault.trigger]:
+                continue
             if fault.type == fault_type and fa.is_active(fault, t) and fa.is_gated_on(fault, self._abs_w):
                 if index not in self._logged:
                     self._logged.add(index)
@@ -153,6 +172,10 @@ class FaultInjector(Node):
         fault = self._active("gnss_bias")
         if fault and "carr_soln" in fault.params:
             msg.flags = fa.set_carrier_solution(msg.flags, fault.params["carr_soln"])
+        fault = self._active("gnss_accuracy")
+        if fault:
+            # h_acc は mm
+            msg.h_acc = int(round(float(fault.params["std_m"]) * 1000.0))
         self._navpvt_pub.publish(msg)
 
     def _on_navsat(self, msg: NavSatFix) -> None:
@@ -161,6 +184,11 @@ class FaultInjector(Node):
         dx, dy = self._gnss_offset()
         if dx != 0.0 or dy != 0.0:
             msg.latitude, msg.longitude = fa.shift_latlon(msg.latitude, msg.longitude, dx, dy)
+        fault = self._active("gnss_accuracy")
+        if fault:
+            msg.position_covariance = fa.horizontal_covariance(
+                list(msg.position_covariance), float(fault.params["std_m"]))
+            msg.position_covariance_type = NavSatFix.COVARIANCE_TYPE_DIAGONAL_KNOWN
         self._gps_pub.publish(msg)
 
     def _on_scan(self, msg: LaserScan) -> None:
@@ -247,10 +275,12 @@ def main() -> None:
     parser.add_argument("--odom-out", default="/odom/raw", help="中継したオドメトリの出力先 (Gazebo では /odom)")
     parser.add_argument("--map-frame", default="map")
     parser.add_argument("--base-frame", default="base_footprint")
+    parser.add_argument("--allow-triggers", action="store_true",
+                        help="trigger の故障を許す (Gazebo のシナリオ。再生評価では時刻でしか入れられない)")
     args = parser.parse_args()
 
     rclpy.init()
-    node = FaultInjector(load_faults(args.faults), args)
+    node = FaultInjector(load_faults(args.faults, args.allow_triggers), args)
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:

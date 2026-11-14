@@ -58,7 +58,9 @@ def bridge_actions(context, bridge_config):
             output="screen",
         ),
         ExecuteProcess(
-            cmd=["python3", "/app/tools/scripts/fault_injector.py", fault_file, "--odom-out", "/odom"],
+            # シナリオがロボットの位置に合わせて故障を入れ切りできるよう、trigger を許す
+            cmd=["python3", "/app/tools/scripts/fault_injector.py", fault_file, "--odom-out", "/odom",
+                 "--allow-triggers"],
             output="screen",
         ),
     ]

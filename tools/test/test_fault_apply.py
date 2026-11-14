@@ -96,3 +96,11 @@ def test_gnss_noise_same_fix_and_correlation():
     assert abs(rho - math.exp(-1.0 / 30.0)) < 0.03
     white = np.array([noise.sample(float(t), 1.0, 0.0).copy() for t in range(30000, 32000)])
     assert abs(np.corrcoef(white[:-1, 0], white[1:, 0])[0, 1]) < 0.1
+
+
+def test_horizontal_covariance_keeps_vertical():
+    cov = [4.0, 0.5, 0.0, 0.5, 4.0, 0.0, 0.0, 0.0, 9.0]
+    out = fa.horizontal_covariance(cov, 0.5)
+    assert out[0] == out[4] == 0.25
+    assert out[1] == out[3] == 0.0
+    assert out[8] == 9.0 and cov[0] == 4.0

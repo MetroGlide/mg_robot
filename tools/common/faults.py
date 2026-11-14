@@ -28,10 +28,21 @@ gnss_noise は、東・北に標準偏差 sigma [m] の雑音を足す。tau [s]
 amcl_drift は AMCL を少しずつずらす (rate は 1 秒あたりの地図座標でのずれ)。再生評価では interval 秒
 (既定 1.0) ごとに、AMCL の推定を rate * interval だけずらした姿勢を /initialpose に送る。
 オフライン評価 (eval_localization_offline.py) では、AMCL の標本を直接ずらす。
+
+gnss_accuracy は、GNSS が申告する水平の精度を std_m [m] に書き換える (NavSatFix の position_covariance と
+NavPVT の h_acc)。位置は変えないので、gnss_bias や gnss_noise と組み合わせて「良い精度を申告したまま誤る」
+「誤差と申告がともに悪くなる」を作る。
+    - {type: gnss_accuracy, start: 0.0, end: 100.0, std_m: 0.5}
+
+区間の故障は、start と end の代わりに trigger: <名前> を与えると、時刻ではなく外からの指示で入れ切りする
+(Gazebo のシナリオで、ロボットが指定の場所に来たときに入れる)。trigger は allow_triggers を指定して
+読み込んだときだけ使える。再生評価は時刻でしか入れられないので、trigger があれば読み込みで失敗させる。
+    - {type: gnss_bias, trigger: building_east, bias: {x: 3.0, y: 0.0}}
 """
 
+import math
 from dataclasses import dataclass, field
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import yaml
 
@@ -47,6 +58,7 @@ REQUIRED_PARAMS: Dict[str, List[str]] = {
     "scan_range": ["max_range"],
     "gnss_noise": ["sigma"],
     "scan_jitter": ["ratio", "depth_m"],
+    "gnss_accuracy": ["std_m"],
 }
 INSTANT_TYPES = {"kidnap"}
 
@@ -57,23 +69,32 @@ class Fault:
     start: float
     end: float
     params: Dict[str, Any] = field(default_factory=dict)
+    # 外からの指示で入れ切りする故障の名前 (時刻で入れる故障は None)
+    trigger: Optional[str] = None
 
     @property
     def is_instant(self) -> bool:
         return self.type in INSTANT_TYPES
 
 
-def parse_faults(data: Dict[str, Any]) -> List[Fault]:
+def parse_faults(data: Dict[str, Any], allow_triggers: bool = False) -> List[Fault]:
     """辞書 ({"faults": [...]}) から Fault のリスト (開始時刻順) を作る。"""
     faults: List[Fault] = []
     for i, raw in enumerate(data.get("faults", [])):
         ftype = raw.get("type")
         if ftype not in REQUIRED_PARAMS:
             raise ValueError(f"faults[{i}]: 未知の type です: {ftype}")
-        params = {k: v for k, v in raw.items() if k not in ("type", "at", "start", "end")}
+        params = {k: v for k, v in raw.items() if k not in ("type", "at", "start", "end", "trigger")}
         for key in REQUIRED_PARAMS[ftype]:
             if key not in params:
                 raise ValueError(f"faults[{i}] ({ftype}): 必須パラメータ '{key}' がありません")
+        if "trigger" in raw:
+            if not allow_triggers:
+                raise ValueError(f"faults[{i}] ({ftype}): trigger はこの用途では使えません (時刻で指定してください)")
+            if ftype in INSTANT_TYPES or "start" in raw or "end" in raw:
+                raise ValueError(f"faults[{i}] ({ftype}): trigger は区間の故障に、start・end の代わりに与えます")
+            faults.append(Fault(type=ftype, start=0.0, end=math.inf, params=params, trigger=str(raw["trigger"])))
+            continue
         if ftype in INSTANT_TYPES:
             if "at" not in raw:
                 raise ValueError(f"faults[{i}] ({ftype}): 'at' が必要です")
@@ -89,6 +110,6 @@ def parse_faults(data: Dict[str, Any]) -> List[Fault]:
     return faults
 
 
-def load_faults(path: str) -> List[Fault]:
+def load_faults(path: str, allow_triggers: bool = False) -> List[Fault]:
     with open(path, "r", encoding="utf-8") as f:
-        return parse_faults(yaml.safe_load(f) or {})
+        return parse_faults(yaml.safe_load(f) or {}, allow_triggers)

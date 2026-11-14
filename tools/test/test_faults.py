@@ -1,4 +1,5 @@
 import glob
+import math
 import os
 
 import pytest
@@ -42,3 +43,22 @@ def test_parse_empty():
 def test_parse_rejects_invalid(raw):
     with pytest.raises(ValueError):
         parse_faults({"faults": [raw]})
+
+
+def test_trigger_needs_allow_and_replaces_window():
+    raw = {"type": "gnss_bias", "trigger": "building", "bias": {"x": 3.0}}
+    # 再生評価 (既定) では時刻でしか入れられないので、読み込みで失敗させる
+    with pytest.raises(ValueError):
+        parse_faults({"faults": [raw]})
+    fault = parse_faults({"faults": [raw]}, allow_triggers=True)[0]
+    assert fault.trigger == "building" and "trigger" not in fault.params
+    assert fault.start == 0.0 and math.isinf(fault.end)
+
+
+@pytest.mark.parametrize("raw", [
+    {"type": "gnss_bias", "trigger": "a", "start": 0, "end": 1, "bias": {"x": 1.0}},
+    {"type": "kidnap", "trigger": "a", "offset": {"x": 1.0}},
+])
+def test_trigger_rejects_mixed(raw):
+    with pytest.raises(ValueError):
+        parse_faults({"faults": [raw]}, allow_triggers=True)

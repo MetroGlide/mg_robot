@@ -97,3 +97,13 @@ def set_carrier_solution(flags: int, carrier: str) -> int:
     """u-blox NavPVT の flags の搬送波位相の解 (bit6-7) を、fixed / float / none に書き換える。"""
     code = {"none": 0, "float": 1, "fixed": 2}[carrier]
     return (flags & ~(0x03 << 6)) | (code << 6)
+
+
+def horizontal_covariance(covariance: list, std_m: float) -> list:
+    """NavSatFix の position_covariance (3x3、行優先) の水平の分散を std_m^2 にし、水平の相関を消す。"""
+    out = list(covariance)
+    variance = std_m * std_m
+    out[0] = variance
+    out[4] = variance
+    out[1] = out[3] = 0.0
+    return out
