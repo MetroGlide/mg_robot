@@ -10,6 +10,11 @@
 #   で今のスキャンを地図に照合する recover_scan にする。正常なときの基準を持たない (再初期化で捨てるため) ので、
 #   一致率の下限 (ratio_min) と利得のしきい値 (ずらしたほうが合う量) を絶対値で決める。値はシミュレータの地図での例で、
 #   実機の地図では正しい姿勢での一致率と利得の分布を確かめてから決める
+# - 撒き直しの候補を選べないまま、EKF が固まることがある (AMCL は切り離し中、GNSS は止まっていると出ない)。
+#   その間に AMCL が自分で正しい姿勢に戻っていれば、AMCL の姿勢でも同じ照合をし (recover_scan_amcl)、
+#   どちらかで確かめられれば戻す (convergence_mode: any)。AMCL は止まると更新しないので、最後の姿勢を
+#   オドメトリで今に移して使う (古さの上限は、動きを残す timeline.horizon_sec より短く)。AMCL が地図の似た場所に
+#   収束していると見分けられないおそれがある
 # - DEGRADED などから NORMAL に戻るのは、収束の確認だけにする (verify_return)
 # - 候補を選べない・確かめられない時間が続いたら、観測を増やす動作を求める (対処 spin_observe が首を振る)。
 #   一度撒いた後は、動いて観測が増えるまで撒き直さない
@@ -21,12 +26,18 @@ detectors:
     params: {tolerance_m: 0.3, ratio_min: 0.5, ratio_factor: 0.0, gain_threshold: 0.5}
     # 収束の確認だけに使う (総合には効かない)
     weight: 0.0
+  recover_scan_amcl:
+    type: scan_map
+    sources: {pose: amcl, reference: map_scan}
+    params: {max_age_sec: 20.0, tolerance_m: 0.3, ratio_min: 0.5, ratio_factor: 0.0, gain_threshold: 0.5}
+    weight: 0.0
 
 state_machine:
   verify_return: true
 
 recovery:
-  convergence: [recover_scan]
+  convergence: [recover_scan, recover_scan_amcl]
+  convergence_mode: any
   observe:
     motion: odom
     request_after_sec: 6.0

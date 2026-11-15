@@ -192,10 +192,14 @@ def test_robust_recovery_confirms_by_scan_match_and_asks_to_observe():
     config = load_config(SUPERVISION, 'robust_recovery')
     assert base.observe is None and not base.machine.verify_return
     assert config.machine.verify_return
-    assert config.convergence == ['recover_scan']
+    assert config.convergence == ['recover_scan', 'recover_scan_amcl'] and config.convergence_mode == 'any'
     recover = config.detectors['recover_scan']
     # 総合に効かず、止まっていても出る EKF の姿勢で照合する
     assert recover.weight == 0.0 and recover.sources['pose'] == 'ekf'
+    # EKF が固まっても、AMCL が自分で戻っていれば確かめられる。最後の姿勢を動きで移せる古さまで使う
+    recover_amcl = config.detectors['recover_scan_amcl']
+    assert recover_amcl.weight == 0.0 and recover_amcl.sources['pose'] == 'amcl'
+    assert recover_amcl.params['max_age_sec'] < config.horizon_sec
     assert config.observe.motion == 'odom' and config.observe.request_after_sec > 0.0
     assert config.anchors.max_distance_m == base.anchors.max_distance_m
 
