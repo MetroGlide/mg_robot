@@ -42,18 +42,22 @@ _remote_arg = $(if $(ROBOT),--remote-stack http://$(ROBOT):8001)
 # (mg_navigation/doc/localization_failure_ledger.md の「比べる構成」)。個別の変数を書けば、そちらが優先する。
 #   current     実機の今の構成 (v2.1 相当)。watchdog だけ、プリセットなし
 #   supervisor  launch の既定。監督 (基本設定)、プリセットなし
-#   new         監督とプリセット robust
+#   new         監督とプリセット robust、監督のプロファイル robust_recovery、初期姿勢の照合 (LOCALIZATION_INITIALIZER_VERIFY)
 _loc_monitor_current = watchdog
 _loc_monitor_supervisor = supervisor
 _loc_monitor_new = supervisor
 _loc_preset_new = robust
+_loc_profile_new = robust_recovery
+_loc_init_verify_new = true
 _loc_config_check = $(if $(LOCALIZATION_CONFIG),$(if $(filter current supervisor new,$(LOCALIZATION_CONFIG)),,$(error LOCALIZATION_CONFIG は current / supervisor / new のどれかです)))
 _loc_monitor = $(or $(LOCALIZATION_MONITOR),$(_loc_monitor_$(LOCALIZATION_CONFIG)))
 _loc_preset = $(or $(LOCALIZATION_PRESET),$(_loc_preset_$(LOCALIZATION_CONFIG)))
+_loc_profile = $(or $(LOCALIZATION_PROFILE),$(_loc_profile_$(LOCALIZATION_CONFIG)))
 _preset_env = $(_loc_config_check) \
               $(if $(_loc_monitor),-e LOCALIZATION_MONITOR=$(_loc_monitor),) \
               $(if $(LOCALIZATION_CONFIG),-e LOCALIZATION_PRESET=$(_loc_preset),$(if $(LOCALIZATION_PRESET),-e LOCALIZATION_PRESET=$(LOCALIZATION_PRESET),)) \
-              $(if $(LOCALIZATION_CONFIG),-e LOCALIZATION_PROFILE=$(LOCALIZATION_PROFILE),$(if $(LOCALIZATION_PROFILE),-e LOCALIZATION_PROFILE=$(LOCALIZATION_PROFILE),))
+              $(if $(LOCALIZATION_CONFIG),-e LOCALIZATION_PROFILE=$(_loc_profile),$(if $(LOCALIZATION_PROFILE),-e LOCALIZATION_PROFILE=$(LOCALIZATION_PROFILE),)) \
+              $(if $(LOCALIZATION_CONFIG),-e LOCALIZATION_INITIALIZER_VERIFY=$(or $(_loc_init_verify_$(LOCALIZATION_CONFIG)),false),)
 _scenario_run = $(COMPOSE) run --rm $(_remote_env) $(_preset_env) -e SCENARIO_ARGS
 
 # シミュレータ・ナビゲーションごと起動して 1 本実行する (既定はヘッドレス)。

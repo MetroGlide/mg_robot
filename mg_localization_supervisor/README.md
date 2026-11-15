@@ -12,7 +12,7 @@
 | 設定 | `config/supervision.yaml` | 監督の設定 (情報源・判定のインスタンス・総合・状態遷移・アンカー・安全の信号・出力)。監督ノードとオフライン評価が読む ([下記](#監督の構成-supervisionyaml)) |
 | 設定 | `config/profiles/*.yaml` | `supervision.yaml` に重ねるプロファイル |
 | 部品 | `mg_localization_supervisor/event_sinks/event_log.py` | 監督のイベントを、このプロジェクトのイベントログ (`mg_utils.event_log`) で出す (`events.sink`) |
-| 部品 | `mg_localization_supervisor/actuators/` | 自動復旧の対処: シーケンサの一時停止の要求 (`pause_request.py`)、再初期化の後のコストマップの消去 (`clear_costmap.py`) |
+| 部品 | `mg_localization_supervisor/actuators/` | 自動復旧の対処: シーケンサの一時停止の要求 (`pause_request.py`)、観測を増やす首振り (`spin_observe.py`)、再初期化の後のコストマップの消去 (`clear_costmap.py`) |
 | 設定 | `config/gate_arbiter.yaml` | AMCL のゲートの調停 (`amcl_gate_arbiter`) |
 | 設定 | `config/initializer.yaml` | GNSS による初期化 (`gnss_amcl_initializer_node`) |
 
@@ -27,6 +27,7 @@ GNSS による初期化と監督ノードは、他のノードが立ち上がる
 | `use_supervisor` | 監督ノードを起動するか (`localization_launch.py` は `localization_monitor:=supervisor` か `localization_supervisor:=true` のときに true を渡す) |
 | `supervisor_config` | 監督の設定ファイル (既定は `config/supervision.yaml`) |
 | `localization_profile` | 監督の設定に重ねるプロファイル (空は基本設定) |
+| `initializer_verify` | GNSS による初期姿勢を、スキャンと地図の照合で確かめるか (初期化ノードの `verify_by_scan`)。既定は環境変数 `LOCALIZATION_INITIALIZER_VERIFY` (なければ `false`) |
 
 ## AMCL のゲートの調停 (amcl_gate_arbiter)
 
@@ -86,6 +87,7 @@ GNSS による初期化と監督ノードは、他のノードが立ち上がる
 | `yaw_drift` | 基本設定に、AMCL の向きがオドメトリの示す動きから数秒かけてずれていくのを見る判定 (`amcl_yaw_drift`、`pose_jump` の窓つき) を足す。旋回中に向きが回りすぎる場合に、ずれ切る前に疑う。比較の参考用で、評価セットでは基本設定より良くなることを確かめられていない |
 | `hypotheses` | 復旧の候補に、AMCL の粒子の仮説 (`hypotheses`) を足す。角で AMCL が誤った向きに収束した後も、正しい向きの粒子が少数残っていれば、その姿勢を候補にできる |
 | `gnss_fallback` | AMCL と GNSS が乖離したら GNSS で引き戻すだけの動作 (以前の watchdog と GNSS による初期化と同じ)。AMCL と GNSS の食い違いだけを、続けて異常だった回数で判断し、候補は精度の良い GNSS が続いたときの位置だけ。評価も切り離しも一時停止もしない |
+| `robust_recovery` | 止まったままでも確かめて戻り、決められなければ首を振って観測を増やす復旧 (下の「止まっているときの復旧」)。比べる構成 `new` で使う |
 | `fault_injection` | シナリオ試験で、`/initialpose` から自己位置推定をずらす故障を注入するとき。`/initialpose` を外からの再初期化として扱わない (`/set_pose` は扱う)。シナリオでは `localization_test_profile` で、比べるプロファイルの後に重ねる。実機では使わない |
 
 ### 自動復旧の構成
@@ -98,7 +100,27 @@ GNSS による初期化と監督ノードは、他のノードが立ち上がる
 | 候補の評価 | スキャンの一致率を主に、GNSS・推測航法との近さを小さい重みで足す。計画用地図の致死セルに footprint がかかる候補は捨てる |
 | 選び方 | 最良の評価が最低の評価に届かない、または次点との差が小さい (似た場所の取り違えの疑い) ときは、再初期化せず `DEGRADED` で知らせる |
 | 再初期化の送り先 | AMCL (`/initialpose`) と EKF (`/set_pose`)。監督が送ったものは、外からの再初期化として扱わない |
-| 対処 | AMCL のゲートを閉じる (`gate`。`/amcl_gate_arbiter/supervisor/...`)、シーケンサを一時停止する (`pause_request`)、再初期化の後にグローバルコストマップを消す (`clear_costmap`)、GNSS の分散の倍率を配信する (`variance_scale`) |
+| 対処 | AMCL のゲートを閉じる (`gate`。`/amcl_gate_arbiter/supervisor/...`)、シーケンサを一時停止する (`pause_request`)、観測を増やす指示でその場で首を振る (`spin_observe`)、再初期化の後にグローバルコストマップを消す (`clear_costmap`)、GNSS の分散の倍率を配信する (`variance_scale`) |
+
+### 止まっているときの復旧 (robust_recovery)
+
+止めている間は、AMCL は `update_min_d`・`update_min_a` だけ動くまで更新されず、GNSS のブリッジも `min_publish_distance` だけ動くまで出さない。基本設定の収束の確認 (`amcl_ekf`) は「判定できない」のまま時間切れになり、確かめないまま戻るか、候補を選べないまま止まり続けることがあった ([異常パターンの台帳](../mg_navigation/doc/localization_failure_ledger.md))。プロファイル `robust_recovery` は、止まっていても確かめられる形にする ([設計](../localization_supervisor/doc/design.md#確かめて戻る-止まっているとき))。
+
+| 状態 | 走行 | 次へ |
+| :--- | :--- | :--- |
+| `NORMAL`・`SUSPECT` | 走る | |
+| `ISOLATED` (GNSS だけ) | 走る (GNSS の分散を上限に) | GNSS の異常がなくなれば `NORMAL` |
+| `ISOLATED` (AMCL・不明) | 止める | 待ってから `RECOVERING` |
+| `RECOVERING` | 止める | 照合が合えば `NORMAL`。候補を選べない・照合が合わない・判定できない時間が続けば首振り |
+| `RECOVERING`・首振り | 止めたまま、その場で回る (行って逆向きに戻る) | 動いた後に候補を作り直し、照合し直す |
+| `DEGRADED` | 止める | 一定の間隔で `RECOVERING` (首振りから) に戻り続ける。確かめないまま `NORMAL` には戻らない |
+
+- 収束の確認 `recover_scan`: EKF の姿勢 (復旧中は AMCL を切り離しているので、撒いた位置 + オドメトリ。止まっていても出る) で、今のスキャンを地図に照合する。再初期化で正常なときの基準を捨てるので、一致率と利得 (ずらしたほうが合う量) を絶対値で決める。値はシミュレータの地図での例で、実機の地図では正しい姿勢での分布を確かめてから決める。
+- 首振り `spin_observe`: Nav2 の behavior_server の Spin を呼ぶ。止めている間はシーケンサがゴールを取り消しているので、BT の Spin と競合しない。回転だけで並進しない。
+- 残る危険: Spin の衝突の確認は behavior_server の局所コストマップの予測 (`simulate_ahead_time`) だけで、collision_monitor を通らない。
+- 一度撒いた後は、動いて観測が増えるまで撒き直さない。長く止まっても推測航法の候補を作れるよう、アンカーを残す時間を延ばす。
+- 処理の負荷: 正常なときは変わらない。復旧の間だけ、照合 1 回 (スキャン 1 枚) と Spin が増える。
+- 戻し方: プロファイルを外す (基本設定)。首振りだけ止めるときは `recovery.observe.request_after_sec: 0`。
 
 ### GNSS の信頼度
 
@@ -115,7 +137,7 @@ GNSS が悪いと分かったとき (`state_machine.isolate_only`) は、止め�
 - 自動復旧が使える状況: GNSS の測位がある(運ばれたときも、その位置へ戻せる)、または、ずれが推測航法とスキャンの照合で直せる範囲(オドメトリのすべり・AMCL の少しずつのずれ)。GNSS がなく運ばれたときは、復旧できず `DEGRADED` で知らせる。
 - 対処は起動時にすべて作り、プロファイルでは変えられない。`gnss_fallback` は、`request_hold` を偽、倍率の上限を 1 にして、一時停止の要求も倍率も出さない。以前の初期化ノードと違うのは、初期化し直した後にグローバルコストマップを消すところ。
 - 戻し方: プロファイル `notify_only`(通知だけ)、`state_machine.request_hold: false`(止めない)、`state_machine.isolate_only: []`(GNSS のずれでも、通常の対処をする)、`gnss_fallback`(以前の GNSS で引き戻すだけの動作)、`localization_monitor:=watchdog`(従来の監視)。
-- 部品は `mg_localization_supervisor/actuators/` (`pause_request.py`、`clear_costmap.py`)。
+- 部品は `mg_localization_supervisor/actuators/` (`pause_request.py`、`spin_observe.py`、`clear_costmap.py`)。
 - 将来の拡張 (構想): [GNSS の場所ごとのずれを信頼度に反映する](../doc/ideas/gnss_map_distortion.md)、[AMCL を止めている区間を監督が知る](../doc/ideas/localization_gate_awareness.md)。
 
 ### オフライン評価
@@ -146,8 +168,20 @@ EKF の初期共分散が大きく、AMCL の初期値 (原点) に引かれる�
 | `override_pose_covariance` / `pose_covariance` | 初期姿勢の共分散を固定の値にする |
 | `max_consecutive_bad` | 条件を満たさない測位がこの回数続いたら、初期化をあきらめる (`request_reinit` でやり直せる) |
 | `odom_age_timeout_sec` / `ignore_odom_age` | 測位の古さの確認 |
+| `verify_by_scan` | GNSS の姿勢の周りで今のスキャンを地図に照合して、初期姿勢を確かめる (下記)。launch の `initializer_verify` で渡す |
+| `verify_map_topic`・`verify_scan_topic`・`verify_base_frame` | 照合に使う地図 (AMCL と同じ地図)・スキャン・base の frame |
+| `verify.*` | 照合の範囲と刻み、合うとみなす一致率 (`min_ratio`)、似た一致の候補との差 (`ambiguity_margin`)、合ったとき・確かめられないときの標準偏差 (`initializer/verify.py` の `VerifyConfig`) |
 
 実際の値は `config/initializer.yaml` が正 (書いていないものはノードの既定値)。
+
+GNSS の位置は、地図と GNSS の位置合わせのずれ (場所で変わる) を含む。ずれた位置へそのまま初期化すると、AMCL が自分で戻るまで、ずれたまま走る ([異常パターンの台帳](../mg_navigation/doc/localization_failure_ledger.md) の 9)。`verify_by_scan` が `true` のとき:
+
+- はっきり合う姿勢が 1 つ見つかれば、その姿勢を小さい共分散で送る。
+- 合う姿勢がない・似た一致の姿勢が離れて並ぶ・点や地図が足りないときは、GNSS の姿勢を広い共分散で送る (AMCL の粒子を広く撒き、AMCL に選ばせる)。
+- 結果はイベント `localization.initial_pose_verified` (`reason`: `matched`・`low_ratio`・`ambiguous`・`too_few_points`・`no_map`、GNSS と送った姿勢、一致率、次点との差) で出す。
+- 処理の負荷: 初期化のときに 1 回だけ照合する (探す範囲に上限がある)。正常な走行中は変わらない。
+- 戻し方: `initializer_verify:=false` (既定)。
+- 地図を切り替えたときの照合は、まだしない (初期化ノードは地図の切り替えを受け取っていない)。
 
 ## テスト
 
