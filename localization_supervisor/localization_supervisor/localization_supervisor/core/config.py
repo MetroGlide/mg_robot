@@ -21,7 +21,7 @@ from .interfaces import (
 from .matcher import STANDARD_MATCHERS
 from .plugins import ConfigError, build
 from .recovery import STANDARD_GENERATORS, STANDARD_SCORERS
-from .recovery.planner import GeneratorConfig, ScorerConfig, SelectionConfig
+from .recovery.planner import GeneratorConfig, ObserveConfig, ScorerConfig, SelectionConfig
 from .residuals import ResidualConfig
 from .safety import SafetyConfig
 from .scan_buffer import ScanBufferConfig
@@ -92,6 +92,7 @@ class SupervisorConfig:
     generators: Dict[str, GeneratorConfig] = field(default_factory=dict)
     scorers: Dict[str, ScorerConfig] = field(default_factory=dict)
     selection: SelectionConfig = field(default_factory=SelectionConfig)
+    observe: Optional[ObserveConfig] = None
     matcher_cls: Optional[type] = None
     matcher_params: Dict[str, Any] = field(default_factory=dict)
     scan_buffer: Optional[ScanBufferConfig] = None
@@ -315,8 +316,8 @@ def _parse_safety(raw: Mapping[str, Any], sources: Mapping[str, SourceConfig]) -
         depth_range_m=_number(raw, 'depth_range_m', SafetyConfig.depth_range_m, 'safety'))
 
 
-RECOVERY_KEYS = {'convergence', 'matcher', 'scan_buffer', 'generators', 'scorers', 'selection', 'resetters',
-                 'actuators'}
+RECOVERY_KEYS = {'convergence', 'matcher', 'scan_buffer', 'generators', 'scorers', 'selection', 'observe',
+                 'resetters', 'actuators'}
 GENERATOR_KEYS = {'type', 'sources', 'params', 'enabled'}
 SCORER_KEYS = {'type', 'sources', 'params', 'weight', 'veto_below', 'enabled'}
 
@@ -368,8 +369,13 @@ def _parse_recovery(
 
     selection = _dataclass_from(SelectionConfig, _mapping(recovery.get('selection'), 'recovery.selection'),
                                 'recovery.selection')
+    observe = None
+    if recovery.get('observe') is not None:
+        observe = _dataclass_from(
+            ObserveConfig, _mapping(recovery['observe'], 'recovery.observe'), 'recovery.observe')
+        _source(sources, observe.motion, SourceKind.MOTION, 'recovery.observe.motion')
 
-    matcher = _mapping(recovery.get('matcher'), 'recovery.matcher')
+    matcher =_mapping(recovery.get('matcher'), 'recovery.matcher')
     _check_keys(matcher, {'type', 'params'}, 'recovery.matcher')
     matcher_cls, matcher_params = build(
         matcher.get('type', 'correlative'), STANDARD_MATCHERS, Matcher,
@@ -384,7 +390,8 @@ def _parse_recovery(
 
     resetters = _plugin_list(recovery.get('resetters'), 'recovery.resetters')
     actuators = _plugin_list(recovery.get('actuators'), 'recovery.actuators')
-    return {'generators': generators, 'scorers': scorers, 'selection': selection, 'matcher_cls': matcher_cls,
+    return {'generators': generators, 'scorers': scorers, 'selection': selection, 'observe': observe,
+            'matcher_cls': matcher_cls,
             'matcher_params': matcher_params, 'scan_buffer': scan_buffer, 'resetters': resetters,
             'actuators': actuators}
 

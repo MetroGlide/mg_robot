@@ -48,6 +48,22 @@ class SelectionConfig:
 
 
 @dataclass
+class ObserveConfig:
+    """止まったままでは決められないときに、観測を増やしてほしいと求める (指示 observe) 条件と、撒き直しの条件。
+
+    RECOVERING で、再初期化も収束の確認もできない (候補を選べない・確認が異常か判定できない) 時間が
+    request_after_sec 続いたら、request_interval_sec ごとに observe の指示を出す (0 なら出さない)。
+    一度再初期化した後は、motion の動きが reseed_min_distance_m か reseed_min_rotation_rad に届くまで、
+    撒き直さない (同じ観測では同じ候補になるため)。どちらも 0 なら制限しない。
+    """
+    motion: str = ''
+    request_after_sec: float = 0.0
+    request_interval_sec: float = 20.0
+    reseed_min_distance_m: float = 0.0
+    reseed_min_rotation_rad: float = 0.0
+
+
+@dataclass
 class RecoveryPlan:
     candidates: List[Candidate]
     chosen: Optional[Candidate]

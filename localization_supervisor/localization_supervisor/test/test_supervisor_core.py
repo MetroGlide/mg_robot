@@ -447,6 +447,35 @@ def test_degraded_with_recovery_returns_to_normal_when_the_anomaly_clears():
     assert d.state == State.NORMAL and d.actions == [Action.RESTORE] and not machine.hold_requested
 
 
+def _verifying():
+    machine = _recovering()
+    machine.config.verify_return = True
+    return machine
+
+
+def test_verify_return_does_not_return_only_because_the_anomaly_cleared():
+    # 止まっていると判定の多くが「判定できない」になり、異常がないように見える。確かめないまま戻さない
+    machine = _verifying()
+    for t in (3.0, 4.0, 5.0):
+        assert machine.step(t, _fr(cleared=True), converged=None).state == State.RECOVERING
+    machine.step(6.0, _fr(cleared=True), converged=True)
+    d = machine.step(7.0, _fr(cleared=True), converged=True)
+    assert d.state == State.NORMAL and d.actions == [Action.RESTORE] and d.event == 'recovered'
+
+
+def test_verify_return_leaves_degraded_only_after_convergence():
+    machine = _verifying()
+    machine.note_reinit()
+    assert machine.step(12.0, _fr(anomaly=True), converged=False).state == State.DEGRADED
+    for t in (13.0, 14.0, 15.0):
+        assert machine.step(t, _fr(cleared=True), converged=None).state == State.DEGRADED
+    machine.step(16.0, _fr(cleared=True), converged=True)
+    machine.step(17.0, _fr(), converged=False)
+    assert machine.step(18.0, _fr(), converged=True).state == State.DEGRADED
+    d = machine.step(19.0, _fr(), converged=True)
+    assert d.state == State.NORMAL and d.actions == [Action.RESTORE] and d.event == 'recovered'
+
+
 # ---------------------------------------------------------------- anchors
 
 def test_anchor_store_limits_and_lookup():

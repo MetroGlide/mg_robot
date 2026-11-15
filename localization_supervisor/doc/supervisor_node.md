@@ -69,4 +69,5 @@
 | `<prefix>.residual_changed` | 大きくなったら warn、戻ったら info | 残差から求めた分散の倍率が `notify_scale` 以上になった・戻った: `residual`、`high`、`scale`、`mean_d2`、`count` |
 | `<prefix>.recovery_candidate` | info | 計画ごと・候補ごとに `origin`、`x`、`y`、`yaw`、`total`、`vetoed_by`、評価ごとの `score_<名前>` |
 | `<prefix>.reinit_requested` | warn | 選んだ候補の `origin`、`x`、`y`、`yaw`、`reason`、`margin`、`blame`、`attempt`、`candidates`、`elapsed_ms`、`generators` (候補を作るものごとの結果の理由) |
-| `<prefix>.reinit_skipped` | warn | 選べなかった `reason` (`no_candidates`・`all_vetoed`・`low_score`・`ambiguous`)、`attempt`、`candidates`、`elapsed_ms`、`generators` |
+| `<prefix>.reinit_skipped` | warn | 選べなかった `reason` (`no_candidates`・`all_vetoed`・`low_score`・`ambiguous`)、`attempt`、`candidates`、`elapsed_ms`、`generators`。観測が増えるまで撒き直さないときは `reason` が `no_new_observation` で、`attempt`、最後の再初期化からの `distance_m`、`rotation_rad` |
+| `<prefix>.observe_requested` | warn | 観測を増やす動作を求めた (`recovery.observe`): 再初期化も収束の確認もできなかった時間 `waited_sec`、`blame` |

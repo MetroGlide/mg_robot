@@ -100,6 +100,7 @@ detectors:
 | `recover_timeout_sec`、`max_reinit_attempts` | 収束しないときの再試行の間隔と回数 |
 | `degraded_retry_sec` | `DEGRADED` から再試行する間隔 [s] (`recovery_enabled` のとき) |
 | `isolate_only` | `blame` がこの情報源のときは、切り離す (信頼度を下げる) だけにして、走行を止めず、再初期化もしない。異常がなくなれば戻る (`recovery_enabled` のとき)。情報源の名前のリスト |
+| `verify_return` | `true` なら、`RECOVERING` (再初期化の前) と `DEGRADED` から `NORMAL` に戻るのを、`recovery.convergence` の確認 (`recover_ok_ticks` 回) だけにする。異常がなくなった周期 (`clear_ticks`) では戻らない |
 
 ## recovery
 
@@ -113,6 +114,7 @@ detectors:
 | `generators` | 候補を作るもの (下記) |
 | `scorers` | 候補を評価するもの (下記) |
 | `selection` | 選び方 (下記) |
+| `observe` | 観測を増やす指示と、撒き直しの条件 (下記)。書かなければ、指示を出さず、撒き直しも制限しない |
 | `resetters` | 選んだ姿勢の送り先 `[{type, name?, params?}, ...]` ([plugins.md](./plugins.md#再初期化の送り先-poseresetter))。ノードが使う。オフライン評価は使わない |
 | `actuators` | 対処 `[{type, name?, params?}, ...]` ([plugins.md](./plugins.md#対処-actuator))。ノードが使う。`name` を書かなければ `type` が名前になる |
 
@@ -140,6 +142,13 @@ recovery:
 | `ambiguity_margin` | 最良と、それから `separation_m` 以上離れた次点の差がこれ未満なら、再初期化しない (似た場所の取り違えを避ける) |
 | `separation_m` | 互いにこの距離以上離れた候補だけを、別の場所の候補として数える |
 | `retry_sec` | 候補を選べなかったとき、次に計画するまでの間隔 [s] |
+
+| `observe` のキー | 内容 |
+| :--- | :--- |
+| `motion` | 動きの情報源 (最後の再初期化からの走行距離と回転を測る) |
+| `request_after_sec` | `RECOVERING` で、再初期化も収束の確認もできない時間がこれだけ続いたら、指示 `observe` を出す。0 なら出さない |
+| `request_interval_sec` | 指示 `observe` を出す間隔の下限 [s] |
+| `reseed_min_distance_m`、`reseed_min_rotation_rad` | 一度再初期化した後、`motion` の走行距離か回転がこれに届くまで、撒き直さない (`reinit_skipped` の `no_new_observation`)。どちらも 0 なら制限しない。`NORMAL` に戻るまで数え続ける |
 
 候補を作るものが 1 つもなければ、`recovery_enabled` は使えない。評価するものが 1 つもない (または、どれも評価できなかった) ときは、最初に作られた候補を選ぶ。
 `anchor_motion`・`submap_match`・`hypothesis_modes`・`anchor_agreement` は `anchors` が、`footprint_free` は `safety` が要る。`anchors.motion` と、候補を作るものの `motion` の情報源は同じにする。

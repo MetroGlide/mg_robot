@@ -47,6 +47,7 @@ class Directive:
       isolate : blame の情報源を切り離す
       reinit  : candidate の姿勢で推定器を初期化し直す
       restore : 切り離したものを戻す
+      observe : 止まったままでは決められないので、観測を増やす動作 (その場の首振りなど) をしてほしい
     """
     kind: str
     blame: str = ''
@@ -108,6 +109,12 @@ class Supervisor:
         self._plan_attempts = 0
         self._isolated_blame = ''
         self._check_status: Dict[str, Status] = {}
+        # 観測を増やす求め (recovery.observe): 最後に進んだ (再初期化した・収束を確認した) 時刻、最後に求めた時刻、
+        # 最後の再初期化からの動き (走行距離 [m]、回転 [rad]。NORMAL に戻るまで残す)
+        self._progress_at = 0.0
+        self._observe_at: Optional[float] = None
+        self._since_reinit: Optional[List[float]] = None
+        self._observe_motion: Optional[Pose2] = None
         self._build(config)
 
     def _build(self, config: SupervisorConfig) -> None:
@@ -185,6 +192,7 @@ class Supervisor:
         if self.planner is not None:
             self.planner.reset()
         self._reinit_pending = False
+        self._since_reinit = None
 
     def start_grace(self, now: float, duration: float) -> None:
         self._grace_until = max(self._grace_until or now, now + duration)
@@ -211,17 +219,21 @@ class Supervisor:
         self._update_scans(snapshot)
         in_grace = now < self._grace_until
 
+        self._track_motion(snapshot)
+
         evidences = {name: detector.evaluate(snapshot) for name, detector in self.detectors.items()}
         self._check_events(evidences)
         fusion = self.fusion.update(evidences, active=not in_grace)
         state_before = self.machine.state
-        decision = self.machine.step(now, fusion, self._converged(evidences))
+        converged = self._converged(evidences)
+        decision = self.machine.step(now, fusion, converged)
         state = decision.state
 
         if state_before == State.NORMAL and state == State.SUSPECT:
             self._suspect_since = now
         if state == State.NORMAL and state_before != State.NORMAL:
             self._suspect_since = None
+            self._since_reinit = None
             self.fusion.reset()
         if Action.REINIT in decision.actions:
             self.fusion.reset()
@@ -234,6 +246,7 @@ class Supervisor:
             self._last_event = decision.event
         directives = self._directives(decision)
         plan = self._recover(snapshot, state, directives)
+        self._request_observation(now, state_before, state, converged, directives)
 
         normal = state == State.NORMAL
         for name, detector in self.detectors.items():
@@ -336,6 +349,12 @@ class Supervisor:
             return None
         self._plan_attempts += 1
         self._next_plan = now + self.config.selection.retry_sec
+        if self._needs_new_observation():
+            distance, rotation = self._since_reinit
+            self._emit('reinit_skipped', 'warn', {
+                'reason': 'no_new_observation', 'attempt': self._plan_attempts,
+                'distance_m': round(distance, 3), 'rotation_rad': round(rotation, 3)})
+            return None
         context = RecoveryContext(
             snapshot=snapshot, anchors=self.anchors, suspect_since=self._suspect_since, scans=self.scans,
             safety=self.config.safety)
@@ -373,6 +392,53 @@ class Supervisor:
         for detector in self.detectors.values():
             detector.reset()
         self.start_grace(now, self.config.grace_after_reset_sec)
+        self._since_reinit = [0.0, 0.0]
+        self._progress_at = now
+
+    def _track_motion(self, snapshot: Snapshot) -> None:
+        """recovery.observe の motion で、最後の再初期化からの走行距離と回転を足していく。"""
+        cfg = self.config.observe
+        if cfg is None:
+            return
+        motion = snapshot.motion_at(cfg.motion, snapshot.stamp)
+        if motion is None:
+            return
+        last, self._observe_motion = self._observe_motion, motion
+        if last is None or self._since_reinit is None:
+            return
+        self._since_reinit[0] += math.hypot(motion[0] - last[0], motion[1] - last[1])
+        self._since_reinit[1] += abs(math.remainder(motion[2] - last[2], 2.0 * math.pi))
+
+    def _needs_new_observation(self) -> bool:
+        """再初期化した後、観測が増える (reseed_min_* だけ動く) まで撒き直さないか。"""
+        cfg = self.config.observe
+        if cfg is None or self._since_reinit is None:
+            return False
+        if cfg.reseed_min_distance_m <= 0.0 and cfg.reseed_min_rotation_rad <= 0.0:
+            return False
+        distance, rotation = self._since_reinit
+        return not (cfg.reseed_min_distance_m > 0.0 and distance >= cfg.reseed_min_distance_m
+                    or cfg.reseed_min_rotation_rad > 0.0 and rotation >= cfg.reseed_min_rotation_rad)
+
+    def _request_observation(
+        self, now: float, before: State, state: State, converged: Optional[bool], directives: List[Directive],
+    ) -> None:
+        """RECOVERING で、再初期化も収束の確認もできない時間が続いたら、観測を増やす動作を求める (指示 observe)。"""
+        cfg = self.config.observe
+        if cfg is None or cfg.request_after_sec <= 0.0 or state != State.RECOVERING:
+            return
+        if before != State.RECOVERING:
+            self._progress_at = now
+        if converged is True and self.machine.reinit_done:
+            self._progress_at = now
+        waited = now - self._progress_at
+        if waited < cfg.request_after_sec:
+            return
+        if self._observe_at is not None and now - self._observe_at < cfg.request_interval_sec:
+            return
+        self._observe_at = now
+        directives.append(Directive('observe', self.machine.blame))
+        self._emit('observe_requested', 'warn', {'waited_sec': round(waited, 1), 'blame': self.machine.blame})
 
     def _emit(self, event: str, level: str, fields: Dict[str, Any]) -> None:
         self._pending.append(Event(f'{self.config.event_prefix}.{event}', level, fields))
