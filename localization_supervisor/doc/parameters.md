@@ -109,6 +109,7 @@ detectors:
 | キー | 内容 |
 | :--- | :--- |
 | `convergence` | 復旧の収束の確認に使うインスタンス (すべて正常な周期を数える) |
+| `convergence_mode` | `all` (既定) なら `convergence` のすべてが正常な周期、`any` ならどれか 1 つが正常な周期を数える。`any` は、別々の姿勢で確かめる判定を並べ、どちらかで確かめられれば戻すときに使う |
 | `scan_buffer` | 復旧のために残すスキャン `{reference, motion, keyframe_distance_m, keyframe_angle_rad, window_distance_m, max_points_per_scan, max_range_m}`。動きでまとめた局所地図に使う。書かなければ、最新の 1 枚だけ使う |
 | `matcher` | 照合 `{type, params}`。書かなければ `correlative` |
 | `generators` | 候補を作るもの (下記) |

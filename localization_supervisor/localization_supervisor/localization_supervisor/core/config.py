@@ -89,6 +89,8 @@ class SupervisorConfig:
     trust_require_normal: List[str] = field(default_factory=list)
     machine: MachineConfig = field(default_factory=MachineConfig)
     convergence: List[str] = field(default_factory=list)
+    # all: convergence のすべてが正常で収束とする。any: どれか 1 つが正常で収束とする
+    convergence_mode: str = 'all'
     generators: Dict[str, GeneratorConfig] = field(default_factory=dict)
     scorers: Dict[str, ScorerConfig] = field(default_factory=dict)
     selection: SelectionConfig = field(default_factory=SelectionConfig)
@@ -316,8 +318,9 @@ def _parse_safety(raw: Mapping[str, Any], sources: Mapping[str, SourceConfig]) -
         depth_range_m=_number(raw, 'depth_range_m', SafetyConfig.depth_range_m, 'safety'))
 
 
-RECOVERY_KEYS = {'convergence', 'matcher', 'scan_buffer', 'generators', 'scorers', 'selection', 'observe',
+RECOVERY_KEYS = {'convergence', 'convergence_mode', 'matcher', 'scan_buffer', 'generators', 'scorers', 'selection', 'observe',
                  'resetters', 'actuators'}
+CONVERGENCE_MODES = {'all', 'any'}
 GENERATOR_KEYS = {'type', 'sources', 'params', 'enabled'}
 SCORER_KEYS = {'type', 'sources', 'params', 'weight', 'veto_below', 'enabled'}
 
@@ -422,6 +425,12 @@ def _parse_residuals(raw: Mapping[str, Any], sources: Mapping[str, SourceConfig]
             raise ConfigError(f'{where}: a and b must differ')
         residuals[name] = residual
     return residuals
+
+
+def _convergence_mode(value: Any) -> str:
+    if value not in CONVERGENCE_MODES:
+        raise ConfigError(f'recovery.convergence_mode: expected one of {sorted(CONVERGENCE_MODES)}, got {value!r}')
+    return value
 
 
 def _detector_names(names: List[str], detectors: Mapping[str, DetectorConfig], where: str) -> List[str]:
@@ -539,6 +548,7 @@ def parse_config(
         machine=machine,
         convergence=_detector_names(
             _names(recovery.get('convergence'), 'recovery.convergence'), detectors, 'recovery.convergence'),
+        convergence_mode=_convergence_mode(recovery.get('convergence_mode', 'all')),
         anchors=anchors, safety=safety, period_sec=period_sec, **recovery_parts,
         residuals=_parse_residuals(_mapping(merged.get('residuals'), 'residuals'), sources),
         startup_grace_sec=_number(grace, 'startup_sec', 0.0, 'grace'),

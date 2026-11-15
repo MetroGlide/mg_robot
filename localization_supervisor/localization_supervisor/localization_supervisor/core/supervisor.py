@@ -459,8 +459,11 @@ class Supervisor:
             self._emit('map_changed', 'info', {'sources': ','.join(changed)})
 
     def _converged(self, evidences: Dict[str, Evidence]) -> Optional[bool]:
-        """recovery.convergence のインスタンスが、すべて正常なら True、どれかが異常なら False。"""
+        """recovery.convergence のインスタンスが、すべて正常なら True、どれかが異常なら False。
+        convergence_mode が any なら、どれか 1 つが正常なら True、正常がなくどれかが異常なら False。"""
         statuses = [evidences[name].status for name in self.config.convergence if name in evidences]
+        if self.config.convergence_mode == 'any' and any(s == Status.NORMAL for s in statuses):
+            return True
         if any(s == Status.ANOMALY for s in statuses):
             return False
         if statuses and all(s == Status.NORMAL for s in statuses):

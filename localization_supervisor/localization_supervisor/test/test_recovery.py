@@ -6,7 +6,7 @@ import pytest
 
 from localization_supervisor.core.config import ConfigError, parse_config
 from localization_supervisor.core.interfaces import (
-    CONTRACT_VERSION, Candidate, CandidateGenerator, CandidateScorer, ParamSpec, RecoveryContext)
+    CONTRACT_VERSION, Candidate, CandidateGenerator, CandidateScorer, Evidence, ParamSpec, RecoveryContext)
 from localization_supervisor.core.recovery.planner import RecoveryPlanner, ScorerConfig, SelectionConfig
 from localization_supervisor.core.state_machine import MachineConfig, State, StateMachine
 from localization_supervisor.core.supervisor import Supervisor, make_store
@@ -373,6 +373,39 @@ def test_observe_motion_must_be_a_motion_source():
     raw = _raw()
     raw['recovery']['observe'] = {'motion': 'gnss'}
     with pytest.raises(ConfigError, match='recovery.observe.motion'):
+        parse_config(raw)
+
+
+def _two_convergence_checks(mode):
+    raw = _raw()
+    raw['detectors']['amcl_gnss_2'] = dict(raw['detectors']['amcl_gnss'])
+    raw['recovery']['convergence'] = ['amcl_gnss', 'amcl_gnss_2']
+    if mode is not None:
+        raw['recovery']['convergence_mode'] = mode
+    return Supervisor(parse_config(raw))
+
+
+def test_convergence_all_needs_every_check_normal():
+    supervisor = _two_convergence_checks(None)
+    normal, anomaly, unknown = Evidence.from_score(0.5), Evidence.from_score(2.0), Evidence.unknown()
+    assert supervisor._converged({'amcl_gnss': normal, 'amcl_gnss_2': normal}) is True
+    assert supervisor._converged({'amcl_gnss': normal, 'amcl_gnss_2': anomaly}) is False
+    assert supervisor._converged({'amcl_gnss': normal, 'amcl_gnss_2': unknown}) is None
+
+
+def test_convergence_any_needs_one_check_normal():
+    # 復旧中に融合の結果が固まっていても、別の姿勢 (推定器の姿勢) で確かめられれば戻せる
+    supervisor = _two_convergence_checks('any')
+    normal, anomaly, unknown = Evidence.from_score(0.5), Evidence.from_score(2.0), Evidence.unknown()
+    assert supervisor._converged({'amcl_gnss': anomaly, 'amcl_gnss_2': normal}) is True
+    assert supervisor._converged({'amcl_gnss': anomaly, 'amcl_gnss_2': unknown}) is False
+    assert supervisor._converged({'amcl_gnss': unknown, 'amcl_gnss_2': unknown}) is None
+
+
+def test_invalid_convergence_mode_is_rejected():
+    raw = _raw()
+    raw['recovery']['convergence_mode'] = 'majority'
+    with pytest.raises(ConfigError, match='recovery.convergence_mode'):
         parse_config(raw)
 
 
