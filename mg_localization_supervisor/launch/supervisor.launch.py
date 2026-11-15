@@ -9,6 +9,7 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import OpaqueFunction, TimerAction
+from launch.substitutions import EnvironmentVariable
 from launch_ros.actions import Node
 
 from mg_utils.launch_argument import LaunchArgumentCreator
@@ -25,6 +26,10 @@ def generate_launch_description():
     use_gnss_amcl_initializer = arg.create(
         'use_gnss_amcl_initializer', default='true',
         description='GNSS から AMCL・EKF の初期姿勢を与えるノードを起動するか')
+    initializer_verify = arg.create(
+        'initializer_verify',
+        default=EnvironmentVariable('LOCALIZATION_INITIALIZER_VERIFY', default_value='false'),
+        description='GNSS による初期姿勢を、スキャンと地図の照合で確かめるか (initializer.yaml の verify_by_scan を上書き)')
     use_supervisor = arg.create(
         'use_supervisor', default='false', description='自己位置推定の監督ノードを起動するか')
     supervisor_config = arg.create(
@@ -59,7 +64,8 @@ def generate_launch_description():
                 executable='gnss_amcl_initializer_node.py',
                 name='gnss_amcl_initializer_node',
                 output='screen',
-                parameters=[os.path.join(config_dir, 'initializer.yaml'), {'use_sim_time': sim_time}],
+                parameters=[os.path.join(config_dir, 'initializer.yaml'),
+                            {'use_sim_time': sim_time, 'verify_by_scan': flag(initializer_verify)}],
             )]))
         if flag(use_supervisor):
             actions.append(TimerAction(period=SUPERVISOR_DELAY_SEC, actions=[Node(

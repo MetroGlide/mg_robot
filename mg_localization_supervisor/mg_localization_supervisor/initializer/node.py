@@ -11,13 +11,21 @@ the initialization logic.
 import math
 from typing import Optional
 
+import numpy as np
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy, qos_profile_sensor_data
 from rclpy.time import Time
 
-from nav_msgs.msg import Odometry
+from nav_msgs.msg import OccupancyGrid, Odometry
 from geometry_msgs.msg import PoseWithCovarianceStamped, Quaternion
+from sensor_msgs.msg import LaserScan
 from std_srvs.srv import Trigger
+
+from localization_supervisor.core.grid import scan_points_in_map
+from localization_supervisor.ros.adapters.standard import occupancy_from_msg, yaw_from_quaternion
+from mg_localization_supervisor.initializer.verify import VerifyConfig, covariance_6x6, verify_pose
+from mg_utils.event_log import EventLog
 
 import tf_transformations
 import tf2_ros
@@ -265,6 +273,18 @@ class GNSSAMCLInitializer(Node):
         self.publish_set_pose = self.get_parameter(
             'publish_set_pose').get_parameter_value().bool_value
 
+        # GNSS の位置の周りで、スキャンを地図に照合して初期姿勢を確かめるか (verify.py)
+        self.declare_parameter('verify_by_scan', False)
+        self.declare_parameter('verify_map_topic', '/map')
+        self.declare_parameter('verify_scan_topic', '/scan_top_lidar')
+        self.declare_parameter('verify_base_frame', 'base_footprint')
+        self.declare_parameter('verify_max_points', 360)
+        self.verify_by_scan = self.get_parameter('verify_by_scan').value
+        self.verify_config = VerifyConfig()
+        for key, default in vars(VerifyConfig()).items():
+            self.declare_parameter(f'verify.{key}', default)
+            setattr(self.verify_config, key, type(default)(self.get_parameter(f'verify.{key}').value))
+
         self.get_logger().info(
             f"Parameters: map_frame={self.map_frame}, required_consecutive_good={self.required_consecutive_good}")
         self.get_logger().info(
@@ -310,6 +330,17 @@ class GNSSAMCLInitializer(Node):
         self.odom_sub = self.create_subscription(
             Odometry, self.odom_gps_topic, self.odom_callback, 20)
 
+        self._events = EventLog(self.get_logger())
+        self._occupancy = None
+        self._scan: Optional[LaserScan] = None
+        if self.verify_by_scan:
+            latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL,
+                                 reliability=ReliabilityPolicy.RELIABLE)
+            self.create_subscription(
+                OccupancyGrid, self.get_parameter('verify_map_topic').value, self._on_map, latched)
+            self.create_subscription(
+                LaserScan, self.get_parameter('verify_scan_topic').value, self._on_scan, qos_profile_sensor_data)
+
         # Service to force reinit (resets internal state so processing can resume)
         self.srv = self.create_service(
             Trigger, self.reinit_service_name, self.handle_reinit)
@@ -351,6 +382,42 @@ class GNSSAMCLInitializer(Node):
         # copy covariance (no change in this simple transform approximation)
         new.pose.covariance = list(odom.pose.covariance)
         return new
+
+    def _on_map(self, msg: OccupancyGrid) -> None:
+        self._occupancy = occupancy_from_msg(msg)
+
+    def _on_scan(self, msg: LaserScan) -> None:
+        self._scan = msg
+
+    def _scan_points_base(self) -> Optional[np.ndarray]:
+        """最新のスキャンの点 (base 座標)。スキャンか、base -> センサの TF がなければ None。"""
+        scan = self._scan
+        if scan is None:
+            return None
+        try:
+            t = self.tf_buffer.lookup_transform(
+                self.get_parameter('verify_base_frame').value, scan.header.frame_id, Time()).transform
+        except TransformException:
+            return None
+        sensor = (t.translation.x, t.translation.y, yaw_from_quaternion(t.rotation))
+        return scan_points_in_map(
+            np.asarray(scan.ranges, dtype=float), scan.angle_min, scan.angle_increment, scan.range_min,
+            scan.range_max, (0.0, 0.0, 0.0), sensor, self.get_parameter('verify_max_points').value)
+
+    def _verified(self, msg: PoseWithCovarianceStamped, yaw: float) -> PoseWithCovarianceStamped:
+        """GNSS の姿勢の周りでスキャンを地図に照合し、姿勢と共分散を置き換える。"""
+        gnss = (msg.pose.pose.position.x, msg.pose.pose.position.y, yaw)
+        result = verify_pose(self._occupancy, self._scan_points_base(), gnss, self.verify_config)
+        msg.pose.pose.position.x = float(result.pose[0])
+        msg.pose.pose.position.y = float(result.pose[1])
+        msg.pose.pose.orientation = quaternion_from_yaw(float(result.pose[2]))
+        msg.pose.covariance = covariance_6x6(result.std_m, result.std_yaw_rad)
+        log = self._events.info if result.reason == 'matched' else self._events.warn
+        log('localization.initial_pose_verified', reason=result.reason,
+            gnss_x=round(gnss[0], 3), gnss_y=round(gnss[1], 3), gnss_yaw=round(gnss[2], 3),
+            x=round(result.pose[0], 3), y=round(result.pose[1], 3), yaw=round(result.pose[2], 3),
+            ratio=round(result.ratio, 3), margin=round(result.margin, 3), std_m=result.std_m)
+        return msg
 
     def _publish_initial_pose(self, msg: PoseWithCovarianceStamped) -> None:
         """AMCL (/initialpose) と EKF (/set_pose) に同じ初期姿勢を送る。
@@ -395,6 +462,10 @@ class GNSSAMCLInitializer(Node):
 
         msg.pose.pose.orientation = quaternion_from_yaw(
             yaw)
+
+        if self.verify_by_scan:
+            self._publish_initial_pose(self._verified(msg, yaw))
+            return
 
         # If operator requested overriding the full pose covariance via parameter,
         # use that 6x6 (36-element row-major) array directly.

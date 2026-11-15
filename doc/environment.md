@@ -52,6 +52,7 @@ Docker のログのローテーション設定。compose の `${LOG_MAX_SIZE}` �
 | `LOCALIZATION_MONITOR` | 自己位置の監視ノード (`none` / `watchdog` / `supervisor`)。`bringup_navigation.launch.py` の `localization_monitor` 引数の既定値。書かなければ `supervisor`。空にすると監視ノードが起動しないので、使わないときは行ごと書かない |
 | `LOCALIZATION_PRESET` | AMCL と EKF の params に重ねる自己位置推定のプリセット。`bringup_navigation.launch.py` の `localization_preset` 引数の既定値。空なら重ねない ([localization.md](../mg_navigation/doc/localization.md#自己位置推定のプリセット)) |
 | `LOCALIZATION_PROFILE` | 監督の設定に重ねるプロファイル。`bringup_navigation.launch.py` の `localization_profile` 引数の既定値。空なら基本設定 ([mg_localization_supervisor](../mg_localization_supervisor/README.md)) |
+| `LOCALIZATION_INITIALIZER_VERIFY` | GNSS による初期姿勢を、スキャンと地図の照合で確かめるか。`supervisor.launch.py` の `initializer_verify` 引数の既定値。書かなければ `false` ([mg_localization_supervisor](../mg_localization_supervisor/README.md#gnss_amcl_initializer_node)) |
 
 ### SLAM の再最適化
 
