@@ -1,0 +1,38 @@
+# 止まったままでも確かめて戻り、決められなければ観測を増やす復旧 (supervision.yaml に重ねる)。
+# 比べる構成 new (mg_navigation/doc/localization_failure_ledger.md) で使う。
+#
+# 止まっていると、AMCL は update_min_d / update_min_a だけ動くまで更新されず、GNSS のブリッジも
+# min_publish_distance だけ動くまで出さない。そのため基本設定の収束の確認 (amcl_ekf) は「判定できない」のまま
+# 時間切れになり、DEGRADED から異常がない周期だけで (確かめずに) NORMAL へ戻っていた。また、候補を選べないまま
+# 同じ観測で計画し直し続け、止まったままになることがあった。
+#
+# - 収束の確認は、EKF の姿勢 (復旧中は AMCL を切り離しているので、撒いた位置 + オドメトリ。止まっていても出る)
+#   で今のスキャンを地図に照合する recover_scan にする。正常なときの基準を持たない (再初期化で捨てるため) ので、
+#   一致率の下限 (ratio_min) と利得のしきい値 (ずらしたほうが合う量) を絶対値で決める。値はシミュレータの地図での例で、
+#   実機の地図では正しい姿勢での一致率と利得の分布を確かめてから決める
+# - DEGRADED などから NORMAL に戻るのは、収束の確認だけにする (verify_return)
+# - 候補を選べない・確かめられない時間が続いたら、観測を増やす動作を求める (対処 spin_observe が首を振る)。
+#   一度撒いた後は、動いて観測が増えるまで撒き直さない
+# - 長く止まっても推測航法の候補を作れるように、アンカーを残す時間を延ばす (走行距離の上限はそのまま)
+detectors:
+  recover_scan:
+    type: scan_map
+    sources: {pose: ekf, reference: map_scan}
+    params: {tolerance_m: 0.3, ratio_min: 0.5, ratio_factor: 0.0, gain_threshold: 0.5}
+    # 収束の確認だけに使う (総合には効かない)
+    weight: 0.0
+
+state_machine:
+  verify_return: true
+
+recovery:
+  convergence: [recover_scan]
+  observe:
+    motion: odom
+    request_after_sec: 6.0
+    request_interval_sec: 20.0
+    reseed_min_distance_m: 0.5
+    reseed_min_rotation_rad: 1.0
+
+anchors:
+  max_age_sec: 600.0

@@ -213,6 +213,9 @@ recovery:
     # 走行を止めてほしいあいだ、シーケンサを一時停止する
     - name: pause_request
       type: "mg_localization_supervisor.actuators.pause_request:PauseRequestActuator"
+    # 観測を増やす指示 (observe) が出たら、その場で首を振る (Nav2 の Spin)。指示はプロファイル robust_recovery で出す
+    - name: spin_observe
+      type: "mg_localization_supervisor.actuators.spin_observe:SpinObserve"
     # 再初期化の後に、グローバルコストマップを消す
     - name: clear_costmap
       type: "mg_localization_supervisor.actuators.clear_costmap:ClearCostmap"
@@ -272,5 +275,7 @@ profiles:
   yaw_drift: profiles/yaw_drift.yaml
   # 復旧の候補に、AMCL の粒子の仮説を足す
   hypotheses: profiles/hypotheses.yaml
+  # 止まったままでも確かめて戻り、決められなければ首を振って観測を増やす復旧
+  robust_recovery: profiles/robust_recovery.yaml
   # シナリオ試験で /initialpose から故障を注入するとき (実機では使わない)
   fault_injection: profiles/fault_injection.yaml

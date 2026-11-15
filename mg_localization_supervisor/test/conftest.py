@@ -4,6 +4,7 @@ from unittest.mock import MagicMock
 
 _ROS2_MODULES = [
     "rclpy",
+    "rclpy.action",
     "rclpy.executors",
     "rclpy.node",
     "rclpy.parameter",
@@ -31,8 +32,11 @@ _ROS2_MODULES = [
     "mg_msgs",
     "mg_msgs.msg",
     "nav2_msgs",
+    "nav2_msgs.action",
     "nav2_msgs.msg",
     "nav2_msgs.srv",
+    "builtin_interfaces",
+    "builtin_interfaces.msg",
 ]
 
 for _mod in _ROS2_MODULES:
