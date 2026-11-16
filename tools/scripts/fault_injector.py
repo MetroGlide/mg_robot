@@ -9,7 +9,8 @@ rosbag の再生では、注入の対象のトピックを /fault/ 以下へ付�
   /fault/odom            -> /odom/raw           odom_scale (ホイールのスリップ)
   /fault/navpvt          -> /navpvt             gnss_bias / gnss_bias_field / gnss_drop / gnss_noise / gnss_accuracy
   /fault/gps/fix         -> /gps/fix            同上 (Gazebo の navsat)
-  /fault/scan_top_lidar  -> /scan_top_lidar     scan_drop / scan_thin / scan_range / scan_jitter
+  /fault/scan_top_lidar  -> /scan_top_lidar     scan_drop / scan_keep / scan_thin / scan_range / scan_jitter /
+                                              scan_occlude
 Gazebo では、ブリッジの出力を /fault/ 以下にして、このノードが中継する (--odom-out /odom)。
 kidnap は、その時刻の推定姿勢 (EKF) をずらした姿勢を /initialpose に送り、AMCL だけをずらす。
 amcl_drift は、区間の中で interval 秒ごとに、AMCL の推定 (/amcl_pose_origin) を rate * interval だけずらした
@@ -62,6 +63,7 @@ class FaultInjector(Node):
         self._abs_w = 0.0
         self._rng = np.random.default_rng()
         self._gnss_noise = fa.GnssNoise(self._rng)
+        self._scan_occluder = fa.ScanOccluder(self._rng)
         self._kidnap_done = set()
         self._amcl_pose: Optional[PoseWithCovarianceStamped] = None
         self._drift_last: Dict[int, float] = {}
@@ -206,9 +208,20 @@ class FaultInjector(Node):
             ranges = fa.mask_scan_sector(ranges, msg.angle_min, msg.angle_increment,
                                          tuple(fault.params["sector_deg"]))
             changed = True
+        fault = self._active("scan_keep")
+        if fault:
+            ranges = fa.keep_scan_sectors(ranges, msg.angle_min, msg.angle_increment, fault.params["sectors_deg"])
+            changed = True
         fault = self._active("scan_range")
         if fault:
             ranges = fa.limit_scan_range(ranges, float(fault.params["max_range"]))
+            changed = True
+        fault = self._active("scan_occlude")
+        if fault:
+            p = fault.params
+            ranges = self._scan_occluder.apply(
+                ranges, msg.angle_min, msg.angle_increment, self._t_rel(), int(p["count"]), float(p["width_m"]),
+                p["range_m"], p.get("sectors_deg", [[-180.0, 180.0]]), float(p.get("hold_sec", 2.0)))
             changed = True
         fault = self._active("scan_jitter")
         if fault:

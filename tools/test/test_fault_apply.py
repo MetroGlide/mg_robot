@@ -84,6 +84,45 @@ def test_jitter_scan_drops_or_stretches_only_chosen_beams():
     assert 0.4 < np.isinf(result[changed]).mean() < 0.6
 
 
+def test_keep_scan_sectors_keeps_only_the_sectors():
+    n = 360
+    ranges = np.full(n, 3.0)
+    kept = fa.keep_scan_sectors(ranges, -math.pi, 2 * math.pi / n, [[45.0, 135.0], [-135.0, -45.0]])
+    angles = np.degrees(-math.pi + 2 * math.pi / n * np.arange(n))
+    side = (np.abs(angles) >= 45.0) & (np.abs(angles) <= 135.0)
+    assert np.all(kept[side] == 3.0)
+    assert np.all(np.isinf(kept[~side]))
+
+
+def test_scan_occluder_replaces_beams_behind_people_only():
+    n = 3600
+    increment = 2 * math.pi / n
+    ranges = np.full(n, 5.0)
+    ranges[0] = 0.5
+    occluder = fa.ScanOccluder(np.random.default_rng(0))
+    result = occluder.apply(ranges, -math.pi, increment, 0.0, 4, 0.5, [1.0, 1.8], [[30.0, 150.0]], 2.0)
+    angles = np.degrees(-math.pi + increment * np.arange(n))
+    hit = result < 5.0
+    assert hit.any()
+    assert np.all((result[hit & (angles > 0)] >= 1.0) & (result[hit & (angles > 0)] <= 1.8))
+    # 遮蔽物の方向は sectors_deg の中 (幅の分だけはみ出す)
+    assert np.all((angles[hit & (angles > 0)] >= 30.0 - 15.0) & (angles[hit & (angles > 0)] <= 150.0 + 15.0))
+    # 遮蔽物より手前の当たりは残す
+    assert result[0] == 0.5
+    # hold_sec の間は同じ配置、過ぎると選び直す
+    same = occluder.apply(ranges, -math.pi, increment, 1.0, 4, 0.5, [1.0, 1.8], [[30.0, 150.0]], 2.0)
+    assert np.array_equal(same, result)
+    redrawn = occluder.apply(ranges, -math.pi, increment, 2.5, 4, 0.5, [1.0, 1.8], [[30.0, 150.0]], 2.0)
+    assert not np.array_equal(redrawn, result)
+
+
+def test_parse_scan_occlude_requires_count_width_and_range():
+    with pytest.raises(ValueError):
+        parse_faults({"faults": [{"type": "scan_occlude", "start": 0.0, "end": 1.0, "count": 3, "width_m": 0.5}]})
+    fault = _fault(type="scan_occlude", start=0.0, end=1.0, count=3, width_m=0.5, range_m=[1.0, 2.0])
+    assert fault.params["count"] == 3
+
+
 def test_gnss_noise_same_fix_and_correlation():
     noise = fa.GnssNoise(np.random.default_rng(0))
     first = noise.sample(0.0, 1.0, 30.0).copy()

@@ -18,6 +18,17 @@
 
 scan_jitter は、毎回のスキャンで ratio の割合のビームを選び、半分は欠測に、残りは距離を 0〜depth_m 伸ばす
 (植栽の葉が揺れて、手前と奥の当たりが入れ替わる状況)。
+scan_keep は、角度が sectors_deg ([low, high] の並び、度、センサ座標系) のどれかに入るビームだけを残す
+(長い通路で、前後が遠すぎて横の壁しか見えない状況)。
+    - {type: scan_keep, start: 0.0, end: 100.0, sectors_deg: [[45.0, 135.0], [-135.0, -45.0]]}
+
+scan_occlude は、ロボットの周りに幅 width_m [m] の遮蔽物 (人) を count 個置き、その方向のビームを遮蔽物までの
+距離にする (人混みで、スキャンの多くが地図にない近い点になる状況)。方向は sectors_deg (省略で全周) から、距離は
+range_m ([近, 遠] [m]) から選び、hold_sec [s] (省略で 2) ごとに選び直す。注入したスキャンは測位にも障害物の検出にも
+入るので、経路をふさがないよう方向を横に限って使う。
+    - {type: scan_occlude, start: 0.0, end: 100.0, count: 6, width_m: 0.5, range_m: [1.0, 1.8],
+       sectors_deg: [[30.0, 150.0], [-150.0, -30.0]], hold_sec: 2.0}
+
 gnss_noise は、東・北に標準偏差 sigma [m] の雑音を足す。tau [s] (省略で 0) を与えると、偏りが tau 程度続く
 1 次のガウス・マルコフ過程にする (単独測位の誤差の形)。0 なら毎回独立。
     - {type: odom_scale, start: 0.0, end: 100000.0, v: 1.0, w: 1.15, min_abs_w: 0.15}
@@ -68,6 +79,8 @@ REQUIRED_PARAMS: Dict[str, List[str]] = {
     "scan_range": ["max_range"],
     "gnss_noise": ["sigma"],
     "scan_jitter": ["ratio", "depth_m"],
+    "scan_keep": ["sectors_deg"],
+    "scan_occlude": ["count", "width_m", "range_m"],
     "gnss_accuracy": ["std_m"],
     "gnss_bias_field": ["anchor", "points"],
 }
