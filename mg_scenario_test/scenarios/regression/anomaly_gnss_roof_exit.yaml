@@ -2,9 +2,9 @@ version: "2.0"
 name: anomaly_gnss_roof_exit
 description: >
   異常パターン 16 (変換の誤差のある場所で、屋根を抜けた直後に申告だけ高精度の GNSS が入る)。anomaly_gnss_field の
-  場所で変わるずれに加えて、西の通路の南側を「屋根の下」(GNSS の雑音と申告が悪く、スキャンも近くしか見えない) にする。
-  屋根を抜けると申告の精度だけが高精度になり、スキャンの制限はその後しばらく続く (AMCL が戻りきらないうちに
-  誤った「高精度」の GNSS が入る)。対照は anomaly_baseline。構成は LOCALIZATION_CONFIG で選ぶ。
+  場所で変わるずれに加えて、西の通路の南側を「屋根の下」(GNSS の雑音と申告が悪い) にし、西の通路を屋根のある
+  長い通路 (スキャンが横の壁しか見えず、進行方向の位置が決まりにくい) にする。屋根を抜けると申告の精度だけが
+  高精度になり、通路はその後しばらく続く (AMCL が戻りきらないうちに誤った「高精度」の GNSS が入る)。対照は anomaly_baseline。構成は LOCALIZATION_CONFIG で選ぶ。
 profile: mg01
 world: warehouse
 tags: [localization, anomaly, mg_sequencer, known_issue]

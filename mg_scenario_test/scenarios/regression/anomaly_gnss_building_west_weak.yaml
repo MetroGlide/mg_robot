@@ -2,7 +2,7 @@ version: "2.0"
 name: anomaly_gnss_building_west_weak
 description: >
   調整に使わない変種 (anomaly_holdout)。anomaly_gnss_building_weak と場所・向き・大きさを変え、西の通路
-  (x 約 -5 m の北向き) で GNSS を東 (棚の側) へ 3 m ずらし、同じ区間でスキャンの距離を 2 m に制限する。
+  (x 約 -5 m の北向き) で GNSS を東 (棚の側) へ 3 m ずらし、同じ区間で人混み (人数と距離を変えたもの) を入れる。
   対策の調整に使わず、調整した結果がこの変種でも成り立つかを確かめる。構成は LOCALIZATION_CONFIG で選ぶ。
 profile: mg01
 world: warehouse

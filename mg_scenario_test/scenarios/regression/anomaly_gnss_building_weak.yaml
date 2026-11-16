@@ -2,8 +2,8 @@ version: "2.0"
 name: anomaly_gnss_building_weak
 description: >
   異常パターン 7 の、AMCL が弱っている区間と重なる場合。anomaly_gnss_building と同じ区間で GNSS をずらし、
-  同時にスキャンの距離を 2 m に制限する (近くに特徴がなく、AMCL の共分散が広がる)。GNSS による再初期化が
-  誤った GNSS と重なると、推定位置が棚に重なり、経路を作れなくなる。対照は anomaly_baseline。
+  同時に人混みを入れる (横に人が並んで歩き、スキャンの多くが地図にない近い点になる。人は経路をふさがない)。
+  GNSS による再初期化が誤った GNSS と重なると、推定位置が棚に重なり、経路を作れなくなる。対照は anomaly_baseline。
   構成は LOCALIZATION_CONFIG で選ぶ。
 profile: mg01
 world: warehouse

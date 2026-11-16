@@ -1,0 +1,43 @@
+version: "2.0"
+name: anomaly_lidar_blind
+description: >
+  LiDAR の故障 (窓の汚れ・濃い霧などで何も返らない)。基準の GNSS のまま、西の通路で 20 s の間だけスキャンを
+  全て欠測にする。自己位置の復旧でなく、センサの故障として扱う事象で、障害物も見えないので、その間は走らずに止まり、
+  診断に出すのが期待する動作 (完走は、スキャンが戻った後に求める)。今は、スキャンの中身が空であることを判定する
+  仕組みがないので、記録だけにする。構成は LOCALIZATION_CONFIG で選ぶ。
+profile: mg01
+world: warehouse
+tags: [localization, anomaly_sensor, mg_sequencer, known_issue]
+timeout: 600
+
+record_topics: [/sim_scenario_test/entity_poses, /amcl_pose_origin, /odom/gps, /ekf_global_odom, /odom, /localization/status, /cmd_vel, /initialpose, /diagnostics_agg, /rosout]
+
+sim_args:
+  sensor_fault_file: "pkg://mg_scenario_test/scenarios/data/faults/anomaly_lidar_blind.yaml"
+
+setup:
+  - respawn: { pose: { x: 0.0, y: 0.0, yaw: 0.0 }, settle_sec: 3.0 }
+
+monitors:
+  # 合否の上限は置かず、構成どうしの比較のために値を残す
+  - pose_error: { deviation_m: 1.0 }
+  - max_stop_duration: { max_stop_sec: 60.0, from_goal_started: 2, until_goal_reached: 8 }
+  - map_overlap: { max_overlap_sec: 60.0 }
+  - localization_hold: { ends_released: false }
+
+run:
+  mg_sequencer:
+    waypoints_file: "{world.waypoints}"
+    waypoint_timeout_sec: 200.0
+
+timeline:
+  - name: blind
+    when: { robot_near: { x: -4.6, y: -20.0, radius: 1.5, pose_source: sim } }
+    do:
+      - call_set_bool: { service: /fault_injector/trigger/blind, value: true }
+      - delay: { sec: 20.0 }
+      - call_set_bool: { service: /fault_injector/trigger/blind, value: false }
+
+expect:
+  - reached_all
+  - time_limit: { sec: 600 }

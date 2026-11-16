@@ -1,14 +1,15 @@
 # 異常パターン 16 (変換の誤差のある場所で、屋根を抜けた直後に申告だけ高精度の GNSS が入る)。
 # anomaly_gnss_field.yaml の場所で変わるずれに加えて、
-#   trigger roof: 屋根の下。GNSS の雑音が大きく、申告の精度も悪い。スキャンも近くしか見えない (AMCL が弱る)
+#   trigger roof: 屋根の下。GNSS の雑音が大きく、申告の精度も悪い
 #   trigger exit: 屋根を抜けた後。申告の精度だけが高精度になる (位置は場所で決まるずれのまま)
-#   trigger weak: 屋根を抜けた直後まで、スキャンの制限を続ける (AMCL が戻りきらないうちに「高精度」の GNSS が入る)
+#   trigger weak: 屋根の下から抜けた直後まで、スキャンを横だけにする (屋根のある長い通路。進行方向の位置が決まりにくく、
+#                 AMCL が戻りきらないうちに「高精度」の GNSS が入る)
 # 同じ種類の故障は定義の順で最初のものだけが作用するので、trigger の故障を常時の故障より先に書く。
 faults:
   - {type: gnss_noise, trigger: roof, sigma: 2.0, tau: 5.0}
   - {type: gnss_accuracy, trigger: roof, std_m: 3.0}
   - {type: gnss_accuracy, trigger: exit, std_m: 0.05}
-  - {type: scan_range, trigger: weak, max_range: 2.0}
+  - {type: scan_keep, trigger: weak, sectors_deg: [[60.0, 120.0], [-120.0, -60.0]]}
   - {type: gnss_noise, start: 0.0, end: 100000.0, sigma: 0.3, tau: 30.0}
   - {type: gnss_accuracy, start: 0.0, end: 100000.0, std_m: 0.5}
   - type: gnss_bias_field

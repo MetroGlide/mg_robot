@@ -2,7 +2,8 @@ version: "2.0"
 name: anomaly_gnss_field_weak
 description: >
   異常パターン 9 の、AMCL が弱る区間と重なる場合。anomaly_gnss_field の場所で変わるずれに加えて、西の通路
-  (x 約 -5 m の北向き) を走る間だけ、スキャンの距離を 2 m に制限する。GNSS による再初期化が起きると、
+  (x 約 -5 m の北向き) を走る間だけ、スキャンを横だけにする (前後が遠すぎて横の壁しか見えない長い通路。進行方向の
+  位置が決まりにくい)。GNSS による再初期化が起きると、
   その場所のずれの分だけ誤った位置へ撒かれる。対照は anomaly_baseline。構成は LOCALIZATION_CONFIG で選ぶ。
 profile: mg01
 world: warehouse
