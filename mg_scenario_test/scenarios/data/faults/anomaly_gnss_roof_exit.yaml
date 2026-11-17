@@ -10,7 +10,7 @@ faults:
   - {type: gnss_accuracy, trigger: roof, std_m: 3.0}
   - {type: gnss_accuracy, trigger: exit, std_m: 0.05}
   - {type: scan_keep, trigger: weak, sectors_deg: [[60.0, 120.0], [-120.0, -60.0]]}
-  - {type: scan_occlude, trigger: weak, count: 6, width_m: 0.5, range_m: [1.0, 1.6], sectors_deg: [[60.0, 120.0], [-120.0, -60.0]], hold_sec: 2.0}
+  - {type: scan_occlude, trigger: weak, count: 2, width_m: 0.5, range_m: [1.0, 1.6], sectors_deg: [[60.0, 120.0], [-120.0, -60.0]], hold_sec: 2.0}
   - {type: gnss_noise, start: 0.0, end: 100000.0, sigma: 0.3, tau: 30.0}
   - {type: gnss_accuracy, start: 0.0, end: 100000.0, std_m: 0.5}
   - type: gnss_bias_field

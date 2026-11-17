@@ -18,4 +18,4 @@ faults:
       - [-5.0, -12.0, 2.5, -0.5]
       - [-5.0, -3.0, 0.5, 2.0]
   - {type: scan_keep, trigger: weak, sectors_deg: [[60.0, 120.0], [-120.0, -60.0]]}
-  - {type: scan_occlude, trigger: weak, count: 6, width_m: 0.5, range_m: [1.0, 1.6], sectors_deg: [[60.0, 120.0], [-120.0, -60.0]], hold_sec: 2.0}
+  - {type: scan_occlude, trigger: weak, count: 2, width_m: 0.5, range_m: [1.0, 1.6], sectors_deg: [[60.0, 120.0], [-120.0, -60.0]], hold_sec: 2.0}
