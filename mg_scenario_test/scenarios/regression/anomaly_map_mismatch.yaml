@@ -15,7 +15,7 @@ sim_args:
   sensor_fault_file: "pkg://mg_scenario_test/scenarios/data/faults/anomaly_baseline.yaml"
 
 stack_args:
-  map_path: "pkg://mg_scenario_test/scenarios/data/map_shift_east/localization.yaml"
+  map_path: "pkg://mg_scenario_test/scenarios/data/map_shift_east_realistic/localization.yaml"
 
 setup:
   - respawn: { pose: { x: 0.0, y: 0.0, yaw: 0.0 }, settle_sec: 3.0 }

@@ -2,8 +2,8 @@ version: "2.0"
 name: anomaly_gnss_field_weak
 description: >
   異常パターン 9 の、AMCL が弱る区間と重なる場合。anomaly_gnss_field の場所で変わるずれに加えて、西の通路
-  (x 約 -5 m の北向き) を走る間だけ、スキャンを横だけにする (前後が遠すぎて横の壁しか見えない長い通路。進行方向の
-  位置が決まりにくい)。GNSS による再初期化が起きると、
+  (x 約 -5 m の北向き) を走る間だけ、スキャンを横だけにし、横に人を並べる (前後が遠すぎて横の壁しか見えず、その壁も
+  一部が人で隠れる長い通路。進行方向の位置が決まりにくい)。GNSS による再初期化が起きると、
   その場所のずれの分だけ誤った位置へ撒かれる。対照は anomaly_baseline。構成は LOCALIZATION_CONFIG で選ぶ。
 profile: mg01
 world: warehouse
@@ -14,6 +14,9 @@ record_topics: [/sim_scenario_test/entity_poses, /amcl_pose_origin, /odom/gps, /
 
 sim_args:
   sensor_fault_file: "pkg://mg_scenario_test/scenarios/data/faults/anomaly_gnss_field_weak.yaml"
+
+stack_args:
+  map_path: "pkg://mg_scenario_test/scenarios/data/map_realistic/localization.yaml"
 
 setup:
   - respawn: { pose: { x: 0.0, y: 0.0, yaw: 0.0 }, settle_sec: 3.0 }

@@ -1,6 +1,6 @@
 # 異常パターン 9 の、AMCL が弱る区間と重なる場合。anomaly_gnss_field.yaml に、trigger weak の間だけ
-# スキャンを横だけにする (西の通路を、前後が遠すぎて横の壁しか見えない長い通路にする。進行方向の位置が決まりにくい。
-# GNSS による再初期化が、場所で決まるずれと重なる)。
+# スキャンを横だけにし、横に人を並べる (西の通路を、前後が遠すぎて横の壁しか見えず、横の壁の一部も人で隠れる長い通路にする。
+# 進行方向の位置が決まりにくい。GNSS による再初期化が、場所で決まるずれと重なる)。
 faults:
   - {type: gnss_noise, start: 0.0, end: 100000.0, sigma: 0.3, tau: 30.0}
   - {type: gnss_accuracy, start: 0.0, end: 100000.0, std_m: 0.5}
@@ -18,3 +18,4 @@ faults:
       - [-5.0, -12.0, 2.5, -0.5]
       - [-5.0, -3.0, 0.5, 2.0]
   - {type: scan_keep, trigger: weak, sectors_deg: [[60.0, 120.0], [-120.0, -60.0]]}
+  - {type: scan_occlude, trigger: weak, count: 6, width_m: 0.5, range_m: [1.0, 1.6], sectors_deg: [[60.0, 120.0], [-120.0, -60.0]], hold_sec: 2.0}

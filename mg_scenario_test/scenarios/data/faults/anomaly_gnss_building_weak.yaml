@@ -5,4 +5,4 @@ faults:
   - {type: gnss_noise, start: 0.0, end: 100000.0, sigma: 0.3, tau: 30.0}
   - {type: gnss_accuracy, start: 0.0, end: 100000.0, std_m: 0.5}
   - {type: gnss_bias, trigger: building, bias: {x: -3.5, y: 0.0}}
-  - {type: scan_occlude, trigger: building, count: 6, width_m: 0.5, range_m: [1.0, 1.6], sectors_deg: [[60.0, 120.0], [-120.0, -60.0]], hold_sec: 2.0}
+  - {type: scan_occlude, trigger: building, count: 10, width_m: 0.5, range_m: [0.9, 1.5], sectors_deg: [[60.0, 120.0], [-120.0, -60.0]], hold_sec: 2.0}

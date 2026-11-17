@@ -16,6 +16,7 @@ sim_args:
   sensor_fault_file: "pkg://mg_scenario_test/scenarios/data/faults/anomaly_scan_weak.yaml"
 
 stack_args:
+  map_path: "pkg://mg_scenario_test/scenarios/data/map_realistic/localization.yaml"
   gnss_transform_file: "pkg://mg_scenario_test/scenarios/data/anomaly_gnss_transform/gnss_transform.yaml"
 
 setup:
