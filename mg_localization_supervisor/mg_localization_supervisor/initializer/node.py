@@ -8,8 +8,10 @@ initialize AMCL. A node-private service is provided to reset and retry
 the initialization logic.
 """
 
+import dataclasses
 import math
-from typing import Optional
+import threading
+from typing import Optional, Tuple
 
 import numpy as np
 import rclpy
@@ -24,6 +26,8 @@ from std_srvs.srv import Trigger
 
 from localization_supervisor.core.grid import scan_points_in_map
 from localization_supervisor.ros.adapters.standard import occupancy_from_msg, yaw_from_quaternion
+from localization_supervisor.core.geometry import Pose2, wrap_angle
+from mg_localization_supervisor.initializer.attempts import InitAttempts, propagate
 from mg_localization_supervisor.initializer.verify import VerifyConfig, covariance_6x6, verify_pose
 from mg_utils.event_log import EventLog
 
@@ -127,8 +131,12 @@ class GNSSAMCLInitializer(Node):
     # ---------------- callbacks ----------------
 
     def odom_callback(self, msg: Odometry) -> None:
-        # If finished (published or gave up), ignore further samples.
-        if self.state.finished:
+        # 照合で確かめるときは、決まるまであきらめない (測位の悪い区間を抜けたら照合し直す)
+        if self.verify_by_scan:
+            self._moved_since_start()
+            if self.attempts.decided:
+                return
+        elif self.state.finished:
             return
 
         # Age check (can be disabled via ignore_odom_age)
@@ -180,6 +188,9 @@ class GNSSAMCLInitializer(Node):
         self.get_logger().info(
             f'Good odom #{self.state.consecutive_good}/{self.required_consecutive_good} (pos=({odom_in_map.pose.pose.position.x:.3f},{odom_in_map.pose.pose.position.y:.3f}))')
 
+        if self.state.is_publish_ready() and self.verify_by_scan:
+            self._maybe_attempt(self.latest_valid_odom)
+            return
         if self.state.is_publish_ready():
             self.get_logger().info('Publishing initialpose based on GNSS odometry')
             self.publish_initialpose_from_odom(self.latest_valid_odom)
@@ -279,6 +290,15 @@ class GNSSAMCLInitializer(Node):
         self.declare_parameter('verify_scan_topic', '/scan_top_lidar')
         self.declare_parameter('verify_base_frame', 'base_footprint')
         self.declare_parameter('verify_max_points', 360)
+        self.declare_parameter('verify_odom_frame', 'odom')
+        # 合うまで、GNSS の位置がこれだけ動くごとに照合し直す [m]
+        self.declare_parameter('verify_retry_distance_m', 2.0)
+        # 外から初期姿勢を与えられてから、その姿勢の周りを照合するまでの時間 [s] と、照合の範囲
+        self.declare_parameter('external_check_delay_sec', 1.0)
+        self.declare_parameter('external_search_range_m', 1.5)
+        self.declare_parameter('external_search_yaw_rad', 0.5)
+        # 外から与えられた初期姿勢に従うのは、起動してからこれだけ動くまで [m] (スタート地点で与える想定)
+        self.declare_parameter('external_accept_distance_m', 1.0)
         self.verify_by_scan = self.get_parameter('verify_by_scan').value
         self.verify_config = VerifyConfig()
         for key, default in vars(VerifyConfig()).items():
@@ -333,7 +353,15 @@ class GNSSAMCLInitializer(Node):
         self._events = EventLog(self.get_logger())
         self._occupancy = None
         self._scan: Optional[LaserScan] = None
+        self.attempts = InitAttempts(self.get_parameter('verify_retry_distance_m').value)
+        self._lock = threading.Lock()
+        self._busy = False
+        self._own_stamps = set()
+        self._external_timer = None
+        self._odom_at_start: Optional[Pose2] = None
         if self.verify_by_scan:
+            self.create_subscription(
+                PoseWithCovarianceStamped, self.initialpose_topic, self._on_initialpose, 10)
             latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL,
                                  reliability=ReliabilityPolicy.RELIABLE)
             self.create_subscription(
@@ -389,9 +417,8 @@ class GNSSAMCLInitializer(Node):
     def _on_scan(self, msg: LaserScan) -> None:
         self._scan = msg
 
-    def _scan_points_base(self) -> Optional[np.ndarray]:
-        """最新のスキャンの点 (base 座標)。スキャンか、base -> センサの TF がなければ None。"""
-        scan = self._scan
+    def _scan_points_base(self, scan: Optional[LaserScan]) -> Optional[np.ndarray]:
+        """スキャンの点 (base 座標)。スキャンか、base -> センサの TF がなければ None。"""
         if scan is None:
             return None
         try:
@@ -404,19 +431,142 @@ class GNSSAMCLInitializer(Node):
             np.asarray(scan.ranges, dtype=float), scan.angle_min, scan.angle_increment, scan.range_min,
             scan.range_max, (0.0, 0.0, 0.0), sensor, self.get_parameter('verify_max_points').value)
 
-    def _verified(self, msg: PoseWithCovarianceStamped, yaw: float) -> PoseWithCovarianceStamped:
-        """GNSS の姿勢の周りでスキャンを地図に照合し、姿勢と共分散を置き換える。"""
-        gnss = (msg.pose.pose.position.x, msg.pose.pose.position.y, yaw)
-        result = verify_pose(self._occupancy, self._scan_points_base(), gnss, self.verify_config)
-        msg.pose.pose.position.x = float(result.pose[0])
-        msg.pose.pose.position.y = float(result.pose[1])
-        msg.pose.pose.orientation = quaternion_from_yaw(float(result.pose[2]))
-        msg.pose.covariance = covariance_6x6(result.std_m, result.std_yaw_rad)
+    def _maybe_attempt(self, odom: Odometry) -> None:
+        """GNSS の位置の周りの照合を、別のスレッドで始める (照合の間もスキャンと TF を受け続ける)。"""
+        xy = (odom.pose.pose.position.x, odom.pose.pose.position.y)
+        with self._lock:
+            if self._busy or not self.attempts.should_attempt(xy):
+                return
+            self._busy = True
+        msg, yaw = self._initialpose_msg_from_odom(odom)
+        threading.Thread(target=self._attempt, args=(msg, yaw, self._scan), daemon=True).start()
+
+    def _attempt(self, msg: PoseWithCovarianceStamped, yaw: float, scan: Optional[LaserScan]) -> None:
+        try:
+            gnss = (msg.pose.pose.position.x, msg.pose.pose.position.y, yaw)
+            result = verify_pose(self._occupancy, self._scan_points_base(scan), gnss, self.verify_config)
+            matched = result.reason == 'matched'
+            with self._lock:
+                if self.attempts.decided:
+                    return
+                publish_fallback = self.attempts.record(gnss[:2], matched)
+                attempt = self.attempts.attempts
+                if matched:
+                    pose, stamp = self._propagated(result.pose, scan)
+                    self._publish_initial_pose(self._pose_msg(pose, stamp, result.std_m, result.std_yaw_rad))
+                elif publish_fallback:
+                    msg.pose.covariance = covariance_6x6(result.std_m, result.std_yaw_rad)
+                    self._publish_initial_pose(msg)
+            log = self._events.info if matched else self._events.warn
+            log('localization.initial_pose_verified', reason=result.reason, attempt=attempt,
+                published=matched or publish_fallback,
+                gnss_x=round(gnss[0], 3), gnss_y=round(gnss[1], 3), gnss_yaw=round(gnss[2], 3),
+                x=round(result.pose[0], 3), y=round(result.pose[1], 3), yaw=round(result.pose[2], 3),
+                ratio=round(result.ratio, 3), margin=round(result.margin, 3), std_m=result.std_m)
+        finally:
+            with self._lock:
+                self._busy = False
+
+    def _on_initialpose(self, msg: PoseWithCovarianceStamped) -> None:
+        """外から与えられた初期姿勢に従い、GNSS による初期化をやめる。少し後に、その姿勢の周りを照合する。
+
+        起動してから external_accept_distance_m 動いた後に来る初期姿勢 (走行中の監督の復旧など) には関わらない。
+        """
+        if (msg.header.stamp.sec, msg.header.stamp.nanosec) in self._own_stamps:
+            return
+        moved = self._moved_since_start()
+        if moved > self.get_parameter('external_accept_distance_m').value:
+            return
+        with self._lock:
+            self.attempts.take_external()
+        yaw = yaw_from_quaternion(msg.pose.pose.orientation)
+        self._events.info('localization.initial_pose_external', x=round(msg.pose.pose.position.x, 3),
+                          y=round(msg.pose.pose.position.y, 3), yaw=round(yaw, 3))
+        if self._external_timer is not None:
+            self._external_timer.cancel()
+            self.destroy_timer(self._external_timer)
+        self._external_timer = self.create_timer(
+            self.get_parameter('external_check_delay_sec').value, self._on_external_timer)
+
+    def _moved_since_start(self) -> float:
+        """起動してから (最初にオドメトリを読めてから) 動いた距離。読めなければ 0。"""
+        now = self._lookup_pose(self.get_parameter('verify_odom_frame').value, Time())
+        if now is None:
+            return 0.0
+        if self._odom_at_start is None:
+            self._odom_at_start = now[0]
+        return math.hypot(now[0][0] - self._odom_at_start[0], now[0][1] - self._odom_at_start[1])
+
+    def _on_external_timer(self) -> None:
+        self._external_timer.cancel()
+        threading.Thread(target=self._check_external, args=(self._scan,), daemon=True).start()
+
+    def _check_external(self, scan: Optional[LaserScan]) -> None:
+        """外から与えられた姿勢 (今の map -> base) の周りを狭く照合し、はっきり違えば合った姿勢へ直す。
+
+        合わない・決めきれないときは、与えられた姿勢のままにする (GNSS で上書きしない)。
+        """
+        center = self._map_pose(scan)
+        if center is None:
+            self._events.warn('localization.initial_pose_external_checked', reason='no_tf')
+            return
+        cfg = dataclasses.replace(
+            self.verify_config, search_range_m=self.get_parameter('external_search_range_m').value,
+            search_yaw_rad=self.get_parameter('external_search_yaw_rad').value)
+        result = verify_pose(self._occupancy, self._scan_points_base(scan), center, cfg)
+        shift = math.hypot(result.pose[0] - center[0], result.pose[1] - center[1])
+        turn = abs(wrap_angle(result.pose[2] - center[2]))
+        corrected = result.reason == 'matched' and (
+            shift > cfg.matched_std_m or turn > cfg.matched_std_yaw_rad)
+        if corrected:
+            pose, stamp = self._propagated(result.pose, scan)
+            with self._lock:
+                self._publish_initial_pose(self._pose_msg(pose, stamp, result.std_m, result.std_yaw_rad))
+        fields = {}
+        gnss = self.latest_valid_odom
+        if gnss is not None:
+            fields['gnss_diff_m'] = round(math.hypot(
+                gnss.pose.pose.position.x - result.pose[0], gnss.pose.pose.position.y - result.pose[1]), 3)
         log = self._events.info if result.reason == 'matched' else self._events.warn
-        log('localization.initial_pose_verified', reason=result.reason,
-            gnss_x=round(gnss[0], 3), gnss_y=round(gnss[1], 3), gnss_yaw=round(gnss[2], 3),
-            x=round(result.pose[0], 3), y=round(result.pose[1], 3), yaw=round(result.pose[2], 3),
-            ratio=round(result.ratio, 3), margin=round(result.margin, 3), std_m=result.std_m)
+        log('localization.initial_pose_external_checked', reason=result.reason, corrected=corrected,
+            x=round(center[0], 3), y=round(center[1], 3), yaw=round(center[2], 3),
+            shift_m=round(shift, 3), turn_rad=round(turn, 3), ratio=round(result.ratio, 3),
+            margin=round(result.margin, 3), **fields)
+
+    def _lookup_pose(self, parent: str, stamp) -> Optional[Tuple[Pose2, object]]:
+        try:
+            t = self.tf_buffer.lookup_transform(
+                parent, self.get_parameter('verify_base_frame').value, stamp)
+        except TransformException:
+            return None
+        pose = (t.transform.translation.x, t.transform.translation.y, yaw_from_quaternion(t.transform.rotation))
+        return pose, t.header.stamp
+
+    def _map_pose(self, scan: Optional[LaserScan]) -> Optional[Pose2]:
+        """スキャンの時刻 (なければ最新) の map -> base。"""
+        found = self._lookup_pose(self.map_frame, Time.from_msg(scan.header.stamp)) if scan else None
+        found = found or self._lookup_pose(self.map_frame, Time())
+        return found[0] if found else None
+
+    def _propagated(self, pose: Pose2, scan: Optional[LaserScan]):
+        """スキャンの時刻の姿勢を、オドメトリで最新の時刻へ進める。(姿勢, 時刻)。TF がなければそのまま。"""
+        if scan is None:
+            return pose, self.get_clock().now().to_msg()
+        odom = self.get_parameter('verify_odom_frame').value
+        at_scan = self._lookup_pose(odom, Time.from_msg(scan.header.stamp))
+        now = self._lookup_pose(odom, Time())
+        if at_scan is None or now is None:
+            return pose, scan.header.stamp
+        return propagate(pose, at_scan[0], now[0]), now[1]
+
+    def _pose_msg(self, pose: Pose2, stamp, std_m: float, std_yaw_rad: float) -> PoseWithCovarianceStamped:
+        msg = PoseWithCovarianceStamped()
+        msg.header.stamp = stamp
+        msg.header.frame_id = self.map_frame
+        msg.pose.pose.position.x = float(pose[0])
+        msg.pose.pose.position.y = float(pose[1])
+        msg.pose.pose.orientation = quaternion_from_yaw(float(pose[2]))
+        msg.pose.covariance = covariance_6x6(std_m, std_yaw_rad)
         return msg
 
     def _publish_initial_pose(self, msg: PoseWithCovarianceStamped) -> None:
@@ -424,15 +574,13 @@ class GNSSAMCLInitializer(Node):
 
         EKF の初期共分散は大きいため、EKF にも送らないと AMCL の初期値 (原点) に引かれる。
         """
+        self._own_stamps.add((msg.header.stamp.sec, msg.header.stamp.nanosec))
         self.initialpose_pub.publish(msg)
         if self.publish_set_pose:
             self.set_pose_pub.publish(msg)
 
-    def publish_initialpose_from_odom(self, odom: Optional[Odometry]) -> None:
-        if odom is None:
-            self.get_logger().warn('No valid odometry available for initialpose')
-            return
-
+    def _initialpose_msg_from_odom(self, odom: Odometry):
+        """GNSS の位置と向き (なければ固定の向き) の初期姿勢。(メッセージ, 向き)。共分散は呼び出し側で入れる。"""
         msg = PoseWithCovarianceStamped()
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.header.frame_id = self.map_frame
@@ -462,10 +610,13 @@ class GNSSAMCLInitializer(Node):
 
         msg.pose.pose.orientation = quaternion_from_yaw(
             yaw)
+        return msg, yaw
 
-        if self.verify_by_scan:
-            self._publish_initial_pose(self._verified(msg, yaw))
+    def publish_initialpose_from_odom(self, odom: Optional[Odometry]) -> None:
+        if odom is None:
+            self.get_logger().warn('No valid odometry available for initialpose')
             return
+        msg, yaw = self._initialpose_msg_from_odom(odom)
 
         # If operator requested overriding the full pose covariance via parameter,
         # use that 6x6 (36-element row-major) array directly.
@@ -534,6 +685,8 @@ class GNSSAMCLInitializer(Node):
 
         # Reset processing state; do not attempt an immediate publish here.
         self.state.reset()
+        with self._lock:
+            self.attempts.reset()
         # Clear stored latest odom so re-processing starts fresh
         self.latest_valid_odom = None
 

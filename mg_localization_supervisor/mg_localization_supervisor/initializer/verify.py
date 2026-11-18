@@ -7,6 +7,7 @@ AMCL が自分で戻るまで、ずれたまま走る。GNSS の位置の周り�
   - 合う姿勢がない・似た一致の姿勢が離れて並ぶ・点や地図が足りない (low_ratio / ambiguous / too_few_points / no_map)
     ときは、GNSS の位置を広い共分散で使う (AMCL の粒子を広く撒いて、AMCL に選ばせる)
 """
+import math
 from dataclasses import dataclass
 from typing import Optional
 
@@ -22,12 +23,19 @@ from localization_supervisor.core.plugins import resolve_params
 @dataclass
 class VerifyConfig:
     search_range_m: float = 4.0
-    search_yaw_rad: float = 0.5
-    step_xy_m: float = 0.25
-    step_yaw_rad: float = 0.05
-    # 距離場を作る範囲は、探す範囲にこれを足したもの (スキャンの点が届く距離)
+    # 起動の直後は GNSS の向きが定まらないので、向きは全周を探す
+    search_yaw_rad: float = math.pi
+    step_xy_m: float = 0.5
+    step_yaw_rad: float = 0.1
+    # 距離場を作る範囲は、探す範囲にこれを足したもの。これより遠い点は照合に使わない
     scan_radius_m: float = 15.0
-    tolerance_m: float = 0.3
+    # 線の太い地図では、広い許容距離だと少しずれた姿勢も合ってしまい、見分けられない
+    tolerance_m: float = 0.15
+    # 粗い格子の許容距離と、絞り込む候補の数 (CorrelativeMatcher の coarse_tolerance_m・coarse_candidates)
+    coarse_tolerance_m: float = 0.4
+    coarse_candidates: int = 8
+    # 点を地図の外へ追い出す姿勢を、残った点だけで合ったとみなさない
+    outside_is_miss: bool = True
     min_points: int = 30
     min_ratio: float = 0.5
     ambiguity_margin: float = 0.1
@@ -58,14 +66,19 @@ def verify_pose(
 
     if occupancy is None:
         return fallback('no_map')
-    if points_base is None or points_base.shape[0] < cfg.min_points:
+    if points_base is None:
+        return fallback('too_few_points')
+    points_base = points_base[np.hypot(points_base[:, 0], points_base[:, 1]) <= cfg.scan_radius_m]
+    if points_base.shape[0] < cfg.min_points:
         return fallback('too_few_points')
     field = build_local_distance_field(
         occupancy, center[0], center[1], cfg.search_range_m + cfg.scan_radius_m)
     if field is None:
         return fallback('no_map')
     matcher = CorrelativeMatcher('initializer', resolve_params(CorrelativeMatcher, {
-        'tolerance_m': cfg.tolerance_m, 'min_points': cfg.min_points, 'separation_m': cfg.separation_m},
+        'tolerance_m': cfg.tolerance_m, 'min_points': cfg.min_points, 'separation_m': cfg.separation_m,
+        'coarse_tolerance_m': cfg.coarse_tolerance_m, 'coarse_candidates': cfg.coarse_candidates,
+        'outside_is_miss': cfg.outside_is_miss},
         'initializer'))
     window = SearchWindow(cfg.search_range_m, cfg.step_xy_m, cfg.search_yaw_rad, cfg.step_yaw_rad)
     peaks = matcher.match(field, points_base, center, window, max_peaks=2)

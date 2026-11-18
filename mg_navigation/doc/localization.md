@@ -27,7 +27,7 @@ EKF の周期は `mg_drivers/params/ekf_global.yaml` の `frequency`。
 | `amcl_gate_arbiter` | AMCL の入/切を、要求元ごとに調停する ([mg_localization_supervisor](../../mg_localization_supervisor/README.md#amcl-のゲートの調停-amcl_gate_arbiter))。ゲートを操作するのは、このノードだけ |
 | `amcl_publish_controller_node` | `/amcl_pose_origin` を `/amcl_pose` へ中継する (`mg_drivers` の `generic_publish_controller_node.py`)。SetBool で止めると、AMCL が EKF に入らない |
 | `slam_gnss_nav_bridge` | `/navpvt` を、`gnss_transform.yaml` で map 座標に直して `/odom/gps` に出す。アンテナの位置を車体の中心に補正し、測位の質に応じた分散を付ける ([slam_gnss_2d](../../slam_gnss_2d/README.md)) |
-| `gnss_amcl_initializer_node` | 起動時 (と再初期化の要求時) に、精度の良い `/odom/gps` から `/initialpose` (AMCL) と `/set_pose` (EKF) を出して初期化する ([mg_localization_supervisor](../../mg_localization_supervisor/README.md#gnss_amcl_initializer_node)) |
+| `gnss_amcl_initializer_node` | 起動時 (と再初期化の要求時) に、精度の良い `/odom/gps` から `/initialpose` (AMCL) と `/set_pose` (EKF) を出して初期化する。`initializer_verify` が `true` なら、走りながら GNSS の周りをスキャンと地図で照合し、合った姿勢で決める。外から `/initialpose` を与えられたら、それに従う ([mg_localization_supervisor](../../mg_localization_supervisor/README.md#gnss_amcl_initializer_node)) |
 | `amcl_watchdog_node` | AMCL の共分散が大きい状態が続いたら、`gnss_amcl_initializer_node` に再初期化を要求する ([下記](#amcl_watchdog_node)) |
 | `localization_supervisor_node` | AMCL・GNSS・EKF・スキャンと地図を、設定で組み合わせた判定で見比べ、自己位置のずれを検知して、切り離し・再初期化で復旧する(既定の監視)。計画用地図の障害物に入っているかも出す ([localization_supervisor](../../localization_supervisor/doc/supervisor_node.md)、このロボットでの設定は [mg_localization_supervisor](../../mg_localization_supervisor/README.md#監督ノード-localization_supervisor_node)) |
 | `ekf_global_node` | ホイールオドメトリの速度、AMCL の位置・yaw、GNSS の位置を融合する (`mg_drivers/params/ekf_global.yaml`) |

@@ -170,17 +170,29 @@ EKF の初期共分散が大きく、AMCL の初期値 (原点) に引かれる�
 | `max_consecutive_bad` | 条件を満たさない測位がこの回数続いたら、初期化をあきらめる (`request_reinit` でやり直せる) |
 | `odom_age_timeout_sec` / `ignore_odom_age` | 測位の古さの確認 |
 | `verify_by_scan` | GNSS の姿勢の周りで今のスキャンを地図に照合して、初期姿勢を確かめる (下記)。launch の `initializer_verify` で渡す |
-| `verify_map_topic`・`verify_scan_topic`・`verify_base_frame` | 照合に使う地図 (AMCL と同じ地図)・スキャン・base の frame |
-| `verify.*` | 照合の範囲と刻み、合うとみなす一致率 (`min_ratio`)、似た一致の候補との差 (`ambiguity_margin`)、合ったとき・確かめられないときの標準偏差 (`initializer/verify.py` の `VerifyConfig`) |
+| `verify_map_topic`・`verify_scan_topic`・`verify_base_frame`・`verify_odom_frame` | 照合に使う地図 (AMCL と同じ地図)・スキャン・base の frame・照合の間に進んだ分を足すオドメトリの frame |
+| `verify_retry_distance_m` | 合うまで、GNSS の位置がこれだけ動くごとに照合し直す |
+| `external_check_delay_sec`・`external_search_range_m`・`external_search_yaw_rad` | 外から初期姿勢を与えられてから照合するまでの時間と、その姿勢の周りを探す範囲 |
+| `external_accept_distance_m` | 外から与えられた初期姿勢に従うのは、起動してからこれだけ動くまで (スタート地点で止まって与える想定) |
+| `verify.*` | 照合の範囲と刻み、一致とみなす距離 (粗い格子の `coarse_tolerance_m` と細かい格子の `tolerance_m`)、絞り込む候補の数、合うとみなす一致率 (`min_ratio`)、似た一致の候補との差 (`ambiguity_margin`)、合ったとき・確かめられないときの標準偏差 (`initializer/verify.py` の `VerifyConfig`) |
 
 実際の値は `config/initializer.yaml` が正 (書いていないものはノードの既定値)。
 
-GNSS の位置は、地図と GNSS の位置合わせのずれ (場所で変わる) を含む。ずれた位置へそのまま初期化すると、AMCL が自分で戻るまで、ずれたまま走る ([異常パターンの台帳](../mg_navigation/doc/localization_failure_ledger.md) の 9)。`verify_by_scan` が `true` のとき:
+GNSS の位置は、地図と GNSS の位置合わせのずれ (場所で変わる) を含む。ずれた位置へそのまま初期化すると、AMCL が自分で戻るまで、ずれたまま走る ([異常パターンの台帳](../mg_navigation/doc/localization_failure_ledger.md) の 9)。起動の直後は GNSS の向きも定まらず、スタート地点で止まって推論する時間もない。`verify_by_scan` が `true` のとき、初期姿勢は走りながら (遠隔操作でも自律でも) 決める。
 
-- はっきり合う姿勢が 1 つ見つかれば、その姿勢を小さい共分散で送る。
-- 合う姿勢がない・似た一致の姿勢が離れて並ぶ・点や地図が足りないときは、GNSS の姿勢を広い共分散で送る (AMCL の粒子を広く撒き、AMCL に選ばせる)。
-- 結果はイベント `localization.initial_pose_verified` (`reason`: `matched`・`low_ratio`・`ambiguous`・`too_few_points`・`no_map`、GNSS と送った姿勢、一致率、次点との差) で出す。
-- 処理の負荷: 初期化のときに 1 回だけ照合する (探す範囲に上限がある)。正常な走行中は変わらない。
+- GNSS の精度が条件を満たしたら、GNSS の位置の周りで、向きは全周を、今のスキャンを地図に照合する (別のスレッドで動き、照合の間もスキャンと TF を受ける)。
+- はっきり合う姿勢が 1 つ見つかれば、その姿勢を小さい共分散で送り、初期化を終える。照合したスキャンの時刻から送るまでに進んだ分は、オドメトリで足す。
+- 合わない・似た一致の姿勢が離れて並ぶ・点や地図が足りないときは、最初の 1 回だけ、GNSS の姿勢を広い共分散で送る (AMCL の粒子を広く撒き、AMCL に選ばせる)。その後も、GNSS の位置が `verify_retry_distance_m` 動くごとに照合し直し、合えばその姿勢で上書きして終える。測位が悪い区間ではあきらめずに待つ (`max_consecutive_bad` は使わない)。
+- 外から `/initialpose` を与えられたら (スタート地点の近くで起動し直したときなど)、それに従い、GNSS による初期化をやめる。`external_check_delay_sec` の後、与えられた姿勢の周りを狭く照合し、はっきり合った姿勢が離れていれば、その姿勢へ直す。合わない・決めきれないときは、与えられた姿勢のままにする (GNSS で上書きしない)。GNSS の照合で決まった後でも従う。起動してから `external_accept_distance_m` 動いた後の `/initialpose` (走行中の監督の復旧など) には関わらない。
+- 照合の工夫 (根拠は、実機の地図とシミュレーションの地図での照合の試し):
+  - 実機の地図は線が太く、植え込みは、点の散らばる幅 1〜2 m の帯として写る。広い許容距離では少しずれた姿勢も合ってしまうので、一致とみなす距離を狭くする。
+  - 狭い許容距離のままだと、粗い格子では本当の姿勢の山を取りこぼす (向きの刻みの分だけ、遠い点が大きくずれる)。粗い格子だけ許容距離を広げて候補を多めに拾い、細かい格子で狭い許容距離で絞り込む。
+  - 点を地図の外へ追い出す姿勢は、残った少ない点だけで合ったように見えるので、地図の外の点は不一致に数える。
+- 結果はイベントで出す。
+  - `localization.initial_pose_verified`: GNSS の周りの照合。`reason` (`matched`・`low_ratio`・`ambiguous`・`too_few_points`・`no_map`)、何回目か、送ったか、GNSS と照合の姿勢、一致率、次点との差。
+  - `localization.initial_pose_external`: 外から初期姿勢を受けた。
+  - `localization.initial_pose_external_checked`: その姿勢の周りの照合。直したか、ずれの大きさ、GNSS との差。
+- 処理の負荷: 照合は、初期姿勢が決まるまで、GNSS の位置が一定の距離を動くごとに 1 回 (開発 PC で 1 回 0.1 s 程度、例)。決まった後と、正常な走行中は 0。
 - 戻し方: `initializer_verify:=false` (既定)。
 - 地図を切り替えたときの照合は、まだしない (初期化ノードは地図の切り替えを受け取っていない)。
 
@@ -193,6 +205,7 @@ make test pkg=mg_localization_supervisor
 - `test_config.py`: 設定ファイルが読み込め、起動するノードの名前・ゲートの要求元が合っている
 - `test_event_format.py`: フレームワークが出すイベントが、このプロジェクトのイベントの規約 ([doc/monitoring.md](../doc/monitoring.md)) と同じ書式で、`mg_utils.event_log.parse_event` で読める
 - `test_supervision_config.py`: `supervision.yaml` とすべてのプロファイルがフレームワークの検証を通り、監督ノードで動かせる、入力のトピックが AMCL の設定と合う、footprint と計画用地図がコストマップと合う、イベントがプロジェクトのイベントログで出る
+- `test_initializer_verify.py`・`test_initializer_attempts.py`: 初期化の照合 (ずれた GNSS の位置を直す・決めきれなければ広い共分散・植え込みの点の帯で誤った姿勢に決まらない) と、決まるまでの段取り (照合し直す間隔・外からの初期姿勢・照合の間に進んだ分)
 - `test_recovery_config.py`: 自動復旧の構成(候補・評価・送り先・対処)、`pause_request` の変換、`gnss_fallback` が以前の初期化ノードと同じ条件・共分散で、すぐ GNSS の位置で初期化し直し、以前に無かった対処を無効にする、`variance_scale` のトピックが GNSS のブリッジの設定と合う、GNSS のずれは `submap_amcl` の `vouch` と `isolate_only` で切り離すだけにする
 
 ## 依存
