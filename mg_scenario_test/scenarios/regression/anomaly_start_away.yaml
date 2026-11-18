@@ -1,0 +1,44 @@
+version: "2.0"
+name: anomaly_start_away
+description: >
+  起動の既定の流れ: スタート地点から離れた所で、向きも違えて起動し、初期姿勢を外から与えない。
+  自己位置は GNSS などをもとに合わせ込む。GNSS の変換は anomaly_gnss_transform と同じ一律のずれ
+  (平行移動 3 m と回転 0.02 rad)。起動の直後は GNSS の向きが定まらない。
+  起動からシーケンサの開始までは、スタート地点へ向かう時間の代わりに少し待つ。
+  スタート地点の近くで初期姿勢を与えて起動し直す流れは anomaly_start_initialpose。
+  構成は LOCALIZATION_CONFIG で選ぶ。対照は anomaly_baseline。
+profile: mg01
+world: warehouse
+tags: [localization, anomaly, mg_sequencer, known_issue]
+timeout: 600
+
+record_topics: [/sim_scenario_test/entity_poses, /amcl_pose_origin, /odom/gps, /ekf_global_odom, /odom, /localization/status, /cmd_vel, /initialpose, /rosout]
+
+sim_args:
+  sensor_fault_file: "pkg://mg_scenario_test/scenarios/data/faults/anomaly_baseline.yaml"
+  spawn_x: "-2.0"
+  spawn_y: "2.0"
+  spawn_yaw: "-1.2"
+
+stack_args:
+  map_path: "pkg://mg_scenario_test/scenarios/data/map_realistic/localization.yaml"
+  gnss_transform_file: "pkg://mg_scenario_test/scenarios/data/anomaly_gnss_transform/gnss_transform.yaml"
+
+setup:
+  - delay: { sec: 10.0 }
+
+monitors:
+  # 合否の上限は置かず、構成どうしの比較のために値を残す
+  - pose_error: { deviation_m: 1.0 }
+  - max_stop_duration: { max_stop_sec: 60.0, from_goal_started: 2, until_goal_reached: 8 }
+  - map_overlap: { max_overlap_sec: 60.0 }
+  - localization_hold: { ends_released: false }
+
+run:
+  mg_sequencer:
+    waypoints_file: "{world.waypoints}"
+    waypoint_timeout_sec: 200.0
+
+expect:
+  - reached_all
+  - time_limit: { sec: 600 }
