@@ -106,6 +106,18 @@ class SpeedLimitCheck(Detector):
 `match(field, points_base, center, window, max_peaks) -> List[MatchPeak]`。点群 (base の座標) が地図の距離場に最もよく合う姿勢を、一致の良い順に、互いに離れたものを最大 `max_peaks` 個返す。探す範囲は `SearchWindow` (位置と向きの範囲と刻み)。
 標準は `correlative` (numpy の総当たり)。別の実装 (C++ のマッチャーなど) に差し替えるには、`recovery.matcher.type` に `パッケージ.モジュール:クラス` を書く。
 
+`correlative` のパラメータ (既定値は `core/matcher/correlative.py` の `PARAMS`):
+
+| パラメータ | 内容 |
+| :--- | :--- |
+| `tolerance_m` | 占有セルからこの距離以内の点を一致とする |
+| `min_points` | 距離場の中にある点がこれ未満なら判断しない |
+| `separation_m` | 上位の候補どうしが離れているべき距離 |
+| `refine_ratio` | 絞り込みで格子の刻みを何分の 1 にするか |
+| `coarse_tolerance_m` | 粗い格子での一致の距離 (0 なら `tolerance_m`)。粗い格子は本当の姿勢から刻みの半分ずれ、遠い点ほど大きくずれるので、`tolerance_m` が狭いと本当の姿勢の山を取りこぼす。粗い格子だけ広げると取りこぼさない |
+| `coarse_candidates` | 絞り込む粗い候補の数 (0 なら `max_peaks`)。広い `coarse_tolerance_m` では似た候補が増えるので、多めに拾って絞り込み、絞り込んだ後に互いに離れたものを `max_peaks` 個返す |
+| `outside_is_miss` | 距離場の外の点を不一致に数える。数えないと、点を外へ追い出す姿勢が、残った少ない点だけで一致率が高く見える |
+
 ## 再初期化の送り先 (`PoseResetter`)
 
 `ros/resetters/base.py`。`reset(candidate)` で、選んだ姿勢を推定器に送る。コンストラクタは `(名前, パラメータ, ノード, 自分のメッセージの目印)`。
