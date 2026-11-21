@@ -73,6 +73,8 @@ INIT_MATCH_M = 5.0
 MAP_OFFSET_WINDOW_SEC = 60.0
 # オドメトリの欠けとみなす、隣の時刻との間隔 [s]
 ODOM_GAP_SEC = 0.5
+# どのオドメトリも欠けている区間をつなぐ拘束の σ (x [m], y [m], yaw [rad])
+UNCOVERED_SIGMA = (5.0, 5.0, 1.0)
 # 切り離しを判断するのに要る、直近の観測の数
 GATE_MIN_SAMPLES = 3
 
@@ -254,6 +256,10 @@ class WindowEstimator:
                 self.edges[name][key] = (prev, delta, np.array(sig))
                 self.scale[name][key] = 1.0
             delta = self.motion[self.ref].at(self.key_time[prev]).between(self.motion[self.ref].at(t))
+            if not any(key in e for e in self.edges.values()):
+                # どのオドメトリも欠けている区間は、弱い拘束でつなぐ (つながらない姿勢は解けない)
+                self.edges[self.ref][key] = (prev, delta, np.array(UNCOVERED_SIGMA))
+                self.scale[self.ref][key] = 1.0
             self.travelled += math.hypot(delta.x(), delta.y())
             self.estimate[key] = self.estimate[prev].compose(delta)
         self.keys.append(key)
