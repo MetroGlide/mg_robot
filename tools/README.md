@@ -48,6 +48,7 @@ tools/
     ├── loc_recorder.py              # 再生評価の出力をシミュレーション時刻で rosbag2 に記録する
     ├── fault_injector.py            # 再生評価で、センサ入力に故障を注入する (--faults。[doc](./doc/localization_evaluation.md#センサ故障の注入))
     ├── eval_localization_offline.py # 自己位置の監督を、再生評価の記録でオフライン評価する ([doc](./doc/localization_evaluation.md#監督のオフライン評価))
+    ├── eval_window_estimator.py     # 窓つきの推定器 (因子グラフ) の試作を、再生評価の記録の入力で回し、EKF と真値との誤差で比べる
     ├── loc_dataset.py               # データセット定義 (datasets/localization/) の読込
     ├── compare_localization.py      # 変種ごとの評価結果の比較表
     ├── run_localization_set.sh      # 評価セット (datasets/localization/sets/) の全条件で変種を再生評価する
