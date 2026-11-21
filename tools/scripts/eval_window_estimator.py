@@ -11,6 +11,8 @@ eval_window_estimator.py
   amcl         : AMCL の最新の姿勢に、その後のオドメトリの動きを足したもの
   window_gnss  : 窓つきの推定器 (オドメトリ + GNSS)
   window_full  : 窓つきの推定器 (オドメトリ + GNSS + AMCL)
+  window_full_lidar : 上に LiDAR オドメトリ (--lidar-odom) を足したもの。ホイールと LiDAR オドメトリの動きが
+                 食い違ったら、絶対の情報源と合わない方を弱め、合う方を基準にする
 
 推定器の作り:
   - キーフレームは絶対の観測 (GNSS、AMCL) の時刻ごとに置き、連続するキーフレームをオドメトリの因子でつなぐ。
@@ -69,6 +71,8 @@ DEVIATION_M = 1.0
 INIT_MATCH_M = 5.0
 # 地図の座標の真値を作るときの、ゆっくり変わる成分の窓 [s]
 MAP_OFFSET_WINDOW_SEC = 60.0
+# オドメトリの欠けとみなす、隣の時刻との間隔 [s]
+ODOM_GAP_SEC = 0.5
 # 切り離しを判断するのに要る、直近の観測の数
 GATE_MIN_SAMPLES = 3
 
@@ -127,6 +131,14 @@ class Odometry:
         self.xy = arr[:, 1:3]
         self.c = np.cos(arr[:, 3])
         self.s = np.sin(arr[:, 3])
+
+    def covers(self, t0: float, t1: float) -> bool:
+        """t0〜t1 がこのオドメトリの範囲にあり、間に GAP_SEC を超える欠けがないか。"""
+        if t0 < self.t[0] or t1 > self.t[-1]:
+            return False
+        i, j = np.searchsorted(self.t, [t0, t1])
+        seg = self.t[max(i - 1, 0):j + 1]
+        return bool(len(seg) >= 2 and np.max(np.diff(seg)) <= ODOM_GAP_SEC)
 
     def at(self, t: float) -> gtsam.Pose2:
         i = int(np.clip(np.searchsorted(self.t, t), 1, len(self.t) - 1))
@@ -195,15 +207,18 @@ class Measurement:
 
 
 class WindowEstimator:
-    def __init__(self, args: argparse.Namespace, odom: Odometry, use_amcl: bool) -> None:
+    def __init__(self, args: argparse.Namespace, motion: Dict[str, Odometry], use_amcl: bool) -> None:
         self.args = args
-        self.odom = odom
+        self.motion = motion
+        # 絶対の情報源の動きを比べ、解き直しの間の姿勢を進めるオドメトリ。ホイールが外れたら LiDAR に替える
+        self.ref = "wheel"
+        self.lidar_args = lidar_args(args)
         self.use_amcl = use_amcl
         self.keys: List[int] = []
         self.key_time: Dict[int, float] = {}
         self.key_dist: Dict[int, float] = {}
-        self.odom_edge: Dict[int, Tuple[int, gtsam.Pose2, np.ndarray]] = {}
-        self.odom_scale: Dict[int, float] = {}
+        self.edges: Dict[str, Dict[int, Tuple[int, gtsam.Pose2, np.ndarray]]] = {m: {} for m in motion}
+        self.scale: Dict[str, Dict[int, float]] = {m: {} for m in motion}
         self.estimate: Dict[int, gtsam.Pose2] = {}
         self.meas: List[Measurement] = []
         self.bias_keys: List[int] = []
@@ -220,6 +235,7 @@ class WindowEstimator:
         self.split_solves = 0
         self.gated_solves = {"gps": 0, "amcl": 0}
         self.odom_inflated_solves = 0
+        self.lidar_ref_solves = 0
         self.frozen_bias: Optional[np.ndarray] = None
 
     def _add_key(self, t: float) -> int:
@@ -227,14 +243,18 @@ class WindowEstimator:
         self.next_key += 1
         if self.keys:
             prev = self.keys[-1]
-            delta = self.odom.at(self.key_time[prev]).between(self.odom.at(t))
-            d = math.hypot(delta.x(), delta.y())
-            self.travelled += d
-            sig = [self.args.odom_sigma_xy + self.args.odom_sigma_per_m * d] * 2
-            sig.append(self.args.odom_sigma_yaw + self.args.odom_sigma_yaw_per_rad * abs(delta.theta())
-                       + self.args.odom_sigma_yaw_per_m * d)
-            self.odom_edge[key] = (prev, delta, np.array(sig))
-            self.odom_scale[key] = 1.0
+            for name, odom in self.motion.items():
+                if not odom.covers(self.key_time[prev], t):
+                    continue
+                delta = odom.at(self.key_time[prev]).between(odom.at(t))
+                d = math.hypot(delta.x(), delta.y())
+                a = self.args if name == "wheel" else self.lidar_args
+                sig = [a.odom_sigma_xy + a.odom_sigma_per_m * d] * 2
+                sig.append(a.odom_sigma_yaw + a.odom_sigma_yaw_per_rad * abs(delta.theta()) + a.odom_sigma_yaw_per_m * d)
+                self.edges[name][key] = (prev, delta, np.array(sig))
+                self.scale[name][key] = 1.0
+            delta = self.motion[self.ref].at(self.key_time[prev]).between(self.motion[self.ref].at(t))
+            self.travelled += math.hypot(delta.x(), delta.y())
             self.estimate[key] = self.estimate[prev].compose(delta)
         self.keys.append(key)
         self.key_time[key] = t
@@ -289,11 +309,12 @@ class WindowEstimator:
         key, pose, cov = self.pose_prior
         graph.add(gtsam.PriorFactorPose2(X(key), pose, gtsam.noiseModel.Gaussian.Covariance(cov)))
         for k in self.keys:
-            if k in self.odom_edge:
-                prev, delta, sig = self.odom_edge[k]
-                noise = robust(self.args.odom_kernel,
-                               gtsam.noiseModel.Diagonal.Sigmas(sig * self.odom_scale[k]), huber=True)
-                graph.add(gtsam.BetweenFactorPose2(X(prev), X(k), delta, noise))
+            for name in self.motion:
+                if k in self.edges[name]:
+                    prev, delta, sig = self.edges[name][k]
+                    noise = robust(self.args.odom_kernel,
+                                   gtsam.noiseModel.Diagonal.Sigmas(sig * self.scale[name][k]), huber=True)
+                    graph.add(gtsam.BetweenFactorPose2(X(prev), X(k), delta, noise))
             values.insert(X(k), self.estimate[k])
         for m in self.meas:
             if m.active:
@@ -329,11 +350,11 @@ class WindowEstimator:
             self.bias_factor.pop(j, None)
             self.bias_keys = keep_bias
         dropped = set(self.keys) - set(keep)
-        for k in dropped:
-            self.estimate.pop(k)
-            self.odom_edge.pop(k, None)
-            self.odom_scale.pop(k, None)
-        self.odom_edge.pop(keep[0], None)
+        for k in dropped | {keep[0]}:
+            self.estimate.pop(k, None) if k in dropped else None
+            for name in self.motion:
+                self.edges[name].pop(k, None)
+                self.scale[name].pop(k, None)
         self.meas = [m for m in self.meas if m.pose_idx not in dropped]
         self.keys = keep
 
@@ -355,7 +376,8 @@ class WindowEstimator:
         """観測 m を、時刻 t の位置に、オドメトリの動きで移したもの (GNSS は偏りを差し引く。
         bias を渡すとその値を、省略するとその観測の偏りの推定を使う)。"""
         heading = self.estimate[m.pose_idx].theta() if m.source == "gps" else m.z[2]
-        moved = self.odom.at(m.t).between(self.odom.at(t))
+        odom = self.motion[self.ref]
+        moved = odom.at(m.t).between(odom.at(t))
         c, s = math.cos(heading), math.sin(heading)
         xy = m.z[:2] + np.array([c * moved.x() - s * moved.y(), s * moved.x() + c * moved.y()])
         if m.source == "gps":
@@ -389,6 +411,56 @@ class WindowEstimator:
         sigma = math.sqrt(np.linalg.inv(first.whiten.T @ first.whiten)[0, 0]) * math.sqrt(2.0)
         return float(np.linalg.norm(d)) / sigma
 
+    def _weaken(self, name: str) -> bool:
+        """直近の区間の、そのオドメトリの因子を弱める。弱めたら True。"""
+        since = self.key_time[self.keys[-1]] - self.args.gate_sec
+        weakened = False
+        for k in self.keys:
+            if self.key_time[k] >= since and self.scale[name].get(k) == 1.0:
+                self.scale[name][k] = self.args.odom_inflate
+                weakened = True
+        if weakened:
+            self.odom_inflated_solves += 1
+        return weakened
+
+    def _odom_motion(self, name: str, t0: float, t1: float) -> Optional[np.ndarray]:
+        odom = self.motion[name]
+        if not odom.covers(t0, t1):
+            return None
+        d = odom.at(t0).between(odom.at(t1))
+        return np.array([d.x(), d.y()])
+
+    def _check_motion_sources(self, absolute: List[Measurement]) -> bool:
+        """ホイールと LiDAR オドメトリの動きが食い違ったら、絶対の情報源と合わない方を弱め、
+        合う方を基準にする。弱めたら True。"""
+        if "lidar" not in self.motion or len(self.keys) < 2:
+            return False
+        t1 = self.key_time[self.keys[-1]]
+        t0 = max(t1 - self.args.gate_sec, self.key_time[self.keys[0]])
+        w, l = self._odom_motion("wheel", t0, t1), self._odom_motion("lidar", t0, t1)
+        if w is None or l is None:
+            self.ref = "wheel" if l is None else self.ref
+            return False
+        dist = max(np.linalg.norm(w), np.linalg.norm(l), 1.0)
+        if np.linalg.norm(w - l) / (self.args.odom_sigma_per_m * dist) <= self.args.motion_min:
+            self.ref = "wheel"
+            return False
+        errors = {}
+        for name in ("wheel", "lidar"):
+            self.ref = name
+            vals = [self._motion_mismatch([m for m in absolute if m.source == s and m.active])
+                    for s in ("gps", "amcl")]
+            vals = [v for v in vals if v is not None]
+            errors[name] = min(vals) if vals else None
+        if None in errors.values():
+            self.ref = "wheel"
+            return False
+        bad = "wheel" if errors["wheel"] > errors["lidar"] else "lidar"
+        self.ref = "lidar" if bad == "wheel" else "wheel"
+        if self.ref == "lidar":
+            self.lidar_ref_solves += 1
+        return self._weaken(bad)
+
     def _set_trust(self, source: str, trusted: bool) -> None:
         self.trusted[source] = trusted
         for m in self._recent(source):
@@ -403,24 +475,18 @@ class WindowEstimator:
         位置の食い違いだけでは切り離さない (GNSS の偏りが、もう一方のゆっくりしたずれを吸収するため)。
         """
         gps, amcl = self._recent("gps"), self._recent("amcl")
+        changed = self._check_motion_sources(gps + amcl)
         mm = {"gps": self._motion_mismatch(gps), "amcl": self._motion_mismatch(amcl)}
         if None in mm.values():
-            return False
-        changed = False
+            return changed
         if all(self.trusted.values()):
             for s, o in (("amcl", "gps"), ("gps", "amcl")):
                 if mm[s] > self.args.motion_min and mm[s] > self.args.motion_ratio * mm[o]:
                     self._set_trust(s, False)
                     self.frozen_bias = self.bias[self.bias_keys[-1]].copy() if self.bias_keys else None
                     return True
-            if min(mm.values()) > self.args.motion_min:
-                since = self.key_time[self.keys[-1]] - self.args.gate_sec
-                for k in self.keys:
-                    if self.key_time[k] >= since and self.odom_scale.get(k) == 1.0:
-                        self.odom_scale[k] = self.args.odom_inflate
-                        changed = True
-                if changed:
-                    self.odom_inflated_solves += 1
+            if min(mm.values()) > self.args.motion_min and self._weaken(self.ref):
+                changed = True
             else:
                 disagree = self._pair_disagreement(gps, amcl)
                 if disagree is not None and disagree > self.args.gate_out:
@@ -447,7 +513,8 @@ class WindowEstimator:
     def pose_at(self, t: float) -> np.ndarray:
         """t までに置いた最新の姿勢に、その後のオドメトリの動きを足した姿勢。"""
         key = self.keys[-1]
-        p = self.estimate[key].compose(self.odom.at(self.key_time[key]).between(self.odom.at(t)))
+        odom = self.motion[self.ref]
+        p = self.estimate[key].compose(odom.at(self.key_time[key]).between(odom.at(t)))
         return np.array([p.x(), p.y(), p.theta()])
 
 
@@ -461,10 +528,10 @@ def first_initialized_amcl(data: Inputs, ekf_t: np.ndarray, ekf_p: np.ndarray) -
     raise SystemExit("エラー: 走行に使った姿勢と合う AMCL の姿勢がありません。")
 
 
-def run_window(args: argparse.Namespace, data: Inputs, odom: Odometry, use_amcl: bool,
+def run_window(args: argparse.Namespace, data: Inputs, motion: Dict[str, Odometry], use_amcl: bool,
                eval_times: np.ndarray, init_index: int) -> Tuple[np.ndarray, Dict[str, float]]:
     """観測を時刻順に入れ、solve_period ごとに解き直し、評価の時刻の姿勢と推定器の統計を返す。"""
-    est = WindowEstimator(args, odom, use_amcl)
+    est = WindowEstimator(args, motion, use_amcl)
     t_init, pose0, cov0 = data.amcl[init_index]
     est.initialize(t_init, pose0, cov0)
     events = [(t, "gps", (x, y, s)) for t, x, y, s in data.gps if t > t_init]
@@ -501,8 +568,32 @@ def run_window(args: argparse.Namespace, data: Inputs, odom: Odometry, use_amcl:
         "gate_gps_pct": 100.0 * est.gated_solves["gps"] / n,
         "gate_amcl_pct": 100.0 * est.gated_solves["amcl"] / n,
         "odom_weak_pct": 100.0 * est.odom_inflated_solves / n,
+        "lidar_ref_pct": 100.0 * est.lidar_ref_solves / n,
     }
     return out, stats
+
+
+def lidar_args(args: argparse.Namespace) -> argparse.Namespace:
+    """LiDAR オドメトリの因子の σ を、ホイールと同じ名前で引けるようにしたもの。"""
+    return argparse.Namespace(
+        odom_sigma_xy=args.lidar_sigma_xy, odom_sigma_per_m=args.lidar_sigma_per_m,
+        odom_sigma_yaw=args.lidar_sigma_yaw, odom_sigma_yaw_per_rad=args.lidar_sigma_yaw_per_rad,
+        odom_sigma_yaw_per_m=args.lidar_sigma_yaw_per_m)
+
+
+def read_lidar_odom(bags: List[str]) -> Optional[Odometry]:
+    """LiDAR オドメトリ (nav_msgs/Odometry、base_footprint の姿勢) の bag を読む。"""
+    rows = []
+    for bag in bags:
+        reader = open_reader(bag)
+        deserializer = MessageDeserializer({t.name: t.type for t in reader.get_all_topics_and_types()})
+        while reader.has_next():
+            topic, raw, _ = reader.read_next()
+            msg = deserializer.deserialize(topic, raw)
+            p = msg.pose.pose
+            rows.append((stamp_sec(msg.header.stamp), p.position.x, p.position.y,
+                         quaternion_to_yaw(p.orientation.x, p.orientation.y, p.orientation.z, p.orientation.w)))
+    return Odometry(sorted(rows)) if rows else None
 
 
 def amcl_hold(data: Inputs, odom: Odometry, eval_times: np.ndarray) -> np.ndarray:
@@ -568,7 +659,8 @@ def map_offset(reference: str) -> Tuple[np.ndarray, np.ndarray]:
 
 
 def evaluate_run(args: argparse.Namespace, bag: str, nodes: np.ndarray,
-                 offset: Optional[Tuple[np.ndarray, np.ndarray]]) -> Dict[str, Dict[str, float]]:
+                 offset: Optional[Tuple[np.ndarray, np.ndarray]],
+                 lidar: Optional[Odometry]) -> Dict[str, Dict[str, float]]:
     data = read_inputs(bag)
     odom = Odometry(data.odom)
     ekf_t, ekf_p = read_map_base_poses(bag, "map", "odom", "base_footprint")
@@ -588,8 +680,11 @@ def evaluate_run(args: argparse.Namespace, bag: str, nodes: np.ndarray,
     estimates = {"ekf": np.where((idx >= 0)[:, None], ekf_p[np.maximum(idx, 0)], np.nan),
                  "amcl": amcl_hold(data, odom, eval_times)}
     stats = {}
-    for name, use_amcl in (("window_gnss", False), ("window_full", True)):
-        estimates[name], stats[name] = run_window(args, data, odom, use_amcl, eval_times, init_index)
+    runs = [("window_gnss", False, {"wheel": odom}), ("window_full", True, {"wheel": odom})]
+    if lidar is not None:
+        runs.append(("window_full_lidar", True, {"wheel": odom, "lidar": lidar}))
+    for name, use_amcl, motion in runs:
+        estimates[name], stats[name] = run_window(args, data, motion, use_amcl, eval_times, init_index)
     rows = {}
     for name, est in estimates.items():
         rows[name] = {**metrics(est, gt, valid, "g"), **metrics(est, gt_map, valid, "m"), **stats.get(name, {})}
@@ -597,7 +692,7 @@ def evaluate_run(args: argparse.Namespace, bag: str, nodes: np.ndarray,
 
 
 COLUMNS = ["p50_m", "p95_m", "max_m", "dev_m", "p50_g", "p95_g", "max_g", "dev_g",
-           "jump_p99", "solve_ms_p95", "split_pct", "gate_gps_pct", "gate_amcl_pct", "odom_weak_pct"]
+           "jump_p99", "solve_ms_p95", "split_pct", "gate_gps_pct", "gate_amcl_pct", "odom_weak_pct", "lidar_ref_pct"]
 
 
 def format_table(results: List[Tuple[str, Dict[str, Dict[str, float]]]]) -> str:
@@ -657,6 +752,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--motion-min", type=float, default=3.0, help="原因とみなす、動きの差の下限 (精度で割った値)")
     p.add_argument("--odom-inflate", type=float, default=10.0,
                    help="AMCL と GNSS が合っていて、どちらもオドメトリと合わないとき、直近のオドメトリの σ に掛ける倍率")
+    p.add_argument("--lidar-odom", nargs="*", default=[],
+                   help="LiDAR オドメトリの bag (指定すると window_full_lidar も比べる)")
+    p.add_argument("--lidar-sigma-xy", type=float, default=0.02)
+    p.add_argument("--lidar-sigma-per-m", type=float, default=0.03)
+    p.add_argument("--lidar-sigma-yaw", type=float, default=0.005)
+    p.add_argument("--lidar-sigma-yaw-per-rad", type=float, default=0.03)
+    p.add_argument("--lidar-sigma-yaw-per-m", type=float, default=0.005)
     p.add_argument("--gnss-bias", action="store_true", help="GNSS の偏りを推定する")
     p.add_argument("--gnss-bias-sigma0", type=float, default=1.0, help="偏りの最初の不確かさ [m]")
     p.add_argument("--gnss-bias-rw", type=float, default=0.01, help="偏りの変わる速さ [m/√s]")
@@ -666,12 +768,13 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> None:
     args = build_parser().parse_args()
     offset = map_offset(args.map_reference) if args.map_reference else None
+    lidar = read_lidar_odom(args.lidar_odom)
     results = []
     for variant in args.variants:
         nodes = truth_nodes(variant)
         for bag in run_bags(variant):
             name = f"{os.path.basename(variant.rstrip('/'))}/{os.path.basename(os.path.dirname(bag))}"
-            rows = evaluate_run(args, bag, nodes, offset)
+            rows = evaluate_run(args, bag, nodes, offset, lidar)
             results.append((name, rows))
             print(name, " ".join(f"{m}:{r.get('p95_m', float('nan')):.2f}/{r.get('dev_m', float('nan')):.0f}"
                                  f"|{r['p95_g']:.2f}/{r['dev_g']:.0f}" for m, r in rows.items()), flush=True)
