@@ -9,9 +9,14 @@ AMCL の門 (AMCL の姿勢を走らせる推定器へ渡すかを決める中�
 門の規則:
   1. AMCL の姿勢が、走らせる推定器の今の姿勢 (前に受け入れた AMCL からのオドメトリの推測) から
      --jump-m / --jump-yaw を超えて離れたら、門を閉じて L0 を求める。
-  2. L0 の候補は、走らせる推定器の姿勢 (飛ぶ前からの続き)、AMCL、AMCL の生の値、見張り役の姿勢、GNSS。
-     今のスキャン (動きで重ねた直近のもの) を各候補の周りで照合し、一致率が最も高い候補を選ぶ。
-     最良が --l0-min-score 未満、または離れた次点との差が --l0-margin 未満なら決めない。
+  2. L0 の候補は、走らせる推定器の姿勢、飛ぶ前からの続き (最後に L0 が確かめた姿勢をオドメトリで進めたもの)、
+     AMCL、AMCL の生の値、見張り役の姿勢、GNSS (向きは続きの候補から借りる)。今のスキャン (動きで重ねた
+     直近のもの) を各候補の周りで照合し、一致率が最も高い候補を選ぶ。探す範囲は候補の不確かさで決める
+     (続きは走った道のりで広げ、GNSS は σ の倍、ほかは --map-match-range-xy / --map-match-range-yaw。上限は --map-match-cap-xy /
+     --map-match-cap-yaw。狭い範囲を超えるときは粗い格子で探して絞り込む)。照合した姿勢が最良から --map-match-separation /
+     --map-match-separation-yaw 以内の候補は同じ仮説にまとめ、AMCL がその中にあり、一致率の最良との差が
+     --map-match-margin 未満なら、AMCL の姿勢を採る。
+     最良が --map-match-min-score 未満、または離れた次点との差が --map-match-margin 未満なら決めない。
   3. 門を開けるのは L0 が決めたときだけ。決めた姿勢へ、走らせる推定器・見張り役・AMCL を置き直す
      (AMCL の置き直しは、記録の AMCL に座標の補正を掛けて模擬する)。
   4. 起動の直後 (L0 が一度確かめるまで) は門の判定を使わず、L0 で AMCL を確かめる。
@@ -164,7 +169,7 @@ class Scans:
         return pts
 
 
-class L0:
+class MapMatch:
     """今のスキャンで候補を地図に照合し、1 つに決める (決まらなければ None)。"""
 
     def __init__(self, args: argparse.Namespace, map_yaml: str, scans: Scans, odom: w.Odometry) -> None:
@@ -173,43 +178,69 @@ class L0:
         self.scans = scans
         self.odom = odom
         params = {k: spec.default for k, spec in CorrelativeMatcher.PARAMS.items()}
-        params["tolerance_m"] = args.l0_tolerance
-        self.matcher = CorrelativeMatcher("l0", params)
-        self.window = SearchWindow(args.l0_range_xy, args.l0_step_xy, args.l0_range_yaw, args.l0_step_yaw)
+        params["tolerance_m"] = args.map_match_tolerance
+        self.matcher = CorrelativeMatcher("map_match", params)
+        # 広い範囲は粗い格子で探して絞り込む。粗い格子では本当の姿勢から刻みの半分ずれるので、許容距離を広げて多めに拾う
+        wide = dict(params, coarse_tolerance_m=args.map_match_coarse_tolerance,
+                    coarse_candidates=args.map_match_coarse_candidates)
+        self.wide_matcher = CorrelativeMatcher("map_match_wide", wide)
         self.calls = 0
         self.decided = 0
         self.log: List[Dict] = []
 
-    def decide(self, t: float, candidates: Dict[str, np.ndarray], reason: str) -> Optional[Tuple[str, np.ndarray]]:
+    def window(self, range_xy: float, range_yaw: float) -> Tuple[CorrelativeMatcher, SearchWindow]:
+        """探す範囲 (上限つき) と、それに合う照合器。今の狭い範囲を超えるときは粗い格子で探す。"""
+        a = self.args
+        range_xy = min(max(range_xy, a.map_match_range_xy), a.map_match_cap_xy)
+        range_yaw = min(max(range_yaw, a.map_match_range_yaw), a.map_match_cap_yaw)
+        if range_xy <= a.map_match_range_xy and range_yaw <= a.map_match_range_yaw:
+            return self.matcher, SearchWindow(range_xy, a.map_match_step_xy, range_yaw, a.map_match_step_yaw)
+        return self.wide_matcher, SearchWindow(range_xy, a.map_match_wide_step_xy, range_yaw, a.map_match_wide_step_yaw)
+
+    def decide(self, t: float, candidates: Dict[str, Tuple[np.ndarray, float, float]],
+               reason: str) -> Optional[Tuple[str, np.ndarray, List[str]]]:
+        """候補 (名前 -> 姿勢, 位置の範囲, 向きの範囲) を照合し、(最良の名前, 照合した姿勢, 入力のまま採れる候補) を返す。"""
         self.calls += 1
-        pts = self.scans.stacked(t, self.odom, self.args.l0_stack_m, self.args.l0_stack_scans, self.args.l0_points)
+        a = self.args
+        pts = self.scans.stacked(t, self.odom, a.map_match_stack_m, a.map_match_stack_scans, a.map_match_points)
         scored = []
         if pts is not None:
-            for name, pose in candidates.items():
-                field = build_local_distance_field(self.occupancy, pose[0], pose[1], self.args.l0_field_radius)
+            for name, (pose, range_xy, range_yaw) in candidates.items():
+                field = build_local_distance_field(self.occupancy, pose[0], pose[1], self.args.map_match_field_radius)
                 if field is None:
                     continue
-                peaks = self.matcher.match(field, pts, (float(pose[0]), float(pose[1]), float(pose[2])), self.window)
+                matcher, win = self.window(range_xy, range_yaw)
+                peaks = matcher.match(field, pts, (float(pose[0]), float(pose[1]), float(pose[2])), win)
                 if peaks:
                     scored.append((peaks[0].ratio, name, np.array(peaks[0].pose)))
         scored.sort(key=lambda s: -s[0])
         result = None
         margin = None
-        if scored and scored[0][0] >= self.args.l0_min_score:
+        if scored and scored[0][0] >= self.args.map_match_min_score:
             best = scored[0]
-            # 位置か向きが離れた候補は、別の仮説として次点に数える
-            rival = next((s for s in scored[1:] if math.hypot(*(s[2][:2] - best[2][:2])) >= self.args.l0_separation
-                          or abs(wrap(s[2][2] - best[2][2])) >= self.args.l0_separation_yaw), None)
+            # 照合した姿勢が最良から離れていない候補は同じ仮説にまとめ、離れた候補の最良を次点とする
+            same = [s for s in scored if not self.separated(s[2], best[2])]
+            rival = next((s for s in scored if self.separated(s[2], best[2])), None)
             margin = best[0] - rival[0] if rival is not None else None
-            if rival is None or margin >= self.args.l0_margin:
-                result = (best[1], best[2])
+            if rival is None or margin >= self.args.map_match_margin:
+                # 同じ仮説でも、一致率が最良より差の閾値以上低い候補は、入力の姿勢が山の頂上から外れている
+                # (照合で範囲の端まで動いて止まった)。入力の姿勢をそのまま採ってよいのは、差の閾値の内側の候補だけ
+                agree = [s[1] for s in same if best[0] - s[0] < self.args.map_match_margin]
+                result = (best[1], best[2], agree)
                 self.decided += 1
         self.log.append({
             "t": t, "reason": reason, "result": result[0] if result else None, "margin": margin,
+            "same": [s[1] for s in same] if result else None, "agree": result[2] if result else None,
             "scores": {s[1]: round(s[0], 3) for s in scored},
             "poses": {s[1]: [round(float(v), 3) for v in s[2]] for s in scored},
-            "inputs": {k: [round(float(v), 3) for v in p] for k, p in candidates.items()}})
+            "inputs": {k: [round(float(v), 3) for v in c[0]] for k, c in candidates.items()},
+            "ranges": {k: [round(float(c[1]), 2), round(float(c[2]), 2)] for k, c in candidates.items()}})
         return result
+
+    def separated(self, a: np.ndarray, b: np.ndarray) -> bool:
+        """別の仮説とみなすほど離れているか。"""
+        return (math.hypot(a[0] - b[0], a[1] - b[1]) >= self.args.map_match_separation
+                or abs(wrap(a[2] - b[2])) >= self.args.map_match_separation_yaw)
 
 
 # ---------------------------------------------------------------- 走らせる推定器
@@ -332,12 +363,12 @@ class WindowDriver:
 class System:
     """走らせる推定器 + 門 + L0 (+ 見張り役) を時刻順に回す。"""
 
-    def __init__(self, args: argparse.Namespace, data: w.Inputs, odom: w.Odometry, l0: Optional[L0],
+    def __init__(self, args: argparse.Namespace, data: w.Inputs, odom: w.Odometry, map_match: Optional[MapMatch],
                  driver, watch: Optional[WindowDriver], use_gate: bool) -> None:
         self.args = args
         self.data = data
         self.odom = odom
-        self.l0 = l0
+        self.map_match = map_match
         self.driver = driver
         self.watch = watch
         self.use_gate = use_gate
@@ -345,11 +376,13 @@ class System:
         self.gate_open = True
         self.confirmed = not use_gate
         self.pending: Optional[str] = None
-        self.next_l0 = -1e9
+        self.next_match = -1e9
         self.disagree_since: Optional[float] = None
         self.quiet_until = -1e9
         self.last_amcl: Optional[Tuple[float, np.ndarray]] = None
-        self.last_gps: Optional[Tuple[float, float, float]] = None
+        self.last_gps: Optional[Tuple[float, float, float, float]] = None
+        # 最後に L0 が確かめた姿勢 (時刻, 姿勢)。オドメトリで進めて、飛ぶ前からの続きの候補にする
+        self.anchor: Optional[Tuple[float, np.ndarray]] = None
         # 門を通した直近の AMCL (時刻, 姿勢)。動きの合意で、直近の区間の動きをオドメトリと比べる
         self.accepted: List[Tuple[float, np.ndarray]] = []
         self.last_amcl_t = -1e9
@@ -399,7 +432,7 @@ class System:
             self.closures += 1
             self.pending = "gate"
             self.accepted = []
-            self.next_l0 = min(self.next_l0, t)
+            self.next_match = min(self.next_match, t)
             return
         self.accepted.append((t, pose))
         self.driver.add_amcl(t, pose, cov)
@@ -409,13 +442,14 @@ class System:
         return (math.hypot(a[0] - b[0], a[1] - b[1]) > scale * self.args.jump_m
                 or abs(wrap(a[2] - b[2])) > scale * self.args.jump_yaw)
 
-    def _separated(self, a: np.ndarray, b: np.ndarray) -> bool:
-        """L0 で別の仮説とみなすほど離れているか。"""
-        return (math.hypot(a[0] - b[0], a[1] - b[1]) >= self.args.l0_separation
-                or abs(wrap(a[2] - b[2])) >= self.args.l0_separation_yaw)
+    def _path_length(self, t0: float, t1: float) -> float:
+        """t0〜t1 にオドメトリで走った道のり [m]。"""
+        i, j = np.searchsorted(self.odom.t, [t0, t1])
+        xy = self.odom.xy[max(i - 1, 0):j + 1]
+        return float(np.sum(np.hypot(*np.diff(xy, axis=0).T))) if len(xy) >= 2 else 0.0
 
     def on_gps(self, t: float, x: float, y: float, sigma: float) -> None:
-        self.last_gps = (t, x, y)
+        self.last_gps = (t, x, y, sigma)
         self.driver.add_gps(t, x, y, sigma)
         if self.watch is not None:
             self.watch.add_gps(t, x, y, sigma)
@@ -439,34 +473,48 @@ class System:
                         self.pending = "disagree"
                 else:
                     self.disagree_since = None
-        if self.pending is not None and t >= self.next_l0:
-            self._run_l0(t)
+        if self.pending is not None and t >= self.next_match:
+            self._run_map_match(t)
 
-    def _run_l0(self, t: float) -> None:
-        cands: Dict[str, np.ndarray] = {"driver": self.driver.pose(t)}
+    def _run_map_match(self, t: float) -> None:
+        args = self.args
+        narrow = (args.map_match_range_xy, args.map_match_range_yaw)
+        cands: Dict[str, Tuple[np.ndarray, float, float]] = {"driver": (self.driver.pose(t), *narrow)}
         a = self._amcl_at(t, True)
         if a is not None:
-            cands["amcl"] = a
+            cands["amcl"] = (a, *narrow)
             raw = self._amcl_at(t, False)
             if np.hypot(*(raw[:2] - a[:2])) > 0.1:
-                cands["amcl_raw"] = raw
+                cands["amcl_raw"] = (raw, *narrow)
         if self.watch is not None:
-            cands["watch"] = self.watch.pose(t)
+            cands["watch"] = (self.watch.pose(t), *narrow)
+        # 飛ぶ前からの続き: 最後に確かめた姿勢をオドメトリで進めたもの。範囲は走った道のりで広げる
+        cont_yaw = None
+        if self.anchor is not None:
+            ta, pa = self.anchor
+            d = self._path_length(ta, t)
+            cont = arr(pose2(pa).compose(self.odom.at(ta).between(self.odom.at(t))))
+            cont_yaw = args.map_match_range_yaw + args.map_match_cont_yaw_per_m * d
+            cands["cont"] = (cont, args.map_match_range_xy + args.map_match_cont_xy_per_m * d, cont_yaw)
         if self.last_gps is not None and t - self.last_gps[0] < GNSS_FRESH_SEC:
-            cands["gnss"] = np.array([self.last_gps[1], self.last_gps[2], cands["driver"][2]])
+            # GNSS は向きを持たないので、続きの候補 (なければ走らせる推定器) の向きを借り、その不確かさで探す
+            yaw_src = cands["cont"][0] if "cont" in cands else cands["driver"][0]
+            gnss = np.array([self.last_gps[1], self.last_gps[2], yaw_src[2]])
+            cands["gnss"] = (gnss, args.map_match_gnss_sigma_k * self.last_gps[3],
+                             cont_yaw if cont_yaw is not None else args.map_match_cap_yaw)
         if self.pending == "startup":
             cands = {k: v for k, v in cands.items() if k in ("amcl", "driver")}
-        result = self.l0.decide(t, cands, self.pending)
+        result = self.map_match.decide(t, cands, self.pending)
         if result is None:
-            self.next_l0 = t + self.args.l0_retry_sec
+            self.next_match = t + args.map_match_retry_sec
             return
-        name, pose = result
+        name, pose, agree = result
         cov = np.diag(np.square(RESET_SIGMA))
-        # L0 は離れた仮説を見分けるもので、細かい位置合わせには使わない。決めた姿勢が AMCL の候補と
-        # 同じ仮説 (l0_separation 以内) なら、照合の姿勢ではなく AMCL の姿勢を採る
+        # L0 は離れた仮説を見分けるもので、細かい位置合わせには使わない。AMCL が、照合で最良と同じ仮説に
+        # まとまり、一致率も最良と見分けられないなら、照合の姿勢ではなく AMCL の姿勢を採る
         for key in ("amcl_raw", "amcl"):
-            if key in cands and not self._separated(cands[key], pose):
-                name, pose = key, cands[key]
+            if key in agree:
+                name, pose = key, cands[key][0]
                 break
         # 起動の直後は、AMCL と同じ仮説なら確かめるだけ (AMCL の収束を待つ)。それ以外は、決めた姿勢へ全部を置き直す
         if self.pending != "startup" or name not in ("amcl", "amcl_raw"):
@@ -481,6 +529,7 @@ class System:
             self.driver.reset(t, pose, cov)
             if self.watch is not None:
                 self.watch.reset(t, pose, cov)
+        self.anchor = (t, np.array(pose))
         self.confirmed = True
         self.gate_open = True
         self.accepted = []
@@ -495,21 +544,21 @@ class System:
             self.watch.est.suspect = False
 
 
-def run_system(args, data, odom, eval_times, init_index, l0, kind: str, motion) -> Tuple[np.ndarray, Dict]:
+def run_system(args, data, odom, eval_times, init_index, map_match, kind: str, motion) -> Tuple[np.ndarray, Dict]:
     t_init, pose0, cov0 = data.amcl[init_index]
     driver = EkfEmu(args, odom, t_init, pose0, cov0) if kind.startswith("ekf") else WindowDriver(
         args.window, motion, t_init, pose0, cov0)
     watch = WindowDriver(args.window, motion, t_init, pose0, cov0) if kind == "ekf_gate_watch" else None
-    sys_ = System(args, data, odom, l0, driver, watch, kind != "ekf_emu")
+    sys_ = System(args, data, odom, map_match, driver, watch, kind != "ekf_emu")
     events = [(t, "gps", (x, y, s)) for t, x, y, s in data.gps if t > t_init]
     events += [(t, "amcl", (p, c)) for t, p, c in data.amcl if t > t_init]
     events.sort(key=lambda e: e[0])
     out = np.full((len(eval_times), 3), np.nan)
     gate = np.zeros(len(eval_times), dtype=bool)
     ei = 0
-    calls0 = l0.calls if l0 else 0
-    decided0 = l0.decided if l0 else 0
-    log0 = len(l0.log) if l0 else 0
+    calls0 = map_match.calls if map_match else 0
+    decided0 = map_match.decided if map_match else 0
+    log0 = len(map_match.log) if map_match else 0
     for qi, t in enumerate(eval_times):
         if t < t_init:
             continue
@@ -521,10 +570,10 @@ def run_system(args, data, odom, eval_times, init_index, l0, kind: str, motion) 
         out[qi] = driver.pose(t)
         gate[qi] = (not sys_.gate_open) or (sys_.pending is not None and sys_.pending != "startup")
     stats = {"closures": sys_.closures}
-    if l0 is not None:
-        stats["l0_calls"] = l0.calls - calls0
-        stats["l0_decided"] = l0.decided - decided0
-        stats["l0_log"] = l0.log[log0:]
+    if map_match is not None:
+        stats["match_calls"] = map_match.calls - calls0
+        stats["match_decided"] = map_match.decided - decided0
+        stats["match_log"] = map_match.log[log0:]
     return out, {**stats, "_gate": gate}
 
 
@@ -561,7 +610,7 @@ def evaluate(args: argparse.Namespace, variant: str, bag: str, offset, lidar, sc
     cache_key = (src_bag, round(t0), round(times[-1]))
     if cache_key not in scans_cache:
         scans_cache.clear()
-        scans_cache[cache_key] = Scans(src_bag, t0 - 30.0, times[-1] + 1.0, args.l0_points_per_scan)
+        scans_cache[cache_key] = Scans(src_bag, t0 - 30.0, times[-1] + 1.0, args.map_match_points_per_scan)
     scans = scans_cache[cache_key]
     map_yaml = dataset["MAP_YAML"]
     motion = {"wheel": odom}
@@ -572,8 +621,8 @@ def evaluate(args: argparse.Namespace, variant: str, bag: str, offset, lidar, sc
     extra: Dict[str, Dict] = {}
     amcl = w.amcl_hold(data, odom, times)
     for kind in args.methods:
-        l0 = None if kind == "ekf_emu" else L0(args, map_yaml, scans, odom)
-        estimates[kind], extra[kind] = run_system(args, data, odom, times, i0, l0, kind, motion)
+        map_match = None if kind == "ekf_emu" else MapMatch(args, map_yaml, scans, odom)
+        estimates[kind], extra[kind] = run_system(args, data, odom, times, i0, map_match, kind, motion)
     rows = {}
     for name, est in estimates.items():
         r = {**w.metrics(est, gt, valid, "g"), **w.metrics(est, gt_map, valid, "m")}
@@ -581,9 +630,9 @@ def evaluate(args: argparse.Namespace, variant: str, bag: str, offset, lidar, sc
         r["jump_p99"] = float(np.percentile(j, 99))
         r["jump_max"] = float(j.max())
         st = extra.get(name, {})
-        if "l0_calls" in st:
-            r["l0_calls"] = st["l0_calls"]
-            r["l0_decided_pct"] = 100.0 * st["l0_decided"] / max(st["l0_calls"], 1)
+        if "match_calls" in st:
+            r["match_calls"] = st["match_calls"]
+            r["match_decided_pct"] = 100.0 * st["match_decided"] / max(st["match_calls"], 1)
             r["closures"] = st["closures"]
             g = st["_gate"]
             ref = gt_map if offset is not None and not np.all(np.isnan(gt_map[:, 0])) else gt
@@ -596,7 +645,7 @@ def evaluate(args: argparse.Namespace, variant: str, bag: str, offset, lidar, sc
             lock = g & ok & (e_amcl + 0.5 < e_drv)
             r["lockout_s"] = float(lock.sum() * w.EVAL_STEP_SEC)
             r["pending_s"] = float(g.sum() * w.EVAL_STEP_SEC)
-            r["l0_log"] = st["l0_log"]
+            r["match_log"] = st["match_log"]
         rows[name] = r
     ref = gt_map if offset is not None and not np.all(np.isnan(gt_map[:, 0])) else gt
     series = {"t": (times - times[0]).tolist(), "valid": (valid & ~np.isnan(ref[:, 0])).tolist()}
@@ -611,8 +660,8 @@ def evaluate(args: argparse.Namespace, variant: str, bag: str, offset, lidar, sc
     return {"rows": rows, "series": series, "t0": float(times[0])}
 
 
-COLUMNS = ["p95_m", "max_m", "dev_m", "p95_g", "dev_g", "jump_p99", "jump_max", "closures", "l0_calls",
-           "l0_decided_pct", "pending_s", "lockout_s"]
+COLUMNS = ["p95_m", "max_m", "dev_m", "p95_g", "dev_g", "jump_p99", "jump_max", "closures", "match_calls",
+           "match_decided_pct", "pending_s", "lockout_s"]
 
 
 def format_table(results: List[Tuple[str, Dict]]) -> str:
@@ -628,7 +677,7 @@ def format_table(results: List[Tuple[str, Dict]]) -> str:
     for name, res in results:
         for method, m in res["rows"].items():
             groups.setdefault(name.split("/")[0], {}).setdefault(method, []).append(m)
-    agg = ["p95_m", "max_m", "dev_m", "p95_g", "dev_g", "jump_max", "l0_calls", "l0_decided_pct", "pending_s",
+    agg = ["p95_m", "max_m", "dev_m", "p95_g", "dev_g", "jump_max", "match_calls", "match_decided_pct", "pending_s",
            "lockout_s"]
     lines += ["", "## 変種ごと (回の平均)", "", "| 変種 | 推定 | " + " | ".join(agg) + " |",
               "|" + "---|" * (len(agg) + 2)]
@@ -660,21 +709,33 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--disagree-m", type=float, default=1.0, help="見張り役との食い違いで L0 を求める距離 [m]")
     p.add_argument("--disagree-sec", type=float, default=2.0, help="その食い違いが続く時間 [s]")
     p.add_argument("--disagree-quiet-sec", type=float, default=5.0, help="L0 が決めた後、食い違いで求めない時間 [s]")
-    p.add_argument("--l0-min-score", type=float, default=0.35)
-    p.add_argument("--l0-margin", type=float, default=0.1)
-    p.add_argument("--l0-separation", type=float, default=1.0)
-    p.add_argument("--l0-separation-yaw", type=float, default=0.2)
-    p.add_argument("--l0-tolerance", type=float, default=0.3)
-    p.add_argument("--l0-range-xy", type=float, default=0.5)
-    p.add_argument("--l0-step-xy", type=float, default=0.1)
-    p.add_argument("--l0-range-yaw", type=float, default=0.15)
-    p.add_argument("--l0-step-yaw", type=float, default=0.05)
-    p.add_argument("--l0-stack-m", type=float, default=3.0, help="重ねるスキャンの走った距離 [m]")
-    p.add_argument("--l0-stack-scans", type=int, default=10)
-    p.add_argument("--l0-points", type=int, default=400)
-    p.add_argument("--l0-points-per-scan", type=int, default=180)
-    p.add_argument("--l0-field-radius", type=float, default=25.0)
-    p.add_argument("--l0-retry-sec", type=float, default=2.0)
+    p.add_argument("--map-match-min-score", type=float, default=0.35)
+    p.add_argument("--map-match-margin", type=float, default=0.1,
+                   help="決めるのに要る、離れた次点との一致率の差。AMCL を入力のまま採るのは、最良との差がこれ未満のとき")
+    p.add_argument("--map-match-separation", type=float, default=1.0)
+    p.add_argument("--map-match-separation-yaw", type=float, default=0.2)
+    p.add_argument("--map-match-tolerance", type=float, default=0.3)
+    p.add_argument("--map-match-range-xy", type=float, default=0.5)
+    p.add_argument("--map-match-step-xy", type=float, default=0.1)
+    p.add_argument("--map-match-range-yaw", type=float, default=0.15)
+    p.add_argument("--map-match-step-yaw", type=float, default=0.05)
+    p.add_argument("--map-match-cap-xy", type=float, default=2.0, help="候補ごとの探す範囲の位置の上限 [m]")
+    p.add_argument("--map-match-cap-yaw", type=float, default=0.55, help="候補ごとの探す範囲の向きの上限 [rad]")
+    p.add_argument("--map-match-cont-xy-per-m", type=float, default=0.05,
+                   help="続きの候補の探す範囲を、確かめてから走った道のり 1 m あたり広げる位置 [m]")
+    p.add_argument("--map-match-cont-yaw-per-m", type=float, default=0.01,
+                   help="同じく向き [rad]")
+    p.add_argument("--map-match-gnss-sigma-k", type=float, default=3.0, help="GNSS の候補の探す範囲 (σ の倍率)")
+    p.add_argument("--map-match-wide-step-xy", type=float, default=0.25, help="広い範囲を探す粗い格子の位置の刻み [m]")
+    p.add_argument("--map-match-wide-step-yaw", type=float, default=0.1, help="同じく向きの刻み [rad]")
+    p.add_argument("--map-match-coarse-tolerance", type=float, default=0.5, help="粗い格子での一致の距離 [m]")
+    p.add_argument("--map-match-coarse-candidates", type=int, default=5, help="粗い格子から絞り込む候補の数")
+    p.add_argument("--map-match-stack-m", type=float, default=3.0, help="重ねるスキャンの走った距離 [m]")
+    p.add_argument("--map-match-stack-scans", type=int, default=10)
+    p.add_argument("--map-match-points", type=int, default=400)
+    p.add_argument("--map-match-points-per-scan", type=int, default=180)
+    p.add_argument("--map-match-field-radius", type=float, default=25.0)
+    p.add_argument("--map-match-retry-sec", type=float, default=2.0)
     p.add_argument("--ekf-q-scale", type=float, default=1.0, help="EKF の模擬の過程雑音の倍率")
     p.add_argument("--ekf-gps-rejection", type=float, default=5.0, help="EKF の模擬の GNSS の棄却 (マハラノビス距離)")
     return p
@@ -700,7 +761,8 @@ def main() -> None:
             f.write(text)
     if args.json:
         with open(args.json, "w", encoding="utf-8") as f:
-            json.dump([{"name": n, "t0": r["t0"], "series": r["series"], "l0": {m: r["rows"][m].get("l0_log", []) for m in r["rows"]}}
+            json.dump([{"name": n, "t0": r["t0"], "series": r["series"],
+                        "map_match": {m: r["rows"][m].get("match_log", []) for m in r["rows"]}}
                        for n, r in results], f)
     print(text)
 
