@@ -413,8 +413,12 @@ class System:
         if not self.gate_open:
             return
         cont = self.driver.pose(t)
-        if not self._apart(raw, pose, self.args.amcl_basin):
-            # 置き直した AMCL は、収束の範囲にあるスキャンに合う姿勢 (記録の AMCL) へ数秒で寄る
+        # 最後に確かめた姿勢をオドメトリで進めたもの。補正を掛けた AMCL を取り込んだ推定器と違い、補正の影響を受けない
+        checked = cont if self.anchor is None else arr(
+            pose2(self.anchor[1]).compose(self.odom.at(self.anchor[0]).between(self.odom.at(t))))
+        if not self._apart(raw, pose, self.args.amcl_basin) or not self._apart(raw, checked, self.args.amcl_basin):
+            # 置き直した AMCL は、収束の範囲にあるスキャンに合う姿勢 (記録の AMCL) へ数秒で寄る。記録の AMCL が
+            # 自分で確かめた姿勢の近くへ戻ったときも同じ (補正に残った向きで、戻った AMCL を回し続けないため)
             keep = 1.0 - min(1.0, (t - self.last_amcl_t) / self.args.amcl_converge_sec)
             local = pose2(raw).between(pose2(pose))
             moved = pose2(raw).compose(gtsam.Pose2(local.x() * keep, local.y() * keep, local.theta() * keep))
@@ -704,7 +708,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--gate-window-sec", type=float, default=10.0,
                    help="動きの合意で、AMCL の動きをオドメトリと比べる直近の区間 [s]")
     p.add_argument("--amcl-basin", type=float, default=0.8,
-                   help="置き直した AMCL が記録の AMCL へ収束するとみなす範囲 (門の閾値に対する倍率)")
+                   help="置き直した AMCL が記録の AMCL へ収束するとみなす範囲 (門の閾値に対する倍率)。記録の AMCL と、"
+                        "補正を掛けた AMCL か最後に確かめた姿勢 (オドメトリで進めたもの) の、どちらかの差がこの範囲なら収束させる")
     p.add_argument("--amcl-converge-sec", type=float, default=3.0, help="その収束にかかる時間 [s]")
     p.add_argument("--disagree-m", type=float, default=1.0, help="見張り役との食い違いで L0 を求める距離 [m]")
     p.add_argument("--disagree-sec", type=float, default=2.0, help="その食い違いが続く時間 [s]")
