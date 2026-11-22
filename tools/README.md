@@ -107,3 +107,5 @@ make test pkg=tools
 | `test_compare_localization.py` | 変種の比較表 |
 | `test_patch_params.py` | パラメータ YAML の書き換え |
 | `test_sim_gnss_transform.py` | シミュレータの `gnss_transform.yaml` の生成 |
+| `test_static_transform.py` | 静的な座標変換の合成 (`common/geo.py`) |
+| `test_scan_map.py` | スキャンと地図の突き合わせ・光線追跡 (`common/scan_map.py`) |
