@@ -10,7 +10,7 @@ from rclpy.serialization import deserialize_message
 from rosidl_runtime_py.utilities import get_message
 
 from tools.common import loc_metrics as lm
-from tools.common.geo import quaternion_to_yaw
+from tools.common.geo import chain_static_transforms, quaternion_matrix, quaternion_to_yaw
 from tools.common.pose_graph import NODE_MAX_GAP_SEC, load_slam_output
 from tools.common.scan_map import MAX_POSE_GAP_SEC
 
@@ -189,6 +189,22 @@ def read_map_base_poses(
     idx = lm.hold_index(mo[:, 0], ob[:, 0])
     valid = idx >= 0
     return ob[valid, 0], lm.compose(mo[idx[valid], 1:4], ob[valid, 1:4])
+
+
+def read_static_transform(bag_path: str, parent: str, child: str) -> np.ndarray:
+    """rosbag の /tf_static から、parent から child への変換 (4x4) を返す。"""
+    reader = open_reader(bag_path, topics=["/tf_static"])
+    deserializer = MessageDeserializer({t.name: t.type for t in reader.get_all_topics_and_types()})
+    static: Dict[str, Tuple[str, np.ndarray]] = {}
+    while reader.has_next():
+        name, raw, _ = reader.read_next()
+        for tf in deserializer.deserialize(name, raw).transforms:
+            q, p = tf.transform.rotation, tf.transform.translation
+            t = np.eye(4)
+            t[:3, :3] = quaternion_matrix(q.x, q.y, q.z, q.w)
+            t[:3, 3] = (p.x, p.y, p.z)
+            static[tf.child_frame_id] = (tf.header.frame_id, t)
+    return chain_static_transforms(static, parent, child)
 
 
 def read_reference_poses(

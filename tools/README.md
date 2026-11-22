@@ -50,6 +50,7 @@ tools/
     ├── eval_localization_offline.py # 自己位置の監督を、再生評価の記録でオフライン評価する ([doc](./doc/localization_evaluation.md#監督のオフライン評価))
     ├── eval_window_estimator.py     # 窓つきの推定器 (因子グラフ) の試作を、再生評価の記録の入力で回し、EKF と真値との誤差で比べる
     ├── eval_gate_arbitration.py     # AMCL の門と地図との照合 (L0) による判定を、再生評価の記録で模擬し、走らせる推定器の候補を比べる
+    ├── lidar_odom_offline.sh        # 元の rosbag のスキャンから KISS-ICP で LiDAR オドメトリを作って記録する (上の 2 つの --lidar-odom 用。コンテナ内で実行)
     ├── loc_dataset.py               # データセット定義 (datasets/localization/) の読込
     ├── compare_localization.py      # 変種ごとの評価結果の比較表
     ├── run_localization_set.sh      # 評価セット (datasets/localization/sets/) の全条件で変種を再生評価する
@@ -117,6 +118,7 @@ make test pkg=tools
 | `test_offline_faults.py` | 故障注入の定義の、監督のオフライン評価への変換 |
 | `test_pose_graph.py` | `pose_graph.json` の読込・補間 |
 | `test_map_helpers.py` | 地図の読込と `map_list.txt` |
+| `test_static_transform.py` | 静的な座標変換の合成 (`common/geo.py`) |
 | `test_scan_map.py` | スキャンと地図の突き合わせ・光線追跡 (`common/scan_map.py`) |
 | `test_compare_localization.py` | 変種の比較表 |
 | `test_compare_localization_set.py` | 評価セットの読み込みと、条件をまたいだ集計 |

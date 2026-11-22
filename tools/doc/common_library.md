@@ -19,6 +19,8 @@
   - `/tf` の map->odom と odom->base を合成した map->base の姿勢列 (時刻, [x, y, yaw]) を返す。
 - **`read_reference_poses(pose_bag, pose_graph_dir, map_frame, odom_frame, base_frame)`**:
   - 基準の姿勢列を、記録の `/tf` か SLAM 出力のキーフレームのどちらかから読み、補間を許す間隔の上限と一緒に返す。
+- **`read_static_transform(bag_path, parent, child)`**:
+  - `/tf_static` をたどり、parent から child への同次変換 (4x4) を返す。再生を途中から始めると `/tf_static` が流れないときに使う。
 
 ## `tools.common.geo` (幾何・地理座標変換)
 - **`lat_lon_to_utm(lat, lon, zone=54)`**:
@@ -27,6 +29,10 @@
   - クォータニオンから 2D 平面上の Yaw 角 [rad] を算出。
 - **`haversine_distance(lat1, lon1, lat2, lon2)`**:
   - 2地点の緯度経度から球面三角法による大圏距離 [m] を算出。
+- **`quaternion_matrix(x, y, z, w)`**:
+  - クォータニオンの回転行列 (3x3)。
+- **`chain_static_transforms(static, parent, child)`**:
+  - 子 -> (親, 4x4) の対応をたどって parent から child への変換を合成する (`read_static_transform` が使う)。
 
 ## `tools.common.map` (地図・座標系変換)
 - **`load_map_info(map_yaml_path)`**:
