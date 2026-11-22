@@ -468,8 +468,8 @@ class System:
             if key in cands and not self._separated(cands[key], pose):
                 name, pose = key, cands[key]
                 break
-        # 起動の直後は確かめるだけ (AMCL の収束を待つ)。それ以外は、決めた姿勢へ全部を置き直す
-        if self.pending != "startup":
+        # 起動の直後は、AMCL と同じ仮説なら確かめるだけ (AMCL の収束を待つ)。それ以外は、決めた姿勢へ全部を置き直す
+        if self.pending != "startup" or name not in ("amcl", "amcl_raw"):
             if a is not None:
                 # AMCL の置き直しの模擬。AMCL を採ったなら補正はそのまま (生の値なら外す)。別の仮説に
                 # 決めたなら、記録の AMCL がその姿勢に来るよう補正を掛ける
