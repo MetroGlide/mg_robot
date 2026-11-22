@@ -1,0 +1,8 @@
+# 調整に使わない故障の組 (段階 P2 の門と L0 の規則を、変えずに確かめる)。
+# 1 行に 1 条件: <ラベル> <データセット> [run_localization_variant.sh の引数 ...]
+kidnap_small map043837_eval051635_short --faults tools/datasets/localization/faults/heldout_kidnap_small.yaml
+kidnap_large map043837_eval051635_short --faults tools/datasets/localization/faults/heldout_kidnap_large.yaml
+drift_slow map043837_eval051635_short --faults tools/datasets/localization/faults/heldout_drift_slow.yaml
+drift_fast map043837_eval051635_short --faults tools/datasets/localization/faults/heldout_drift_fast.yaml
+kidnap_gnss_drop map043837_eval051635_short --faults tools/datasets/localization/faults/heldout_kidnap_gnss_drop.yaml
+odom_slip map043837_eval051635_short --faults tools/datasets/localization/faults/heldout_odom_slip.yaml
