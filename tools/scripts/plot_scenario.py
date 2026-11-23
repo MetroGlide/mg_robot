@@ -5,13 +5,15 @@ plot_scenario.py
 シナリオテスト (sim_scenario_test) の結果を図にする。
 
   run     <結果>...           1 回分の結果 (result.json と bag/ のあるディレクトリ) ごとに、地図の上の軌跡
-                              (真値・EKF・AMCL・GNSS) と、時系列 (真値との差、GNSS の申告の精度、速さ、監督の状態)
-                              を <結果>/scenario_plot.png に出す。日時のディレクトリを渡すと、中の結果をすべて描く。
+                              (真値・EKF・AMCL・GNSS) と、時系列 (真値との差、GNSS の申告の精度、速さ、速度の指令の
+                              回転、監督の状態) を <結果>/scenario_plot.png に出す。日時のディレクトリを渡すと、中の
+                              結果をすべて描く。自己位置の置き直し (evt=localization.pose_reset) ごとに、その直後の
+                              速度の指令の回転の急な変化を、置き直しの前と比べて表示する。
   compare <日時の dir>=<名前>...  構成ごとの結果 (scenario-test-all の日時のディレクトリ) を、シナリオごとに並べる
                               (真値との最大の差、ずれたまま走った距離、最も長い停止。点 1 つが 1 回)。
 
 記録するトピック (シナリオの record_topics): /sim_scenario_test/entity_poses (真値)、/ekf_global_odom、
-/amcl_pose_origin、/odom/gps、/localization/status、/initialpose、/rosout。時刻はヘッダの時刻 (シミュレーション時刻) で、
+/amcl_pose_origin、/odom/gps、/localization/status、/initialpose、/cmd_vel、/rosout。時刻はヘッダの時刻 (シミュレーション時刻) で、
 走行の始まり (シーケンサの最初の evt=nav.goal_sent) を 0 にする。
 """
 
@@ -56,7 +58,8 @@ def read_bag(bag_dir: str, entity: str) -> Dict[str, list]:
     """記録から、時刻つきの値の並びを読む。"""
     reader = open_reader(bag_dir)
     types = {t.name: t.type for t in reader.get_all_topics_and_types()}
-    out: Dict[str, list] = {k: [] for k in ("truth", "ekf", "amcl", "gnss", "status", "initialpose", "rosout")}
+    out: Dict[str, list] = {
+        k: [] for k in ("truth", "ekf", "amcl", "gnss", "status", "initialpose", "cmd_vel", "rosout")}
     classes = {name: get_message(kind) for name, kind in types.items()}
     # 真値のメッセージはヘッダの時刻が空なので、記録の受信時刻を、/odom のヘッダの時刻 (シミュレーション時刻) との
     # 対応で読み替える (シミュレータの実時間比が 1 でなくても合うように、対応を補間する)
@@ -87,17 +90,22 @@ def read_bag(bag_dir: str, entity: str) -> Dict[str, list]:
         elif topic == "/initialpose":
             p = msg.pose.pose.position
             out["initialpose"].append((stamp_sec(msg.header.stamp), p.x, p.y))
+        elif topic == "/cmd_vel":
+            # ヘッダがないので、真値と同じく受信時刻から読み替える
+            out["cmd_vel"].append((received_ns * 1e-9, msg.linear.x, msg.angular.z))
         elif topic == "/rosout":
             # ログの時刻は壁時計なので、真値と同じく受信時刻から読み替える
             out["rosout"].append((received_ns * 1e-9, msg.name, msg.msg))
     if len(clock_pairs) < 2:
         out["truth"] = []
         out["rosout"] = []
+        out["cmd_vel"] = []
         return out
     pairs = np.asarray(sorted(clock_pairs))
     to_sim = lambda t: float(np.interp(t, pairs[:, 0], pairs[:, 1]))  # noqa: E731
     out["truth"] = [(to_sim(t), x, y) for t, x, y in out["truth"]]
     out["rosout"] = [(to_sim(t), name, text) for t, name, text in out["rosout"]]
+    out["cmd_vel"] = [(to_sim(t), v, w) for t, v, w in out["cmd_vel"]]
     return out
 
 
@@ -107,6 +115,24 @@ def run_start(rosout: list) -> Optional[float]:
         if m and m.group(1) == "0":
             return t
     return None
+
+
+def pose_resets(rosout: list) -> List[Tuple[float, str]]:
+    """自己位置の置き直しのイベントの (時刻, イベントの文)。"""
+    return sorted((t, text[text.index("evt="):]) for t, _, text in rosout if "evt=localization.pose_reset" in text)
+
+
+def turn_change(cmd_vel: list, start: float, end: float) -> Optional[float]:
+    """区間の中で、速度の指令の回転が続く 2 つの指令の間に変わった量の最大 [rad/s]。"""
+    w = [row[2] for row in sorted(cmd_vel) if start <= row[0] <= end]
+    return max((abs(b - a) for a, b in zip(w, w[1:])), default=None)
+
+
+def reset_reactions(data: Dict[str, list], window_sec: float = 5.0) -> List[Tuple[float, str, Optional[float],
+                                                                                   Optional[float]]]:
+    """置き直しごとの (時刻, イベントの文, 直後の回転の変化の最大, 直前の同じ長さの区間の回転の変化の最大)。"""
+    return [(t, text, turn_change(data["cmd_vel"], t, t + window_sec), turn_change(data["cmd_vel"], t - window_sec, t))
+            for t, text in pose_resets(data["rosout"])]
 
 
 def error_series(truth: np.ndarray, est: list) -> Tuple[np.ndarray, np.ndarray]:
@@ -136,7 +162,7 @@ def plot_run(run_dir: str, map_yaml: str, entity: str) -> Optional[str]:
     truth = truth[truth[:, 0] >= t0 - 5.0]
 
     fig = plt.figure(figsize=(16, 9))
-    grid = fig.add_gridspec(4, 2, width_ratios=[1.0, 1.4], hspace=0.35, wspace=0.15)
+    grid = fig.add_gridspec(5, 2, width_ratios=[1.0, 1.4], hspace=0.35, wspace=0.15)
     ax_map = fig.add_subplot(grid[:, 0])
     img, origin, res, _ = load_map_info(map_yaml)
     h, w = img.shape[:2]
@@ -170,7 +196,7 @@ def plot_run(run_dir: str, map_yaml: str, entity: str) -> Optional[str]:
     ax_map.set_title(f"{result['scenario_name']}  {result['status']}  "
                      f"reached {result['goals']['reached']}/{result['goals']['total']}", fontsize=10)
 
-    axes = [fig.add_subplot(grid[i, 1]) for i in range(4)]
+    axes = [fig.add_subplot(grid[i, 1]) for i in range(5)]
     for ax in axes[1:]:
         ax.sharex(axes[0])
     rel = lambda t: np.asarray(t) - t0  # noqa: E731
@@ -192,16 +218,25 @@ def plot_run(run_dir: str, map_yaml: str, entity: str) -> Optional[str]:
     speed = np.hypot(np.diff(gx), np.diff(gy)) / 0.5
     axes[2].plot(rel(grid_t[1:]), speed, color=COLOR["truth"], lw=0.8)
     axes[2].set_ylabel("speed [m/s]")
+    if data["cmd_vel"]:
+        arr = np.asarray(sorted(data["cmd_vel"]))
+        axes[3].plot(rel(arr[:, 0]), arr[:, 2], color=COLOR["truth"], lw=0.8)
+    axes[3].set_ylabel("cmd_vel angular [rad/s]")
+    resets = reset_reactions(data)
+    for t, text, after, before in resets:
+        for ax in axes:
+            ax.axvline(t - t0, color="#6250d6", lw=1.0, ls="-.")
+        print(f"  置き直し t={t - t0:.1f} s  回転の指令の変化の最大: 直後 {after} / 直前 {before} [rad/s]  {text}")
     if data["status"]:
         arr = np.asarray(sorted(data["status"]), dtype=float)
-        axes[3].step(rel(arr[:, 0]), arr[:, 1], where="post", color=COLOR["amcl"], lw=1.5)
+        axes[4].step(rel(arr[:, 0]), arr[:, 1], where="post", color=COLOR["amcl"], lw=1.5)
         hold = arr[:, 2] > 0.5
-        axes[3].fill_between(rel(arr[:, 0]), -0.4, 4.4, where=hold, step="post", color="#e34948", alpha=0.12,
+        axes[4].fill_between(rel(arr[:, 0]), -0.4, 4.4, where=hold, step="post", color="#e34948", alpha=0.12,
                              label="hold")
-        axes[3].legend(loc="upper left", fontsize=8)
-    axes[3].set_yticks(range(len(STATE_NAMES)), STATE_NAMES, fontsize=7)
-    axes[3].set_ylim(-0.4, 4.4)
-    axes[3].set_xlabel("time from run start [s]")
+        axes[4].legend(loc="upper left", fontsize=8)
+    axes[4].set_yticks(range(len(STATE_NAMES)), STATE_NAMES, fontsize=7)
+    axes[4].set_ylim(-0.4, 4.4)
+    axes[4].set_xlabel("time from run start [s]")
     for t, name, text in data["rosout"]:
         if GOAL_SENT.search(text):
             for ax in axes:
@@ -214,7 +249,8 @@ def plot_run(run_dir: str, map_yaml: str, entity: str) -> Optional[str]:
     axes[0].set_xlim(-5, rel(truth[-1, 0]))
     for ax in axes:
         ax.grid(alpha=0.3)
-    fig.text(0.99, 0.005, "dotted: goal sent / orange: fault trigger (solid on, dashed off) / red: /initialpose",
+    fig.text(0.99, 0.005, "dotted: goal sent / orange: fault trigger (solid on, dashed off) / red: /initialpose / "
+             "purple: pose reset",
              ha="right", fontsize=8, color="#6b6a63")
     out = os.path.join(run_dir, "scenario_plot.png")
     fig.savefig(out, dpi=110, bbox_inches="tight")

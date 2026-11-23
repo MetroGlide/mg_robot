@@ -59,7 +59,7 @@ tools/
     ├── analyze_particle_modes.py    # 再生評価の記録の AMCL の粒子を仮説に分け、仮説の数と正しい仮説の重みを時系列で出す
     ├── plot_scan_on_map.py          # スキャンを真値と推定の姿勢に置いて地図に重ねる (自己位置のずれの原因の調査)
     ├── analyze_scan_conditions.py   # スキャンが地図に対して位置を決めやすいか (一致率・帯の太さ・不安定さ・視界の重なり) を時系列で測る
-    ├── plot_scenario.py             # シナリオテストの結果 (記録つき) の軌跡と時系列、構成どうしの比較を図にする (make scenario-plot)
+    ├── plot_scenario.py             # シナリオテストの結果 (記録つき) の軌跡と時系列 (置き直しの直後の速度の指令の変化を含む)、構成どうしの比較を図にする (make scenario-plot)
     ├── rewrite_scans.py             # 記録のスキャンを、地図にない点を除く・地図への光線追跡に置き換える (ずれの原因の切り分け)
     ├── rewrite_gnss.py              # 記録の GNSS を真値のアンテナ位置に置き換え、記録の GNSS の誤差の大きさと相関時間を出す
     ├── calib_wheel_odom.py          # ホイールオドメトリのスケール・バイアス・遅れを走行ログから推定
