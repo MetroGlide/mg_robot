@@ -51,6 +51,7 @@ scenarios/
 | `anomaly_start_away`、`anomaly_start_initialpose` | タグ `anomaly`。起動の 2 つの流れで、ずれた GNSS (変換の一律のずれ) のもとで初期姿勢が決まるかを見る。`_away` は既定の流れで、スタート地点から離れた所で向きも違えて起動し (`sim_args` の `spawn_*`)、初期姿勢を与えない。`_initialpose` はスタート地点の近くで起動し直す流れで、真の姿勢からずらした初期姿勢をオペレータが与える。`known_issue` (下記) |
 | `anomaly_lidar_blind` | タグ `anomaly_sensor`。LiDAR が何も返さない故障 (窓の汚れ・濃い霧) を、西の通路で 20 s 入れる。障害物も見えないので、その間は走らずに止まり、診断に出すのが期待する動作。スキャンの中身が空であることを判定する仕組みがまだないので、記録だけにする (`TAGS=anomaly_sensor`)。`known_issue` (下記) |
 | `localization_drift_stuck` | 棚の手前でシーケンサが止まっている間に、自己位置推定を棚の中へ少しずつずらしても、止まったままにならず、次のゴールへ到達する。止まっていると AMCL も GNSS も更新されず、推定の footprint が地図の棚にかかって経路を作れなくなる状況。監督の準備は走行中に待つ (`wait_for`)。監督・プリセットは `localization_drift_driving` と同じ。`known_issue` (下記) |
+| `gate_drift_driving`、`gate_jump_driving` | 門のノード (`localization_monitor: motion_gate`) の戻し方を、走りへの影響で確かめる。`localization_drift_driving` と同じ通路を走る間に、AMCL を少しずつずらす (`_drift`。門が閉じる前に EKF がずれを取り込み、戻すのは大きい補正になる) か、1 回だけ飛ばす (`_jump`。`localization_spread` の広がりを小さくしたもの。門がすぐ閉じ、戻すのは小さい補正になる)。合否は、ずれたまま止める要求なしで走った距離 (`localization_outcome`)・止まったままの時間・到達。戻し方 (その場で置き直す / 止まってから置き直す / 大きさで分ける) は、門の設定ファイルを `LOCALIZATION_GATE_CONFIG` で差し替えて比べ、`make scenario-plot` で、置き直しの直後の速度の指令の回転の急な変化を見る |
 | `keepout_escape` | 計画用地図にだけある進入禁止の領域 (`data/keepout/planning.yaml`。ウェアハウスの計画用地図の原点の周りの 2m 四方を進入禁止にしたもので、`tools/scripts/add_keepout_to_map.py` で作る。実際の世界には何もない) の中でスタートしても、自己位置が信頼できる (監督の状態が `NORMAL`) ので、BT のリカバリーの `EscapeKeepout` が領域の外の最も近い位置を始点に計画して領域から出て (`FindFreeStart` が SUCCESS)、ゴールへ到達する。監督が起動して状態を配信するまでは待つ。この段階が無いと、プランナが「始点が致死」で計画できず動けない |
 | `narrow_corridor_blocked` | 通れない幅 (0.5m) の狭い回廊へ経路を引かず、壁の外側を迂回して到達する。壁に接触しない (`obstacle_clearance`) |
 | `long_detour_rejected` | 計画用地図にだけある南北の長い壁 (`data/detour_wall/planning.yaml`。ウェアハウスの計画用地図の x=2〜3 を南端から北の棚の帯まで進入禁止にし、y=-1.25〜1.25 だけ通路として開けたもので、`tools/scripts/add_keepout_to_map.py` で作る) の通路を箱で塞ぐと、建物の反対側を回る約 50m の迂回路を `CommitPath` の遠回りの上限で棄却し、乗らずに待つ (「いまの活動」に `detour_rejected` が出る)。最初の引き直しで迂回路に乗らなかったあと、リカバリーを首振りまで何周かくり返すのを待ってから箱を除くと、通路を通って到達する。棄却した迂回路も planner_server が `/plan` に配信する (RViz の `Plan Candidate` で見える。Web UI と RViz の `Path` は採用した経路 `/navigation/committed_path` を出すので、迂回路は出ない)。計画用地図を `stack_args` で差し替えるので attach では使えない。物理的な壁だけではセンサで見えた範囲しか地図に載らず、経路が少しずつ延びるだけで棄却まで至らないため、壁は計画用地図に置く |
@@ -75,6 +76,7 @@ scenarios/
 - **`localization_garden_lap`、`localization_garden_lap_thick`、`localization_corner_odom`、`localization_corner_weak`、`localization_map_shift`、`localization_corner_drift`、`localization_drift_driving`、`localization_drift_stuck`**: 自己位置推定のロバスト化 ([localization_robustness.md](../../mg_navigation/doc/localization_robustness.md)) で、今の監督では戻せない失敗を再現する。対策ができたら、タグを外す。
   - 走行中のずれ: AMCL と EKF がそろってずれ、正しい GNSS だけが食い違うので、監督は GNSS を疑って切り離し、推定はずれたまま走り続ける (例: 7 m)。
   - 止まっている間のずれ: AMCL も GNSS も新しい値を出さないので、監督は判定の材料がなく疑わない。経路を作れずにナビゲーションが失敗する。
+- **`gate_drift_driving`**: 門のノードは、地図が進む向きに似た形の続く通路で、推定器が 1 m 未満ずれたときに照合で見分けられず、推定器をそのまま採る。採った後の猶予の間は閉じる理由をすべて使わないので、GNSS との食い違いでも閉じず、ずれたまま走る。
 - **`anomaly_*`** (タグ `anomaly`・`anomaly_holdout`・`anomaly_sensor`): 構成の比較に使う測定で、合否の回帰ではない。通常の回帰から外すために付けている。
 
 このほか、シナリオにできなかった (または挙動が不安定で見送った) 項目:
