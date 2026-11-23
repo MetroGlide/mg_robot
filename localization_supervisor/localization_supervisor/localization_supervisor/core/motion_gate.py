@@ -152,8 +152,10 @@ def _propagate(pose: Pose2, motion_then: Pose2, motion_now: Pose2) -> Pose2:
     return compose(pose, compose(inverse(motion_then), motion_now))
 
 
-def _rounded(pose: Optional[Pose2]) -> Optional[List[float]]:
-    return None if pose is None else [round(float(v), 3) for v in pose]
+def _pose_fields(pose: Pose2, prefix: str = '') -> Dict[str, float]:
+    """イベントのフィールド (x, y, yaw)。イベントの値は 1 つずつの値にする (doc/monitoring.md)。"""
+    return {f'{prefix}x': round(float(pose[0]), 3), f'{prefix}y': round(float(pose[1]), 3),
+            f'{prefix}yaw': round(float(pose[2]), 3)}
 
 
 class MotionGate:
@@ -298,14 +300,14 @@ class MotionGate:
         if self._undecided_hold_since is not None:
             out.events.append(GateEvent('hold', 'info', {'active': False, 'reason': 'undecided'}))
         self._undecided_hold_since = None
-        out.events.append(GateEvent('gate_opened', 'info', {'how': how, 'pose': _rounded(pose)}))
+        out.events.append(GateEvent('gate_opened', 'info', {'how': how, **_pose_fields(pose)}))
 
     def _reset(self, t: float, pose: Pose2, targets: str, how: str, out: GateStep, motion: Pose2,
                fused: Optional[Pose2]) -> None:
         s = self.settings
         cov = np.diag([s.reset_std_m ** 2, s.reset_std_m ** 2, s.reset_std_yaw_rad ** 2])
         out.reset = ResetCommand(pose, cov, targets)
-        fields: Dict[str, Any] = {'how': how, 'targets': targets, 'pose': _rounded(pose)}
+        fields: Dict[str, Any] = {'how': how, 'targets': targets, **_pose_fields(pose)}
         if fused is not None:
             fields['shift_m'] = round(math.hypot(pose[0] - fused[0], pose[1] - fused[1]), 3)
             fields['turn_rad'] = round(abs(wrap_angle(pose[2] - fused[2])), 3)
@@ -437,7 +439,7 @@ class MotionGate:
         out.events.append(GateEvent('map_match', level, {
             'reason': request.reason, 'result': decision.best, 'why': decision.reason,
             'margin': None if decision.margin is None else round(decision.margin, 3),
-            'agree': ','.join(decision.agree), 'ratios': {k: round(v, 3) for k, v in decision.ratios.items()}}))
+            'agree': ','.join(decision.agree), **{f'ratio_{k}': round(v, 3) for k, v in decision.ratios.items()}}))
         fused = self._pose_now(snapshot, s.fused)
 
         def now(pose: Pose2) -> Pose2:
@@ -447,7 +449,7 @@ class MotionGate:
             given = request.candidates[MANUAL].pose
             pose = decision.pose if decision.best == MANUAL else given
             out.events.append(GateEvent('manual_pose', 'info', {
-                'given': _rounded(given), 'corrected': decision.best == MANUAL and separated(
+                **_pose_fields(given, 'given_'), 'corrected': decision.best == MANUAL and separated(
                     pose, given, self.config.map_match.step_xy_m, self.config.map_match.step_yaw_rad)}))
             self._correction = None
             self._reset(t, now(pose), 'all', MANUAL, out, motion, fused)
@@ -464,7 +466,7 @@ class MotionGate:
                 return
             if adopted:
                 self._anchor = _Anchor(request.candidates[estimator].pose, request.motion, request.odometer)
-                out.events.append(GateEvent('pose_confirmed', 'info', {'pose': _rounded(target)}))
+                out.events.append(GateEvent('pose_confirmed', 'info', _pose_fields(target)))
             elif estimator not in decision.same:
                 self._close(t, 'confirm', out, result=decision.best)
                 self._correct(t, target, 'all', out, motion, fused)

@@ -80,11 +80,11 @@ class MotionGateNode(Node):
         self._updater.setHardwareID(output.hardware_id)
         self._updater.add(LocalizationTask(output.diagnostic_name, lambda: self._view))
         self.create_timer(config.period_sec, self._on_timer)
-        self._emit('node.started', 'info', name=self.get_name(), config=config_file,
-                   closers=','.join(c.name for c in config.gate.closers))
+        self._events.emit('node.started', 'info', {
+            'name': self.get_name(), 'config': config_file, 'closers': ','.join(c.name for c in config.gate.closers)})
 
-    def _emit(self, name: str, level: str, **fields) -> None:
-        self._events.emit(f'{self._config.event_prefix}.{name}', level, fields)
+    def _emit(self, event: str, level: str, **fields) -> None:
+        self._events.emit(f'{self._config.event_prefix}.{event}', level, fields)
 
     def _now(self) -> float:
         return self.get_clock().now().nanoseconds * 1e-9

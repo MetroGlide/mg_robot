@@ -116,6 +116,9 @@ class Sim:
                 self.amcl_reset = rel
                 self.amcl_offset = rel
                 self.amcl_shift = (0.0, 0.0)
+        for event in step.events:
+            # イベントの値は 1 つずつの値にする (イベントログの書式)
+            assert all(v is None or isinstance(v, (str, int, float, bool)) for v in event.fields.values()), event
         self.steps.append(step)
         return step
 
@@ -270,7 +273,8 @@ def test_manual_pose_is_used_as_given_when_it_cannot_be_matched():
     sim.gate.manual_pose((1.0, 1.0, 0.0))
     sim.run(0.6)
     assert sim.events('manual_pose')[0].fields['corrected'] is False
-    assert sim.events('pose_reset')[-1].fields['pose'][:2] == pytest.approx([1.0, 1.0], abs=0.05)
+    reset = sim.events('pose_reset')[-1].fields
+    assert (reset['x'], reset['y']) == pytest.approx((1.0, 1.0), abs=0.05)
 
 
 def test_gnss_disagreement_closes_the_gate_for_slow_drift():
