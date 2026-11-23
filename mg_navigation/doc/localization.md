@@ -19,6 +19,8 @@ gnss_amcl_initializer_node ◄─ /odom/gps ◄─ slam_gnss_nav_bridge ◄─ /
               amcl_watchdog_node   または   localization_supervisor_node
 ```
 
+`localization_monitor:=motion_gate` では、watchdog と監督ノードの代わりに門のノード (`motion_gate_node`) が動き、ゲートの調停を通して AMCL を EKF から切り離し、地図との照合で決めてから `/initialpose` と `/set_pose` で置き直す。
+
 EKF の周期は `mg_drivers/params/ekf_global.yaml` の `frequency`。
 
 | ノード | 役割 |
@@ -30,9 +32,17 @@ EKF の周期は `mg_drivers/params/ekf_global.yaml` の `frequency`。
 | `gnss_amcl_initializer_node` | 起動時 (と再初期化の要求時) に、精度の良い `/odom/gps` から `/initialpose` (AMCL) と `/set_pose` (EKF) を出して初期化する。`initializer_verify` が `true` なら、走りながら GNSS の周りをスキャンと地図で照合し、合った姿勢で決める。外から `/initialpose` を与えられたら、それに従う ([mg_localization_supervisor](../../mg_localization_supervisor/README.md#gnss_amcl_initializer_node)) |
 | `amcl_watchdog_node` | AMCL の共分散が大きい状態が続いたら、`gnss_amcl_initializer_node` に再初期化を要求する ([下記](#amcl_watchdog_node)) |
 | `localization_supervisor_node` | AMCL・GNSS・EKF・スキャンと地図を、設定で組み合わせた判定で見比べ、自己位置のずれを検知して、切り離し・再初期化で復旧する(既定の監視)。計画用地図の障害物に入っているかも出す ([localization_supervisor](../../localization_supervisor/doc/supervisor_node.md)、このロボットでの設定は [mg_localization_supervisor](../../mg_localization_supervisor/README.md#監督ノード-localization_supervisor_node)) |
+| `motion_gate_node` | `localization_monitor:=motion_gate` のとき。AMCL の動きがオドメトリと合わない、または GNSS と離れたままのとき、AMCL を EKF から切り離し、地図との照合で正しい姿勢を決めてから戻す ([localization_supervisor](../../localization_supervisor/doc/motion_gate.md)、このロボットでの設定は [mg_localization_supervisor](../../mg_localization_supervisor/README.md#門のノード-motion_gate_node)) |
+| `manual_pose_relay` | 門のノードがないとき、Web UI の手動の初期姿勢 (`/localization/manual_initial_pose`) を、そのまま `/initialpose` へ送る ([手動の初期姿勢](#手動の初期姿勢)) |
 | `ekf_global_node` | ホイールオドメトリの速度、AMCL の位置・yaw、GNSS の位置を融合する (`mg_drivers/params/ekf_global.yaml`) |
 
 `gnss_amcl_initializer_node`、`amcl_watchdog_node`、`localization_supervisor_node` は、他のノードが立ち上がるのを待って遅れて起動する (`TimerAction`。初期化ノードを先に、監視ノードを後に起動する)。
+
+## 手動の初期姿勢
+
+- Web UI の初期姿勢の指定は `/localization/manual_initial_pose` に送る。門のノードがあれば、門のノードが確かめてから置き直す。なければ、中継がそのまま `/initialpose` へ送る (従来と同じ)。
+- RViz の 2D Pose Estimate は、従来どおり `/initialpose` に送る。門のノードがあるときは、AMCL の振る舞いとして門の判定を受ける。
+- 詳細は [mg_localization_supervisor](../../mg_localization_supervisor/README.md#手動の初期姿勢)。
 
 ## amcl_watchdog_node
 
@@ -119,6 +129,7 @@ AMCL の位置の共分散を監視し、大きい状態が続いたら、`gnss_
 ## 従来の構成に戻す
 
 - `localization_monitor:=watchdog` にすれば、従来の監視 (共分散による再初期化だけ)。
+- 門のノード (`localization_monitor:=motion_gate`) をやめるときは、`localization_monitor` を `supervisor` か `watchdog` に戻す。Web UI の手動の初期姿勢は、中継を通して従来どおり `/initialpose` に届く。
 - `localization_profile:=gnss_fallback` で、AMCL と GNSS が乖離したら GNSS で引き戻すだけの、以前の動作 (監督ノードのまま)。
 - `localization_profile:=notify_only` で、監督ノードは検知と通知だけ (自動復旧しない)。
 - `use_odom_corrector:=false` で、ホイールオドメトリの補正なし ([mg_drivers](../../mg_drivers/doc/wheel_odom_corrector.md))。

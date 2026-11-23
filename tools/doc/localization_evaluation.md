@@ -67,7 +67,7 @@ docker run --rm -v $PWD:/app -v ~/ros2_data:/root/ros2_data mg_develop:latest \
 | `--runs N` | 繰り返す回数。AMCL は乱数を使うため、分布で比べる |
 | `--init gt\|gnss` | 初期姿勢。`gt` は真値を与える、`gnss` は GNSS による初期化に任せて初期化も評価する |
 | `--initializer true\|false` | GNSS から AMCL の初期姿勢を与えるノード。`--init` に応じて切り替わる (`gt` では使わず、`gnss` では使う) |
-| `--monitor none\|watchdog\|supervisor` | 自己位置の監視ノード。`--init` に応じて切り替わる (`gt` では `none`、`gnss` では `watchdog`) |
+| `--monitor none\|watchdog\|supervisor\|motion_gate` | 自己位置の監視ノード (`motion_gate` は門のノード)。`--init` に応じて切り替わる (`gt` では `none`、`gnss` では `watchdog`) |
 | `--profile <名前>` | 監督の設定に重ねるプロファイル (`--monitor supervisor` のとき) |
 | `--faults <yaml>` | センサ入力に故障を注入して、復旧を評価する (`tools/datasets/localization/faults/`) |
 | `--no-particles` | AMCL の粒子 (`/particle_cloud`) を記録しない (記録の容量を抑える) |

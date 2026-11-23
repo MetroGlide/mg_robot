@@ -7,7 +7,7 @@
 
 | 種類 | 名前 | 内容 |
 | :--- | :--- | :--- |
-| launch | `launch/supervisor.launch.py` | ゲートの調停 (`amcl_gate_arbiter`)・GNSS による初期化・監督ノードを起動する。`mg_navigation` の `localization_launch.py` から include される |
+| launch | `launch/supervisor.launch.py` | ゲートの調停 (`amcl_gate_arbiter`)・GNSS による初期化・監督ノード・門のノード・手動の初期姿勢の中継を起動する。`mg_navigation` の `localization_launch.py` から include される |
 | ノード | `gnss_amcl_initializer_node.py` | GNSS の位置から、AMCL (`/initialpose`) と EKF (`/set_pose`) の初期姿勢を出す ([下記](#gnss_amcl_initializer_node)) |
 | 設定 | `config/supervision.yaml` | 監督の設定 (情報源・判定のインスタンス・総合・状態遷移・アンカー・安全の信号・出力)。監督ノードとオフライン評価が読む ([下記](#監督の構成-supervisionyaml)) |
 | 設定 | `config/profiles/*.yaml` | `supervision.yaml` に重ねるプロファイル |
@@ -15,6 +15,8 @@
 | 部品 | `mg_localization_supervisor/actuators/` | 自動復旧の対処: シーケンサの一時停止の要求 (`pause_request.py`)、観測を増やす首振り (`spin_observe.py`)、再初期化の後のコストマップの消去 (`clear_costmap.py`) |
 | 設定 | `config/gate_arbiter.yaml` | AMCL のゲートの調停 (`amcl_gate_arbiter`) |
 | 設定 | `config/initializer.yaml` | GNSS による初期化 (`gnss_amcl_initializer_node`) |
+| 設定 | `config/motion_gate.yaml` | 門のノード (`motion_gate_node`) の設定 ([下記](#門のノード-motion_gate_node)) |
+| 部品 | `mg_localization_supervisor/hold_outputs/pause_request.py` | 門のノードの一時停止の要求を、シーケンサの `pause_request` に伝える |
 
 GNSS による初期化と監督ノードは、他のノードが立ち上がるのを待って遅れて起動する (初期化ノードを先に、監督ノードを後に起動する)。
 
@@ -25,6 +27,7 @@ GNSS による初期化と監督ノードは、他のノードが立ち上がる
 | `use_sim_time` | シミュレーション・rosbag 再生の時刻を使う |
 | `use_gnss_amcl_initializer` | GNSS による初期化ノードを起動するか |
 | `use_supervisor` | 監督ノードを起動するか (`localization_launch.py` は `localization_monitor:=supervisor` か `localization_supervisor:=true` のときに true を渡す) |
+| `use_motion_gate` | 門のノードを起動するか (`localization_launch.py` は `localization_monitor:=motion_gate` のときに true を渡す)。false なら、手動の初期姿勢をそのまま `/initialpose` へ送る中継を起動する |
 | `supervisor_config` | 監督の設定ファイル (既定は `config/supervision.yaml`) |
 | `localization_profile` | 監督の設定に重ねるプロファイル (空は基本設定) |
 | `initializer_verify` | GNSS による初期姿勢を、スキャンと地図の照合で確かめるか (初期化ノードの `verify_by_scan`)。既定は環境変数 `LOCALIZATION_INITIALIZER_VERIFY` (なければ `false`) |
@@ -37,10 +40,11 @@ GNSS による初期化と監督ノードは、他のノードが立ち上がる
 | :--- | :--- |
 | `/amcl_gate_arbiter/waypoint/change_publish_state` | ウェイポイントの `amcl_on` / `amcl_off` |
 | `/amcl_gate_arbiter/supervisor/change_publish_state` | 監督の切り離し・復帰 (自動復旧の対処 `gate` が呼ぶ。`recovery_enabled` のとき、AMCL が疑わしいあいだ閉じる) |
+| `/amcl_gate_arbiter/motion_gate/change_publish_state` | 門のノードの開閉 (閉じる理由の部品が異常を出してから、照合で決まるまで閉じる) |
 
 - ウェイポイントが切った区間では、監督が復旧しても AMCL は戻らない。監督が切っている間は、`amcl_on` でも戻らない。
 - `amcl_off` の後に `amcl_on` を送るのは、ウェイポイントの作り手の責任 (送り忘れると AMCL は戻らない)。
-- 監視ノードの種類 (`none` / `watchdog` / `supervisor`) によらず、常に起動する。負荷はごく小さい。
+- 監視ノードの種類 (`none` / `watchdog` / `supervisor` / `motion_gate`) によらず、常に起動する。負荷はごく小さい。
 - 状態 `/amcl_gate_arbiter/state` は、Web UI の「Actions」が表示に使う。Web UI の「Actions」の AMCL の入/切は、`waypoint` の要求元として呼ぶ。次のウェイポイントのアクションで上書きされる。
 - 診断 `amcl_gate_arbiter: gate` は、集約で `/Robot/Localization/Gate`。監督ノードが止めているときのイベント `gate.changed` は WARN ([doc/monitoring.md](../doc/monitoring.md))。
 
@@ -54,6 +58,27 @@ GNSS による初期化と監督ノードは、他のノードが立ち上がる
 - GNSS による初期化 (`gnss_amcl_initializer_node`)・watchdog・人による `/initialpose`・`/set_pose` は、外からの再初期化として扱う (状態を戻して猶予を置く)。
 - 診断 `localization_supervisor_node: localization` は、集約で `/Robot/Localization/Monitor`。watchdog と並行して動かすときは、watchdog の診断も同じ集約に入る (悪いほうのレベルになる)。Web UI の「自己位置」のタイルに、状態・疑わしい情報源・異常の判定・障害物の中かが出る。
 - シーケンサを通らないゴール (手動のゴール) は、自動復旧の一時停止 (`pause_request`) でも止まらない。
+
+## 門のノード (motion_gate_node)
+
+役割・規則・入出力は [localization_supervisor/doc/motion_gate.md](../localization_supervisor/doc/motion_gate.md)。このロボットでの使い方:
+
+- `localization_monitor:=motion_gate` で起動する。監視は 1 つしか選べないので、watchdog と監督ノードは起動しない (どれも AMCL と EKF を置き直すため、同時に動かすと互いの置き直しを取り違える)。
+- このとき、初期化ノードの「外からの `/initialpose` の確かめ」(`check_external_initialpose`) を止める (門のノードの置き直しを、初期化ノードが外からの姿勢として直し直さないため)。GNSS による起動時の初期化は続ける。
+- 閉じる理由の部品は、動きの合意 (AMCL とホイールオドメトリ) と、AMCL と GNSS の食い違い。照合は AMCL と同じ地図とスキャンで行う。
+- 一時停止の要求は、`hold_outputs/pause_request.py` がシーケンサの `pause_request` に伝える。シーケンサを通らないゴール (手動のゴール) は止まらない。
+- 状態 `/localization/status` は門のノードが出す。診断は集約で `/Robot/Localization/Monitor`。
+- 戻し方: `localization_monitor` を元の値 (`supervisor` または `watchdog`) に戻す。
+
+### 手動の初期姿勢
+
+| 送り手 | 送り先 | 門のノードがあるとき | ないとき |
+| :--- | :--- | :--- | :--- |
+| Web UI | `/localization/manual_initial_pose` | 門のノードが周りを照合してから置き直し、確かめた姿勢にする | 中継 (`manual_pose_relay`) がそのまま `/initialpose` へ送る (今の動作と同じ) |
+| RViz (2D Pose Estimate) | `/initialpose` | AMCL の振る舞いとして門の判定を受ける (地図に合えば採られる) | 今の動作と同じ |
+
+- 中継は初期化ノードの有無 (`use_gnss_amcl_initializer`) に依らず起動する。
+- RViz の送り先は変えていない。門のノードで運用するときは、Web UI から与える。
 
 ## 監督の構成 (supervision.yaml)
 
@@ -174,6 +199,7 @@ EKF の初期共分散が大きく、AMCL の初期値 (原点) に引かれる�
 | `verify_retry_distance_m` | 合うまで、GNSS の位置がこれだけ動くごとに照合し直す |
 | `external_check_delay_sec`・`external_search_range_m`・`external_search_yaw_rad` | 外から初期姿勢を与えられてから照合するまでの時間と、その姿勢の周りを探す範囲 |
 | `external_accept_distance_m` | 外から与えられた初期姿勢に従うのは、起動してからこれだけ動くまで (スタート地点で止まって与える想定) |
+| `check_external_initialpose` | 外から与えられた `/initialpose` に従い、確かめるか (`verify_by_scan` が `true` のとき)。門のノードで動かすときは launch が `false` にする |
 | `verify.*` | 照合の範囲と刻み、一致とみなす距離 (粗い格子の `coarse_tolerance_m` と細かい格子の `tolerance_m`)、絞り込む候補の数、合うとみなす一致率 (`min_ratio`)、似た一致の候補との差 (`ambiguity_margin`)、合ったとき・確かめられないときの標準偏差 (`initializer/verify.py` の `VerifyConfig`) |
 
 実際の値は `config/initializer.yaml` が正 (書いていないものはノードの既定値)。
