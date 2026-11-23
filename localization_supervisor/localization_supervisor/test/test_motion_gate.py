@@ -158,6 +158,25 @@ def test_startup_confirms_the_estimator_without_reset():
     assert all(s.gate_open for s in sim.steps)
 
 
+def test_startup_waits_for_the_estimator():
+    """推定器がまだ出していない間は、融合の結果だけで決めて置き直さない。"""
+    sim = Sim()
+    sim.ekf_offset = (0.4, 0.2, 0.05)
+    sim.store = SampleStore(sim.config.gate.kinds, horizon_sec=60.0)
+    sim.store.set_map('map_scan', wall_map())
+    sim.store.add_pose = _skip_amcl(sim.store.add_pose)
+    sim.run(4.0)
+    assert sim.gate.state == GateState.UNCONFIRMED
+    assert not sim.events('map_match') and not sim.events('pose_reset')
+
+
+def _skip_amcl(add_pose):
+    def add(name, sample):
+        if name != 'amcl':
+            add_pose(name, sample)
+    return add
+
+
 def test_startup_keeps_the_estimator_when_fused_is_off():
     sim = Sim()
     sim.ekf_offset = (0.4, 0.2, 0.05)

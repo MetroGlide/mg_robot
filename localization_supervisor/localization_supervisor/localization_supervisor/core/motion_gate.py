@@ -407,7 +407,8 @@ class MotionGate:
             if pose is not None:
                 candidates[name] = CandidatePose(pose, *narrow)
         if reason == 'startup':
-            return candidates
+            # 推定器が出す前に決めると、収束する前の推定器を、融合の結果を照合した姿勢へ置き直してしまう
+            return candidates if s.estimator in candidates else {}
         if reason == 'confirm':
             candidates.pop(s.fused, None)
         continuation_yaw = None
