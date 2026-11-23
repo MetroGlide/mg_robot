@@ -1,6 +1,6 @@
 # 地図と GNSS の変換
 
-地図と GNSS の対応点から `gnss_transform.yaml` の剛体変換を求めるツール、地図と GNSS の場所ごとのずれを測るツール、シミュレータ用の生成ツール。一覧は [tools の README](../README.md)。
+地図と GNSS の対応点から `gnss_transform.yaml` の剛体変換を求めるツール、地図と GNSS の場所ごとのずれを測るツール、waypoint-tool のグループを動かすツール、シミュレータ用の生成ツール。一覧は [tools の README](../README.md)。
 
 ## `generate_static_transforms.py` (地図とGNSSの剛体変換算出)
 
@@ -44,10 +44,26 @@ measure の出力をまとめ、照合の質で絞ったうえで、ずれを次
 - `group`: waypoint-tool のグループ (`--wptroj`) ごとの剛体。グループのずらし量の見直しで直せる分
 
 決めるデータと確かめるデータを分けるため、道のりの区切り (`--block-m`) を交互に 2 つの側に振り分け、片方で当てはめてもう片方で確かめた残差を出します (走行は区画を順に通るので、時間で前後半に分けるとグループが重ならない)。
-グループごとの表には、プロジェクトの手のずらし量 (`pose_offset`) を並べます。出力は `gnss_map_offset_report.md` と、ずれの矢印の図 `gnss_map_offset.png`。
+グループごとの表には、プロジェクトの手のずらし量 (`pose_offset`) と、当てはめたずれを打ち消す「直す動き」を並べます。出力は `gnss_map_offset_report.md` と、ずれの矢印の図 `gnss_map_offset.png`。
 
 ```bash
 make gnss-map-offset-analyze INPUTS="<measure の json> ..." WPTROJ=<プロジェクトの .wptroj> OUT_DIR=/app/tools/data/gnss_map
+```
+
+---
+
+## `move_wptroj_groups.py` (waypoint-tool のグループを動かす)
+
+waypoint-tool のプロジェクト (`.wptroj`) のグループを、地図の原点の周りの剛体 `R(dyaw)·p + (dx, dy)` で動かし、別名で保存します。
+waypoint-tool の画面の「グループの位置調整」と同じ処理で、動かす量には analyze の「直す動き」を使います。
+
+- 出力の地図に効くのは、グループの中の地図レイヤーの原点 (`origin_override`) と切り抜きの矩形です。グループの `pose_offset` は動かした量の記録にすぎず、書き換えても地図は変わりません。
+- 扱うのは、`origin_override` を持つ地図レイヤーだけのグループです。手描きのレイヤーなどを含むグループは止めるので、waypoint-tool の画面で動かします。
+- ウェイポイントは動かしません。地図は、保存したプロジェクトを waypoint-tool で開いてエクスポートします。
+- グループの境目では、両側のレイヤーの姿勢が違う分だけ壁に段差ができます。エクスポートしたら境目を確かめ、計測をやり直します。
+
+```bash
+python3 tools/scripts/move_wptroj_groups.py <元の .wptroj> <保存先の .wptroj> --move ario -0.365 1.943 -0.602 --move yubinkyoku1 -0.724 0.286 -0.005
 ```
 
 ---

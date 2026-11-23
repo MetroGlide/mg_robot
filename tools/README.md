@@ -19,7 +19,7 @@ tools/
 │   ├── pose_graph.py      # slam_gnss_2d 出力 (pose_graph.json / gnss_transform.yaml) の読込・補間・アンカー間の座標移動
 │   ├── loc_metrics.py     # 自己位置推定の評価指標 (誤差・飛び・NEES・遅れ・復旧) ※numpy のみ
 │   ├── scan_map.py        # スキャンと占有格子の地図の突き合わせ・光線追跡 ※numpy と scipy のみ
-│   ├── map_align.py       # 点群の地図への照合、waypoint-tool のグループの読込、剛体のずれの当てはめ ※numpy と scipy のみ
+│   ├── map_align.py       # 点群の地図への照合、waypoint-tool のグループの読込・移動、剛体のずれの当てはめ ※numpy と scipy のみ
 │   ├── odom_calib.py      # ホイールオドメトリ校正の計算 (窓ごとの相対移動の当てはめ) ※numpy のみ
 │   ├── status_timeline.py # 診断のレベルの遷移とイベントの集計・整形 ※ROS 不要 (rosbag_summary.py が使う)
 │   ├── event_timeline.py  # イベントログ (evt=...) の解析・結合・絞り込み・整形 ※ROS 不要。書式の読み取りは mg_utils.event_log
@@ -38,6 +38,7 @@ tools/
     ├── generate_static_transforms.py # 対応点からの UTM -> map 剛体変換 (x,y,yaw) 算出
     ├── make_sim_gnss_transform.py   # シミュレータのワールド SDF から、GNSS ブリッジ用の gnss_transform.yaml を作る
     ├── measure_gnss_map_offset.py   # 地図と GNSS の場所ごとのずれを測る (make bag-gnss-map-offset / gnss-map-offset-analyze)
+    ├── move_wptroj_groups.py        # waypoint-tool のプロジェクトのグループを剛体で動かし、別名で保存する
     ├── rosbag_modify_base.py        # rosbag 内特定トピック修正 (共分散付与等)
     ├── bag_to_json.py               # rosbag メッセージの JSON ダンプ
     ├── event_timeline.py            # イベントログをコンテナのログと rosbag から集めて時刻順の表にする (make log-events)
@@ -68,7 +69,7 @@ tools/
 | ファイル | ツール |
 | :--- | :--- |
 | [doc/bag_tools.md](./doc/bag_tools.md) | `rosbag_summary.py`、`plot_gnss_trajectory.py`、`plot_lidar_scans.py`、`rosbag_modify_base.py`、`bag_to_json.py`、`event_timeline.py`、`diff_bag_list.py`、`record.sh`、`bag_play.sh` |
-| [doc/gnss_transform_tools.md](./doc/gnss_transform_tools.md) | `generate_static_transforms.py`、`measure_gnss_map_offset.py`、`make_sim_gnss_transform.py` |
+| [doc/gnss_transform_tools.md](./doc/gnss_transform_tools.md) | `generate_static_transforms.py`、`measure_gnss_map_offset.py`、`move_wptroj_groups.py`、`make_sim_gnss_transform.py` |
 | [doc/slam_evaluation.md](./doc/slam_evaluation.md) | `eval_slam.py`、`run_slam_variant.sh`、`patch_params.py` |
 | [doc/localization_evaluation.md](./doc/localization_evaluation.md) | `eval_localization.py`、`run_localization_variant.sh`、故障注入、`eval_localization_offline.py` |
 | [doc/wheel_odom_calibration.md](./doc/wheel_odom_calibration.md) | `calib_wheel_odom.py` |
@@ -112,4 +113,4 @@ make test pkg=tools
 | `test_sim_gnss_transform.py` | シミュレータの `gnss_transform.yaml` の生成 |
 | `test_static_transform.py` | 静的な座標変換の合成 (`common/geo.py`) |
 | `test_scan_map.py` | スキャンと地図の突き合わせ・光線追跡 (`common/scan_map.py`) |
-| `test_map_align.py` | 点群の地図への照合・グループの読込・剛体のずれの当てはめ (`common/map_align.py`) |
+| `test_map_align.py` | 点群の地図への照合・グループの読込と移動・剛体のずれの当てはめ (`common/map_align.py`) |

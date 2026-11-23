@@ -38,6 +38,7 @@ from tools.common.geo import lat_lon_to_utm, quaternion_to_yaw  # noqa: E402
 from tools.common.map import load_gnss_transform, load_map_info  # noqa: E402
 from tools.common.map_align import (  # noqa: E402
     apply_offsets,
+    correction_motion,
     assign_group,
     fit_offsets,
     inverse_pose,
@@ -424,8 +425,8 @@ def analyze(args: argparse.Namespace) -> None:
               f"- 全体の剛体: 地図 = R({math.degrees(theta):+.3f} deg) · GNSS + ({t[0]:+.2f}, {t[1]:+.2f}) m "
               "(回転は地図の原点 = アンカーの周り)", "",
               "| グループ | N | 中心での平均のずれ dx, dy [m] | 当てはめの回転 [deg] | 当てはめ後の RMS [m] | "
-              "手のずらし量 x, y [m], yaw [deg] |",
-              "| :--- | ---: | :--- | ---: | ---: | :--- |"]
+              "手のずらし量 x, y [m], yaw [deg] | 直す動き dx, dy [m], dyaw [deg] |",
+              "| :--- | ---: | :--- | ---: | ---: | :--- | :--- |"]
     manual = {g.name: g.offset for g in groups_def}
     for name in sorted(full_group):
         idx = [i for i, g in enumerate(group) if g == name]
@@ -435,9 +436,11 @@ def analyze(args: argparse.Namespace) -> None:
         shift = apply_offsets(center[None, :], tg, thg)[0] - center
         m = manual.get(name)
         mtxt = f"{m[0]:+.2f}, {m[1]:+.2f}, {math.degrees(m[2]):+.2f}" if m else "-"
+        cx, cy, cyaw = correction_motion(tg, thg)
         lines.append(f"| {name} | {len(idx)} | {shift[0]:+.2f}, {shift[1]:+.2f} | {math.degrees(thg):+.3f} | "
-                     f"{rms(mat[idx] - pred):.2f} | {mtxt} |")
-    lines.append("")
+                     f"{rms(mat[idx] - pred):.2f} | {mtxt} | {cx:+.3f}, {cy:+.3f}, {math.degrees(cyaw):+.3f} |")
+    lines += ["", "- 直す動き: グループを地図の原点の周りに R(dyaw)·p + (dx, dy) で動かすと、当てはめたずれが消える。"
+              "`move_wptroj_groups.py --move <グループ> dx dy dyaw` にそのまま渡せる。", ""]
 
     os.makedirs(args.output_dir, exist_ok=True)
     md = os.path.join(args.output_dir, "gnss_map_offset_report.md")

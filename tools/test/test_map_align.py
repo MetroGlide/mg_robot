@@ -11,10 +11,12 @@ from PIL import Image
 from tools.common.map_align import (
     apply_offsets,
     assign_group,
+    correction_motion,
     fit_offsets,
     inverse_pose,
     load_wptroj_groups,
     match_cloud,
+    move_wptroj_group,
     select_map,
     transform_points,
     voxel_downsample,
@@ -144,3 +146,51 @@ def test_wptroj_groups_and_assignment(tmp_path):
     assert regions == [("R1", (0.0, 0.0, 20.0, 20.0))]
     names = assign_group(groups, np.array([[2.0, 2.0], [7.0, 2.0], [12.0, 2.0], [30.0, 2.0]]))
     assert names == ["upper", "upper", "lower", None]
+
+
+def test_correction_motion_cancels_fitted_offset():
+    rng = np.random.default_rng(2)
+    ref = rng.uniform(-200, 200, size=(20, 2))
+    t, theta = np.array([-1.3, 2.1]), math.radians(0.6)
+    dx, dy, dyaw = correction_motion(t, theta)
+    back = apply_offsets(apply_offsets(ref, t, theta), np.array([dx, dy]), dyaw)
+    np.testing.assert_allclose(back, ref, atol=1e-9)
+
+
+def _project_with_group():
+    return {
+        "map_layers": [
+            {"id": "a", "name": "a", "origin_override": [10.0, 0.0, 0.1],
+             "clip": {"rects": [{"x": 20.0, "y": 0.0, "width": 4.0, "height": 2.0}]}},
+            {"id": "other", "name": "other", "origin_override": [0.0, 0.0, 0.0]},
+        ],
+        "custom_layers": [{"id": "draw", "type": "manual"}],
+        "layer_groups": {
+            "g": {"name": "grp", "children_ids": ["a"], "pose_offset": {"x": 1.0, "y": 0.0, "yaw": 0.0}},
+            "d": {"name": "drawn", "children_ids": ["draw"]},
+        },
+    }
+
+
+def test_move_wptroj_group_moves_origin_clip_and_offset():
+    project = _project_with_group()
+    dyaw = math.pi / 2
+    assert move_wptroj_group(project, "grp", 1.0, 2.0, dyaw) == ["a"]
+    layer = project["map_layers"][0]
+    np.testing.assert_allclose(layer["origin_override"], [1.0, 12.0, 0.1 + dyaw], atol=1e-9)
+    # 切り抜きの中心 (22, 1) は、レイヤーと一緒に動く。矩形は回さず、4 分の 1 回転では縦横が入れ替わる。
+    rect = layer["clip"]["rects"][0]
+    assert rect["width"] == 2.0 and rect["height"] == 4.0
+    center = (rect["x"] + rect["width"] / 2, rect["y"] + rect["height"] / 2)
+    np.testing.assert_allclose(center, [0.0, 24.0], atol=1e-9)
+    off = project["layer_groups"]["g"]["pose_offset"]
+    np.testing.assert_allclose([off["x"], off["y"], off["yaw"]], [1.0, 3.0, dyaw], atol=1e-9)
+    assert project["map_layers"][1]["origin_override"] == [0.0, 0.0, 0.0]
+
+
+def test_move_wptroj_group_rejects_unsupported_children():
+    project = _project_with_group()
+    with pytest.raises(ValueError):
+        move_wptroj_group(project, "drawn", 1.0, 0.0, 0.0)
+    with pytest.raises(ValueError):
+        move_wptroj_group(project, "missing", 1.0, 0.0, 0.0)

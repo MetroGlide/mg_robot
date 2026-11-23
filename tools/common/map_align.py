@@ -3,7 +3,8 @@
 - 点群 (車体の座標系) を占有格子の地図に照合して、地図の上の姿勢を求める (match_cloud)
 - 複数の地図 (区画) から、点を含む地図を選ぶ (select_map)
 - waypoint-tool のプロジェクト (.wptroj) のグループと、その範囲・手のずらし量を読む (load_wptroj_groups)
-- 地図の座標どうしの剛体のずれを当てはめる (fit_offsets)
+- 地図の座標どうしの剛体のずれを当てはめる (fit_offsets)、それを打ち消す動き (correction_motion)
+- .wptroj のグループを剛体で動かす (move_wptroj_group)
 
 numpy と scipy のみに依存する。
 """
@@ -228,3 +229,68 @@ def fit_offsets(ref_xy: np.ndarray, map_xy: np.ndarray, rotation: bool = True,
 def apply_offsets(xy: np.ndarray, t: np.ndarray, theta: float) -> np.ndarray:
     c, s = math.cos(theta), math.sin(theta)
     return xy @ np.array([[c, s], [-s, c]]) + t
+
+
+def correction_motion(t: np.ndarray, theta: float) -> Tuple[float, float, float]:
+    """fit_offsets のずれ (map = R(theta)·ref + t) を打ち消す、地図の原点の周りの動き (dx, dy, dyaw)。
+
+    地図の点 p を R(dyaw)·p + (dx, dy) に動かすと、ref の位置に戻る。
+    """
+    c, s = math.cos(-theta), math.sin(-theta)
+    return -(c * t[0] - s * t[1]), -(s * t[0] + c * t[1]), -theta
+
+
+def _move_clip(clip: Optional[dict], frm: Sequence[float], to: Sequence[float]) -> Optional[dict]:
+    """切り抜きの矩形を、レイヤーの原点 frm → to に合わせて動かす (中心だけ動かし、矩形は回さない)。"""
+    if not clip:
+        return clip
+    cf, sf, ct, st = math.cos(frm[2]), math.sin(frm[2]), math.cos(to[2]), math.sin(to[2])
+    swap = abs(round((to[2] - frm[2]) / (math.pi / 2))) % 2 == 1
+    rects = []
+    for r in clip.get("rects", []):
+        dx = r["x"] + r["width"] / 2 - frm[0]
+        dy = r["y"] + r["height"] / 2 - frm[1]
+        mx, my = dx * cf + dy * sf, -dx * sf + dy * cf
+        cx, cy = to[0] + mx * ct - my * st, to[1] + mx * st + my * ct
+        w, h = (r["height"], r["width"]) if swap else (r["width"], r["height"])
+        rects.append({**r, "x": cx - w / 2, "y": cy - h / 2, "width": w, "height": h})
+    return {**clip, "rects": rects}
+
+
+def move_wptroj_group(project: dict, name: str, dx: float, dy: float, dyaw: float) -> List[str]:
+    """waypoint-tool のプロジェクト (読み込んだ dict) のグループを、地図の原点の周りの剛体で動かす。
+
+    グループの位置調整 (waypoint-tool の transformLayerGroup) と同じに、中の地図レイヤーの origin_override を
+    R(dyaw)·p + (dx, dy) で動かし、切り抜きの矩形は中心だけ動かし、pose_offset に動かした量を合成する。
+    出力の地図に効くのは origin_override と切り抜きで、pose_offset は記録にすぎない。
+    origin_override のない地図レイヤー (元の地図の姿勢を共有する)・手描きなどのレイヤー・入れ子のグループは
+    扱わず、ValueError にする (waypoint-tool の画面で動かす)。動かしたレイヤーの名前を返す。
+    """
+    groups = [g for g in project.get("layer_groups", {}).values() if g.get("name") == name]
+    if len(groups) != 1:
+        raise ValueError(f"グループ {name} が {len(groups)} 個あります (1 個のはず)。")
+    group = groups[0]
+    layers = {layer["id"]: layer for layer in project.get("map_layers", [])}
+    c, s = math.cos(dyaw), math.sin(dyaw)
+
+    def move(x: float, y: float) -> Tuple[float, float]:
+        return c * x - s * y + dx, s * x + c * y + dy
+
+    children = []
+    for cid in group.get("children_ids", []):
+        layer = layers.get(cid)
+        if layer is None or not layer.get("origin_override"):
+            raise ValueError(f"グループ {name} の子 {cid} は、origin_override を持つ地図レイヤーではありません。")
+        children.append(layer)
+    moved = []
+    for layer in children:
+        frm = layer["origin_override"]
+        to = [*move(frm[0], frm[1]), frm[2] + dyaw]
+        layer["origin_override"] = to
+        layer["clip"] = _move_clip(layer.get("clip"), frm, to)
+        moved.append(layer.get("name", layer["id"]))
+    old = group.get("pose_offset") or {"x": 0.0, "y": 0.0, "yaw": 0.0}
+    x, y = move(old["x"], old["y"])
+    yaw = math.atan2(math.sin(old["yaw"] + dyaw), math.cos(old["yaw"] + dyaw))
+    group["pose_offset"] = {"x": x, "y": y, "yaw": yaw}
+    return moved
