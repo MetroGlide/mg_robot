@@ -58,7 +58,7 @@ graph TD
     end
 
     subgraph WSN["WaypointSequencerNode"]
-        SVC["~/start (StartSequence)\n~/stop (Trigger)"]
+        SVC["~/start (StartSequence)\n~/trigger (TriggerSequence)\n~/stop (Trigger)"]
         SUB["~/set_next_waypoint_index (Int16)\n~/pause_request (PauseRequest)"]
         FSM["WaypointSequencerFSM\nSequencerState\nNamed Pause Slots"]
         NAV["WaypointNavigator\n(Nav2 ActionClient)"]
@@ -104,7 +104,7 @@ graph TD
 stateDiagram-v2
     [*] --> IDLE
 
-    IDLE --> ON_STARTING : start()
+    IDLE --> ON_STARTING : start() / trigger()
     ON_STARTING --> NAVIGATING : elapsed
     ON_STARTING --> SUSPENDED : pause_request(active=true)
     ON_STARTING --> IDLE : stop()
@@ -141,8 +141,8 @@ stateDiagram-v2
     note right of IDLE
         _current_index が 0 でない場合は
         途中ウェイポイントのトリガー待ち。
-        start() で _current_index から再開。
-        pause スロットが残っている間は start() を拒否する。
+        start() / trigger() で _current_index から再開。
+        pause スロットが残っている間は start() / trigger() を拒否する。
     end note
 ```
 
@@ -155,6 +155,7 @@ stateDiagram-v2
 | 種別    | トピック/サービス名         | 型                               | 説明                                         |
 | ------- | --------------------------- | -------------------------------- | -------------------------------------------- |
 | Service | `~/start`                   | `mg_msgs/StartSequence`          | IDLE/GOAL_REACHED → ON_STARTING (pause 中は拒否) |
+| Service | `~/trigger`                 | `mg_msgs/TriggerSequence`        | 物理ボタンなどからの開始要求。IDLE → ON_STARTING (カウントダウンは `trigger_countdown_ms`)。`~/start` と違い GOAL_REACHED からは始めない。pause 中・手動ゴールの実行中・ウェイポイントなしは拒否。`trigger_accepts_unstarted_idle` が false なら wait_trigger 待ちの IDLE だけ受け付ける。断ったら理由を `message` に返す。受け付けられるかは `~/status` の `trigger_acceptable` に出す (判定は `trigger()` と同じ 1 つ) |
 | Service | `~/stop`                    | `std_srvs/Trigger`               | 任意状態 → IDLE (pause スロットも全解除)     |
 | Service | `~/reload_waypoints`        | `std_srvs/Trigger`               | IDLE/GOAL_REACHED/ERROR 時のみ有効           |
 | Service | `~/navigate_to_pose`        | `mg_msgs/SendGoal`               | BT を指定してゴールを 1 つ送る手動ゴール。`navigation_mode` は `normal` / `queue_wait` (`set_navigation_mode` と同じ BT と、global_costmap のセンサ障害物層の切り替え) か `default` (BT も層も変えず、Nav2 の既定の BT)。IDLE/GOAL_REACHED/ERROR で pause 中でないときだけ受け付ける。実行中は `~/start` を拒否し、`~/stop` でキャンセルする。層の切り替えに失敗したときはゴールを送らない。ゴールの終了時に層は戻さない (戻すのは `normal` で送るか Nav2 の再起動)。`~/navigation_mode` (シーケンスのモード) は変えない |
@@ -185,6 +186,8 @@ stateDiagram-v2
 | `plan_goal_match_tolerance` | double | 経路の終点をゴールのものとみなす距離 [m]（NavFn の `tolerance` 以上にする） |
 | `stall_distance` | double | 詰まりの検知で、進んだとみなす移動距離 [m] |
 | `stall_warn_sec` | double | 位置が進まない時間がこれ以上になったら `/diagnostics` に WARN を出す [s]。`~/activity` の `no_progress` の判定にも使う (判定は 1 つ) |
+| `trigger_countdown_ms` | int | `~/trigger` で走行を始めるときのカウントダウン [ms]。ボタンを押した人がロボットから離れる時間 |
+| `trigger_accepts_unstarted_idle` | bool | `~/trigger` を、wait_trigger 待ちでない IDLE (未開始と `~/stop` の後) でも受け付けるか。受け付けると、止めた位置の続きから走る |
 | `publish_activity` | bool | `~/activity` の配信。`false` なら購読もしない |
 | `activity_freq_hz` | double | `~/activity` の配信周波数 |
 | `activity_collision_state_topic` | string | 障害物での停止・減速の入力。空にするとこの入力は使わない |

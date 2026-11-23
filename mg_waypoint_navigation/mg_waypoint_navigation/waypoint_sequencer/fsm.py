@@ -130,8 +130,11 @@ class WaypointSequencerFSM:
       ON_ARRIVING 中の pause はアクション完了を待ち、次ウェイポイントへ進む手前で SUSPENDED になる。
     """
 
-    def __init__(self, node: rclpy.node.Node):
+    def __init__(self, node: rclpy.node.Node,
+                 trigger_accepts_unstarted_idle: bool = True):
         self._node = node
+        # trigger() を、wait_trigger 待ちでない IDLE (未開始・停止後) でも受け付けるか
+        self._trigger_accepts_unstarted_idle = trigger_accepts_unstarted_idle
         self._events = EventLog(node.get_logger())
         self._navigator = WaypointNavigator(node)
         self._executor = ActionExecutor(node)
@@ -192,6 +195,12 @@ class WaypointSequencerFSM:
     @property
     def waiting_trigger(self) -> bool:
         return self._waiting_trigger
+
+    @property
+    def trigger_acceptable(self) -> bool:
+        """いま trigger() を呼べば走行を始めるか。"""
+        with self._lock:
+            return self._trigger_rejection() is None
 
     @property
     def current_action(self) -> str:
@@ -344,6 +353,38 @@ class WaypointSequencerFSM:
                 return CommandResult(True, "OK")
 
             return CommandResult(False, f"Cannot start from state {self._state.value}")
+
+    def trigger(self, requester_id: str, countdown_ms: int) -> CommandResult:
+        """物理ボタンなどからの開始要求。IDLE のときだけ走行を始める。
+
+        start() と違い、GOAL_REACHED からは始めない (最初のウェイポイントから走り直さない)。
+        """
+        with self._lock:
+            reason = self._trigger_rejection()
+            if reason is not None:
+                self._events.info(
+                    'sequencer.trigger_rejected', requester=requester_id,
+                    reason=reason, state=self._state.value, index=self._current_index)
+                return CommandResult(False, reason)
+            self._events.info(
+                'sequencer.trigger_accepted', requester=requester_id,
+                waiting_trigger=self._waiting_trigger, index=self._current_index)
+            self._enter_on_starting(countdown_ms)
+            return CommandResult(True, "OK")
+
+    def _trigger_rejection(self) -> Optional[str]:
+        """trigger() を断る理由。受け付けるなら None。"""
+        if self._manual_goal_active:
+            return "manual_goal_active"
+        if self._state != SequencerState.IDLE:
+            return "not_idle"
+        if self._waypoints.get_size() == 0:
+            return "no_waypoints"
+        if self._pause_manager.is_active:
+            return "paused"
+        if not self._waiting_trigger and not self._trigger_accepts_unstarted_idle:
+            return "not_waiting_trigger"
+        return None
 
     def stop(self) -> CommandResult:
         with self._lock:

@@ -300,6 +300,143 @@ class TestWaitTrigger:
 
 
 # ---------------------------------------------------------------------------
+# trigger (物理ボタンなどからの開始要求)
+# ---------------------------------------------------------------------------
+
+def _run_to_wait_trigger(env):
+    """wp1 の wait_trigger で IDLE に止まるところまで進める。"""
+    env.fsm.load_waypoints(_make_wl(
+        [],
+        [ActionConfig(type="wait_trigger")],
+        [],
+    ))
+    env.fsm.start(0)
+    env.fire_countdown()
+    env.fire_nav_success()
+    env.fire_nav_success()
+    env.fire_actions_done()
+    assert env.fsm.waiting_trigger is True
+
+
+class TestTrigger:
+    def test_accepted_while_waiting_trigger(self, env):
+        _run_to_wait_trigger(env)
+        assert env.fsm.trigger_acceptable is True
+        result = env.fsm.trigger("mmi", 1000)
+        assert result.success
+        assert env.fsm.state == SequencerState.ON_STARTING
+        assert env.fsm.trigger_acceptable is False
+        env.fire_countdown()
+        navigated_wp = env.nav.send_goal.call_args_list[-1][0][0]
+        assert navigated_wp.index == 2
+
+    def test_countdown_is_passed_to_the_timer(self, env):
+        _run_to_wait_trigger(env)
+        env.fsm.trigger("mmi", 60_000)
+        assert env.fsm.countdown_ms_remaining > 1000
+
+    def test_accepted_in_unstarted_idle_by_default(self, env):
+        env.fsm.load_waypoints(_make_wl([]))
+        assert env.fsm.trigger_acceptable is True
+        assert env.fsm.trigger("mmi", 0).success
+        assert env.fsm.state == SequencerState.ON_STARTING
+
+    def test_accepted_after_stop_and_resumes_from_the_index(self, env):
+        env.fsm.load_waypoints(_make_wl([], [], []))
+        env.fsm.start(0)
+        env.fire_countdown()
+        env.fire_nav_success()
+        env.fsm.stop()
+        assert env.fsm.state == SequencerState.IDLE
+        assert env.fsm.trigger("mmi", 0).success
+        env.fire_countdown()
+        navigated_wp = env.nav.send_goal.call_args_list[-1][0][0]
+        assert navigated_wp.index == 1
+
+    def test_unstarted_idle_rejected_when_disabled(self, env):
+        env.fsm._trigger_accepts_unstarted_idle = False
+        env.fsm.load_waypoints(_make_wl([]))
+        assert env.fsm.trigger_acceptable is False
+        result = env.fsm.trigger("mmi", 0)
+        assert not result.success
+        assert result.message == "not_waiting_trigger"
+        assert env.fsm.state == SequencerState.IDLE
+
+    def test_waiting_trigger_accepted_when_unstarted_idle_disabled(self, env):
+        env.fsm._trigger_accepts_unstarted_idle = False
+        _run_to_wait_trigger(env)
+        assert env.fsm.trigger_acceptable is True
+        assert env.fsm.trigger("mmi", 0).success
+
+    def test_rejected_without_waypoints(self, env):
+        assert env.fsm.trigger_acceptable is False
+        result = env.fsm.trigger("mmi", 0)
+        assert not result.success
+        assert result.message == "no_waypoints"
+
+    def test_rejected_in_goal_reached(self, env):
+        env.fsm.load_waypoints(_make_wl([]))
+        env.fsm.start(0)
+        env.fire_countdown()
+        env.fire_nav_success()
+        assert env.fsm.state == SequencerState.GOAL_REACHED
+        assert env.fsm.trigger_acceptable is False
+        result = env.fsm.trigger("mmi", 0)
+        assert not result.success
+        assert result.message == "not_idle"
+        assert env.fsm.state == SequencerState.GOAL_REACHED
+
+    @pytest.mark.parametrize("prepare", ["on_starting", "navigating", "on_arriving"])
+    def test_rejected_while_running(self, env, prepare):
+        env.fsm.load_waypoints(_make_wl([ActionConfig(type="wait")], []))
+        env.fsm.start(60_000)
+        if prepare in ("navigating", "on_arriving"):
+            env.fire_countdown()
+        if prepare == "on_arriving":
+            env.fire_nav_success()
+        state = env.fsm.state
+        assert env.fsm.trigger_acceptable is False
+        result = env.fsm.trigger("mmi", 0)
+        assert not result.success
+        assert env.fsm.state == state
+
+    def test_rejected_while_suspended(self, env):
+        env.fsm.load_waypoints(_make_wl([]))
+        env.fsm.start(0)
+        env.fire_countdown()
+        env.fsm.pause_request("p1", True)
+        assert env.fsm.state == SequencerState.SUSPENDED
+        assert not env.fsm.trigger("mmi", 0).success
+        assert env.fsm.state == SequencerState.SUSPENDED
+
+    def test_rejected_in_error(self, env):
+        env.fsm.load_waypoints(_make_wl([]))
+        env.fsm.start(0)
+        env.fire_countdown()
+        env.fire_nav_failed()
+        assert env.fsm.state == SequencerState.ERROR
+        assert not env.fsm.trigger("mmi", 0).success
+
+    def test_rejected_while_paused_in_idle(self, env):
+        _run_to_wait_trigger(env)
+        env.fsm.pause_request("p1", True)
+        assert env.fsm.trigger_acceptable is False
+        result = env.fsm.trigger("mmi", 0)
+        assert not result.success
+        assert result.message == "paused"
+        env.fsm.pause_request("p1", False)
+        assert env.fsm.trigger_acceptable is True
+
+    def test_rejected_while_a_manual_goal_runs(self, env):
+        env.fsm.load_waypoints(_make_wl([]))
+        env.fsm.navigate_to_pose(MagicMock(), "normal")
+        assert env.fsm.trigger_acceptable is False
+        result = env.fsm.trigger("mmi", 0)
+        assert not result.success
+        assert result.message == "manual_goal_active"
+
+
+# ---------------------------------------------------------------------------
 # stop
 # ---------------------------------------------------------------------------
 

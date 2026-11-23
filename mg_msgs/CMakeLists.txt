@@ -18,6 +18,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/LoadedMaps.msg"
   "srv/ResetSimRobotPose.srv"
   "srv/StartSequence.srv"
+  "srv/TriggerSequence.srv"
   "srv/LoadMaps.srv"
   "srv/SendGoal.srv"
   "srv/GetPoseGraph.srv"
