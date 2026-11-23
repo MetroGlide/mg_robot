@@ -7,6 +7,9 @@ SUBSYSTEM=="tty", ATTRS{idVendor}=="", ATTRS{idProduct}=="", ATTRS{serial}=="", 
 
 SUBSYSTEM=="tty", ATTRS{idVendor}=="", ATTRS{idProduct}=="", ATTRS{serial}=="", SYMLINK+="ttyRobot-gnss", GROUP="dialout"
 
+# MMI (操作盤のスイッチ・LED・ブザー、Maker Nano RP2040)。同じ型を 2 台つなぐときは ATTRS{serial} も指定する
+SUBSYSTEM=="tty", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="100f", SYMLINK+="ttyRobot-mmi", GROUP="dialout"
+
 
 # SUBSYSTEM=="tty", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="000a", ATTRS{serial}=="4150323833373009", SYMLINK+="ttyHoriokart-odom", GROUP="dialout"
 # # SUBSYSTEM=="tty", ATTRS{idVendor}=="2886", ATTRS{idProduct}=="802f", SYMLINK+="ttyHoriokart-odom", GROUP="dialout"

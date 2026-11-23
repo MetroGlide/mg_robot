@@ -35,7 +35,7 @@
 | ファイル | 内容 | 渡す条件 |
 | :--- | :--- | :--- |
 | `common.yaml` | 根のパス (`Robot`)、`System` (PC の資源)、捨てる第三者の診断 | 常に |
-| `drivers.yaml` | `Drivers` (LiDAR・Motor・Odometry・GNSS)。必須の診断 (`expected`) を含む | 実機のみ |
+| `drivers.yaml` | `Drivers` (LiDAR・Motor・Odometry・GNSS・MMI)。必須の診断 (`expected`) を含む | 実機のみ |
 | `navigation.yaml` | `Localization` (Monitor・GnssBridge・Gate・EKF)、`Navigation` (Nav2・Sequencer・Nodes・Topics) | ナビゲーションのスタック |
 | `mapping.yaml` | (今は空) | SLAM のスタック |
 
