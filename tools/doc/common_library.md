@@ -15,6 +15,12 @@
   - トピック名または型名から ROS2 メッセージクラスを動的解決・キャッシュし、デシリアライズを実行。
 - **`message_to_dict(msg)`**:
   - ROS2 メッセージを辞書に再帰変換（NumPy 配列やタプルも JSON シリアライズ可能化）。
+- **`read_map_base_poses(bag_path, map_frame, odom_frame, base_frame)`**:
+  - `/tf` の map->odom と odom->base を合成した map->base の姿勢列 (時刻, [x, y, yaw]) を返す。
+- **`read_reference_poses(pose_bag, pose_graph_dir, map_frame, odom_frame, base_frame)`**:
+  - 基準の姿勢列を、記録の `/tf` か SLAM 出力のキーフレームのどちらかから読み、補間を許す間隔の上限と一緒に返す。
+- **`read_static_transform(bag_path, parent, child)`**:
+  - `/tf_static` をたどり、parent から child への同次変換 (4x4) を返す。再生を途中から始めると `/tf_static` が流れないときに使う。
 
 ## `tools.common.geo` (幾何・地理座標変換)
 - **`lat_lon_to_utm(lat, lon, zone=54)`**:
@@ -23,6 +29,10 @@
   - クォータニオンから 2D 平面上の Yaw 角 [rad] を算出。
 - **`haversine_distance(lat1, lon1, lat2, lon2)`**:
   - 2地点の緯度経度から球面三角法による大圏距離 [m] を算出。
+- **`quaternion_matrix(x, y, z, w)`**:
+  - クォータニオンの回転行列 (3x3)。
+- **`chain_static_transforms(static, parent, child)`**:
+  - 子 -> (親, 4x4) の対応をたどって parent から child への変換を合成する (`read_static_transform` が使う)。
 
 ## `tools.common.map` (地図・座標系変換)
 - **`load_map_info(map_yaml_path)`**:
@@ -49,6 +59,9 @@ rclpy に依存しないため、テストや rosbag を読まない解析から
 
 ## `tools.common.loc_metrics` (自己位置推定の評価指標)
 numpy のみに依存する指標の計算 (`compose`, `pose_errors`, `correction_jumps`, `nees`, `best_lag`, `recovery_metrics`, `count_episodes` ほか)。
+
+## `tools.common.scan_map` (スキャンと地図の突き合わせ)
+numpy と scipy のみに依存する。地図の占有と占有までの距離 (`OccupancyMap`。光線追跡の `raycast`、占有の帯の長さの `run_length`、軌跡沿いの占有を消す `clear_near`、消した後の地図を切り出して保存する `save`)、姿勢の補間 (`interpolate_pose`)、ビームの始点と向き (`beam_geometry`)、地図にない点を除く (`keep_matched`)、光線追跡の距離に置き換える (`raycast_ranges`)。
 
 ## `tools.common.faults` (故障注入の定義)
 評価ツールと故障注入ノードが共有する故障定義 (`kidnap` / `gnss_bias` / `gnss_drop` / `odom_scale` / `scan_drop` / `amcl_drift`) の読込。時刻は再生開始からの経過秒。

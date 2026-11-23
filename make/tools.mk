@@ -7,7 +7,7 @@
 #   OUT_DIR=<dir>    指定ディレクトリに出力する
 #   OUT=<file>       指定ファイルパスに出力する
 
-.PHONY: bag-summary bag-plot-gnss bag-plot-gnss-map bag-plot-scans bag-eval-slam bag-eval-localization log-events
+.PHONY: bag-summary bag-plot-gnss bag-plot-gnss-map bag-plot-scans bag-eval-slam bag-gnss-map-offset gnss-map-offset-analyze bag-eval-localization log-events
 
 define _resolve_bag_output_opts
 $(strip \
@@ -71,6 +71,28 @@ bag-eval-slam: ## SLAM 出力を RTK(GNSS) と比較評価 [SLAM_DIR=<dir> BAG T
 	     exit 1; \
 	   fi && \
 	   ,python3 /app/tools/scripts/eval_slam.py \"\$$TARGET_BAG\" --slam-dir \"$(SLAM_DIR)\" $(_resolve_bag_output_opts) $(OPTS))
+
+# 地図と GNSS (gnss_transform.yaml で変換した座標) の場所ごとのずれを、走行のスキャンを地図に照合して測る。
+#   MAPS="<map.yaml> ..."  必須。照合する地図 (区画ごとの測位用の地図)
+#   GNSS_TRANSFORM=<yaml>  地図の gnss_transform.yaml (省略時は MAPS の先頭と同じディレクトリ)
+#   SLAM_DIR=<dir>         基準の軌跡にする SLAM の出力。省略時は /odom を RTK に当てはめた軌跡 (短い走行向け)
+#   例: make bag-gnss-map-offset BAG=<bag> MAPS="<dir>/Region1_jikoichi.yaml <dir>/Region2_jikoichi.yaml" SLAM_DIR=<dir> TO_TOOLS=1
+bag-gnss-map-offset: ## 地図と GNSS の場所ごとのずれを測る [MAPS="<yaml> ..." GNSS_TRANSFORM SLAM_DIR BAG TO_TOOLS OPTS]
+	$(call _bag_run,if [ -z \"$(MAPS)\" ]; then \
+	     echo 'エラー: MAPS=\"<map.yaml> ...\" を指定してください。' >&2; \
+	     exit 1; \
+	   fi && \
+	   ,python3 /app/tools/scripts/measure_gnss_map_offset.py measure \"\$$TARGET_BAG\" --maps $(MAPS) \
+	     --gnss-transform \"$(or $(GNSS_TRANSFORM),$(dir $(firstword $(MAPS)))gnss_transform.yaml)\" \
+	     $(if $(SLAM_DIR),--slam-dir \"$(SLAM_DIR)\",--odom-fit) $(_resolve_bag_output_opts) $(OPTS))
+
+# bag-gnss-map-offset の出力をまとめ、全体とグループ (waypoint-tool) ごとの剛体に分けて当てはめる。
+#   INPUTS="<json> ..."    必須。bag-gnss-map-offset の出力
+#   WPTROJ=<file>          waypoint-tool のプロジェクト (グループと区画を読む)。省略可
+#   OUT_DIR=<dir>          出力先 (省略時は tools/data/gnss_map)
+gnss-map-offset-analyze: ## 地図と GNSS のずれを全体・グループごとに当てはめる [INPUTS="<json> ..." WPTROJ OUT_DIR OPTS]
+	$(COMPOSE) run --rm --no-deps develop python3 /app/tools/scripts/measure_gnss_map_offset.py analyze $(INPUTS) \
+	  $(if $(WPTROJ),--wptroj "$(WPTROJ)") $(if $(OUT_DIR),--output-dir "$(OUT_DIR)") $(OPTS)
 
 # 自己位置推定 (EKF 融合) の評価。実機のナビ走行 bag、または run_localization_variant.sh の再生出力 bag が対象。
 #   GT_DIR=<dir>      真値 (pose_graph.json と gnss_transform.yaml を含む SLAM 出力)。省略可

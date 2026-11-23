@@ -3,6 +3,7 @@
 import math
 from typing import Dict, Tuple
 
+import numpy as np
 import pyproj
 
 # ゾーンごとの pyproj.Proj インスタンスキャッシュ
@@ -44,3 +45,24 @@ def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> fl
     )
     c = 2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
     return r_earth * c
+
+
+def quaternion_matrix(x: float, y: float, z: float, w: float) -> np.ndarray:
+    """クォータニオンの回転行列 (3x3)。"""
+    return np.array([
+        [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+        [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+        [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)]])
+
+
+def chain_static_transforms(static: Dict[str, Tuple[str, np.ndarray]], parent: str, child: str) -> np.ndarray:
+    """子 -> (親, 4x4 の同次変換) の対応をたどり、parent から child への変換 (4x4) を返す。"""
+    transform = np.eye(4)
+    frame = child
+    while frame != parent:
+        if frame not in static:
+            raise SystemExit(f"エラー: /tf_static に {child} から {parent} へのつながりがありません。")
+        frame_parent, t = static[frame]
+        transform = t @ transform
+        frame = frame_parent
+    return transform

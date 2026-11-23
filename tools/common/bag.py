@@ -9,6 +9,11 @@ import yaml
 from rclpy.serialization import deserialize_message
 from rosidl_runtime_py.utilities import get_message
 
+from tools.common import loc_metrics as lm
+from tools.common.geo import chain_static_transforms, quaternion_matrix, quaternion_to_yaw
+from tools.common.pose_graph import NODE_MAX_GAP_SEC, load_slam_output
+from tools.common.scan_map import MAX_POSE_GAP_SEC
+
 
 def detect_storage_id(bag_path: str) -> str:
     """rosbagのパスから storage_id ('mcap' または 'sqlite3') を自動判定する。"""
@@ -157,3 +162,63 @@ def message_to_dict(msg: Any) -> Any:
         return msg.tolist()
     else:
         return msg
+
+
+def read_map_base_poses(
+    bag_path: str, map_frame: str, odom_frame: str, base_frame: str
+) -> Tuple[np.ndarray, np.ndarray]:
+    """/tf の map->odom と odom->base を合成した map->base の姿勢列 (時刻, [x, y, yaw])。"""
+    reader = open_reader(bag_path, topics=["/tf"])
+    deserializer = MessageDeserializer({t.name: t.type for t in reader.get_all_topics_and_types()})
+    map_odom: List[List[float]] = []
+    odom_base: List[List[float]] = []
+    while reader.has_next():
+        name, raw, _ = reader.read_next()
+        for tf in deserializer.deserialize(name, raw).transforms:
+            pair = (tf.header.frame_id, tf.child_frame_id)
+            if pair not in ((map_frame, odom_frame), (odom_frame, base_frame)):
+                continue
+            q = tf.transform.rotation
+            row = [tf.header.stamp.sec + tf.header.stamp.nanosec * 1e-9, tf.transform.translation.x,
+                   tf.transform.translation.y, quaternion_to_yaw(q.x, q.y, q.z, q.w)]
+            (map_odom if pair[0] == map_frame else odom_base).append(row)
+    if not map_odom or not odom_base:
+        raise SystemExit(f"エラー: {bag_path} の /tf に {map_frame}->{odom_frame} と {odom_frame}->{base_frame} が必要です。")
+    mo = np.array(sorted(map_odom))
+    ob = np.array(sorted(odom_base))
+    idx = lm.hold_index(mo[:, 0], ob[:, 0])
+    valid = idx >= 0
+    return ob[valid, 0], lm.compose(mo[idx[valid], 1:4], ob[valid, 1:4])
+
+
+def read_static_transform(bag_path: str, parent: str, child: str) -> np.ndarray:
+    """rosbag の /tf_static から、parent から child への変換 (4x4) を返す。"""
+    reader = open_reader(bag_path, topics=["/tf_static"])
+    deserializer = MessageDeserializer({t.name: t.type for t in reader.get_all_topics_and_types()})
+    static: Dict[str, Tuple[str, np.ndarray]] = {}
+    while reader.has_next():
+        name, raw, _ = reader.read_next()
+        for tf in deserializer.deserialize(name, raw).transforms:
+            q, p = tf.transform.rotation, tf.transform.translation
+            t = np.eye(4)
+            t[:3, :3] = quaternion_matrix(q.x, q.y, q.z, q.w)
+            t[:3, 3] = (p.x, p.y, p.z)
+            static[tf.child_frame_id] = (tf.header.frame_id, t)
+    return chain_static_transforms(static, parent, child)
+
+
+def read_reference_poses(
+    pose_bag: Optional[str], pose_graph_dir: Optional[str], map_frame: str, odom_frame: str, base_frame: str
+) -> Tuple[np.ndarray, np.ndarray, float]:
+    """基準の姿勢列 (時刻, [x, y, yaw]) と、補間を許す間隔の上限 [s] を返す。
+
+    pose_bag は記録の /tf (map->base)。pose_graph_dir は slam_gnss_2d の出力 (pose_graph.json のキーフレーム。
+    座標はその SLAM 地図の座標系)。どちらか一方を渡す。
+    """
+    if (pose_bag is None) == (pose_graph_dir is None):
+        raise SystemExit("エラー: 姿勢は --pose-bag と --pose-graph のどちらか一方で指定してください。")
+    if pose_bag is not None:
+        times, poses = read_map_base_poses(pose_bag, map_frame, odom_frame, base_frame)
+        return times, poses, MAX_POSE_GAP_SEC
+    nodes, _, _ = load_slam_output(pose_graph_dir)
+    return nodes[:, 0], nodes[:, 1:4], NODE_MAX_GAP_SEC
