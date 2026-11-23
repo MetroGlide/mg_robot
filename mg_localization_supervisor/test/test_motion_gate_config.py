@@ -54,6 +54,13 @@ def test_grace_after_reset_covers_the_window_closer():
     assert config.gate.settings.grace_after_reset_sec >= window['window_sec'] + window['max_gap_sec']
 
 
+def test_manual_search_range_is_within_the_match_cap():
+    """手動の初期姿勢の探す範囲は、照合の範囲の上限で切られない。"""
+    config = load_gate_config(CONFIG)
+    settings, match = config.gate.settings, config.gate.map_match
+    assert settings.manual_xy_m <= match.cap_xy_m and settings.manual_yaw_rad <= match.cap_yaw_rad
+
+
 def test_hold_output_is_the_pause_request():
     config = load_gate_config(CONFIG)
     assert resolve(config.hold_output['type'], {}, HoldOutput, 'hold_output') is PauseRequestHold

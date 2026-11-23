@@ -42,6 +42,10 @@ gate:
   # 前の続きの候補の探す範囲を広げる量 (確かめてから走った道のり 1 m あたり)。オドメトリの誤差の目安より大きく
   continuation_xy_per_m: 0.05
   continuation_yaw_per_m: 0.01
+  # 手動の初期姿勢の候補の探す範囲。人が与える姿勢のおおよその誤差を覆う (初期化ノードが外から与えられた
+  # 姿勢を確かめる範囲と同じ程度)。照合の範囲の上限 (map_match の cap_xy_m・cap_yaw_rad) の中にする
+  manual_xy_m: 1.5
+  manual_yaw_rad: 0.5
   retry_sec: 2.0
   # 門が開いている間に、AMCL と前の続きを照合して、確かめた姿勢を更新する道のり
   confirm_distance_m: 10.0

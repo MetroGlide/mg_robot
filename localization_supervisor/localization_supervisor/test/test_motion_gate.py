@@ -299,6 +299,17 @@ def test_manual_pose_is_checked_and_becomes_the_confirmed_pose():
     assert not sim.events('gate_closed')
 
 
+def test_manual_pose_about_a_metre_off_is_corrected_by_the_match():
+    """人が与えるおおよその姿勢 (1 m ほどずれ) も、手動の探す範囲の中なら照合で直す。"""
+    sim = _confirmed()
+    true = sim.true
+    sim.gate.manual_pose((true[0] + 0.9, true[1] + 0.6, true[2] - 0.2))
+    sim.run(0.6)
+    assert sim.events('manual_pose')[0].fields['corrected']
+    error_xy, error_yaw = _error(sim)
+    assert error_xy < 0.2 and error_yaw < 0.1
+
+
 def test_manual_pose_is_used_as_given_when_it_cannot_be_matched():
     sim = _confirmed()
     sim.blind = True

@@ -48,6 +48,9 @@ class GateSettings:
     # 前の続きの候補の探す範囲を、確かめてから走った道のり 1 m あたり広げる量
     continuation_xy_per_m: float = 0.05
     continuation_yaw_per_m: float = 0.01
+    # 手動の初期姿勢の候補の探す範囲 (人が与える姿勢のおおよその誤差より広く)
+    manual_xy_m: float = 1.5
+    manual_yaw_rad: float = 0.5
     # 決まらなかったときに照合し直す間隔
     retry_sec: float = 2.0
     # 門が開いている間に、確かめた姿勢を更新する道のり
@@ -400,7 +403,7 @@ class MotionGate:
         c = self.config.map_match
         narrow = (c.narrow_xy_m, c.narrow_yaw_rad)
         if reason == MANUAL:
-            return {MANUAL: CandidatePose(self._manual, *narrow)}
+            return {MANUAL: CandidatePose(self._manual, s.manual_xy_m, s.manual_yaw_rad)}
         candidates: Dict[str, CandidatePose] = {}
         for name in (s.estimator, s.fused):
             pose = self._pose_now(snapshot, name)
