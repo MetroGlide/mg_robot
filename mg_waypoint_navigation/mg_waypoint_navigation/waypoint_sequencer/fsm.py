@@ -198,9 +198,12 @@ class WaypointSequencerFSM:
 
     @property
     def trigger_acceptable(self) -> bool:
-        """いま trigger() を呼べば走行を始めるか。"""
-        with self._lock:
-            return self._trigger_rejection() is None
+        """いま trigger() を呼べば走行を始めるか (表示用)。
+
+        ~/status の配信が FSM の長い処理で止まらないよう、他の参照と同じくロックを取らない。
+        受け付けるかの最終の判定は trigger() がロックの中で行う。
+        """
+        return self._trigger_rejection() is None
 
     @property
     def current_action(self) -> str:
