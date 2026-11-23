@@ -69,6 +69,7 @@ GNSS による初期化と監督ノードは、他のノードが立ち上がる
 - 一時停止の要求は、`hold_outputs/pause_request.py` がシーケンサの `pause_request` に伝える。シーケンサを通らないゴール (手動のゴール) は止まらない。
 - 状態 `/localization/status` は門のノードが出す。診断は集約で `/Robot/Localization/Monitor`。
 - 戻し方: `localization_monitor` を元の値 (`supervisor` または `watchdog`) に戻す。
+- 設定ファイルは launch 引数 `motion_gate_config` (`bringup_navigation.launch.py` では環境変数 `LOCALIZATION_GATE_CONFIG` が既定値) で差し替えられる。シミュレータでの戻し方の比べ方は、`mg_scenario_test` のシナリオ `gate_drift_driving`・`gate_jump_driving` ([scenarios/README.md](../mg_scenario_test/scenarios/README.md))。
 
 ### 手動の初期姿勢
 

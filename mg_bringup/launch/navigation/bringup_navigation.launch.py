@@ -103,10 +103,11 @@ def generate_launch_description():
     supervisor_config_arg = launch_argument_creator.create(
         "supervisor_config", default=os.path.join(
             get_package_share_directory("mg_localization_supervisor"), "config", "supervision.yaml"))
-    # 門のノードの設定 (localization_monitor:=motion_gate のとき)
+    # 門のノードの設定 (localization_monitor:=motion_gate のとき)。既定は環境変数 LOCALIZATION_GATE_CONFIG
+    # (書かなければパッケージの設定)
     motion_gate_config_arg = launch_argument_creator.create(
-        "motion_gate_config", default=os.path.join(
-            get_package_share_directory("mg_localization_supervisor"), "config", "motion_gate.yaml"))
+        "motion_gate_config", default=EnvironmentVariable("LOCALIZATION_GATE_CONFIG", default_value=os.path.join(
+            get_package_share_directory("mg_localization_supervisor"), "config", "motion_gate.yaml")))
     # 監督の設定に重ねるプロファイル (mg_localization_supervisor/config/supervision.yaml の profiles。空は基本設定)
     localization_profile_arg = launch_argument_creator.create(
         "localization_profile", default=EnvironmentVariable("LOCALIZATION_PROFILE", default_value=""))
