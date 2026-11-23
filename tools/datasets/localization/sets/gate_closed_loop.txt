@@ -1,0 +1,15 @@
+# 門のノード (--monitor motion_gate) を閉ループの再生で確かめる組。門なし (--monitor none) の記録と比べる。
+# 故障なし・動きながらの起動 (誤報と正しい直りの締め出し)、飛びとずれ、模擬で悪化した 2 条件 (h2_kidnap_yaw・
+# h3_kidnap_then_drift)、調整に使わない故障の組 heldout3、手動の初期姿勢。
+# 1 行に 1 条件: <ラベル> <データセット> [run_localization_variant.sh の引数 ...]
+baseline map043837_eval051635_short
+moving map043837_eval051635_movingstart
+kidnap map043837_eval051635_short --faults tools/datasets/localization/faults/kidnap.yaml
+amcl_drift map043837_eval051635_short --faults tools/datasets/localization/faults/amcl_drift.yaml
+h2_kidnap_yaw map043837_eval051635_short --faults tools/datasets/localization/faults/heldout2_kidnap_yaw.yaml
+h3_kidnap map043837_eval051635_short --faults tools/datasets/localization/faults/heldout3_kidnap.yaml
+h3_drift_yaw map043837_eval051635_short --faults tools/datasets/localization/faults/heldout3_drift_yaw.yaml
+h3_drift_gnss_drop map043837_eval051635_short --faults tools/datasets/localization/faults/heldout3_drift_gnss_drop.yaml
+h3_kidnap_then_drift map043837_eval051635_short --faults tools/datasets/localization/faults/heldout3_kidnap_then_drift.yaml
+h3_gnss_bias_kidnap map043837_eval051635_short --faults tools/datasets/localization/faults/heldout3_gnss_bias_kidnap.yaml
+manual map043837_eval051635_short --faults tools/datasets/localization/faults/manual_pose.yaml

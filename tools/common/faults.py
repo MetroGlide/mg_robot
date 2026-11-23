@@ -6,6 +6,7 @@
 例:
   faults:
     - {type: kidnap,    at: 120.0, offset: {x: 3.0, y: 0.0, yaw: 0.5}}
+    - {type: manual_pose, at: 150.0, offset: {x: 0.3, y: 0.0, yaw: 0.05}}
     - {type: gnss_bias, start: 200.0, end: 230.0, bias: {x: 2.0, y: 0.0}}
     - {type: gnss_drop, start: 300.0, end: 360.0}
     - {type: odom_scale, start: 400.0, end: 420.0, v: 1.0, w: 1.3}
@@ -16,6 +17,8 @@
     - {type: gnss_noise, start: 0.0, end: 100.0, sigma: 1.0, tau: 30.0}
     - {type: scan_jitter, start: 0.0, end: 100.0, ratio: 0.3, depth_m: 0.8}
 
+manual_pose は、その時刻の推定姿勢 (EKF) をずらした姿勢を、手動の初期姿勢の専用トピックに送る (人が Web UI で
+おおよその姿勢を与える状況)。故障ではなく、手動の経路を確かめるためのもの。
 scan_jitter は、毎回のスキャンで ratio の割合のビームを選び、半分は欠測に、残りは距離を 0〜depth_m 伸ばす
 (植栽の葉が揺れて、手前と奥の当たりが入れ替わる状況)。
 scan_keep は、角度が sectors_deg ([low, high] の並び、度、センサ座標系) のどれかに入るビームだけを残す
@@ -70,6 +73,7 @@ import yaml
 # 種類ごとの必須パラメータ。kidnap は瞬間的、それ以外は区間 [start, end] で作用する
 REQUIRED_PARAMS: Dict[str, List[str]] = {
     "kidnap": ["offset"],
+    "manual_pose": ["offset"],
     "gnss_bias": ["bias"],
     "gnss_drop": [],
     "odom_scale": ["v", "w"],
@@ -84,7 +88,7 @@ REQUIRED_PARAMS: Dict[str, List[str]] = {
     "gnss_accuracy": ["std_m"],
     "gnss_bias_field": ["anchor", "points"],
 }
-INSTANT_TYPES = {"kidnap"}
+INSTANT_TYPES = {"kidnap", "manual_pose"}
 
 
 @dataclass

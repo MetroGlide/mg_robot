@@ -13,6 +13,7 @@ rosbag の再生では、注入の対象のトピックを /fault/ 以下へ付�
                                               scan_occlude
 Gazebo では、ブリッジの出力を /fault/ 以下にして、このノードが中継する (--odom-out /odom)。
 kidnap は、その時刻の推定姿勢 (EKF) をずらした姿勢を /initialpose に送り、AMCL だけをずらす。
+manual_pose は、同じようにずらした姿勢を手動の初期姿勢の専用トピック (--manual-pose-topic) に送る。
 amcl_drift は、区間の中で interval 秒ごとに、AMCL の推定 (/amcl_pose_origin) を rate * interval だけずらした
 姿勢を /initialpose に送り、AMCL を少しずつずらす (送るたびに粒子は送った姿勢の周りに撒き直される)。
 --allow-triggers のとき、trigger: <名前> の故障は、サービス /fault_injector/trigger/<名前> (std_srvs/SetBool)
@@ -79,6 +80,7 @@ class FaultInjector(Node):
         self._navpvt_pub = self.create_publisher(NavPVT, "/navpvt", 10)
         self._scan_pub = self.create_publisher(LaserScan, "/scan_top_lidar", qos_profile_sensor_data)
         self._initialpose_pub = self.create_publisher(PoseWithCovarianceStamped, "/initialpose", 1)
+        self._manual_pose_pub = self.create_publisher(PoseWithCovarianceStamped, args.manual_pose_topic, 1)
         self.create_subscription(Odometry, "/fault/odom", self._on_odom, 10)
         self.create_subscription(NavPVT, "/fault/navpvt", self._on_navpvt, 10)
         self.create_subscription(NavSatFix, "/fault/gps/fix", self._on_navsat, 10)
@@ -238,7 +240,7 @@ class FaultInjector(Node):
     def _on_amcl(self, msg: PoseWithCovarianceStamped) -> None:
         self._amcl_pose = msg
 
-    def _publish_initialpose(self, x: float, y: float, yaw: float) -> None:
+    def _publish_initialpose(self, x: float, y: float, yaw: float, manual: bool = False) -> None:
         msg = PoseWithCovarianceStamped()
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.header.frame_id = self._map_frame
@@ -249,7 +251,7 @@ class FaultInjector(Node):
         msg.pose.covariance[0] = KIDNAP_POSITION_VARIANCE
         msg.pose.covariance[7] = KIDNAP_POSITION_VARIANCE
         msg.pose.covariance[35] = KIDNAP_YAW_VARIANCE
-        self._initialpose_pub.publish(msg)
+        (self._manual_pose_pub if manual else self._initialpose_pub).publish(msg)
 
     def _drift(self, t: float) -> None:
         for index, fault in enumerate(self._faults):
@@ -273,7 +275,7 @@ class FaultInjector(Node):
             return
         self._drift(t)
         for index, fault in enumerate(self._faults):
-            if fault.type != "kidnap" or index in self._kidnap_done or t < fault.start:
+            if fault.type not in ("kidnap", "manual_pose") or index in self._kidnap_done or t < fault.start:
                 continue
             try:
                 transform = self._tf_buffer.lookup_transform(self._map_frame, self._base_frame, Time())
@@ -284,9 +286,9 @@ class FaultInjector(Node):
             yaw = yaw_from_quaternion(transform.transform.rotation.z, transform.transform.rotation.w)
             self._publish_initialpose(
                 tr.x + float(offset.get("x", 0.0)), tr.y + float(offset.get("y", 0.0)),
-                yaw + float(offset.get("yaw", 0.0)))
+                yaw + float(offset.get("yaw", 0.0)), manual=fault.type == "manual_pose")
             self._kidnap_done.add(index)
-            self.get_logger().info(f"kidnap at t={t:.1f}s offset={offset}")
+            self.get_logger().info(f"{fault.type} at t={t:.1f}s offset={offset}")
 
 
 def main() -> None:
@@ -295,6 +297,8 @@ def main() -> None:
     parser.add_argument("--odom-out", default="/odom/raw", help="中継したオドメトリの出力先 (Gazebo では /odom)")
     parser.add_argument("--map-frame", default="map")
     parser.add_argument("--base-frame", default="base_footprint")
+    parser.add_argument("--manual-pose-topic", default="/localization/manual_initial_pose",
+                        help="manual_pose を送る、手動の初期姿勢の専用トピック")
     parser.add_argument("--allow-triggers", action="store_true",
                         help="trigger の故障を許す (Gazebo のシナリオ。再生評価では時刻でしか入れられない)")
     args = parser.parse_args()

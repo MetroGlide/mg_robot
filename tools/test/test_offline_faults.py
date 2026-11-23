@@ -17,7 +17,8 @@ def test_bundled_faults_convert_to_supervision_sources():
     with open(SUPERVISION, encoding="utf-8") as f:
         sources = yaml.safe_load(f)["sources"]
     for path in sorted(glob.glob(os.path.join(FAULT_DEFINITION_DIR, "*.yaml"))):
-        replay = [f for f in load_faults(path) if f.type not in ("odom_scale", "gnss_noise")]
+        # odom_scale・gnss_noise は記録した標本に注入できず、manual_pose は故障ではなく手動の経路の確かめ
+        replay = [f for f in load_faults(path) if f.type not in ("odom_scale", "gnss_noise", "manual_pose")]
         for fault in parse_faults(to_offline(replay)):
             assert fault.source in sources, path
 
