@@ -408,7 +408,12 @@ class MotionGate:
                 candidates[name] = CandidatePose(pose, *narrow)
         if reason == 'startup':
             # 推定器が出す前に決めると、収束する前の推定器を、融合の結果を照合した姿勢へ置き直してしまう
-            return candidates if s.estimator in candidates else {}
+            if s.estimator not in candidates:
+                return {}
+            # 推定器と融合の結果がともにずれた起動 (動きながらの起動など) でも、健全な GNSS の周りで正しい姿勢を探す
+            self._add_gnss(snapshot, candidates, candidates.get(s.fused) or candidates[s.estimator],
+                           c.cap_yaw_rad)
+            return candidates
         if reason == 'confirm':
             candidates.pop(s.fused, None)
         continuation_yaw = None
@@ -419,18 +424,27 @@ class MotionGate:
             candidates[CONTINUATION] = CandidatePose(
                 _propagate(a.pose, a.motion, motion), c.narrow_xy_m + s.continuation_xy_per_m * travelled,
                 continuation_yaw)
-        if reason == 'confirm' or not s.gnss:
+        if reason == 'confirm':
             return candidates
-        gnss = snapshot.pose_aligned(s.gnss, s.gnss_max_age_sec)
-        if gnss is not None:
-            sample = gnss[0]
-            sigma = math.sqrt(max(float(sample.cov[0][0]), float(sample.cov[1][1]), 0.0))
-            yaw_from = candidates.get(CONTINUATION) or candidates.get(s.fused) or candidates.get(s.estimator)
-            if sigma <= s.gnss_max_std_m and yaw_from is not None:
-                candidates[s.gnss] = CandidatePose(
-                    (sample.pose[0], sample.pose[1], yaw_from.pose[2]), s.gnss_sigma_k * sigma,
-                    continuation_yaw if continuation_yaw is not None else c.cap_yaw_rad)
+        yaw_from = candidates.get(CONTINUATION) or candidates.get(s.fused) or candidates.get(s.estimator)
+        self._add_gnss(snapshot, candidates, yaw_from,
+                       continuation_yaw if continuation_yaw is not None else c.cap_yaw_rad)
         return candidates
+
+    def _add_gnss(self, snapshot: Snapshot, candidates: Dict[str, CandidatePose],
+                  yaw_from: Optional[CandidatePose], yaw_range: float) -> None:
+        """申告の精度が良い GNSS の位置を候補に足す。向きは yaw_from から借りる。"""
+        s = self.settings
+        if not s.gnss or yaw_from is None:
+            return
+        gnss = snapshot.pose_aligned(s.gnss, s.gnss_max_age_sec)
+        if gnss is None:
+            return
+        sample = gnss[0]
+        sigma = math.sqrt(max(float(sample.cov[0][0]), float(sample.cov[1][1]), 0.0))
+        if sigma <= s.gnss_max_std_m:
+            candidates[s.gnss] = CandidatePose(
+                (sample.pose[0], sample.pose[1], yaw_from.pose[2]), s.gnss_sigma_k * sigma, yaw_range)
 
     def _apply(self, request: MatchRequest, decision: MatchDecision, snapshot: Snapshot, motion: Pose2,
                out: GateStep) -> None:

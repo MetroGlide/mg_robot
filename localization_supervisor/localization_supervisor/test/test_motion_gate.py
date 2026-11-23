@@ -185,6 +185,22 @@ def test_startup_keeps_the_estimator_when_fused_is_off():
     assert not sim.events('pose_reset')
 
 
+def test_startup_finds_the_pose_around_gnss_when_estimator_and_fused_are_off():
+    """推定器と融合の結果がともにずれた起動では、健全な GNSS の周りで照合した姿勢へ置き直す。"""
+    sim = Sim()
+    sim.amcl_offset = (1.5, 0.8, 0.1)
+    sim.ekf_offset = (1.5, 0.8, 0.1)
+    sim.run(4.0)
+    assert sim.events('map_match')[0].fields['result'] == 'gnss'
+    # 大きい補正なので、止まってから置き直す
+    assert sim.gate.state == GateState.CORRECTING
+    sim.moving = False
+    sim.run(3.0)
+    assert sim.events('pose_reset')
+    error_xy, error_yaw = _error(sim)
+    assert error_xy < 0.3 and error_yaw < 0.1
+
+
 def test_jump_closes_the_gate_and_resets_to_the_continuation():
     sim = _confirmed()
     sim.amcl_offset = (1.5, 0.0, 0.0)
