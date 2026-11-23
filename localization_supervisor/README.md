@@ -59,6 +59,7 @@ make test pkg=localization_supervisor/localization_supervisor
 - `test_supervisor_status.py`: 状態と診断の中身、イベントの出力、ノードが動かせる設定かの検証
 - `test_supervisor_config.py`: 設定の検証 (誤りは読み込みで落ちる)、外部のプラグインの読み込み、プロファイル、`config/examples/` が読める
 - `test_supervisor_faults.py`: 故障注入と評価の集計
+- `test_motion_gate.py`: 門 (起動の直後の確かめ、飛びで閉じて前の続きへ置き直す、大きい補正は止まってから、正しい直りは推定器を採る、誤報は置き直さずに開ける、置き直しの後の猶予、手動の初期姿勢、GNSS との食い違い、一定の道のりごとの確かめ、決まらないときの上限、地図の切り替え) と、照合で決める規則、設定の検証
 - `test_offline_runner.py`: 人工のメッセージの列と地図で、`config/examples/` の設定をオフライン評価に通す
 
 ROS のモジュールは `test/conftest.py` でモックする (入力のアダプタは、メッセージの属性だけを読む)。rosbag の読み込みは、実データでのオフライン評価で確かめる。

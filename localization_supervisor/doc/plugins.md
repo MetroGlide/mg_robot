@@ -141,6 +141,13 @@ class SpeedLimitCheck(Detector):
 | `service_call` | 指示 (`reinit`・`isolate`・`restore`) が出たとき、サービス (`Empty` または `Trigger`) を、指定の遅れの後に呼ぶ |
 | `variance_scale` | 監督が求めた、設定の `residuals` の分散の倍率 (`StepResult.applied_scales`。a の実際の誤差が自己申告の何倍か。a を切り離しているあいだは上限) を、周期ごとに `std_msgs/Float64` で配信する。受け取る側が分散にかけ、一定時間届かなければ 1 に戻す |
 
+## 一時停止の要求の出力 (`HoldOutput`)
+
+`ros/hold_outputs/base.py`。門のノード ([motion_gate.md](./motion_gate.md)) が、周期ごとに `apply(active, reason)` で、走行を止めてほしいか (`active`) と理由を渡す。受け手が後から起動しても届くよう、止めてほしい間は出し続けるとよい。コンストラクタは `(名前, パラメータ, ノード)`。
+設定の `hold_output` に `{type, params?}` を書く。標準のものはない (走行の側の窓口はロボットごとに違うので、使う側のパッケージが `パッケージ.モジュール:クラス` で与える)。
+
+門のノードの閉じる理由の部品は、判定 (`Detector`) をそのまま使う。
+
 ## 入力のアダプタ (`SourceAdapter`)
 
 `ros/adapters/base.py`。メッセージから標本を作り、`SampleStore` に入れる。ノード (購読) とオフライン評価 (rosbag) の両方で同じものを使う。
