@@ -8,6 +8,7 @@ from typing import Dict, List, Tuple
 
 from .config import SupervisorConfig
 from .interfaces import Status
+from .motion_gate import GateState, GateStep, MotionGateConfig
 from .state_machine import State
 from .supervisor import StepResult
 
@@ -64,6 +65,38 @@ def status_view(result: StepResult, config: SupervisorConfig, profile: str) -> S
         footprint_in_lethal=safety is not None and safety.in_lethal,
         lethal_depth_m=-1.0 if safety is None else safety.depth_m,
         profile=profile, last_event=result.last_event, checks=checks)
+
+
+GATE_STATES = {
+    GateState.UNCONFIRMED: State.NORMAL,
+    GateState.OPEN: State.NORMAL,
+    GateState.CLOSED: State.ISOLATED,
+    GateState.CORRECTING: State.RECOVERING,
+}
+
+
+def gate_status_view(step: GateStep, config: MotionGateConfig, last_event: str) -> StatusView:
+    """門のノードの周期の結果を、監督と同じ形の状態にする。
+
+    確かめる前と門が開いている間は NORMAL、閉じている間は ISOLATED、止めて戻す間は RECOVERING、
+    閉じたまま決まらず止めている間は DEGRADED。安全の信号は出さない (lethal_depth_m は -1)。
+    """
+    state = GATE_STATES[step.state]
+    if step.state == GateState.CLOSED and step.hold:
+        state = State.DEGRADED
+    closed = step.state in (GateState.CLOSED, GateState.CORRECTING)
+    checks = []
+    for closer in config.closers:
+        evidence = step.evidences.get(closer.name)
+        if evidence is None:
+            continue
+        checks.append(CheckView(
+            name=closer.name, detector=closer.type, sources=list(closer.sources.values()), status=evidence.status,
+            score=0.0 if evidence.status == Status.UNKNOWN else evidence.score, values=dict(evidence.values)))
+    return StatusView(
+        state=state, isolated_sources=[config.settings.estimator] if closed else [], hold_requested=step.hold,
+        trusted=step.state == GateState.OPEN and not step.in_grace,
+        in_grace=step.in_grace or step.state == GateState.UNCONFIRMED, last_event=last_event, checks=checks)
 
 
 def localization_health(view: StatusView) -> Tuple[str, str, Dict[str, str]]:
