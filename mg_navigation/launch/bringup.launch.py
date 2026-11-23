@@ -48,6 +48,10 @@ def generate_launch_description():
         'supervisor_config',
         default=os.path.join(
             get_package_share_directory('mg_localization_supervisor'), 'config', 'supervision.yaml'))
+    motion_gate_config_arg = launch_argument_creator.create(
+        'motion_gate_config',
+        default=os.path.join(
+            get_package_share_directory('mg_localization_supervisor'), 'config', 'motion_gate.yaml'))
     localization_profile_arg = launch_argument_creator.create(
         'localization_profile', default="")
     # AMCL の params に重ねる自己位置推定のプリセット (params/localization_presets/<名前>.yaml。空は重ねない)
@@ -161,6 +165,7 @@ def generate_launch_description():
                               'localization_monitor': localization_monitor_arg.launch_config,
                               'localization_supervisor': localization_supervisor_arg.launch_config,
                               'supervisor_config': supervisor_config_arg.launch_config,
+                              'motion_gate_config': motion_gate_config_arg.launch_config,
                               'localization_profile': localization_profile_arg.launch_config,
                               'localization_preset': localization_preset_arg.launch_config,
                               'container_name': 'nav2_container'}.items()

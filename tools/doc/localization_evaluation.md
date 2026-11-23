@@ -85,10 +85,12 @@ docker run --rm -v $PWD:/app -v ~/ros2_data:/root/ros2_data mg_develop:latest \
 | `bridge.` | `slam_gnss_2d/slam_gnss_2d/params/nav_bridge.yaml` | `slam_gnss_nav_bridge` |
 | `odom.` | `mg_drivers/params/wheel_odom_corrector.yaml` | `wheel_odom_corrector_node` |
 | `sup.` | `mg_localization_supervisor/config/supervision.yaml` | (監督の設定。ROS2 パラメータではないので、トップレベルからのパスで書く。例: `sup.detectors.amcl_gnss.params.threshold=8.0`) |
+| `gate.` | `mg_localization_supervisor/config/motion_gate.yaml` | (門のノードの設定。`--monitor motion_gate` のとき使う。書き方は `sup.` と同じ。例: `gate.gate.small_correction_m=100`) |
 
 - 出力: `<評価 bag>/eval_loc/<データセット>/<名前>/{params/, run_N/, summary.md}`。`run_N/eval_localization.md` に試行ごとの評価、`summary.md` に試行をまとめた表が入ります。
 - 起動前に、関連パッケージ (`localization_replay.sh` の `BUILD_PKGS`) をコンテナ内で増分ビルドします。ソースの変更はイメージの再ビルドなしで反映されます。
 - 書き換えられるのは既存のキーの値です。複数行にまたがるリスト (`odom0_config` など) も、`ekf.odom0_config="[true, true, ...]"` のように新しい値を 1 行で渡すとまとめて置き換えられます。キーが元のファイルに無い場合はエラーになります。
+- 再生にはシーケンサがないので、門のノードの「止まってから置き直す」は止まらないまま上限の時間を待つことになる。照合の判定を見るときは、補正の大きさの上限を広げて、その場で置き直す (`gate.gate.small_correction_m`・`gate.gate.small_correction_rad`)。止まってからの置き直しは、シナリオ試験で確かめる。
 - `sup.` は、監督の設定を YAML として読み直して書き出す (`patch_params.py --plain`) ので、フロー形式 (`{threshold: 6.0}`) の中の値も書き換えられます。複製した設定にはコメントが残りません。プロファイルのファイルも変種のディレクトリに複製します。
 - 実機と同じく、ホイールオドメトリは補正ノードを通して `/odom/raw` → `/odom` になります。
 - ROS の通信は `ROS_LOCALHOST_ONLY=1` とランダムな `ROS_DOMAIN_ID` で隔離しており、実機や他のコンテナと混ざりません。複数の変種を並列に実行できます (各コンテナが起動時にビルドするので、同時に起動すると、スタックの起動が 180 s を超えて試行が無効になることがあります。多く並べるときは、1 回だけビルドする `run_localization_queue.py` を使います)。
@@ -145,6 +147,7 @@ kidnap と `amcl_drift` は `/initialpose` を使うので、監督が人によ�
 | 種類 | 内容 |
 | :--- | :--- |
 | `kidnap` | その時刻の推定姿勢をずらした姿勢を `/initialpose` に送り、AMCL だけをずらす |
+| `manual_pose` | その時刻の推定姿勢をずらした姿勢を、手動の初期姿勢の専用トピック (`/localization/manual_initial_pose`) に送る。故障ではなく、人が Web UI でおおよその姿勢を与える経路を確かめるためのもの |
 | `gnss_bias` | `/navpvt` の位置にバイアスを乗せる (`carr_soln` で解の種類も変えられる) |
 | `gnss_drop` | `/navpvt` を止める |
 | `gnss_noise` | GNSS の位置に雑音を足す。`tau` を与えると偏りが `tau` 秒程度続く形 (単独測位の誤差)、省略すると毎回独立。同じ測位の `/navpvt` と `/gps/fix` には同じ雑音を足す。雑音のない GNSS は `rewrite_gnss.py` で記録の GNSS を真値に置き換えて作る |

@@ -33,6 +33,8 @@
 #   odom.<key>    mg_drivers/params/wheel_odom_corrector.yaml の wheel_odom_corrector_node
 #   sup.<key>     mg_localization_supervisor/config/supervision.yaml (監督の設定。トップレベルからのパスで、
 #                 フロー形式の中の値も書ける。例: sup.detectors.amcl_gnss.params.threshold=8.0)
+#   gate.<key>    mg_localization_supervisor/config/motion_gate.yaml (門のノードの設定。--monitor motion_gate のとき。
+#                 書き方は sup と同じ。例: gate.gate.small_correction_m=100)
 #
 # 例:
 #   tools/scripts/run_localization_variant.sh baseline
@@ -69,6 +71,7 @@ AMCL_UPDATES=()
 BRIDGE_UPDATES=()
 ODOM_UPDATES=()
 SUPERVISOR_UPDATES=()
+GATE_UPDATES=()
 FAULTS=""
 RECORD_PARTICLES="true"
 RUN_FROM=""
@@ -101,6 +104,7 @@ while [ $# -gt 0 ]; do
     bridge.*=*) BRIDGE_UPDATES+=("slam_gnss_nav_bridge:${1#bridge.}"); shift ;;
     odom.*=*) ODOM_UPDATES+=("wheel_odom_corrector_node:${1#odom.}"); shift ;;
     sup.*=*) SUPERVISOR_UPDATES+=("${1#sup.}"); shift ;;
+    gate.*=*) GATE_UPDATES+=("${1#gate.}"); shift ;;
     *) echo "エラー: 解釈できない引数です: $1" >&2; usage ;;
   esac
 done
@@ -142,6 +146,9 @@ patch "${BRIDGE_FILE:-slam_gnss_2d/slam_gnss_2d/params/nav_bridge.yaml}" nav_bri
 # 監督の設定は ROS2 パラメータではないので --plain で書き換える。プロファイルは設定ファイルからの相対パスなので複製する
 SUPERVISOR_SRC="${SUPERVISOR_FILE:-mg_localization_supervisor/config/supervision.yaml}"
 python3 tools/scripts/patch_params.py --plain "$SUPERVISOR_SRC" "$VARIANT_REL/supervision.yaml" "${SUPERVISOR_UPDATES[@]}"
+# 門のノードの設定 (--monitor motion_gate のとき使う)。監督の設定と同じく --plain で書き換える
+python3 tools/scripts/patch_params.py --plain mg_localization_supervisor/config/motion_gate.yaml \
+  "$VARIANT_REL/motion_gate.yaml" "${GATE_UPDATES[@]}"
 rm -rf "$VARIANT_REL/profiles"
 cp -r "$(dirname "$SUPERVISOR_SRC")/profiles" "$VARIANT_REL/profiles"
 

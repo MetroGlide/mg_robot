@@ -40,6 +40,9 @@ def generate_launch_description():
         description='監督の設定ファイル (情報源・判定・総合・状態遷移・プロファイル)')
     localization_profile = arg.create(
         'localization_profile', default='', description='監督の設定に重ねるプロファイル (空は基本設定)')
+    motion_gate_config = arg.create(
+        'motion_gate_config', default=os.path.join(config_dir, 'motion_gate.yaml'),
+        description='門のノードの設定ファイル')
     use_motion_gate = arg.create(
         'use_motion_gate', default='false',
         description='門のノード (AMCL を地図との照合で確かめてから EKF に入れる) を起動するか。監督ノードとは同時に使わない')
@@ -96,7 +99,7 @@ def generate_launch_description():
                 name='motion_gate_node',
                 output='screen',
                 parameters=[{
-                    'config_file': os.path.join(config_dir, 'motion_gate.yaml'),
+                    'config_file': value(motion_gate_config),
                     'use_sim_time': sim_time,
                 }],
             )]))

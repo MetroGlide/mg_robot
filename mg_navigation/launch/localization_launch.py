@@ -67,6 +67,9 @@ def generate_launch_description():
         'localization_supervisor', default='false',
         description='監視が watchdog のとき、監督ノードを並行して通知だけで動かすか '
                     '(状態 /localization/status は監督ノードが出す)').launch_config
+    motion_gate_config = arg.create(
+        'motion_gate_config', default=os.path.join(supervisor_dir, 'config', 'motion_gate.yaml'),
+        description='門のノードの設定ファイル (localization_monitor:=motion_gate のとき)').launch_config
     supervisor_config = arg.create(
         'supervisor_config', default=os.path.join(supervisor_dir, 'config', 'supervision.yaml'),
         description='監督の設定ファイル').launch_config
@@ -210,6 +213,7 @@ def generate_launch_description():
             'supervisor_config': supervisor_config,
             'localization_profile': supervisor_profile,
             'use_motion_gate': PythonExpression(["'", localization_monitor, "' == 'motion_gate'"]),
+            'motion_gate_config': motion_gate_config,
         }.items())
 
     def create_watchdog(context):

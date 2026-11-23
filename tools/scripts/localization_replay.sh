@@ -151,7 +151,8 @@ run_once() {
     nav2_params_file:="$VARIANT_DIR/nav2_params.yaml" \
     bridge_params_file:="$VARIANT_DIR/nav_bridge.yaml" \
     odom_corrector_params_file:="$VARIANT_DIR/wheel_odom_corrector.yaml" \
-    supervisor_config:="$VARIANT_DIR/supervision.yaml" "${profile_args[@]}" \
+    supervisor_config:="$VARIANT_DIR/supervision.yaml" motion_gate_config:="$VARIANT_DIR/motion_gate.yaml" \
+    "${profile_args[@]}" \
     > "$run_dir/launch.log" 2>&1 &
   LAUNCH_PID=$!
 
