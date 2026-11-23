@@ -21,6 +21,7 @@
 | :--- | :--- | :--- |
 | `wheel_odom_corrector_node.py` | ホイールオドメトリのスケール・バイアスを補正し、速度の共分散を設定する ([doc](./doc/wheel_odom_corrector.md)) | 入力: `odom/raw`、出力: `odom` |
 | `driver_watchdog_node.py` | LiDAR・オドメトリ・モータドライバの途絶を監視し、シーケンサに一時停止を出す。止まった上流ドライバ (rplidar) は終了させて、respawn に起動し直させる ([doc](./doc/driver_watchdog.md)) | 入力: `scan_top_lidar`、`odom`、`/motor_driver_node/connected`、出力: 診断 `driver_watchdog_node: <id>`、イベント `watchdog.*`、`/waypoint_sequencer_node/pause_request` |
+| `mmi_switch_node.py` | MMI (操作盤のスイッチ・RGB LED・ブザー) の物理スイッチで、シーケンサに走行の開始を要求する。下記 | 入力: MMI のシリアル、`/waypoint_sequencer_node/status`、出力: `/waypoint_sequencer_node/trigger` (サービス)、診断 `mmi_switch_node: connection` (集約で `/Robot/Drivers/MMI`)、イベント `driver.connected` / `driver.disconnected` (`device=mmi`)、`mmi.*` |
 | `odometry_tf_broadcaster_node.py` | `odom` から TF `odom→base_footprint` を配信する | 入力: `odom` |
 | `pose_with_cov_publish_controller_node.py` | `PoseWithCovarianceStamped` の中継を入/切する | 入力: `pose_with_cov_origin`、出力: `pose_with_cov`、サービス: `~/change_publish_state` |
 | `generic_publish_controller_node.py` | 任意の型のトピックの中継を入/切する (`msg_module`・`msg_class`・`publish`・`queue_size` で指定)。AMCL の出力のゲート (`amcl_publish_controller_node`) に使う ([mg_navigation](../mg_navigation/README.md)) | 入力: `input_topic`、出力: `output_topic`、サービス: `~/change_publish_state` |
@@ -136,9 +137,29 @@ ros2 run mg_drivers odom_offset_republisher.py
 
 シリアル接続のドライバは自分で再接続し、自分で直せないものはプロセスごと起動し直す (`respawn_drivers`)。仕組み、診断、イベントは [doc/driver_recovery.md](./doc/driver_recovery.md)。
 
+## MMI の物理スイッチ (`mmi_switch_node.py`)
+
+MMI は Maker Nano RP2040 のマイコンで、USB CDC の固定長のバイナリで通信する (PC → MMI は 8 バイト、MMI → PC は 4 バイト)。
+プロトコルの詳細はマイコン側の仕様書 (`~/ros2_data/mg_switch/`) が正。ノードが使うのは次だけ。
+
+| 方向 | 内容 | 送る・受けるとき |
+| :--- | :--- | :--- |
+| PC → MMI | LED1 を橙で点滅 + 「再開待ち」のメロディ (MMI が 3 回鳴らして止める) | シーケンサの `trigger_acceptable` が true に変わったとき |
+| PC → MMI | LED1 を緑で点灯 | `trigger_acceptable` が false に変わったとき |
+| PC → MMI | ハートビート (全機能を変えない `0x92`) | `heartbeat_period_sec` ごと。シーケンサの `~/status` が届いている間だけ |
+| MMI → PC | SW1〜SW3 の押下 | 押したとき (離したときは通知されない) |
+
+- **受け付けるかはシーケンサが決める。** ノードは `start_switch` の押下で `~/trigger` を呼ぶだけで、表示も `~/status` の `trigger_acceptable` (シーケンサの判定) に従う。どの状態で受け付けるかは [mg_waypoint_navigation の architecture](../mg_waypoint_navigation/doc/architecture.md#ros-インターフェース)。
+- **LED の指示は表示が変わるときだけ送る。** 物理スイッチを押すと、MMI が自分でブザーを止め、点滅を点灯に変える (押したことが見える)。毎回送ると、それを上書きしてしまう。押しても受け付けられなかったとき (一時停止中など) は、`reblink_after_sec` 後に橙の点滅に戻す。
+- **シーケンサの状態が分からない間は、正常に見せない。** `~/status` を初めて受け取るまでは LED1 に何も送らない (MMI の起動時の表示のまま)。`~/status` が `status_timeout_sec` 届かなければハートビートを止め、MMI が LED2 を赤 (通信途絶) にする。シーケンサの `publish_waypoint_status` を false にすると、MMI は何も表示しない。
+- **古い押下で走り出さない。** ポートを開いたら受信バッファを捨て、`ignore_after_open_sec` の間に届いた押下も捨てる (`mmi.switch_ignored`)。
+- **走行の安全には使わない。** 切断されても走行は止めない (診断は `WARN`)。`reconnect_period_sec` ごとに開き直す。
+- 起動はナビゲーションの bringup (`mg_bringup` の `bringup_navigation.launch.py`) の実機だけ。`use_mmi:=false` で起動しない。パラメータは `params/mmi_switch.yaml`。
+- 通信と表示の判断は `scripts/mmi_protocol.py`、ポートの開閉と読み書きは `scripts/mmi_serial.py` (どちらも ROS に依存しない)。
+
 ## デバイスと依存
 
-- udev ルール: `config/usb-serial-devices.rules`。センサを `/dev/ttyRobot-*` の名前で見せる (ベンダー ID などの値は空欄)。
+- udev ルール: `config/usb-serial-devices.rules`。センサを `/dev/ttyRobot-*` の名前で見せる (ベンダー ID などの値は空欄)。MMI (`/dev/ttyRobot-mmi`) はベンダー ID とプロダクト ID で見分ける。入れ方は [doc/operation.md](../doc/operation.md)。
 - 外部リポジトリ (`mg_drivers.rosinstall`): `nmea_navsat_driver` (MetroGlide の fork)、`rplidar_ros`、`pointcloud_to_laserscan`、`kiss-icp` (fork)。
 - `requirements.txt`: `psutil`、`pyserial`、`pyproj`。
 - `package.xml`: `rclcpp`、`rclpy`、`laser_filters`、`pcl_ros`、`realsense2_camera`、`robot_localization`、`ublox` など。
@@ -152,7 +173,7 @@ ros2 run mg_drivers odom_offset_republisher.py
 ## テスト
 
 ```bash
-# Python (補正の計算)
+# Python (補正の計算、MMI の通信と表示の判断、仮想シリアル (pty) での MMI のポートの読み書き)
 make test pkg=mg_drivers
 
 # C++ (障害物検出のロジックの gtest)

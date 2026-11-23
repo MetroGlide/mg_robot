@@ -1,0 +1,27 @@
+mmi_switch_node:
+  ros__parameters:
+    # MMI の USB CDC ポート (udev の config/usb-serial-devices.rules が作るシンボリックリンク)
+    device_name: /dev/ttyRobot-mmi
+    baudrate: 115200
+    # 切断中、この間隔でポートを開き直す [s]
+    reconnect_period_sec: 2.0
+    # ポートを開いてからこの間に届いた押下は捨てる (ノードが止まっていた間の古い押下で走り出さない) [s]
+    ignore_after_open_sec: 1.0
+    # 受信を調べる周期 [s]
+    read_period_sec: 0.02
+    # ハートビートの周期 [s]。MMI は 2.5 s 届かないと LED2 を赤にする
+    heartbeat_period_sec: 1.0
+
+    # シーケンサの状態。trigger_acceptable で表示を切り替える
+    status_topic: /waypoint_sequencer_node/status
+    # 状態がこの時間届かなければハートビートを止める (MMI の LED2 が赤になる) [s]
+    status_timeout_sec: 2.0
+    # 押下のあと、この時間たっても受け付けられるままなら橙の点滅に戻す [s]
+    # (押下で MMI が点滅を点灯に変えるため)
+    reblink_after_sec: 1.5
+
+    # 走行の開始を要求するサービスと、要求元の名前 (シーケンサのイベントログに残る)
+    trigger_service: /waypoint_sequencer_node/trigger
+    requester_id: mmi_switch
+    # 開始に割り当てるスイッチの番号 (1: GP12、2: GP13、3: 基板上の USER SW)。他のスイッチはログだけ
+    start_switch: 1
