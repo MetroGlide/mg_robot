@@ -35,7 +35,7 @@ def test_supervision_and_all_profiles_load():
 
 def test_every_source_has_a_valid_input():
     config = load_config(SUPERVISION)
-    adapters = build_adapters(config, SampleStore(config.kinds()), AdapterContext())
+    adapters = build_adapters(config.sources, SampleStore(config.kinds()), AdapterContext())
     assert sorted(adapters) == sorted(config.sources)
 
 

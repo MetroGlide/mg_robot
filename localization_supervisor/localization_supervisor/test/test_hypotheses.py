@@ -83,7 +83,7 @@ def test_hypotheses_source_is_not_independent():
 def test_particle_cloud_adapter_splits_modes_and_throttles():
     config = _config()
     store = SampleStore(config.kinds(), ('odom',))
-    adapter = build_adapters(config, store, AdapterContext())['particles']
+    adapter = build_adapters(config.sources, store, AdapterContext())['particles']
     handler = adapter.subscriptions()[0].handler
     handler(_cloud(100.0, [(0.0, 0.0, 0.0, 300), (0.0, 0.0, math.pi / 2, 100)]))
     handler(_cloud(100.2, [(5.0, 5.0, 0.0, 400)]))

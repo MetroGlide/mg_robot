@@ -98,7 +98,7 @@ class LocalizationSupervisorNode(Node):
         self._store = make_store(config)
         # Node の _context (rclpy の Context) と名前を分ける
         self._tf = TfContext(self)
-        for adapter in build_adapters(config, self._store, self._tf).values():
+        for adapter in build_adapters(config.sources, self._store, self._tf).values():
             for sub in adapter.subscriptions():
                 self.create_subscription(sub.msg_type, sub.topic, sub.handler, _QOS[sub.qos])
         self._own = OwnMessages()
