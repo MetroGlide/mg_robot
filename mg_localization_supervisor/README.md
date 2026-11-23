@@ -232,6 +232,7 @@ make test pkg=mg_localization_supervisor
 - `test_event_format.py`: フレームワークが出すイベントが、このプロジェクトのイベントの規約 ([doc/monitoring.md](../doc/monitoring.md)) と同じ書式で、`mg_utils.event_log.parse_event` で読める
 - `test_supervision_config.py`: `supervision.yaml` とすべてのプロファイルがフレームワークの検証を通り、監督ノードで動かせる、入力のトピックが AMCL の設定と合う、footprint と計画用地図がコストマップと合う、イベントがプロジェクトのイベントログで出る
 - `test_initializer_verify.py`・`test_initializer_attempts.py`: 初期化の照合 (ずれた GNSS の位置を直す・決めきれなければ広い共分散・植え込みの点の帯で誤った姿勢に決まらない) と、決まるまでの段取り (照合し直す間隔・外からの初期姿勢・照合の間に進んだ分)
+- `test_motion_gate_config.py`: 門のノードの設定がフレームワークの検証を通り、入力が監督と同じ、ゲートの要求元・手動の初期姿勢のトピック (launch の中継・Web UI) が合う、置き直しの後の猶予が時間の窓の閉じる理由より長い
 - `test_recovery_config.py`: 自動復旧の構成(候補・評価・送り先・対処)、`pause_request` の変換、`gnss_fallback` が以前の初期化ノードと同じ条件・共分散で、すぐ GNSS の位置で初期化し直し、以前に無かった対処を無効にする、`variance_scale` のトピックが GNSS のブリッジの設定と合う、GNSS のずれは `submap_amcl` の `vouch` と `isolate_only` で切り離すだけにする
 
 ## 依存

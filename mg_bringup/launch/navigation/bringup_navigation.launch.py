@@ -91,7 +91,7 @@ def generate_launch_description():
     # rosbag を再生して自己位置推定を評価するときに使う。
     use_navigation_arg = launch_argument_creator.create(
         "use_navigation", default="true")
-    # GNSS から AMCL の初期姿勢を与えるノードと、自己位置の監視ノード (none | watchdog | supervisor)
+    # GNSS から AMCL の初期姿勢を与えるノードと、自己位置の監視ノード (none | watchdog | supervisor | motion_gate)
     use_gnss_amcl_initializer_arg = launch_argument_creator.create(
         "use_gnss_amcl_initializer", default="true")
     # 既定は環境変数 LOCALIZATION_MONITOR (書かなければ supervisor。空にすると監視ノードが起動しない)

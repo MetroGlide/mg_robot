@@ -38,7 +38,7 @@ def generate_launch_description():
         'use_navigation', default="true")
     use_gnss_amcl_initializer_arg = launch_argument_creator.create(
         'use_gnss_amcl_initializer', default="true")
-    # 自己位置の監視ノード (none | watchdog | supervisor)
+    # 自己位置の監視ノード (none | watchdog | supervisor | motion_gate)
     localization_monitor_arg = launch_argument_creator.create(
         'localization_monitor', default="supervisor")
     # 監視が watchdog のとき、監督ノードを並行して通知だけで動かすか

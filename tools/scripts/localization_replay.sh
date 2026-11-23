@@ -27,7 +27,7 @@
 #   INIT_MODE        gt: 真値を初期姿勢として与える (既定) / gnss: 与えず GNSS による初期化に任せる
 #   EVAL_SKIP        INIT_MODE=gt のとき、評価の先頭から除く秒数 (既定 10。初期姿勢を与えた直後の過渡)
 #   USE_INITIALIZER  GNSS から AMCL の初期姿勢を与えるノードを起動するか (既定: gt なら false、gnss なら true)
-#   MONITOR          自己位置の監視ノード none | watchdog | supervisor (既定: gt なら none、gnss なら watchdog)
+#   MONITOR          自己位置の監視ノード none | watchdog | supervisor | motion_gate (既定: gt なら none、gnss なら watchdog)
 #   PROFILE          監督の設定に重ねるプロファイル (既定: 基本設定)
 #   RECORD_PARTICLES AMCL の粒子 (/particle_cloud) を記録するか (既定 true。記録の容量の大半を占める)
 #   BUILD_PKGS       起動前に増分ビルドするパッケージ (空ならビルドしない。ビルド済みのイメージで回す用)

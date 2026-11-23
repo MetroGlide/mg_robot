@@ -13,7 +13,7 @@
 #   --rate R                 再生速度 (既定 1.0。実時間で評価するのが基本)
 #   --init gt|gnss           初期姿勢 (既定 gt: 真値を与える / gnss: GNSS による初期化に任せる)
 #   --initializer true|false GNSS から AMCL の初期姿勢を与えるノード (既定: gt なら false、gnss なら true)
-#   --monitor none|watchdog|supervisor
+#   --monitor none|watchdog|supervisor|motion_gate
 #                            自己位置の監視ノード (既定: gt なら none、gnss なら watchdog)
 #   --profile <名前>         監督の設定に重ねるプロファイル (mg_localization_supervisor/config/supervision.yaml)
 #   --start S / --duration D 評価する区間 (データセットの値を上書き)

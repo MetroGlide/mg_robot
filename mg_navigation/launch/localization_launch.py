@@ -62,7 +62,7 @@ def generate_launch_description():
         description='GNSS から AMCL の初期姿勢を与えるノードを起動するか').launch_config
     localization_monitor = arg.create(
         'localization_monitor', default='supervisor',
-        description='自己位置の監視ノード (none | watchdog | supervisor)').launch_config
+        description='自己位置の監視ノード (none | watchdog | supervisor | motion_gate)').launch_config
     localization_supervisor = arg.create(
         'localization_supervisor', default='false',
         description='監視が watchdog のとき、監督ノードを並行して通知だけで動かすか '
@@ -209,6 +209,7 @@ def generate_launch_description():
                 "'", localization_monitor, "' == 'supervisor' or '", localization_supervisor, "'.lower() == 'true'"]),
             'supervisor_config': supervisor_config,
             'localization_profile': supervisor_profile,
+            'use_motion_gate': PythonExpression(["'", localization_monitor, "' == 'motion_gate'"]),
         }.items())
 
     def create_watchdog(context):
