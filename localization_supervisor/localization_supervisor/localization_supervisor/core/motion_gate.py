@@ -79,10 +79,14 @@ class GateSettings:
 
 @dataclass
 class CloserConfig:
-    """閉じる理由の部品。異常が close_after_sec 続いたら門を閉じる。"""
+    """閉じる理由の部品。異常が close_after_sec 続いたら門を閉じる。
+
+    active_in_grace が偽の部品は、置き直しの後の猶予の間は門を閉じない (置き直しの前の標本と比べる部品など)。
+    """
     name: str
     detector: Detector
     close_after_sec: float = 0.0
+    active_in_grace: bool = False
     type: str = ''
     sources: Dict[str, str] = field(default_factory=dict)
 
@@ -216,7 +220,10 @@ class MotionGate:
 
         in_grace = t < self._grace_until[0] or self._odometer < self._grace_until[1]
         out.in_grace = in_grace
-        if self.state == GateState.OPEN and closing and not in_grace:
+        if in_grace:
+            active = {c.name for c in self.config.closers if c.active_in_grace}
+            closing = [name for name in closing if name in active]
+        if self.state == GateState.OPEN and closing:
             self._close(t, 'closer', out, closers=','.join(closing))
         if self.state == GateState.CORRECTING:
             self._continue_correction(t, motion, snapshot, out)

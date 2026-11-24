@@ -285,6 +285,26 @@ def test_closers_are_ignored_while_in_grace_after_a_reset():
     assert len(sim.events('gate_closed')) == closed
 
 
+def test_closer_active_in_grace_closes_while_in_grace():
+    """猶予の間も使う部品 (今の推定器と GNSS を比べる部品) は、猶予の間でも門を閉じる。"""
+    sim = _confirmed(confirm_distance_m=1000.0)
+    next(c for c in sim.gate.config.closers if c.name == 'amcl_gnss').active_in_grace = True
+    sim.gate._grace_until = (math.inf, math.inf)
+    sim.gnss_offset = (1.5, 0.0)
+    sim.run(4.0)
+    closed = sim.events('gate_closed')
+    assert closed and closed[0].fields['closers'] == 'amcl_gnss'
+    assert all(s.in_grace for s in sim.steps[-20:])
+
+
+def test_closer_not_active_in_grace_is_ignored_while_in_grace():
+    sim = _confirmed(confirm_distance_m=1000.0)
+    sim.gate._grace_until = (math.inf, math.inf)
+    sim.gnss_offset = (1.5, 0.0)
+    sim.run(4.0)
+    assert not sim.events('gate_closed')
+
+
 def test_manual_pose_is_checked_and_becomes_the_confirmed_pose():
     sim = _confirmed()
     true = sim.true
@@ -447,6 +467,16 @@ def test_config_loads_external_closers():
     raw = _raw()
     raw['closers'] = {'x': {'type': 'supervisor_test_helpers:AlwaysNormal', 'sources': {'pose': 'amcl'}}}
     assert parse_gate_config(raw).gate.closers[0].name == 'x'
+
+
+def test_config_reads_whether_a_closer_is_active_in_grace():
+    raw = _raw()
+    assert not parse_gate_config(raw).gate.closers[0].active_in_grace
+    raw['closers']['j']['active_in_grace'] = True
+    assert parse_gate_config(raw).gate.closers[0].active_in_grace
+    raw['closers']['j']['active_in_grace'] = 'yes'
+    with pytest.raises(ConfigError):
+        parse_gate_config(raw)
 
 
 def _raw():

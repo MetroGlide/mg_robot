@@ -21,6 +21,8 @@ TOP_LEVEL_KEYS = {
     'gate_service', 'hold_output', 'manual_pose_topic', 'events', 'output',
 }
 RESETTER_ROLES = {'estimator', 'fused'}
+# 閉じる理由の部品に、判定の書き方に足すキー
+GATE_CLOSER_KEYS = {'close_after_sec', 'active_in_grace'}
 
 
 @dataclass
@@ -66,12 +68,15 @@ def parse_gate_config(raw: Mapping[str, Any]) -> GateNodeConfig:
         where = f'closers.{name}'
         body = _mapping(body, where)
         close_after = _number(body, 'close_after_sec', 0.0, where)
+        active_in_grace = body.get('active_in_grace', False)
+        if not isinstance(active_in_grace, bool):
+            raise ConfigError(f'{where}.active_in_grace: expected true or false')
         enabled = _enabled(body, where)
-        detector = _parse_detector(name, {k: v for k, v in body.items() if k != 'close_after_sec'}, sources,
+        detector = _parse_detector(name, {k: v for k, v in body.items() if k not in GATE_CLOSER_KEYS}, sources,
                                    None, None)
         if enabled:
             closers.append(CloserConfig(name, detector.cls(name, detector.params, detector.sources), close_after,
-                                        detector.type, dict(detector.sources)))
+                                        active_in_grace, detector.type, dict(detector.sources)))
     if not closers:
         raise ConfigError('closers: at least one enabled closer is required')
 
