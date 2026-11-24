@@ -75,3 +75,4 @@ ROS のモジュールは `test/conftest.py` でモックする (入力のアダ
 | [doc/supervisor_node.md](./doc/supervisor_node.md) | 監督ノードのパラメータ・入出力・状態のメッセージ・診断とイベント |
 | [doc/gate_arbiter.md](./doc/gate_arbiter.md) | ゲートの調停の規則・出力・パラメータ |
 | [doc/motion_gate.md](./doc/motion_gate.md) | 門のノードの役割の分担、状態、閉じる理由の部品、照合で決める規則、戻し方、手動の初期姿勢、入出力 |
+| [doc/architecture_target.md](./doc/architecture_target.md) | 最終形の構成 (一部未実装): 門の監督への統合、状態・程度・対処の対応表、復旧の段、確かめの要求、例外、未確定の項目 |

@@ -2,7 +2,7 @@
 
 自己位置推定の出力を、ほかの情報源や地図と見比べて検証し、ずれたときに知らせ、復旧するフレームワークの設計。
 特定の推定器やセンサを知らない。どの情報源を使い、どう比べ、どう総合するかは、すべて設定ファイル ([parameters.md](./parameters.md)) で宣言する。
-プラグインの約束と追加の手順は [plugins.md](./plugins.md)。
+プラグインの約束と追加の手順は [plugins.md](./plugins.md)。目指す最終形 (門の統合など、一部未実装) は [architecture_target.md](./architecture_target.md)。
 
 ## 層
 

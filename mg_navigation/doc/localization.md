@@ -2,6 +2,7 @@
 
 ホイールオドメトリ・AMCL・GNSS を EKF (`robot_localization` の `ekf_global_node`、world フレーム = `map`) で融合して、`map→odom` を作る。
 launch は `mg_bringup` の `bringup_navigation.launch.py` (EKF と GNSS ブリッジ) と、`mg_navigation` の `localization_launch.py` (map_server、AMCL、watchdog)。`localization_launch.py` は、調停・初期化・監督ノードを起動する `mg_localization_supervisor` の `supervisor.launch.py` を include する。
+目指す最終形 (置き直しを監督にまとめる、構成の切り替えなど、一部未実装) は [localization_target.md](./localization_target.md)。
 
 ## 構成
 

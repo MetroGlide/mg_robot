@@ -129,6 +129,7 @@ colcon test --packages-select mg_navigation --ctest-args -R test_ && colcon test
 | ファイル | 内容 |
 | :--- | :--- |
 | [doc/localization.md](./doc/localization.md) | 自己位置推定の構成、watchdog による監視 |
+| [doc/localization_target.md](./doc/localization_target.md) | 自己位置推定の最終形 (一部未実装): ノードの役割、機能 × センサ、起動、BT との受け渡し、センサの組、例外、構成と戻すルート |
 | [doc/architecture.md](./doc/architecture.md) | Nav2 のノード、速度指令の経路、コントローラ、BT、アンカーの規則 |
 | [doc/costmap_and_collision.md](./doc/costmap_and_collision.md) | コストマップ、グローバルプランナ、衝突の防止 (`collision_monitor`) |
 | [doc/bt_plugins.md](./doc/bt_plugins.md) | `IsPathClear`・`IsPathBlocked`・`CommitPath`・`FindFreeStart`・`IsLocalizationHealthy` の判定とポート |

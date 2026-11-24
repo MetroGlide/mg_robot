@@ -1,7 +1,7 @@
 # motion_gate_node (動きの合意による門と、地図との照合による判定)
 
 推定器 (例: AMCL) の姿勢を融合 (例: EKF) に入れる前に確かめる門。疑わしい動きを見つけたら門を閉じ、地図との照合で正しい姿勢を決めてから開ける。
-監督ノード ([supervisor_node.md](./supervisor_node.md)) とは別のノードで、同時には動かさない (どちらも推定器を置き直すため)。
+監督ノード ([supervisor_node.md](./supervisor_node.md)) とは別のノードで、同時には動かさない (どちらも推定器を置き直すため)。最終形では監督に統合する ([architecture_target.md](./architecture_target.md))。
 
 中核は `core/motion_gate.py` (ROS に依存しない)、ノードは `ros/motion_gate_node.py`。
 
