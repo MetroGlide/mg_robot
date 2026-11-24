@@ -1,0 +1,7 @@
+# 物理ボタンなどからの走行開始の要求。シーケンサが受け付けられる状態のときだけ走行を始める
+# 要求した装置やノードの名前 (イベントログに残す)
+string requester_id
+---
+bool success
+# 断ったときの理由 (例: not_idle、paused)
+string message

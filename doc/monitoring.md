@@ -108,7 +108,8 @@ evt=<domain>.<event> key=value key="空白を含む値" ...
 
 | ドメイン | イベント名 |
 | :--- | :--- |
-| `sequencer` | `state_changed`、`run_started`、`run_finished`、`paused`、`resumed`、`waypoint_reached`、`manual_goal_finished` |
+| `sequencer` | `state_changed`、`run_started`、`run_finished`、`paused`、`resumed`、`waypoint_reached`、`manual_goal_finished`、`trigger_accepted`、`trigger_rejected` |
+| `mmi` | `switch_pressed`、`switch_ignored` (ポートを開いた直後なので捨てた)、`trigger_result`、`trigger_failed` (サービスに届かない) |
 | `action` | `started`、`succeeded`、`failed` |
 | `nav` | `goal_sent`、`goal_result` |
 | `driver` | `connected`、`disconnected`、`reconnect_attempt`、`estop_changed` |

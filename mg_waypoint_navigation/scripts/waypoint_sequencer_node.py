@@ -16,7 +16,7 @@ from visualization_msgs.msg import Marker, MarkerArray
 from mg_msgs.msg import NavigationActivity, PauseRequest, SequencerStatus
 from mg_msgs.msg import WaypointInfo
 from mg_msgs.msg import WaypointList as WaypointListMsg
-from mg_msgs.srv import LoadMaps, SendGoal, StartSequence
+from mg_msgs.srv import LoadMaps, SendGoal, StartSequence, TriggerSequence
 
 from mg_utils.event_log import EventLog
 from mg_waypoint_navigation.waypoint import WaypointList, WaypointsLoader
@@ -55,7 +55,8 @@ class WaypointSequencerNode(Node):
 
         self._declare_parameters()
 
-        self._fsm = WaypointSequencerFSM(self)
+        self._fsm = WaypointSequencerFSM(
+            self, trigger_accepts_unstarted_idle=self._trigger_accepts_unstarted_idle)
 
         self._init_ros_communications()
         self._load_waypoints()
@@ -95,6 +96,12 @@ class WaypointSequencerNode(Node):
                 f"activity_freq_hz={self._activity_freq} is invalid. Using default 2.0 Hz."
             )
             self._activity_freq = 2.0
+        # ~/trigger (物理ボタンなど) で走行を始めるときのカウントダウン [ms]
+        self._trigger_countdown_ms: int = self.declare_parameter(
+            "trigger_countdown_ms", 1000).value
+        # ~/trigger を、wait_trigger 待ちでない IDLE (未開始・停止後) でも受け付けるか
+        self._trigger_accepts_unstarted_idle: bool = self.declare_parameter(
+            "trigger_accepts_unstarted_idle", True).value
         # 空にすると、その入力は使わない
         self._activity_collision_topic: str = self.declare_parameter(
             "activity_collision_state_topic", "/collision_monitor_state").value
@@ -119,6 +126,8 @@ class WaypointSequencerNode(Node):
         self._start_srv = self.create_service(
             StartSequence, "~/start", self._on_start_srv
         )
+        self._trigger_srv = self.create_service(
+            TriggerSequence, "~/trigger", self._on_trigger_srv)
         self._stop_srv = self.create_service(
             Trigger, "~/stop", self._on_stop_srv)
         self._reload_srv = self.create_service(
@@ -227,6 +236,14 @@ class WaypointSequencerNode(Node):
         response.message = result.message
         return response
 
+    def _on_trigger_srv(
+        self, request: TriggerSequence.Request, response: TriggerSequence.Response
+    ):
+        result = self._fsm.trigger(request.requester_id, self._trigger_countdown_ms)
+        response.success = result.success
+        response.message = result.message
+        return response
+
     def _on_stop_srv(self, request: Trigger.Request, response: Trigger.Response):
         result = self._fsm.stop()
         response.success = result.success
@@ -300,6 +317,7 @@ class WaypointSequencerNode(Node):
         msg.distance_remaining = self._fsm.distance_remaining
         msg.current_action = self._fsm.current_action
         msg.waiting_trigger = self._fsm.waiting_trigger
+        msg.trigger_acceptable = self._fsm.trigger_acceptable
         self._status_pub.publish(msg)
 
     def _publish_activity_cb(self):

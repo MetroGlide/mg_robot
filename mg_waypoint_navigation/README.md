@@ -50,6 +50,7 @@ GUI の [waypoint-tool](https://github.com/Chu-son/waypoint-tool) でも作れ�
 | 種別 | 名前 | 型 | 内容 |
 | :--- | :--- | :--- | :--- |
 | Service | `~/start` | `mg_msgs/StartSequence` | 走行を開始する |
+| Service | `~/trigger` | `mg_msgs/TriggerSequence` | 物理ボタンなどからの開始要求。IDLE のときだけ走行を始める ([MMI のスイッチ](../mg_drivers/README.md)) |
 | Service | `~/stop` | `std_srvs/Trigger` | 止める (一時停止の要求も解除する) |
 | Service | `~/reload_waypoints` | `std_srvs/Trigger` | ウェイポイントを読み込み直す |
 | Service | `~/navigate_to_pose` | `mg_msgs/SendGoal` | BT を指定して、手動でゴールを 1 つ送る |
@@ -156,6 +157,7 @@ BT の動きは、シナリオテスト (`dynamic_stop_and_resume`、`dynamic_pe
 | `sequencer.paused` / `sequencer.resumed` | WARN / INFO | 一時停止と再開 (`requesters`) |
 | `sequencer.waypoint_reached` | INFO | ウェイポイントに着いた (`result`: `SUCCEEDED` / `PASSED`) |
 | `sequencer.manual_goal_finished` | INFO | 手動ゴールが終わった (`result`) |
+| `sequencer.trigger_accepted` / `sequencer.trigger_rejected` | INFO | `~/trigger` を受け付けた / 断った (`requester`、`index`、断った理由の `reason`) |
 | `nav.goal_sent` | INFO | Nav2 にゴールを送った (`index`、`x`、`y`、`mode`) |
 | `nav.goal_result` | INFO / WARN (CANCELED) / ERROR | ゴールの結果 (`result`、`duration_sec`、`recoveries`) |
 | `nav.through_plan_missing` | WARN | 通過点へ向かってから一定時間、採用済みの経路が届かない (`index`、`waited_sec`、`topic`)。1 ゴールに 1 回。BT に `CommitPath` がない、または計画の失敗・棄却が続いている。通過点の判定ができず、停止点と同じく Nav2 の到達で終わる |

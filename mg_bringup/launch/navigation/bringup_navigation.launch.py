@@ -6,7 +6,8 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription
 from launch_ros.actions import Node
 from launch.substitutions import (
-    EnvironmentVariable, IfElseSubstitution, LaunchConfiguration, PathJoinSubstitution)
+    AndSubstitution, EnvironmentVariable, IfElseSubstitution, LaunchConfiguration,
+    NotSubstitution, PathJoinSubstitution)
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from ament_index_python.packages import get_package_share_directory
 
@@ -119,6 +120,10 @@ def generate_launch_description():
         )
     )
 
+    # MMI (操作盤) の物理スイッチで、シーケンサに走行の開始を要求する (実機のみ)
+    use_mmi_arg = launch_argument_creator.create(
+        "use_mmi", default="true")
+
     # Launch descriptions
     launch_common = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -175,6 +180,20 @@ def generate_launch_description():
             use_slam_gnss_bridge_arg.launch_config),
     )
 
+    mmi_switch_node = Node(
+        package="mg_drivers",
+        executable="mmi_switch_node.py",
+        name="mmi_switch_node",
+        output="screen",
+        respawn=True,
+        respawn_delay=2.0,
+        parameters=[os.path.join(drivers_pkg_share, "params", "mmi_switch.yaml")],
+        condition=launch.conditions.IfCondition(
+            AndSubstitution(
+                use_mmi_arg.launch_config,
+                NotSubstitution(simulation_arg.launch_config))),
+    )
+
     # map_path = PathJoinSubstitution(
     #     ["/root/ros2_data", map_path_arg.launch_config, "map.yaml"])
     map_path = map_path_arg.launch_config
@@ -207,6 +226,7 @@ def generate_launch_description():
             launch_common,
             ekf_group,
             bridge_node,
+            mmi_switch_node,
             launch_navigation,
         ]
     )
