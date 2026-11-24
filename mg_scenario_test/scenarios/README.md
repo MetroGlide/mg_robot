@@ -76,7 +76,7 @@ scenarios/
 - **`localization_garden_lap`、`localization_garden_lap_thick`、`localization_corner_odom`、`localization_corner_weak`、`localization_map_shift`、`localization_corner_drift`、`localization_drift_driving`、`localization_drift_stuck`**: 自己位置推定のロバスト化 ([localization_robustness.md](../../mg_navigation/doc/localization_robustness.md)) で、今の監督では戻せない失敗を再現する。対策ができたら、タグを外す。
   - 走行中のずれ: AMCL と EKF がそろってずれ、正しい GNSS だけが食い違うので、監督は GNSS を疑って切り離し、推定はずれたまま走り続ける (例: 7 m)。
   - 止まっている間のずれ: AMCL も GNSS も新しい値を出さないので、監督は判定の材料がなく疑わない。経路を作れずにナビゲーションが失敗する。
-- **`gate_drift_driving`**: 門のノードは、地図が進む向きに似た形の続く通路で、推定器が 1 m 未満ずれたときに照合で見分けられず、推定器をそのまま採る。採った後の猶予の間は閉じる理由をすべて使わないので、GNSS との食い違いでも閉じず、ずれたまま走る。
+- **`gate_drift_driving`**: 注入が現実の AMCL の弱り方と違う。毎秒の `/initialpose` で AMCL の分布を絞り直すので、AMCL は進む向きにも強い自信を申告したまま、オドメトリに逆らって流れる (現実の通路では、進む向きの分布が伸びる)。門のノードは、地図が進む向きに似た形の続く通路で 1 m 未満のずれを照合で見分けられず、推定器をそのまま採る (設計どおり)。その後のずれは GNSS との食い違いの閉じる理由の閾値に届く前にゴールに着き、EKF は自信の強い AMCL と離れた GNSS を棄却して (`odom0_pose_rejection_threshold`)、ずれたまま走る。
 - **`anomaly_*`** (タグ `anomaly`・`anomaly_holdout`・`anomaly_sensor`): 構成の比較に使う測定で、合否の回帰ではない。通常の回帰から外すために付けている。
 
 このほか、シナリオにできなかった (または挙動が不安定で見送った) 項目:

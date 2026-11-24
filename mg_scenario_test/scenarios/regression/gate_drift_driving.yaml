@@ -44,8 +44,8 @@ timeline:
           - localization_ready: { checks: [amcl_gnss] }
           - robot_near: { x: -3.0, y: 6.5, radius: 1.5 }
     do:
-      # 通路に沿って (拘束の弱い向き) ゆっくりずらす。門の動きの合意 (時間の窓) には掛からず、GNSS との食い違いで
-      # 閉じるようにし、注入は閉じる前に終える (置き直しの後の猶予の間に、注入が推定器をずらし直さないため)
+      # 通路に沿って (拘束の弱い向き) ゆっくりずらす。毎秒の /initialpose で AMCL の分布を絞り直すので、AMCL は
+      # 進む向きにも強い自信を申告したまま流れる (現実の通路の弱り方とは違う。scenarios/README.md の known_issue)
       - localization_drift: { rate: { x: 0.08 }, duration_sec: 20.0 }
 
 expect:
