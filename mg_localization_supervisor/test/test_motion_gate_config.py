@@ -54,6 +54,12 @@ def test_grace_after_reset_covers_the_window_closer():
     assert config.gate.settings.grace_after_reset_sec >= window['window_sec'] + window['max_gap_sec']
 
 
+def test_only_the_gnss_closer_is_active_in_grace():
+    """置き直しの前の標本と比べる部品 (動きの比較) は猶予の間に使わず、今の AMCL と GNSS を比べる部品は使う。"""
+    config = load_gate_config(CONFIG)
+    assert {c.name for c in config.gate.closers if c.active_in_grace} == {'amcl_gnss'}
+
+
 def test_manual_search_range_is_within_the_match_cap():
     """手動の初期姿勢の探す範囲は、照合の範囲の上限で切られない。"""
     config = load_gate_config(CONFIG)

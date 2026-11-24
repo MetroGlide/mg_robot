@@ -49,7 +49,7 @@ gate:
   retry_sec: 2.0
   # 門が開いている間に、AMCL と前の続きを照合して、確かめた姿勢を更新する道のり
   confirm_distance_m: 10.0
-  # 置き直しの後は、収束の途中なので閉じる理由を使わない。時間は、時間の窓で比べる閉じる理由
+  # 置き直しの後は、収束の途中なので閉じる理由を使わない (active_in_grace の部品を除く)。時間は、時間の窓で比べる閉じる理由
   # (amcl_window の window_sec + max_gap_sec) より長くする (置き直しの前の標本と比べないため)
   grace_after_reset_m: 1.0
   grace_after_reset_sec: 15.0
@@ -80,12 +80,15 @@ closers:
     type: pose_jump
     sources: {pose: amcl, motion: odom}
     params: {threshold_m: 1.0, threshold_rad: 0.3, window_sec: 10.0}
-  # GNSS と離れたまま (動きの合意では気づけない、ゆっくりしたずれ)。精度の良い GNSS だけを使う
+  # GNSS と離れたまま (動きの合意では気づけない、ゆっくりしたずれ)。精度の良い GNSS だけを使う。
+  # 今の AMCL と今の GNSS を比べ、置き直しの前の標本を使わないので、置き直しの後の猶予の間も使う
+  # (誤った姿勢を採ったときに、猶予の間ずれたまま走らない)
   amcl_gnss:
     type: pose_consistency
     sources: {a: amcl, b: gnss}
     params: {metric: distance, threshold: 1.5, b_max_std_m: 0.5}
     close_after_sec: 3.0
+    active_in_grace: true
 
 map_match:
   min_ratio: 0.35
