@@ -29,6 +29,7 @@
 #   USE_INITIALIZER  GNSS から AMCL の初期姿勢を与えるノードを起動するか (既定: gt なら false、gnss なら true)
 #   MONITOR          自己位置の監視ノード none | watchdog | supervisor | motion_gate (既定: gt なら none、gnss なら watchdog)
 #   PROFILE          監督の設定に重ねるプロファイル (既定: 基本設定)
+#   GATE             監督ノードの中で門を使うか (MONITOR=supervisor のとき。既定 false)
 #   RECORD_PARTICLES AMCL の粒子 (/particle_cloud) を記録するか (既定 true。記録の容量の大半を占める)
 #   BUILD_PKGS       起動前に増分ビルドするパッケージ (空ならビルドしない。ビルド済みのイメージで回す用)
 #   BUILD_ONLY       true ならビルドだけして終わる (ビルド済みのイメージを作る用。ほかの必須の変数は要らない)
@@ -145,6 +146,7 @@ run_once() {
     use_navigation:=false use_realsense:=false use_slam_gnss_bridge:=true \
     use_odom_corrector:=true \
     use_gnss_amcl_initializer:="$USE_INITIALIZER" localization_monitor:="$MONITOR" \
+    localization_gate:="${GATE:-false}" \
     map_path:="$MAP_YAML" planning_map_path:="$MAP_YAML" \
     gnss_transform_file:="$GNSS_TRANSFORM" \
     ekf_params_file:="$VARIANT_DIR/ekf_global.yaml" \

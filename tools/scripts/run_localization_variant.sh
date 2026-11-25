@@ -16,6 +16,8 @@
 #   --monitor none|watchdog|supervisor|motion_gate
 #                            自己位置の監視ノード (既定: gt なら none、gnss なら watchdog)
 #   --profile <名前>         監督の設定に重ねるプロファイル (mg_localization_supervisor/config/supervision.yaml)
+#   --gate true|false        監督ノードの中で門を使う (--monitor supervisor のとき。既定 false。門の設定は
+#                            supervision.yaml の gate 節で、sup.gate.<key> で書き換える)
 #   --start S / --duration D 評価する区間 (データセットの値を上書き)
 #   --cpus N                 コンテナに使わせる CPU 数 (実機相当の負荷にしたいとき)
 #   --no-particles           AMCL の粒子 (/particle_cloud) を記録しない (記録の容量を抑える。仮説の解析や
@@ -63,6 +65,7 @@ INIT_MODE=gt
 USE_INITIALIZER=""
 MONITOR=""
 PROFILE=""
+GATE=""
 CPUS=""
 START_OVERRIDE=""
 DURATION_OVERRIDE=""
@@ -86,6 +89,7 @@ while [ $# -gt 0 ]; do
     --initializer) USE_INITIALIZER="$2"; shift 2 ;;
     --monitor) MONITOR="$2"; shift 2 ;;
     --profile) PROFILE="$2"; shift 2 ;;
+    --gate) GATE="$2"; shift 2 ;;
     --start) START_OVERRIDE="$2"; shift 2 ;;
     --duration) DURATION_OVERRIDE="$2"; shift 2 ;;
     --cpus) CPUS="$2"; shift 2 ;;
@@ -182,6 +186,7 @@ DOCKER_ARGS=(run --rm --network host -e ROS_DOMAIN_ID="$DOMAIN_ID"
 [ -n "$USE_INITIALIZER" ] && DOCKER_ARGS+=(-e USE_INITIALIZER="$USE_INITIALIZER")
 [ -n "$MONITOR" ] && DOCKER_ARGS+=(-e MONITOR="$MONITOR")
 [ -n "$PROFILE" ] && DOCKER_ARGS+=(-e PROFILE="$PROFILE")
+[ -n "$GATE" ] && DOCKER_ARGS+=(-e GATE="$GATE")
 if [ -n "$FAULTS" ]; then
   # ホストのパスをコンテナ内のパスに直す (リポジトリ内 -> /app、~/ros2_data -> /root/ros2_data)
   FAULTS_ABS="$(cd "$(dirname "$FAULTS")" && pwd)/$(basename "$FAULTS")"
