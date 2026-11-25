@@ -26,6 +26,7 @@
 | `external_reinit.topics` | 届いたら外からの再初期化として扱うトピック (`geometry_msgs/PoseWithCovarianceStamped`。ノード)。プロファイルで減らせる。門を使うときは見ない |
 | `gate` | 門 (下記)。ノードの `use_gate` で有効にする |
 | `conduct` | 走り方 (状況 × 程度 → 減速。下記)。門があるときだけ使う。書かなければ減速しない |
+| `sensor_sets` | センサの組 (下記)。書かなければ組を変えない |
 | `events.prefix` | イベントの名前の前置き (`<prefix>.state_changed`) |
 | `events.sink` | イベントの出力のプラグイン `{type, パラメータ...}` ([plugins.md](./plugins.md#イベントの出力-eventsink))。書かなければ `logfmt` |
 | `output.status_topic`、`output.diagnostic_name`、`output.hardware_id` | 状態のメッセージのトピック、診断の名前とハードウェア ID (ノード) |
@@ -228,6 +229,18 @@ residuals:
 | `table` | 状況 → 程度 (`light`・`medium`・`heavy`) → 対処 (`normal`・`slow`)。書いた升目だけ既定に重ね、プロファイルで升目ごとに差し替えられる。正常の状況は書けない (正常では減速しない) |
 
 - 疑い・見えないから正常へは、門が地図との照合で確かめ (`pose_confirmed`・`gate_opened`)、その後の監督の新しい判定がどれも異常でないときだけ戻る (地図が現場と食い違うと、照合は誤った姿勢も確かめるので、GNSS などとの食い違いが残る間は戻さない)。
+
+## sensor_sets
+
+センサの組の並び。どれかの情報源 (`missing`) が `missing_after_sec` 届かなければ、その組に入る (上から順に最初に当てはまる組)。欠けていた情報源が全部 `present_after_sec` 届き続ければ、全部の組 (空の名前) に戻る。組の変化はイベント `localization.sensor_set_changed` と状態の `sensor_set` に出す。
+
+| キー | 内容 |
+| :--- | :--- |
+| `name` | 組の名前 |
+| `missing` | 欠けると入る情報源 (姿勢か地図・スキャンの情報源) |
+| `missing_after_sec` | 欠けてから組に入るまでの時間。センサの途絶の見張りが起動し直しを試す時間より長くする |
+| `present_after_sec` | 戻ってから全部の組に戻るまでの時間 |
+| `speed_limit_mps` | 組の速度の上限 (走り方の上限と小さい方。0 は上限なし)。監督の復旧が無効なら出さない |
 
 ## profiles
 

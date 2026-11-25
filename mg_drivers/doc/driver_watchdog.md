@@ -114,7 +114,7 @@
 
 - 診断は集約で `/Robot/Drivers/...` に入る ([doc/monitoring.md](../../doc/monitoring.md))。実機では、`driver_watchdog_node: top_lidar` / `odom` / `motor` が欠けると、集約が `STALE` にする。
 - USB ハブごと落ちたときに、`/dev/ttyRobot-*` が戻るかはホスト側の問題で、このノードでは扱わない。
-- 起動し直しても LiDAR が戻らないときに、自己位置推定を LiDAR なしの組へ引き継ぐのは未実装 ([localization_target.md のセンサの組](../../mg_navigation/doc/localization_target.md#センサの組-未実装))。
+- 起動し直しても LiDAR が戻らないときは、自己位置の監督がセンサの組を LiDAR なしにして、このノードの `pause_exempt_sources` に `top_lidar` を足し、LiDAR の一時停止を外す (走行中に変えられるパラメータ。診断と起動し直しは続ける)。LiDAR が戻れば元に戻す ([localization_target.md のセンサの組](../../mg_navigation/doc/localization_target.md#センサの組-一部))。
 - LiDAR の途絶で止まるのはシーケンサの走行。手動ゴールなど、シーケンサを通らない走行の安全は、Nav2 の `collision_monitor` 側で別に守る。
 
 ## テスト
