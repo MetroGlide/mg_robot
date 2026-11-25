@@ -9,6 +9,7 @@
     - {type: manual_pose, at: 150.0, offset: {x: 0.3, y: 0.0, yaw: 0.05}}
     - {type: gnss_bias, start: 200.0, end: 230.0, bias: {x: 2.0, y: 0.0}}
     - {type: gnss_drop, start: 300.0, end: 360.0}
+    - {type: scan_halt, start: 400.0, end: 100000.0}   # LiDAR が止まる (スキャンを出さない)
     - {type: odom_scale, start: 400.0, end: 420.0, v: 1.0, w: 1.3}
     - {type: scan_drop, start: 500.0, end: 520.0, sector_deg: [-90.0, 90.0]}
     - {type: amcl_drift, start: 600.0, end: 660.0, rate: {x: 0.05, y: 0.0, yaw: 0.0}}
@@ -78,6 +79,7 @@ REQUIRED_PARAMS: Dict[str, List[str]] = {
     "gnss_drop": [],
     "odom_scale": ["v", "w"],
     "scan_drop": ["sector_deg"],
+    "scan_halt": [],
     "amcl_drift": ["rate"],
     "scan_thin": ["keep_every"],
     "scan_range": ["max_range"],

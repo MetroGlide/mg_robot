@@ -6,6 +6,7 @@
   gnss_bias  -> pose_offset (gnss) の区間
   gnss_drop  -> source_drop (gnss)
   scan_drop  -> scan_sector_drop (map_scan)
+  scan_halt  -> source_drop (map_scan)
   odom_scale -> 直せない (記録済みの EKF・AMCL はすでにオドメトリを使っているため)
   gnss_noise -> 直せない (再生評価だけで使う)
   gnss_accuracy -> 直せない (同上)
@@ -42,6 +43,8 @@ def to_offline(faults: List[Fault], followers: Optional[Mapping[str, float]] = N
                      "offset": {"x": bias.get("x", 0.0), "y": bias.get("y", 0.0)}}
         elif fault.type == "gnss_drop":
             entry = {"type": "source_drop", "source": GNSS, "start": fault.start, "end": fault.end}
+        elif fault.type == "scan_halt":
+            entry = {"type": "source_drop", "source": SCAN, "start": fault.start, "end": fault.end}
         elif fault.type == "scan_drop":
             entry = {"type": "scan_sector_drop", "source": SCAN, "start": fault.start, "end": fault.end,
                      "sector_deg": p["sector_deg"]}

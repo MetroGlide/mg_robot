@@ -9,8 +9,8 @@ rosbag の再生では、注入の対象のトピックを /fault/ 以下へ付�
   /fault/odom            -> /odom/raw           odom_scale (ホイールのスリップ)
   /fault/navpvt          -> /navpvt             gnss_bias / gnss_bias_field / gnss_drop / gnss_noise / gnss_accuracy
   /fault/gps/fix         -> /gps/fix            同上 (Gazebo の navsat)
-  /fault/scan_top_lidar  -> /scan_top_lidar     scan_drop / scan_keep / scan_thin / scan_range / scan_jitter /
-                                              scan_occlude
+  /fault/scan_top_lidar  -> /scan_top_lidar     scan_halt / scan_drop / scan_keep / scan_thin / scan_range /
+                                              scan_jitter / scan_occlude
 Gazebo では、ブリッジの出力を /fault/ 以下にして、このノードが中継する (--odom-out /odom)。
 kidnap は、その時刻の推定姿勢 (EKF) をずらした姿勢を /initialpose に送り、AMCL だけをずらす。
 manual_pose は、同じようにずらした姿勢を手動の初期姿勢の専用トピック (--manual-pose-topic) に送る。
@@ -203,6 +203,8 @@ class FaultInjector(Node):
         self._gps_pub.publish(msg)
 
     def _on_scan(self, msg: LaserScan) -> None:
+        if self._active("scan_halt"):
+            return
         ranges = np.asarray(msg.ranges, dtype=float)
         changed = False
         fault = self._active("scan_drop")

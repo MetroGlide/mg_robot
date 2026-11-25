@@ -37,6 +37,12 @@ def test_conversion_keeps_times_and_values():
         "pose_offset", "gnss", 20.0, {"x": 2.0, "y": 1.0})
 
 
+def test_scan_halt_drops_the_scan_source():
+    replay = parse_replay_faults({"faults": [{"type": "scan_halt", "start": 5.0, "end": 50.0}]})
+    (halt,) = parse_faults(to_offline(replay))
+    assert (halt.type, halt.source, halt.start, halt.end) == ("source_drop", "map_scan", 5.0, 50.0)
+
+
 def test_odom_scale_cannot_be_injected_offline():
     replay = parse_replay_faults({"faults": [{"type": "odom_scale", "start": 1.0, "end": 2.0, "v": 1.0, "w": 1.2}]})
     with pytest.raises(ValueError):
