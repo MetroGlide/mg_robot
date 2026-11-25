@@ -38,7 +38,7 @@ def generate_launch_description():
         'use_navigation', default="true")
     use_gnss_amcl_initializer_arg = launch_argument_creator.create(
         'use_gnss_amcl_initializer', default="true")
-    # 自己位置の監視ノード (none | watchdog | supervisor | motion_gate)
+    # 自己位置の監視ノード (none | watchdog | supervisor)
     localization_monitor_arg = launch_argument_creator.create(
         'localization_monitor', default="supervisor")
     # 監視が watchdog のとき、監督ノードを並行して通知だけで動かすか
@@ -48,10 +48,6 @@ def generate_launch_description():
         'supervisor_config',
         default=os.path.join(
             get_package_share_directory('mg_localization_supervisor'), 'config', 'supervision.yaml'))
-    motion_gate_config_arg = launch_argument_creator.create(
-        'motion_gate_config',
-        default=os.path.join(
-            get_package_share_directory('mg_localization_supervisor'), 'config', 'motion_gate.yaml'))
     # 監督ノードの中で門を使うか (localization_monitor:=supervisor のとき)
     localization_gate_arg = launch_argument_creator.create(
         'localization_gate', default="false")
@@ -168,7 +164,6 @@ def generate_launch_description():
                               'localization_monitor': localization_monitor_arg.launch_config,
                               'localization_supervisor': localization_supervisor_arg.launch_config,
                               'supervisor_config': supervisor_config_arg.launch_config,
-                              'motion_gate_config': motion_gate_config_arg.launch_config,
                               'localization_gate': localization_gate_arg.launch_config,
                               'localization_profile': localization_profile_arg.launch_config,
                               'localization_preset': localization_preset_arg.launch_config,

@@ -17,7 +17,7 @@ from localization_supervisor.core.interfaces import MotionSample, PoseSample
 from localization_supervisor.core.map_match import CandidatePose, MapMatchConfig, MapMatcher
 from localization_supervisor.core.motion_gate import (
     CONTINUATION, INITIAL, MANUAL, GateState, MotionGate, run_match)
-from localization_supervisor.core.motion_gate_config import parse_gate_config
+from localization_supervisor.core.config import _parse_sources, parse_gate_parts
 from localization_supervisor.core.plugins import ConfigError
 from localization_supervisor.core.snapshot import DistanceFieldCache, SampleStore
 from localization_supervisor.core.status import State, gate_status_view
@@ -27,6 +27,19 @@ from supervisor_test_helpers import cov, room_scan, wall_map
 PERIOD = 0.2
 RADIUS = 4.0
 SPEED = 0.5
+
+
+class _GateOnly:
+    """門の設定だけ (監督の設定の gate 節と同じ部品で読む)。"""
+
+    def __init__(self, gate):
+        self.gate = gate
+
+
+def parse_gate_config(raw):
+    sources = _parse_sources(raw['sources'])
+    return _GateOnly(parse_gate_parts(raw['gate'], raw['closers'], raw.get('map_match', {}),
+                                      raw.get('scan_buffer', {}), sources))
 
 
 def truth(t):
@@ -56,8 +69,6 @@ def config(**gate):
                           'close_after_sec': 2.0},
         },
         'scan_buffer': {'keyframe_distance_m': 0.3, 'window_distance_m': 3.0},
-        'resetters': {'estimator': [{'type': 'amcl'}], 'fused': [{'type': 'robot_localization'}]},
-        'gate_service': '/gate',
     }
     return parse_gate_config(raw)
 
@@ -579,11 +590,6 @@ def test_low_ratio_is_not_decided():
 
 # ---------------------------------------------------------------- 設定
 
-def test_config_requires_both_resetters():
-    with pytest.raises(ConfigError):
-        parse_gate_config({**_raw(), 'resetters': {'estimator': [{'type': 'amcl'}]}})
-
-
 def test_config_checks_closer_sources():
     raw = _raw()
     raw['closers'] = {'x': {'type': 'pose_jump', 'sources': {'pose': 'odom', 'motion': 'odom'}}}
@@ -614,6 +620,4 @@ def _raw():
                     'map_scan': {'kind': 'reference'}},
         'gate': {'estimator': 'amcl', 'fused': 'ekf', 'motion': 'odom', 'reference': 'map_scan'},
         'closers': {'j': {'type': 'pose_jump', 'sources': {'pose': 'amcl', 'motion': 'odom'}}},
-        'resetters': {'estimator': [{'type': 'amcl'}], 'fused': [{'type': 'robot_localization'}]},
-        'gate_service': '/gate',
     }

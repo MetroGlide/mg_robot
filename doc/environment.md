@@ -49,12 +49,10 @@ Docker のログのローテーション設定。compose の `${LOG_MAX_SIZE}` �
 
 | 変数 | 内容 |
 | :--- | :--- |
-| `LOCALIZATION_MONITOR` | 自己位置の監視ノード (`none` / `watchdog` / `supervisor` / `motion_gate`)。`bringup_navigation.launch.py` の `localization_monitor` 引数の既定値。書かなければ `supervisor`。空にすると監視ノードが起動しないので、使わないときは行ごと書かない |
+| `LOCALIZATION_MONITOR` | 自己位置の監視ノード (`none` / `watchdog` / `supervisor`)。`bringup_navigation.launch.py` の `localization_monitor` 引数の既定値。書かなければ `supervisor`。空にすると監視ノードが起動しないので、使わないときは行ごと書かない |
 | `LOCALIZATION_PRESET` | AMCL と EKF の params に重ねる自己位置推定のプリセット。`bringup_navigation.launch.py` の `localization_preset` 引数の既定値。空なら重ねない ([localization.md](../mg_navigation/doc/localization.md#自己位置推定のプリセット)) |
 | `LOCALIZATION_PROFILE` | 監督の設定に重ねるプロファイル。`bringup_navigation.launch.py` の `localization_profile` 引数の既定値。空なら基本設定 ([mg_localization_supervisor](../mg_localization_supervisor/README.md)) |
-| `LOCALIZATION_GATE_CONFIG` | 門のノード (`LOCALIZATION_MONITOR=motion_gate`) の設定ファイル。`bringup_navigation.launch.py` の `motion_gate_config` 引数の既定値。書かなければ `mg_localization_supervisor/config/motion_gate.yaml`。シナリオ試験で戻し方などの設定を比べるのに使う |
 | `LOCALIZATION_GATE` | 監督ノードの中で門を使うか (`LOCALIZATION_MONITOR=supervisor` のとき)。`bringup_navigation.launch.py` の `localization_gate` 引数の既定値。書かなければ `false` ([mg_localization_supervisor](../mg_localization_supervisor/README.md#監督ノード-localization_supervisor_node)) |
-| `LOCALIZATION_INITIALIZER_VERIFY` | GNSS による初期姿勢を、スキャンと地図の照合で確かめるか。`supervisor.launch.py` の `initializer_verify` 引数の既定値。書かなければ `false` ([mg_localization_supervisor](../mg_localization_supervisor/README.md#gnss_amcl_initializer_node)) |
 
 ### SLAM の再最適化
 

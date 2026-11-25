@@ -1,23 +1,26 @@
 version: "2.0"
 name: gate_drift_driving
 description: >
-  門のノード (localization_monitor:=motion_gate) の戻し方を、走りへの影響で確かめる (大きい補正)。
+  監督のノードの中の門 (localization_gate:=true) の戻し方を、走りへの影響で確かめる (大きい補正)。
+  監督のプロファイル notify_only で、監督の判定は通知だけにし、門だけを働かせる。
   棚の列に沿った通路をシーケンサで走っている間に、AMCL を通路に沿って少しずつずらす (真の位置は動かさない)。
   門が閉じる前に EKF がずれた AMCL を取り込むので、戻すときは EKF との差が大きい補正になる。
-  戻し方 (その場で置き直す / 止まってから置き直す / 大きさで分ける) は、門の設定ファイルを環境変数
-  LOCALIZATION_GATE_CONFIG で差し替えて比べる。到達の判定はシミュレータ上の真の位置で行う。
+  戻し方 (その場で置き直す / 止まってから置き直す / 大きさで分ける) は、監督の設定 (gate.settings の
+  small_correction_m・small_correction_rad) を差し替えて比べる。到達の判定はシミュレータ上の真の位置で行う。
   ずらす注入は /initialpose で、門は専用のトピックを通らない /initialpose を推定器の振る舞いとして判定する。
   通路に入る前に開けた場所を走り、門が起動の直後の確かめを済ませて通路に入ってから注入する。
 profile: mg01
 world: warehouse
-tags: [localization, motion_gate, drift, mg_sequencer, known_issue]
+tags: [localization, gate, drift, mg_sequencer, known_issue]
 timeout: 300
 
 record_topics: [/sim_scenario_test/entity_poses, /amcl_pose_origin, /odom/gps, /ekf_global_odom, /odom, /localization/status, /cmd_vel, /initialpose, /rosout]
 
 stack_args:
   waypoints_load_path: "pkg://mg_scenario_test/scenarios/data/drift_aisle_waypoints.yaml"
-  localization_monitor: motion_gate
+  localization_monitor: supervisor
+  localization_gate: "true"
+  localization_profile: notify_only
 
 setup:
   - respawn: { pose: { x: -4.0, y: 3.0, yaw: 3.1416 }, settle_sec: 3.0 }

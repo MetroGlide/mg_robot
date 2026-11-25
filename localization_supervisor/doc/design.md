@@ -234,4 +234,4 @@ ros2 run localization_supervisor offline_runner.py --config <設定> \
 
 `localization_supervisor_node` (`ros/supervisor_node.py`) は、設定ファイルの入力のアダプタで購読し、周期ごとに `Supervisor` を回して、状態・診断・イベントを出し、指示を再初期化の送り先と対処に渡す ([supervisor_node.md](./supervisor_node.md))。
 
-門のノード `motion_gate_node` (`ros/motion_gate_node.py`) は、同じ入力のアダプタと判定の部品を使い、推定器の姿勢を融合に入れる前に確かめる。監督ノードとは別に動かす ([motion_gate.md](./motion_gate.md))。
+門 (`core/motion_gate.py`) は、監督ノードの中で同じ入力と判定の部品を使い、推定器の姿勢を融合に入れる前に確かめる ([motion_gate.md](./motion_gate.md)、[門を入れたとき](#門を入れたとき))。

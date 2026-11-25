@@ -31,8 +31,7 @@
 | :--- | :--- |
 | `localization_supervisor_node.py` | 設定ファイル (パラメータ `config_file`) の組み合わせで中核を周期ごとに回し、状態 (`LocalizationStatus`)・診断・イベントを出し、異常を確認したら切り離し・再初期化して復旧する ([doc/supervisor_node.md](./doc/supervisor_node.md)) |
 | `gate_arbiter_node.py` | `SetBool` で開閉するゲートを、要求元ごとに調停する ([doc/gate_arbiter.md](./doc/gate_arbiter.md)) |
-| `motion_gate_node.py` | 推定器の姿勢を融合に入れる前の門。疑わしい動きで門を閉じ、地図との照合で正しい姿勢を決めて置き直してから開ける。監督ノードとは同時に動かさない ([doc/motion_gate.md](./doc/motion_gate.md)) |
-| `manual_pose_relay_node.py` | 手動の初期姿勢の専用トピックを、そのまま推定器の初期姿勢のトピックへ送る (門のノードを動かさないときの、従来の動作) ([doc/motion_gate.md](./doc/motion_gate.md#手動の初期姿勢)) |
+| `manual_pose_relay_node.py` | 手動の初期姿勢の専用トピックを、そのまま推定器の初期姿勢のトピックへ送る (監督ノードの中の門がないときの、従来の動作) ([doc/motion_gate.md](./doc/motion_gate.md#手動の初期姿勢)) |
 | `offline_runner.py` | rosbag を読み、中核を実時間を待たずに回して、故障注入の検知率・誤検知を出す ([doc/design.md](./doc/design.md#オフライン評価)) |
 
 launch は持たない。使う側のパッケージが、自分の設定で起動する。
@@ -74,5 +73,5 @@ ROS のモジュールは `test/conftest.py` でモックする (入力のアダ
 | [doc/parameters.md](./doc/parameters.md) | 設定ファイルの書き方 |
 | [doc/supervisor_node.md](./doc/supervisor_node.md) | 監督ノードのパラメータ・入出力・状態のメッセージ・診断とイベント |
 | [doc/gate_arbiter.md](./doc/gate_arbiter.md) | ゲートの調停の規則・出力・パラメータ |
-| [doc/motion_gate.md](./doc/motion_gate.md) | 門のノードの役割の分担、状態、閉じる理由の部品、照合で決める規則、戻し方、手動の初期姿勢、入出力 |
+| [doc/motion_gate.md](./doc/motion_gate.md) | 門 (監督ノードの中) の役割の分担、状態、閉じる理由の部品、照合で決める規則、戻し方、手動の初期姿勢、入出力 |
 | [doc/architecture_target.md](./doc/architecture_target.md) | 最終形の構成 (一部未実装): 門の監督への統合、状態・程度・対処の対応表、復旧の段、確かめの要求、例外、未確定の項目 |

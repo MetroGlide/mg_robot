@@ -49,7 +49,6 @@ tools/
     ├── fault_injector.py            # 再生評価で、センサ入力に故障を注入する (--faults。[doc](./doc/localization_evaluation.md#センサ故障の注入))
     ├── eval_localization_offline.py # 自己位置の監督を、再生評価の記録でオフライン評価する ([doc](./doc/localization_evaluation.md#監督のオフライン評価))
     ├── eval_window_estimator.py     # 窓つきの推定器 (因子グラフ) の試作を、再生評価の記録の入力で回し、EKF と真値との誤差で比べる
-    ├── eval_gate_arbitration.py     # AMCL の門と地図との照合 (L0) による判定を、再生評価の記録で模擬し、走らせる推定器の候補を比べる
     ├── lidar_odom_offline.sh        # 元の rosbag のスキャンから KISS-ICP で LiDAR オドメトリを作って記録する (上の 2 つの --lidar-odom 用。コンテナ内で実行)
     ├── loc_dataset.py               # データセット定義 (datasets/localization/) の読込
     ├── compare_localization.py      # 変種ごとの評価結果の比較表

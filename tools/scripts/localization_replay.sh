@@ -27,7 +27,7 @@
 #   INIT_MODE        gt: 真値を初期姿勢として与える (既定) / gnss: 与えず GNSS による初期化に任せる
 #   EVAL_SKIP        INIT_MODE=gt のとき、評価の先頭から除く秒数 (既定 10。初期姿勢を与えた直後の過渡)
 #   USE_INITIALIZER  GNSS から AMCL の初期姿勢を与えるノードを起動するか (既定: gt なら false、gnss なら true)
-#   MONITOR          自己位置の監視ノード none | watchdog | supervisor | motion_gate (既定: gt なら none、gnss なら watchdog)
+#   MONITOR          自己位置の監視ノード none | watchdog | supervisor (既定: gt なら none、gnss なら watchdog)
 #   PROFILE          監督の設定に重ねるプロファイル (既定: 基本設定)
 #   GATE             監督ノードの中で門を使うか (MONITOR=supervisor のとき。既定 false)
 #   RECORD_PARTICLES AMCL の粒子 (/particle_cloud) を記録するか (既定 true。記録の容量の大半を占める)
@@ -153,7 +153,7 @@ run_once() {
     nav2_params_file:="$VARIANT_DIR/nav2_params.yaml" \
     bridge_params_file:="$VARIANT_DIR/nav_bridge.yaml" \
     odom_corrector_params_file:="$VARIANT_DIR/wheel_odom_corrector.yaml" \
-    supervisor_config:="$VARIANT_DIR/supervision.yaml" motion_gate_config:="$VARIANT_DIR/motion_gate.yaml" \
+    supervisor_config:="$VARIANT_DIR/supervision.yaml" \
     "${profile_args[@]}" \
     > "$run_dir/launch.log" 2>&1 &
   LAUNCH_PID=$!

@@ -205,7 +205,7 @@ residuals:
 | :--- | :--- |
 | `period_sec` | 門の周期 [s]。`period_sec` 以下にする |
 | `settings` | 門をかける推定器・融合の結果・動き・地図とスキャン・GNSS の情報源の名前と、候補の探す範囲、確かめる道のり、置き直しの後の猶予、戻し方、閉じたまま決まらないときの上限、全周の照合に使う GNSS の精度の条件 (`core/motion_gate.py` の `GateSettings`) |
-| `closers` | 閉じる理由の部品 (門のノードの設定と同じ書き方)。名前は `detectors` のインスタンスと分ける (状態のメッセージに両方を並べる) |
+| `closers` | 閉じる理由の部品 (判定の書き方に、異常が続く時間 `close_after_sec` と、置き直しの後の猶予の間も使うか `active_in_grace` を足したもの)。名前は `detectors` のインスタンスと分ける (状態のメッセージに両方を並べる) |
 | `map_match` | 照合で決める規則 (`core/map_match.py` の `MapMatchConfig`) |
 | `scan_buffer` | 照合に使う、直近のスキャンの重ね方 |
 | `initial_search` | 確かめた姿勢がない間に、GNSS の周りを向きの全周で照合する設定 (`core/initial_search.py` の `InitialSearchConfig`)。書かなければしない。`settings.gnss` が要る |

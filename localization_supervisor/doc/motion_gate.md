@@ -2,12 +2,7 @@
 
 推定器 (例: AMCL) の姿勢を融合 (例: EKF) に入れる前に確かめる門。疑わしい動きを見つけたら門を閉じ、地図との照合で正しい姿勢を決めてから開ける。
 
-中核は `core/motion_gate.py` (ROS に依存しない)。動かし方は 2 つ。
-
-| 動かし方 | 設定 | 中身 |
-| :--- | :--- | :--- |
-| 監督ノードの中 | 監督の設定の `gate` 節、ノードの `use_gate` | 監督と分担する ([design.md](./design.md#門を入れたとき))。置き直しと推定器の門の持ち主が 1 つになる |
-| 門のノード `motion_gate_node` | 門のノードの設定ファイル (下記) | 門だけ。監督ノードとは同時に動かさない (どちらも推定器を置き直すため)。統合の前と比べる基準として残している |
+中核は `core/motion_gate.py` (ROS に依存しない)。監督ノードの中で、監督の部品として動く (監督の設定の `gate` 節、ノードのパラメータ `use_gate`)。監督との分担は [design.md](./design.md#門を入れたとき)。置き直しと推定器の門の持ち主は監督ノード 1 つになる。
 
 最終形は [architecture_target.md](./architecture_target.md)。
 
@@ -107,36 +102,20 @@
 
 ## 入出力
 
+監督ノードの入出力 ([supervisor_node.md](./supervisor_node.md)) のうち、門が使うもの。
+
 | 種類 | 名前 | 内容 |
 | :--- | :--- | :--- |
-| 購読 | 設定の `sources` | 推定器・GNSS・融合の結果の姿勢、動き、地図とスキャン (監督と同じ入力のアダプタ、[plugins.md](./plugins.md#入力のアダプタ-sourceadapter)) |
-| 購読 | `manual_pose_topic` | 手動の初期姿勢 (`PoseWithCovarianceStamped`) |
-| クライアント | `gate_service` | ゲートの調停ノードの、この要求元の窓口 (`SetBool`、[gate_arbiter.md](./gate_arbiter.md)) |
-| 配信 | `resetters` の送り先 | 置き直し |
-| 配信 | `hold` の出力 | 一時停止の要求 (止めてほしいか、理由)。送り先はプラグインで差し替える |
-| 配信 | `/localization/status` | 状態 (`LocalizationStatus`。監督・watchdog と同じ形で、UI や記録が同じに扱える) |
+| 購読 | 監督の設定の `sources` | 推定器・GNSS・融合の結果の姿勢、動き、地図とスキャン (監督と同じ入力のアダプタ、[plugins.md](./plugins.md#入力のアダプタ-sourceadapter)) |
+| 購読 | `gate.manual_pose_topic` | 手動の初期姿勢 (`PoseWithCovarianceStamped`) |
+| クライアント | 対処の `gate` | ゲートの調停ノードの、監督の窓口 (`SetBool`、[gate_arbiter.md](./gate_arbiter.md)) |
+| 配信 | 役 (`role: estimator\|fused`) つきの `resetters` の送り先 | 置き直し |
+| 配信 | 対処 | 一時停止の要求 (監督の `hold_requested` と門の止める要求の、どちらか) |
+| 配信 | `/localization/status` | 状態。監督の状態と門の状態の重い方 |
 
-## 設定ファイル
+## 設定
 
-監督ノードの中で使うときは、監督の設定の `gate` 節 ([parameters.md](./parameters.md#gate))。下は門のノードの設定ファイル。
-
-ノードのパラメータ `config_file` で渡す YAML。情報源 (`sources`) と閉じる理由の部品 (`closers`) の書き方は、監督の設定 ([parameters.md](./parameters.md)) と同じ。値は各ロボットの設定ファイルが正。
-
-| キー | 内容 |
-| :--- | :--- |
-| `version` | 約束の版 ([plugins.md](./plugins.md#約束の版)) |
-| `period_sec` | 周期 [s] |
-| `timeline` | 標本の履歴の長さ (`horizon_sec`)、動きの外挿の上限 (`max_extrapolation_sec`) |
-| `sources` | 情報源 |
-| `gate` | 門をかける推定器・融合の結果・動き・地図とスキャン・GNSS の情報源の名前と、候補の探す範囲、確かめる道のり、置き直しの後の猶予、戻し方 (その場で置き直す補正の上限、止まったとみなす速さ、止まるのを待つ上限)、閉じたまま決まらないときの上限 (`core/motion_gate.py` の `GateSettings`) |
-| `closers` | 閉じる理由の部品。判定の書き方に、異常が続く時間 `close_after_sec` と、置き直しの後の猶予の間も使うか `active_in_grace` (既定は使わない) を足したもの。置き直しの前の標本と比べる部品 (時間の窓の比較など) は猶予の間に置き直しそのものを異常と見るので使わず、今の値どうしを比べる部品 (推定器と GNSS の食い違いなど) は使ってよい |
-| `map_match` | 照合で決める規則 (決めるのに要る一致率と次点との差、別の仮説とみなす差、狭い範囲と刻み、範囲の上限、粗い格子、一致とみなす距離。`core/map_match.py` の `MapMatchConfig`) |
-| `scan_buffer` | 照合に使う、直近のスキャンの重ね方 (キーフレームの間隔、重ねる道のり、点の数) |
-| `resetters` | 置き直しの送り先。`estimator` (推定器) と `fused` (融合) に分けて書く。推定器をそのまま採ったときは、融合だけを置き直す |
-| `gate_service` | ゲートの調停ノードの、この要求元の窓口 |
-| `hold_output` | 一時停止の要求の出力 (`{type, params?}`、[plugins.md](./plugins.md#一時停止の要求の出力-holdoutput))。なければ止める要求を出さない |
-| `manual_pose_topic` | 手動の初期姿勢のトピック (空なら受けない) |
-| `events`・`output` | イベントの出力と、状態のトピック・診断の名前 (監督と同じ) |
+監督の設定の `gate` 節 ([parameters.md](./parameters.md#gate))。値は各ロボットの設定ファイルが正。
 
 ## 診断とイベント
 

@@ -1,4 +1,4 @@
-"""GNSS による初期姿勢を、スキャンと地図の照合で確かめる (initializer/verify.py) のテスト。"""
+"""GNSS の周りの全周の照合 (core/initial_search.py) のテスト。"""
 import math
 
 import numpy as np

@@ -299,9 +299,6 @@ class GNSSAMCLInitializer(Node):
         self.declare_parameter('external_search_yaw_rad', 0.5)
         # 外から与えられた初期姿勢に従うのは、起動してからこれだけ動くまで [m] (スタート地点で与える想定)
         self.declare_parameter('external_accept_distance_m', 1.0)
-        # 外から与えられた /initialpose に従い、確かめるか。門のノードで動かすときは launch が false にする
-        # (門のノードの置き直しを、外からの姿勢として直し直さないため)
-        self.declare_parameter('check_external_initialpose', True)
         self.verify_by_scan = self.get_parameter('verify_by_scan').value
         self.verify_config = InitialSearchConfig()
         for key, default in vars(InitialSearchConfig()).items():
@@ -362,10 +359,10 @@ class GNSSAMCLInitializer(Node):
         self._own_stamps = set()
         self._external_timer = None
         self._odom_at_start: Optional[Pose2] = None
-        if self.verify_by_scan and self.get_parameter('check_external_initialpose').value:
+        if self.verify_by_scan:
+            # 外から与えられた /initialpose に従い、確かめる
             self.create_subscription(
                 PoseWithCovarianceStamped, self.initialpose_topic, self._on_initialpose, 10)
-        if self.verify_by_scan:
             latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL,
                                  reliability=ReliabilityPolicy.RELIABLE)
             self.create_subscription(

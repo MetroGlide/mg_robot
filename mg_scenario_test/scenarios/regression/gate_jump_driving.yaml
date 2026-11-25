@@ -1,21 +1,24 @@
 version: "2.0"
 name: gate_jump_driving
 description: >
-  門のノード (localization_monitor:=motion_gate) の戻し方を、走りへの影響で確かめる (小さい補正)。
+  監督のノードの中の門 (localization_gate:=true) の戻し方を、走りへの影響で確かめる (小さい補正)。
+  監督のプロファイル notify_only で、監督の判定は通知だけにし、門だけを働かせる。
   棚の列に沿った通路をシーケンサで走っている間に、AMCL を 1 回だけ横へ飛ばす (真の位置は動かさない)。
   門がすぐに閉じて EKF は飛んだ AMCL を取り込まないので、戻すときは EKF との差が小さい補正になる。
-  戻し方は gate_drift_driving と同じく、門の設定ファイルを環境変数 LOCALIZATION_GATE_CONFIG で差し替えて比べる。
+  戻し方は gate_drift_driving と同じく、監督の設定 (gate.settings) を差し替えて比べる。
   到達の判定はシミュレータ上の真の位置で行う。飛ばす注入は /initialpose (広がりの小さい分布) を使う。
 profile: mg01
 world: warehouse
-tags: [localization, motion_gate, kidnap, mg_sequencer]
+tags: [localization, gate, kidnap, mg_sequencer]
 timeout: 300
 
 record_topics: [/sim_scenario_test/entity_poses, /amcl_pose_origin, /odom/gps, /ekf_global_odom, /odom, /localization/status, /cmd_vel, /initialpose, /rosout]
 
 stack_args:
   waypoints_load_path: "pkg://mg_scenario_test/scenarios/data/drift_aisle_waypoints.yaml"
-  localization_monitor: motion_gate
+  localization_monitor: supervisor
+  localization_gate: "true"
+  localization_profile: notify_only
 
 setup:
   - respawn: { pose: { x: -4.0, y: 3.0, yaw: 3.1416 }, settle_sec: 3.0 }

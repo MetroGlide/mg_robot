@@ -67,7 +67,7 @@ docker run --rm -v $PWD:/app -v ~/ros2_data:/root/ros2_data mg_develop:latest \
 | `--runs N` | 繰り返す回数。AMCL は乱数を使うため、分布で比べる |
 | `--init gt\|gnss` | 初期姿勢。`gt` は真値を与える、`gnss` は GNSS による初期化に任せて初期化も評価する |
 | `--initializer true\|false` | GNSS から AMCL の初期姿勢を与えるノード。`--init` に応じて切り替わる (`gt` では使わず、`gnss` では使う) |
-| `--monitor none\|watchdog\|supervisor\|motion_gate` | 自己位置の監視ノード (`motion_gate` は門のノード)。`--init` に応じて切り替わる (`gt` では `none`、`gnss` では `watchdog`) |
+| `--monitor none\|watchdog\|supervisor` | 自己位置の監視ノード (門は `--gate true`)。`--init` に応じて切り替わる (`gt` では `none`、`gnss` では `watchdog`) |
 | `--profile <名前>` | 監督の設定に重ねるプロファイル (`--monitor supervisor` のとき) |
 | `--gate true\|false` | 監督ノードの中で門を使う (`--monitor supervisor` のとき。門の設定は `sup.gate.<key>` で書き換える) |
 | `--faults <yaml>` | センサ入力に故障を注入して、復旧を評価する (`tools/datasets/localization/faults/`) |
@@ -86,12 +86,11 @@ docker run --rm -v $PWD:/app -v ~/ros2_data:/root/ros2_data mg_develop:latest \
 | `bridge.` | `slam_gnss_2d/slam_gnss_2d/params/nav_bridge.yaml` | `slam_gnss_nav_bridge` |
 | `odom.` | `mg_drivers/params/wheel_odom_corrector.yaml` | `wheel_odom_corrector_node` |
 | `sup.` | `mg_localization_supervisor/config/supervision.yaml` | (監督の設定。ROS2 パラメータではないので、トップレベルからのパスで書く。例: `sup.detectors.amcl_gnss.params.threshold=8.0`) |
-| `gate.` | `mg_localization_supervisor/config/motion_gate.yaml` | (門のノードの設定。`--monitor motion_gate` のとき使う。書き方は `sup.` と同じ。例: `gate.gate.small_correction_m=100`) |
 
 - 出力: `<評価 bag>/eval_loc/<データセット>/<名前>/{params/, run_N/, summary.md}`。`run_N/eval_localization.md` に試行ごとの評価、`summary.md` に試行をまとめた表が入ります。
 - 起動前に、関連パッケージ (`localization_replay.sh` の `BUILD_PKGS`) をコンテナ内で増分ビルドします。ソースの変更はイメージの再ビルドなしで反映されます。
 - 書き換えられるのは既存のキーの値です。複数行にまたがるリスト (`odom0_config` など) も、`ekf.odom0_config="[true, true, ...]"` のように新しい値を 1 行で渡すとまとめて置き換えられます。キーが元のファイルに無い場合はエラーになります。
-- 再生にはシーケンサがないので、門のノードの「止まってから置き直す」は止まらないまま上限の時間を待つことになる。照合の判定を見るときは、補正の大きさの上限を広げて、その場で置き直す (門のノードは `gate.gate.small_correction_m`・`gate.gate.small_correction_rad`、監督のノードの中の門 (`--gate true`) は `sup.gate.settings.small_correction_m`・`sup.gate.settings.small_correction_rad`)。止まってからの置き直しは、シナリオ試験で確かめる。
+- 再生にはシーケンサがないので、門 (`--gate true`) の「止まってから置き直す」は止まらないまま上限の時間を待つことになる。照合の判定を見るときは、補正の大きさの上限を広げて、その場で置き直す (`sup.gate.settings.small_correction_m`・`sup.gate.settings.small_correction_rad`)。止まってからの置き直しは、シナリオ試験で確かめる。
 - `sup.` は、監督の設定を YAML として読み直して書き出す (`patch_params.py --plain`) ので、フロー形式 (`{threshold: 6.0}`) の中の値も書き換えられます。複製した設定にはコメントが残りません。プロファイルのファイルも変種のディレクトリに複製します。
 - 実機と同じく、ホイールオドメトリは補正ノードを通して `/odom/raw` → `/odom` になります。
 - ROS の通信は `ROS_LOCALHOST_ONLY=1` とランダムな `ROS_DOMAIN_ID` で隔離しており、実機や他のコンテナと混ざりません。複数の変種を並列に実行できます (各コンテナが起動時にビルドするので、同時に起動すると、スタックの起動が 180 s を超えて試行が無効になることがあります。多く並べるときは、1 回だけビルドする `run_localization_queue.py` を使います)。

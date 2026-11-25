@@ -91,7 +91,7 @@ def generate_launch_description():
     # rosbag を再生して自己位置推定を評価するときに使う。
     use_navigation_arg = launch_argument_creator.create(
         "use_navigation", default="true")
-    # GNSS から AMCL の初期姿勢を与えるノードと、自己位置の監視ノード (none | watchdog | supervisor | motion_gate)
+    # GNSS から AMCL の初期姿勢を与えるノードと、自己位置の監視ノード (none | watchdog | supervisor)
     use_gnss_amcl_initializer_arg = launch_argument_creator.create(
         "use_gnss_amcl_initializer", default="true")
     # 既定は環境変数 LOCALIZATION_MONITOR (書かなければ supervisor。空にすると監視ノードが起動しない)
@@ -103,11 +103,6 @@ def generate_launch_description():
     supervisor_config_arg = launch_argument_creator.create(
         "supervisor_config", default=os.path.join(
             get_package_share_directory("mg_localization_supervisor"), "config", "supervision.yaml"))
-    # 門のノードの設定 (localization_monitor:=motion_gate のとき)。既定は環境変数 LOCALIZATION_GATE_CONFIG
-    # (書かなければパッケージの設定)
-    motion_gate_config_arg = launch_argument_creator.create(
-        "motion_gate_config", default=EnvironmentVariable("LOCALIZATION_GATE_CONFIG", default_value=os.path.join(
-            get_package_share_directory("mg_localization_supervisor"), "config", "motion_gate.yaml")))
     # 監督ノードの中で門を使うか (localization_monitor:=supervisor のとき)。既定は環境変数 LOCALIZATION_GATE
     localization_gate_arg = launch_argument_creator.create(
         "localization_gate", default=EnvironmentVariable("LOCALIZATION_GATE", default_value="false"))
@@ -221,7 +216,6 @@ def generate_launch_description():
             "localization_monitor": localization_monitor_arg.launch_config,
             "localization_supervisor": localization_supervisor_arg.launch_config,
             "supervisor_config": supervisor_config_arg.launch_config,
-            "motion_gate_config": motion_gate_config_arg.launch_config,
             "localization_gate": localization_gate_arg.launch_config,
             "localization_profile": PythonExpression([
                 "','.join(p for p in ('", localization_profile_arg.launch_config, "', '",

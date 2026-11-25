@@ -397,8 +397,6 @@ profiles:
   gnss_fallback: profiles/gnss_fallback.yaml
   # 検知と通知だけ (自動復旧しない。watchdog と並行して動かすときに使う)
   notify_only: profiles/notify_only.yaml
-  # AMCL の向きが、オドメトリの示す動きから数秒かけてずれていくのも疑う (旋回中の回りすぎ)
-  yaw_drift: profiles/yaw_drift.yaml
   # 復旧の候補に、AMCL の粒子の仮説を足す
   hypotheses: profiles/hypotheses.yaml
   # 止まったままでも確かめて戻り、決められなければ首を振って観測を増やす復旧

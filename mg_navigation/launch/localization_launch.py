@@ -62,14 +62,11 @@ def generate_launch_description():
         description='GNSS から AMCL の初期姿勢を与えるノードを起動するか').launch_config
     localization_monitor = arg.create(
         'localization_monitor', default='supervisor',
-        description='自己位置の監視ノード (none | watchdog | supervisor | motion_gate)').launch_config
+        description='自己位置の監視ノード (none | watchdog | supervisor)').launch_config
     localization_supervisor = arg.create(
         'localization_supervisor', default='false',
         description='監視が watchdog のとき、監督ノードを並行して通知だけで動かすか '
                     '(状態 /localization/status は監督ノードが出す)').launch_config
-    motion_gate_config = arg.create(
-        'motion_gate_config', default=os.path.join(supervisor_dir, 'config', 'motion_gate.yaml'),
-        description='門のノードの設定ファイル (localization_monitor:=motion_gate のとき)').launch_config
     localization_gate = arg.create(
         'localization_gate', default='false',
         description='監督ノードの中で門を使うか (localization_monitor:=supervisor のとき。AMCL を地図との照合で'
@@ -216,8 +213,6 @@ def generate_launch_description():
                 "'", localization_monitor, "' == 'supervisor' or '", localization_supervisor, "'.lower() == 'true'"]),
             'supervisor_config': supervisor_config,
             'localization_profile': supervisor_profile,
-            'use_motion_gate': PythonExpression(["'", localization_monitor, "' == 'motion_gate'"]),
-            'motion_gate_config': motion_gate_config,
             'use_supervisor_gate': localization_gate,
         }.items())
 
