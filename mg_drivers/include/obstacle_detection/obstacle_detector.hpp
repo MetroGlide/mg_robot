@@ -21,17 +21,17 @@ struct ObstacleDetectionParams
   // 入力点の間引き間隔（1 = 全点）
   int stride = 1;
 
-  // ROI (base_link)
+  // ROI。処理する座標系 (ノードの target_frame) で表し、地面が z=0 にある前提
   double cropbox_x_min = 0.0;
   double cropbox_x_max = 3.0;
-  double cropbox_y_min = -0.75;
-  double cropbox_y_max = 0.75;
-  double cropbox_z_min = -0.1;
-  double cropbox_z_max = 1.0;
+  double cropbox_y_min = -1.5;
+  double cropbox_y_max = 1.5;
+  double cropbox_z_min = 0.05;
+  double cropbox_z_max = 1.15;
 
   // 2.5D ΔZ 評価
   double grid_size = 0.05;
-  double delta_z_threshold = 0.15;
+  double delta_z_threshold = 0.10;
   int min_points_per_cell = 2;
   // セルごとに z の上下から無視する外れ値点数 (0 または 1)
   int z_outlier_trim = 0;

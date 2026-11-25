@@ -22,8 +22,6 @@ using std::placeholders::_1;
 namespace
 {
 
-constexpr char kBaseFrame[] = "base_link";
-
 static_assert(sizeof(obstacle_detection::Point3) == 3 * sizeof(float), "Point3 must be packed");
 
 using Clock = std::chrono::steady_clock;
@@ -92,6 +90,10 @@ private:
   obstacle_detection::ObstacleDetectionParams loadParams()
   {
     this->declare_parameter<bool>("use_sensor_data_qos", false);
+    target_frame_ = this->declare_parameter<std::string>("target_frame", "base_footprint");
+    if (target_frame_.empty()) {
+      throw std::invalid_argument("obstacle_detection params: target_frame must not be empty");
+    }
 
     obstacle_detection::ObstacleDetectionParams p;
     p.stride = this->declare_parameter<int>("stride", p.stride);
@@ -122,13 +124,14 @@ private:
 
     RCLCPP_INFO(
       this->get_logger(),
-      "params: stride=%d crop x[%.2f,%.2f] y[%.2f,%.2f] z[%.2f,%.2f] grid_size=%.3f "
-      "delta_z_threshold=%.3f min_points_per_cell=%d z_outlier_trim=%d cluster_tolerance=%.3f "
-      "min_cluster_cells=%d publish_markers=%d publish_stats=%d stats_period=%.1f",
-      p.stride, p.cropbox_x_min, p.cropbox_x_max, p.cropbox_y_min, p.cropbox_y_max,
-      p.cropbox_z_min, p.cropbox_z_max, p.grid_size, p.delta_z_threshold, p.min_points_per_cell,
-      p.z_outlier_trim, p.cluster_tolerance, p.min_cluster_cells, publish_markers_, publish_stats_,
-      stats_period_);
+      "params: target_frame=%s stride=%d crop x[%.2f,%.2f] y[%.2f,%.2f] z[%.2f,%.2f] "
+      "grid_size=%.3f delta_z_threshold=%.3f min_points_per_cell=%d z_outlier_trim=%d "
+      "cluster_tolerance=%.3f min_cluster_cells=%d publish_markers=%d publish_stats=%d "
+      "stats_period=%.1f",
+      target_frame_.c_str(), p.stride, p.cropbox_x_min, p.cropbox_x_max, p.cropbox_y_min,
+      p.cropbox_y_max, p.cropbox_z_min, p.cropbox_z_max, p.grid_size, p.delta_z_threshold,
+      p.min_points_per_cell, p.z_outlier_trim, p.cluster_tolerance, p.min_cluster_cells,
+      publish_markers_, publish_stats_, stats_period_);
     return p;
   }
 
@@ -136,11 +139,11 @@ private:
   {
     const auto t_start = Clock::now();
 
-    // 1. センサ座標 -> base_link（待たずに最新の変換を使う）
+    // 1. センサ座標 -> target_frame（待たずに最新の変換を使う）
     Eigen::Isometry3f sensor_to_base = Eigen::Isometry3f::Identity();
     try {
       const auto tf = tf_buffer_->lookupTransform(
-        kBaseFrame, msg->header.frame_id, msg->header.stamp, tf2::Duration::zero());
+        target_frame_, msg->header.frame_id, msg->header.stamp, tf2::Duration::zero());
       const auto & q = tf.transform.rotation;
       const auto & t = tf.transform.translation;
       sensor_to_base.linear() =
@@ -149,7 +152,7 @@ private:
     } catch (const tf2::TransformException & ex) {
       RCLCPP_WARN_THROTTLE(
         this->get_logger(), *this->get_clock(), 5000, "Could not transform %s to %s: %s",
-        msg->header.frame_id.c_str(), kBaseFrame, ex.what());
+        msg->header.frame_id.c_str(), target_frame_.c_str(), ex.what());
       return;
     }
     const auto t_tf = Clock::now();
@@ -183,7 +186,7 @@ private:
     const auto & points = detector_->obstacle_points();
 
     sensor_msgs::msg::PointCloud2 out;
-    out.header.frame_id = kBaseFrame;
+    out.header.frame_id = target_frame_;
     out.header.stamp = stamp;
     out.height = 1;
     out.width = static_cast<uint32_t>(points.size());
@@ -219,7 +222,7 @@ private:
     int cluster_num = 1;
     for (const auto & cluster : detector_->clusters()) {
       visualization_msgs::msg::Marker bbox;
-      bbox.header.frame_id = kBaseFrame;
+      bbox.header.frame_id = target_frame_;
       bbox.header.stamp = stamp;
       bbox.ns = "obstacle_clusters";
       bbox.id = id++;
@@ -250,7 +253,7 @@ private:
       marker_array.markers.push_back(bbox);
 
       visualization_msgs::msg::Marker text;
-      text.header.frame_id = kBaseFrame;
+      text.header.frame_id = target_frame_;
       text.header.stamp = stamp;
       text.ns = "obstacle_clusters_text";
       text.id = id++;
@@ -330,6 +333,7 @@ private:
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_markers_;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_;
 
+  std::string target_frame_;
   bool publish_markers_ = true;
   bool publish_stats_ = true;
   double stats_period_ = 1.0;

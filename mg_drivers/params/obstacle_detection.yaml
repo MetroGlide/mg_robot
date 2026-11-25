@@ -4,35 +4,41 @@
 # 起動時に採用値が INFO ログに出力され、不正値は理由付きのエラーで終了する。
 # 処理速度は stats_period ごとの "stats" ログ（平均/最大 [ms]）で確認できる。
 #
-# パイプライン (base_link 座標系):
-#   点群を base_link へ変換 -> ROI 内の点を 5cm 程度のグリッドに集計
+# パイプライン (target_frame の座標系):
+#   点群を target_frame へ変換 -> ROI 内の点を 5cm 程度のグリッドに集計
 #   -> セル内の z の幅 (ΔZ) が閾値を超えたセルを障害物とする
 #   -> 障害物セルを連結成分にまとめ、小さい成分をノイズとして除去
 #   -> 残った成分に属する点を ~/points_obstacle に出力（大きさの上限はない）
 obstacle_detection_3d_node:
   ros__parameters:
+    # 処理と出力の座標系。ROI の値はこの座標系で表し、地面が z=0 にある前提。
+    # 地面の高さにある base_footprint を使う (base_link は地面より上にあり、ROI の高さがずれる)
+    target_frame: base_footprint
+
     # ---- 速度に効くパラメータ ----
     # 入力点の間引き間隔。2 で処理点数がほぼ半分になる。遠方の小物体の検出感度が下がる
     stride: 1
 
-    # ROI [m]。base_link 原点基準。狭めるほど速くなる。
-    # z_min は地面が base_link の z=0 付近にある前提の値（地面ノイズ・傾きの余裕を含む）。
-    # z_max はロボットが接触し得る高さに合わせる（これより高い物体は無視される）
+    # ROI [m]。target_frame の原点基準。狭めるほど速くなる。
+    # x・y は、コストマップの STVL の消去の錐台 (nav2_params.yaml の sensor_frame・FOV・max_z) を
+    # 含むように取る。錐台が ROI からはみ出すと、検出していない場所の障害物を消してしまう。
+    # z_min は地面の点を外す高さ（地面ノイズの余裕）。検出できる最小の高さは z_min + delta_z_threshold。
+    # z_max はロボットが接触し得る高さに合わせる（これより高い点は無視される）
     cropbox_x_min: 0.0
     cropbox_x_max: 3.0
-    cropbox_y_min: -0.75
-    cropbox_y_max: 0.75
-    cropbox_z_min: 0.1
-    cropbox_z_max: 1.0
+    cropbox_y_min: -1.5
+    cropbox_y_max: 1.5
+    cropbox_z_min: 0.05
+    cropbox_z_max: 1.15
 
     # グリッドの一辺 [m]。大きいほど速く、位置分解能は粗くなる
     grid_size: 0.05
 
     # ---- 検出感度に効くパラメータ ----
-    # セル内の z の最大-最小がこの値を超えると障害物。
-    # 高さがこの値未満の物体（縁石・倒れた物体など）は検出できない。
+    # ROI 内でのセル内の z の最大-最小がこの値を超えると障害物。
+    # 地面から z_min + この値より低い物体は検出できない (低床障害物 200mm 程度を余裕を持って拾う値)。
     # 地面のノイズで誤検出する場合は大きく、低い物体を拾いたい場合は小さくする
-    delta_z_threshold: 0.15
+    delta_z_threshold: 0.10
 
     # ΔZ 判定に必要なセル内の最小点数。大きいほど疎なセルのノイズに強い（遠方は点が減る）
     min_points_per_cell: 2

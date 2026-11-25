@@ -1,7 +1,7 @@
 # 3D 障害物検出 (obstacle_detection_3d_node)
 
-RealSense D435i の点群 (`points`) を `base_link` に変換し、2.5D グリッド上の ΔZ (セル内の高さ差) で立体障害物を検出する。
-検出対象はコーンに限らず、壁・人・箱など一般の障害物。
+RealSense D435i の点群 (`points`) を処理の座標系 (`target_frame`) に変換し、2.5D グリッド上の ΔZ (セル内の高さ差) で立体障害物を検出する。
+検出対象はコーンに限らず、壁・人・箱など一般の障害物と、上 LiDAR の面より低い低床障害物。
 
 ## 入出力
 
@@ -18,7 +18,7 @@ RealSense D435i の点群 (`points`) を `base_link` に変換し、2.5D グリ�
 ## パイプライン
 
 ```
-点群 → base_link へ変換 (TF は待たず最新値を使用) → ROI (cropbox) 内の点をグリッドに集計
+点群 → target_frame へ変換 (TF は待たず最新値を使用) → ROI (cropbox) 内の点をグリッドに集計
   → セルの ΔZ が閾値を超えたセルを障害物候補に → 2D グリッド上の連結成分でクラスタリング
   → 小さいクラスタを除去 → ~/points_obstacle、~/cluster_markers を publish
 ```
@@ -32,6 +32,7 @@ RealSense D435i の点群 (`points`) を `base_link` に変換し、2.5D グリ�
 
 | パラメータ | 効果 |
 | :--- | :--- |
+| `target_frame` | 処理と出力の座標系。`cropbox_*` はこの座標系の値で、地面が z=0 にある前提 (地面の高さにある `base_footprint` を使う) |
 | `stride` | 入力点の間引き。速度に効く |
 | `cropbox_*` | ROI [m]。狭めるほど速い |
 | `grid_size` | グリッドの解像度 [m]。粗いほど速い |
@@ -42,6 +43,11 @@ RealSense D435i の点群 (`points`) を `base_link` に変換し、2.5D グリ�
 | `min_cluster_cells` | クラスタとして残す最小セル数 (孤立ノイズの除去) |
 | `publish_markers` / `publish_stats` / `stats_period` | Marker と統計ログの出力の可否と間隔 |
 | `use_sensor_data_qos` | QoS の切り替え (上記) |
+
+値どうしの関係:
+
+- **検出できる最小の高さ**は、`cropbox_z_min` + `delta_z_threshold`。ROI の下限より下の点 (地面) は集計しないので、物体の ROI 内の部分の高さが閾値を超える必要がある。低床障害物を拾うときは、この和を対象の高さより十分小さくする。下げすぎると、地面の凹凸・深度のノイズ・物体の輪郭の飛び画素で誤検出する (`z_outlier_trim` で飛び画素を抑えられる)。対象と同程度の縁石や段差も、障害物として検出する
+- `cropbox_x_*`・`cropbox_y_*` は、コストマップの STVL (`obstacle_stvl_layer`) の消去の錐台を含むように取る。錐台が ROI からはみ出すと、検出していない場所の障害物を消してしまう ([costmap_and_collision.md](../../mg_navigation/doc/costmap_and_collision.md#コストマップ))
 
 ## 処理速度の確認 (統計ログ)
 
@@ -107,7 +113,7 @@ make obstacle-detection-replay
 | `rviz` | RViz2 を起動するか |
 | `rviz_config` | RViz2 の設定ファイル |
 
-RViz2 (`rviz/obstacle_detection_replay.rviz`、Fixed Frame は `base_link`) には、次を表示する。
+RViz2 (`rviz/obstacle_detection_replay.rviz`、Fixed Frame は `base_footprint`) には、次を表示する。
 
 - RGB 画像: `/camera/camera/color/image_raw`
 - Depth 画像: `/camera/camera/depth/image_rect_raw`
