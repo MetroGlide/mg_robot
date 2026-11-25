@@ -579,6 +579,39 @@ def test_verify_requests_are_rate_limited():
     assert sim.gate.request_verify(sim.t) == first + 1
 
 
+def test_wide_search_is_added_after_undecided_holds():
+    """決まらずに止めた回数が達した後の停止では、確かめた姿勢の続きの周りを全周で照合し、決まれば置き直す。"""
+    sim = _searching(confirm_distance_m=1000.0, wide_search_after_holds=1)
+    sim.run(4.0)
+    assert sim.gate.state == GateState.OPEN
+    decide = sim.matcher.decide
+
+    def only_with_the_wide_search(field_for, points, candidates):
+        if INITIAL not in candidates:
+            return MatchDecision(None, None, 'ambiguous')
+        return decide(field_for, points, candidates)
+    sim.matcher.decide = only_with_the_wide_search
+    sim.amcl_offset = (1.5, 0.0, 0.0)
+    sim.ekf_offset = (1.5, 0.0, 0.0)
+    sim.gate.force_close(sim.t, 'supervisor')
+    sim.run(8.0)
+    wide = sim.events('wide_search')
+    assert wide and wide[0].fields['result'] == 'matched'
+    # 補正が大きいので、止まるのを待つ上限の後に置き直す (この試験のロボットは止まらない)
+    sim.run(12.0)
+    assert sim.events('pose_reset')
+    assert sim.gate.state == GateState.OPEN
+
+
+def test_wide_search_is_off_by_default():
+    sim = _searching(confirm_distance_m=1000.0)
+    sim.run(4.0)
+    sim.matcher.decide = lambda *args: MatchDecision(None, None, 'ambiguous')
+    sim.gate.force_close(sim.t, 'supervisor')
+    sim.run(4.0)
+    assert not sim.events('wide_search')
+
+
 def test_force_close_holds_at_once_and_matches_the_extra_candidates():
     """監督が推定器の異常を確かめて閉じさせたら、すぐ止めて照合し、足した候補も照合する。"""
     sim = _confirmed(confirm_distance_m=1000.0)

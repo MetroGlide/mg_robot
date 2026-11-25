@@ -97,6 +97,9 @@ class GateSettings:
     gnss_probation_window_sec: float = 10.0
     # 確かめの要求 (走行側から) を受け付ける間隔の下限 [s]
     verify_min_interval_sec: float = 5.0
+    # 広い照合: 決まらずに止めた回数がこれに達した後の停止の間は、確かめた姿勢の続き (なければ融合の結果) の周りを、
+    # 全周の照合 (設定の initial_search) で探して候補に足す。0 なら使わない
+    wide_search_after_holds: int = 0
 
 
 @dataclass
@@ -258,6 +261,8 @@ class MotionGate:
         self._verify_pending: Optional[int] = None
         self._verify_at = -math.inf
         self._verify_undecided: Optional[int] = None
+        # 確かめるまでに、決まらずに止めた回数
+        self._undecided_holds = 0
         self.last_verify: Optional[Tuple[int, str]] = None
         self._map_version: Optional[int] = None
         self._last_scan_stamp: Optional[float] = None
@@ -487,6 +492,33 @@ class MotionGate:
         center = gnss.pose if gnss_motion is None else _propagate(gnss.pose, gnss_motion, motion)
         return InitialSearch(center, points, motion, cfg)
 
+    def _wide_search_due(self) -> bool:
+        """広い照合をする停止の間か。"""
+        n = self.settings.wide_search_after_holds
+        return (self.config.initial_search is not None and n > 0 and self._undecided_hold_since is not None
+                and self._undecided_holds >= n)
+
+    def _wide_search(self, snapshot: Snapshot, motion: Pose2) -> Optional[InitialSearch]:
+        """広い照合の依頼。中心は確かめた姿勢の続き (なければ融合の結果)。向きは全周を探す。"""
+        s = self.settings
+        scan = snapshot.reference(s.reference).scan
+        if scan is None:
+            return None
+        scan_motion = snapshot.motion_at(s.motion, scan.stamp)
+        if scan_motion is None:
+            return None
+        if self._anchor is not None:
+            center = _propagate(self._anchor.pose, self._anchor.motion, scan_motion)
+        else:
+            fused = self._pose_now(snapshot, s.fused)
+            if fused is None:
+                return None
+            center = _propagate(fused, motion, scan_motion)
+        points = scan_points_in_map(
+            np.asarray(scan.ranges, dtype=float), scan.angle_min, scan.angle_increment, scan.range_min,
+            scan.range_max, (0.0, 0.0, 0.0), scan.sensor_pose or (0.0, 0.0, 0.0), INITIAL_MAX_POINTS)
+        return InitialSearch(center, points, scan_motion, self.config.initial_search)
+
     def _closing(self, t: float, evidences: Mapping[str, Evidence]) -> List[str]:
         """異常が close_after_sec 続いた閉じる理由の部品。"""
         closing = []
@@ -518,6 +550,7 @@ class MotionGate:
         self._escalated = False
         self._extra = {}
         self._fallback_done = True
+        self._undecided_holds = 0
         if self._undecided_hold_since is not None:
             out.events.append(GateEvent('hold', 'info', {'active': False, 'reason': 'undecided'}))
         self._undecided_hold_since = None
@@ -576,6 +609,7 @@ class MotionGate:
         over = self._escalated or t - since_t >= s.max_closed_sec or self._odometer - since_odometer >= s.max_closed_m
         if over and self._odometer >= self._next_undecided_hold:
             self._undecided_hold_since = t
+            self._undecided_holds += 1
             self._next_match = min(self._next_match, t)
             out.events.append(GateEvent('hold', 'warn', {
                 'active': True, 'reason': 'undecided', 'closed_sec': round(t - since_t, 1),
@@ -609,7 +643,11 @@ class MotionGate:
         occupancy = snapshot.reference(s.reference).occupancy
         ready = occupancy is not None and len(self._buffer) > 0
         candidates = self._candidates(snapshot, motion, reason) if ready else {}
-        initial = self._initial_search(snapshot) if reason == 'startup' and ready else None
+        initial = None
+        if ready and reason == 'startup':
+            initial = self._initial_search(snapshot)
+        elif ready and reason == 'closed' and self._wide_search_due():
+            initial = self._wide_search(snapshot, motion)
         if not candidates and initial is None:
             if reason == VERIFY:
                 # 照合できない (地図・スキャン・候補がない) 要求は、待たせずに「決まらない」で返す
@@ -706,6 +744,11 @@ class MotionGate:
         if request.reason == VERIFY:
             self._apply_verify(request, decision, t, motion, fused, out)
             return
+        if request.initial_result is not None:
+            result = request.initial_result
+            out.events.append(GateEvent('wide_search', 'info' if result.reason == 'matched' else 'warn', {
+                'result': result.reason, 'ratio': round(result.ratio, 3), 'margin': round(result.margin, 3),
+                **_pose_fields(result.pose), **_pose_fields(request.initial.center, 'center_')}))
         if decision.best is None:
             if request.reason != 'confirm':
                 self._next_match = t + s.retry_sec
