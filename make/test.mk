@@ -66,13 +66,23 @@ scenario-test: ## シナリオを 1 本実行 [SCENARIO=<名前> GUI PROFILE ROB
 #   KNOWN=1          known_issue タグ (既知の問題で失敗するシナリオ) も含める (既定は除外)
 #   GUI=1 / PROFILE=<名前> / ROBOT=<実機PCのIP>  scenario-test と同じ
 #   SHARDS=N         N 本に分けて並列に実行する。結果は同じディレクトリにまとめ、進み具合と junit は分け札ごと
-#                    (progress_<I>of<N>.json)。ROS_DOMAIN_ID と Gazebo の区画を分けて隔離する。ROBOT・GUI とは使えない
+#                    (progress_<I>of<N>.json)。ROS_DOMAIN_ID と Gazebo の区画を分けて隔離する。ROBOT・GUI とは使えない。
+#                    始める前に資源を確かめ、足りなければ始めない (1 本あたり CPU 5 コア・メモリ 2 GB を見込み、
+#                    今の負荷の平均と合わせて CPU の 7 割、空きのメモリから余裕 4 GB を残す。負荷で時間がずれると
+#                    結果が変わるため)。並列の計測の間は、ビルドや重いテストを同時に流さない
 _run_all_args = run-all $(_scenario_dir)/regression $(if $(EXAMPLES),$(_scenario_dir)/examples) $(_remote_arg) $(if $(KNOWN),,--exclude-tags known_issue) $(if $(filter smoke,$(TIER)),--tags smoke) $(if $(TAGS),--tags $(TAGS)) $(if $(REPEAT),--repeat $(REPEAT)) $(if $(GUI),--gui) $(if $(PROFILE),--profile $(PROFILE))
 scenario-test-all: ## 回帰テストを一括実行 [TIER TAGS REPEAT EXAMPLES KNOWN GUI PROFILE ROBOT SHARDS LOCALIZATION_CONFIG LOCALIZATION_MONITOR LOCALIZATION_PRESET LOCALIZATION_PROFILE LOCALIZATION_GATE]
 ifeq ($(SHARDS),)
 	$(_scenario_run)="$(_run_all_args) $(_scenario_results)" scenario-test
 else
 	$(if $(ROBOT)$(GUI),$(error SHARDS は ROBOT・GUI と使えません))
+	@cores=$$(nproc); load=$$(cut -d' ' -f1 /proc/loadavg); \
+	avail=$$(awk '/MemAvailable/ {print int($$2 / 1048576)}' /proc/meminfo); \
+	if awk -v l=$$load -v n=$(SHARDS) -v c=$$cores 'BEGIN {exit !(l + 5 * n > 0.7 * c)}' \
+	   || [ $$avail -lt $$((2 * $(SHARDS) + 4)) ]; then \
+	  echo "資源が足りないので始めません: 負荷の平均 $$load + 見込み $$((5 * $(SHARDS))) コア (CPU $$cores の 7 割まで)、空きのメモリ $$avail GB (必要 $$((2 * $(SHARDS) + 4)) GB)。SHARDS を減らすか、ほかの処理の終わりを待ってください" >&2; \
+	  exit 1; \
+	fi
 	@ts=$$(date +%Y%m%d_%H%M%S); \
 	for i in $$(seq 1 $(SHARDS)); do \
 	  $(_scenario_run)="$(_run_all_args) --results-dir /root/ros2_data/scenario_results/$$ts --shard $$i/$(SHARDS)" \
