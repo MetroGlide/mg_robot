@@ -183,6 +183,8 @@ class LocalizationOutcomeSpec:
     deviation_yaw: float = 0.35
     # ずれているのに止める要求が出ないまま走った距離の上限 [m] (省略時は判定しない)
     max_missed_distance_m: Optional[float] = None
+    # ずれているのに、止める要求も減速 (状態の speed_limit) もないまま走った距離の上限 [m] (省略時は判定しない)
+    max_missed_normal_speed_m: Optional[float] = None
     # ずれていないのに止める要求を出していた時間の合計の上限 [s] (省略時は判定しない)
     max_false_hold_sec: Optional[float] = None
     # ずれが起きることを必須にする (起きなければ、試験になっていないので ERROR)
@@ -211,13 +213,17 @@ class LocalizationOutcomeMonitor(TopicMonitor):
         ctx.backend.entity_pose(ctx.profile.sim.robot_entity)
         self._status_sub = None
         self._hold = False
+        self._slow = False
         self._last_time: Optional[float] = None
         self._last_truth: Optional[Pose] = None
         self._samples = 0
         self._deviated_sec = 0.0
         self._missed_distance = 0.0
+        self._missed_normal_speed = 0.0
         self._false_hold_sec = 0.0
         self._recovering_sec = 0.0
+        self._slow_sec = 0.0
+        self._false_slow_sec = 0.0
 
     def start(self) -> None:
         super().start()
@@ -233,6 +239,7 @@ class LocalizationOutcomeMonitor(TopicMonitor):
     def _on_status(self, msg) -> None:
         with self._lock:
             self._hold = msg.hold_requested
+            self._slow = msg.speed_limit > 0.0
 
     def _on_msg(self, msg) -> None:
         now = self._ctx.clock.now()
@@ -257,8 +264,14 @@ class LocalizationOutcomeMonitor(TopicMonitor):
                 self._recovering_sec += dt
             elif deviated:
                 self._missed_distance += truth.distance_xy(self._last_truth)
+                if not self._slow:
+                    self._missed_normal_speed += truth.distance_xy(self._last_truth)
             elif self._hold:
                 self._false_hold_sec += dt
+            if self._slow:
+                self._slow_sec += dt
+                if not deviated:
+                    self._false_slow_sec += dt
         self._samples += 1
         self._last_time = now
         self._last_truth = truth
@@ -270,13 +283,18 @@ class LocalizationOutcomeMonitor(TopicMonitor):
             return CheckResult("", ResultStatus.ERROR, "no deviation occurred (the test did not exercise it)")
         failed = ((self._spec.max_missed_distance_m is not None
                    and self._missed_distance > self._spec.max_missed_distance_m)
+                  or (self._spec.max_missed_normal_speed_m is not None
+                      and self._missed_normal_speed > self._spec.max_missed_normal_speed_m)
                   or (self._spec.max_false_hold_sec is not None
                       and self._false_hold_sec > self._spec.max_false_hold_sec))
         return CheckResult(
             "", ResultStatus.FAILED if failed else ResultStatus.PASSED,
             f"deviated {self._deviated_sec:.1f} s, drove {self._missed_distance:.2f} m without a hold "
             f"(limit {self._spec.max_missed_distance_m}), hold while deviated {self._recovering_sec:.1f} s, "
-            f"false hold {self._false_hold_sec:.1f} s (limit {self._spec.max_false_hold_sec})")
+            f"false hold {self._false_hold_sec:.1f} s (limit {self._spec.max_false_hold_sec}), "
+            f"drove {self._missed_normal_speed:.2f} m at normal speed while deviated "
+            f"(limit {self._spec.max_missed_normal_speed_m}), slowed {self._slow_sec:.1f} s "
+            f"({self._false_slow_sec:.1f} s not deviated)")
 
 
 @dataclass

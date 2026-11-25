@@ -16,8 +16,8 @@ from sim_scenario_test.engine.result import ResultStatus
 from sim_scenario_test.geometry import Pose
 
 
-def _status(hold):
-    return SimpleNamespace(hold_requested=hold)
+def _status(hold, speed_limit=0.0):
+    return SimpleNamespace(hold_requested=hold, speed_limit=speed_limit)
 
 
 def _monitor(spec):
@@ -113,6 +113,24 @@ def test_localization_outcome_separates_missed_driving_from_recovery():
     result = monitor.result()
     assert result.status == ResultStatus.FAILED
     assert "drove 2.00 m without a hold" in result.message and "hold while deviated 1.0 s" in result.message
+
+
+def test_localization_outcome_separates_slowed_driving_from_driving_at_normal_speed():
+    monitor, clock, ctx, truth = _outcome(max_missed_normal_speed_m=0.5)
+    # 1 m/s で進む。区間は終わりの標本の状態で数える: 1〜2 s はずれて減速なし、2〜4 s はずれて減速あり、
+    # 4〜6 s はずれずに減速あり
+    for t, offset, slow in ((0, 0.0, 0.0), (1, 0.0, 0.0), (2, 2.0, 0.0), (3, 2.0, 0.3), (4, 2.0, 0.3),
+                            (5, 0.0, 0.3), (6, 0.0, 0.3)):
+        clock["t"] = float(t)
+        truth["pose"] = Pose(float(t), 0.0)
+        ctx.poses.robot.get.return_value = Pose(float(t), offset)
+        monitor._on_status(_status(False, slow))
+        monitor._callback(None)
+    result = monitor.result()
+    assert result.status == ResultStatus.FAILED
+    assert "drove 3.00 m without a hold" in result.message
+    assert "drove 1.00 m at normal speed while deviated" in result.message
+    assert "slowed 4.0 s (2.0 s not deviated)" in result.message
 
 
 def test_localization_outcome_counts_false_hold_and_reports_no_deviation():

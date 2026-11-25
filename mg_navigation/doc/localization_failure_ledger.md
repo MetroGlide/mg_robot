@@ -112,10 +112,11 @@ watchdog の構成は、AMCL の共分散が大きいときに GNSS で再初期
 | 基準 | 定義 | 測る場所 |
 | :--- | :--- | :--- |
 | 走りきり | 全ゴールに、人の操作なしで着く | Gazebo の `reached_all` |
-| 見逃し走行 | ずれているのに、止める要求なしで走った距離 | `localization_outcome` |
+| 見逃し走行 | ずれているのに、止める要求なしで走った距離。うち減速もなかった距離 (通常の速度の見逃し) | `localization_outcome` |
 | 見かけの食い込み | 推定の footprint が事前地図の障害物にかかり、真の footprint はかかっていない状態の回数・長さ・解消 | `map_overlap` |
 | 止まったまま | ゴールが有効な間に止まり続けた時間の最大 | `max_stop_duration` |
 | 誤停止 | ずれていないのに止める要求を出した時間 (弱い条件でずれなかった試行を含む) | `localization_outcome`、再生の `hold` |
+| 誤減速 | ずれていないのに減速していた時間 | `localization_outcome` |
 | 試験の成立 | ずれや見かけの食い込みが実際に起きたこと。起きない試行は ERROR | `require_deviation`、`require_overlap` |
 
 - 上限の値は暫定で、シナリオの yaml を正とする。弱い条件の実測を見て決め直す。

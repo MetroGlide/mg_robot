@@ -28,6 +28,8 @@ setup:
 monitors:
   # 合否の上限は置かず、構成どうしの比較のために値を残す
   - pose_error: { deviation_m: 1.0 }
+  # 合否に使わない記録: ずれたまま止める要求も減速もなく走った距離、減速した時間
+  - localization_outcome: {}
   - max_stop_duration: { max_stop_sec: 60.0, from_goal_started: 2, until_goal_reached: 8 }
   - map_overlap: { max_overlap_sec: 60.0 }
   - localization_hold: { ends_released: false }
