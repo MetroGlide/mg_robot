@@ -31,7 +31,7 @@ driver_watchdog_node:
     # このノード固有:
     #   restart_node: 止まったら終了させるノード名 (空なら再起動しない)
     # 診断の名前は `driver_watchdog_node: <id>`、hardware_id は <id> になる
-    monitored_sources: [top_lidar, odom, motor]
+    monitored_sources: [top_lidar, odom, motor, obstacle_camera]
 
     top_lidar:
       topic: scan_top_lidar
@@ -60,4 +60,17 @@ driver_watchdog_node:
       enabled: true
       stale_timeout_sec: 3.0
       armed_on_first_message: true
+      restart_node: ""
+
+    # 3D 障害物検出の出力。検出がなくても毎フレーム出るので、カメラと検出ノードのどちらが止まっても途絶える。
+    # 上 LiDAR の面より低い物はカメラだけが見るので、止まったまま走らないよう一時停止する。
+    # enabled は launch が use_realsense と watch_obstacle_camera から決める
+    # (一時停止させたくないときは watch_obstacle_camera:=false)
+    obstacle_camera:
+      topic: /obstacle_detection_3d_node/points_obstacle
+      type: sensor_msgs/msg/PointCloud2
+      qos: best_effort
+      expected_hz: 6.0
+      enabled: true
+      # カメラのドライバ (realsense2_camera) は launch の respawn を持たないので、終了させない
       restart_node: ""

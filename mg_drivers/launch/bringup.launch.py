@@ -45,6 +45,9 @@ def generate_launch_description():
         "rs_color_profile", default="640x360x6")
     use_realsense_arg = launch_argument_creator.create(
         "use_realsense", default="true")
+    # 3D 障害物検出の出力の途絶で、走行を一時停止する (driver_watchdog の obstacle_camera)
+    watch_obstacle_camera_arg = launch_argument_creator.create(
+        "watch_obstacle_camera", default="true")
     use_depth_postprocess_arg = launch_argument_creator.create(
         "use_depth_postprocess", default="false")
     use_odom_corrector_arg = launch_argument_creator.create(
@@ -126,6 +129,11 @@ def generate_launch_description():
                     use_lidar_arg.launch_config, value_type=bool),
                 "odom.enabled": ParameterValue(
                     use_odom_arg.launch_config, value_type=bool),
+                "obstacle_camera.enabled": ParameterValue(
+                    AndSubstitution(
+                        use_realsense_arg.launch_config,
+                        watch_obstacle_camera_arg.launch_config),
+                    value_type=bool),
                 "restart_enabled": ParameterValue(
                     respawn_drivers_arg.launch_config, value_type=bool),
             },
