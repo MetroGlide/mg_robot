@@ -51,6 +51,7 @@ class StatusView:
     speed_limit: float = 0.0
     verify_id: int = 0
     verify_result: str = ''
+    sensor_set: str = ''
     profile: str = ''
     last_event: str = ''
     checks: List[CheckView] = field(default_factory=list)
@@ -86,7 +87,7 @@ def status_view(result: StepResult, config: SupervisorConfig, profile: str) -> S
         footprint_in_lethal=safety is not None and safety.in_lethal,
         lethal_depth_m=-1.0 if safety is None else safety.depth_m,
         profile=profile, last_event=result.last_event, checks=checks, **_conduct_fields(result),
-        **_verify_fields(result))
+        **_verify_fields(result), sensor_set=result.sensor_set)
 
 
 def _verify_fields(result: StepResult) -> dict:
@@ -170,6 +171,8 @@ def localization_health(view: StatusView) -> Tuple[str, str, Dict[str, str]]:
         'profile': view.profile,
         'last_event': view.last_event,
     }
+    if view.sensor_set:
+        values['sensor_set'] = view.sensor_set
     if view.situation:
         values.update({
             'situation': view.situation, 'degree': str(view.degree),

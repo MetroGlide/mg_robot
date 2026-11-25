@@ -15,6 +15,7 @@ import yaml
 
 from .anchors import AnchorConfig
 from .conduct import Action as ConductAction, ConductConfig, Degree, Situation
+from .sensor_sets import SensorSetConfig
 from .detectors import STANDARD_DETECTORS
 from .fusion import STANDARD_FUSIONS
 from .initial_search import InitialSearchConfig
@@ -37,7 +38,7 @@ from .timeline import AlignmentConfig
 TOP_LEVEL_KEYS = {
     'version', 'period_sec', 'sources', 'timeline', 'detectors', 'enabled_detectors', 'fusion', 'trust',
     'state_machine', 'recovery', 'anchors', 'safety', 'residuals', 'grace', 'external_reinit', 'events', 'output',
-    'profiles', 'gate', 'conduct',
+    'profiles', 'gate', 'conduct', 'sensor_sets',
 }
 GATE_KEYS = {
     'enabled', 'observe_only', 'period_sec', 'settings', 'closers', 'map_match', 'scan_buffer', 'initial_search',
@@ -121,6 +122,8 @@ class SupervisorConfig:
     gate_period_sec: float = 0.2
     # 走り方 (状況 × 程度 → 減速。門があるときだけ使う)
     conduct: Optional[ConductConfig] = None
+    # センサの組 (情報源の欠けから決める。上から順に最初に当てはまる組)
+    sensor_sets: List[SensorSetConfig] = field(default_factory=list)
     # 手動の初期姿勢のトピック (門があるときにノードが購読する)
     manual_pose_topic: str = ''
     period_sec: float = 1.0
@@ -329,6 +332,33 @@ def _dataclass_from(cls: type, raw: Mapping[str, Any], where: str) -> Any:
             raise ConfigError(f'{where}.{key}: expected a string')
         values[key] = value
     return cls(**values)
+
+
+def _parse_sensor_sets(raw: Any, sources: Mapping[str, SourceConfig]) -> List[SensorSetConfig]:
+    """sensor_sets 節 (組の並び)。欠けを見る情報源は、姿勢か地図・スキャンの情報源。"""
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise ConfigError('sensor_sets: expected a list')
+    result: List[SensorSetConfig] = []
+    for i, item in enumerate(raw):
+        where = f'sensor_sets[{i}]'
+        item = dict(_mapping(item, where))
+        missing = _names(item.pop('missing', None), f'{where}.missing')
+        name = item.get('name')
+        if not isinstance(name, str) or not name:
+            raise ConfigError(f'{where}.name: required')
+        config = _dataclass_from(SensorSetConfig, {**item, 'missing': []}, where)
+        if not missing:
+            raise ConfigError(f'{where}.missing: required')
+        for source in missing:
+            if source not in sources or sources[source].kind not in (SourceKind.POSE, SourceKind.REFERENCE):
+                raise ConfigError(f'{where}.missing: {source} is not a pose or reference source')
+        config.missing = list(missing)
+        if any(c.name == config.name for c in result):
+            raise ConfigError(f'{where}.name: {config.name} is used twice')
+        result.append(config)
+    return result
 
 
 def _parse_conduct(raw: Mapping[str, Any]) -> ConductConfig:
@@ -702,6 +732,7 @@ def parse_config(
         anchors=anchors, safety=safety, period_sec=period_sec, **recovery_parts,
         gate=gate, gate_period_sec=gate_period_sec, manual_pose_topic=manual_pose_topic,
         conduct=_parse_conduct(_mapping(merged['conduct'], 'conduct')) if 'conduct' in merged else None,
+        sensor_sets=_parse_sensor_sets(merged.get('sensor_sets'), sources),
         residuals=_parse_residuals(_mapping(merged.get('residuals'), 'residuals'), sources),
         startup_grace_sec=_number(grace, 'startup_sec', 0.0, 'grace'),
         grace_after_recovery_sec=_number(grace, 'after_recovery_sec', 0.0, 'grace'),

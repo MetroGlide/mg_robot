@@ -29,7 +29,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 
 from .anchors import Anchor, AnchorStore
-from .conduct import Conduct, ConductInputs, ConductPlanner, Situation
+from .conduct import Action as ConductAction, Conduct, ConductInputs, ConductPlanner, Situation
 from .config import SupervisorConfig
 from .geometry import Pose2
 from .interfaces import (
@@ -41,6 +41,7 @@ from .recovery.planner import RecoveryPlan, RecoveryPlanner
 from .residuals import ResidualStats, ResidualTracker
 from .safety import FootprintChecker, SafetyResult
 from .scan_buffer import ScanBuffer
+from .sensor_sets import ALL as ALL_SENSORS, SensorSetTracker
 from .snapshot import SampleStore, Snapshot
 from .state_machine import Action, Decision, State, StateMachine
 
@@ -98,6 +99,8 @@ class StepResult:
     gate: Optional[GateStep] = None
     # 走り方 (状況・程度・速度の上限。設定の conduct と門がなければ None)
     conduct: Optional[Conduct] = None
+    # 今のセンサの組 (空は全部。設定の sensor_sets がなければ空)
+    sensor_set: str = ''
 
 
 def make_store(config: SupervisorConfig, track_scales: bool = True) -> SampleStore:
@@ -143,6 +146,9 @@ class Supervisor:
         self.conduct: Optional[ConductPlanner] = (
             ConductPlanner(config.conduct) if config.conduct is not None and self.gate is not None else None)
         self._clearance: Optional[float] = None
+        self.sensor_sets: Optional[SensorSetTracker] = (
+            SensorSetTracker(config.sensor_sets, {n: c.kind for n, c in config.sources.items()})
+            if config.sensor_sets else None)
         self._last: Optional[StepResult] = None
         self._next_supervise = 0.0
         # 監督の復旧を門に任せて、門が決めるのを待っている。切り離しの間 (再初期化を求める前) に門が決めた
@@ -272,6 +278,17 @@ class Supervisor:
             result.conduct = self._update_conduct(now, gate_step, result, fresh)
         return result
 
+    def _update_sensor_set(self, snapshot: Snapshot) -> str:
+        """情報源の欠けから今のセンサの組を決め、変わればイベントを出す。"""
+        if self.sensor_sets is None:
+            return ALL_SENSORS
+        current, changed = self.sensor_sets.update(snapshot)
+        if changed is not None:
+            before, after = changed
+            self._emit('sensor_set_changed', 'warn' if after else 'info',
+                       {'from': before or 'all', 'to': after or 'all'})
+        return current
+
     def _update_conduct(self, now: float, gate_step: GateStep, result: StepResult, fresh: bool) -> Conduct:
         """監督と門の状態から状況を決め、走り方を決める。復旧が無効 (通知だけ・判定だけ) なら、減速は出さない。
 
@@ -296,6 +313,12 @@ class Supervisor:
         confirmed = any(event.name in ('pose_confirmed', 'gate_opened') for event in gate_step.events)
         contradicted = any(e.status == Status.ANOMALY for e in result.evidences.values()) if fresh else None
         conduct = self.conduct.update(ConductInputs(now, situation, since, self._clearance, confirmed, contradicted))
+        cap = self.sensor_sets.config(result.sensor_set) if self.sensor_sets is not None else None
+        if cap is not None and cap.speed_limit_mps > 0.0:
+            # センサの組の上限と、走り方の上限の小さい方
+            limit = cap.speed_limit_mps if conduct.speed_limit_mps <= 0.0 else min(cap.speed_limit_mps,
+                                                                                   conduct.speed_limit_mps)
+            conduct = dataclasses.replace(conduct, action=ConductAction.SLOW, speed_limit_mps=limit)
         if not self.config.machine.recovery_enabled:
             conduct = dataclasses.replace(conduct, speed_limit_mps=0.0)
         return conduct
@@ -393,8 +416,9 @@ class Supervisor:
         residuals = self._update_residuals(snapshot, trusted)
 
         self._state_events(state_before, decision, fusion)
+        sensor_set = self._update_sensor_set(snapshot)
         events, self._pending = self._pending, []
-        return StepResult(
+        return StepResult(sensor_set=sensor_set, 
             stamp=now, state=state, decision=decision, fusion=fusion, evidences=evidences,
             trusted=trusted, in_grace=in_grace, hold_requested=self.machine.hold_requested, safety=safety,
             isolated_sources=self._isolated(), last_event=self._last_event, events=events,

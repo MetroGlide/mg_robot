@@ -82,6 +82,7 @@ class Sim:
         self.amcl_offset = (0.0, 0.0, 0.0)
         self.ekf_offset = (0.0, 0.0, 0.0)
         self.gnss_offset = (0.0, 0.0)
+        self.scans = True
         self.pending = None
         self.results = []
 
@@ -96,7 +97,8 @@ class Sim:
         self.store.add_pose('ekf', PoseSample(t, compose(self.true, self.ekf_offset), cov()))
         self.store.add_pose('gnss', PoseSample(
             t, (self.true[0] + self.gnss_offset[0], self.true[1] + self.gnss_offset[1], 0.0), cov(0.2)))
-        self.store.set_scan('map_scan', room_scan(t, self.true))
+        if self.scans:
+            self.store.set_scan('map_scan', room_scan(t, self.true))
         result = self.supervisor.step(self.store.snapshot(t), self.pending)
         self.pending = None
         if result.gate.request is not None:

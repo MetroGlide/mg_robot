@@ -42,6 +42,9 @@ float32 clearance_m
 # 速度の上限 [m/s] (0 は上限なし)
 float32 speed_limit
 
+# 今のセンサの組 (空は全部。例: no_lidar)
+string sensor_set
+
 # 直近に決着した確かめの要求 (~/request_verify) の番号 (0 はまだない) と結果 (confirmed / relocated / undecided)
 uint32 verify_id
 string verify_result
