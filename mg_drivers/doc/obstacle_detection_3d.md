@@ -7,7 +7,7 @@ RealSense D435i の点群 (`points`) を `base_link` に変換し、2.5D グリ�
 
 | 種別 | トピック | 型 | 内容 |
 | :--- | :--- | :--- | :--- |
-| 入力 | `points` | `sensor_msgs/PointCloud2` | launch で `/rs_d435i/depth/color/points` に remap している (`obstacle_detection_3d.launch.py`) |
+| 入力 | `points` | `sensor_msgs/PointCloud2` | launch で `/camera/camera/depth/color/points` に remap している (`obstacle_detection_3d.launch.py`)。実機・シミュレータ・再生の復元点群で同じ名前 |
 | 出力 | `~/points_obstacle` | `sensor_msgs/PointCloud2` | 検出した障害物の点 (XYZ) |
 | 出力 | `~/cluster_markers` | `visualization_msgs/MarkerArray` | クラスタの bbox と、番号・点数 (`publish_markers: true` のとき) |
 
@@ -111,7 +111,7 @@ RViz2 (`rviz/obstacle_detection_replay.rviz`、Fixed Frame は `base_link`) に�
 
 - RGB 画像: `/camera/camera/color/image_raw`
 - Depth 画像: `/camera/camera/depth/image_rect_raw`
-- 復元した点群: `/rs_d435i/depth/color/points` (グレー)
+- 復元した点群: `/camera/camera/depth/color/points` (グレー)
 - 検出した点: `/obstacle_detection_3d_node/points_obstacle` (赤)
 - 検出したオブジェクト: `/obstacle_detection_3d_node/cluster_markers` (bbox と、クラスタの番号・点数)
 
