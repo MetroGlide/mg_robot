@@ -113,13 +113,6 @@ detectors:
     vouch: [amcl]
   # AMCL の粒子が、離れた姿勢の仮説に割れているか。割れても AMCL が正しい方を選ぶことが多いので、重み 0 で
   # 記録だけする (正しい姿勢と、ずれたときの値の分布を確かめてから重みを決める)
-  # GNSS の動いた量を、ホイールオドメトリの示す動きと窓で比べる (精度の良い申告のまま GNSS がずれていくのを見る)。
-  # 申告の精度が悪い標本は使わない (揺れを飛びと見ない)。向きは GNSS のブリッジが進む向きから作るので見ない
-  gnss_motion:
-    type: pose_jump
-    sources: {pose: gnss, motion: odom}
-    params: {window_sec: 10.0, threshold_m: 1.5, threshold_rad: 100.0, max_std_m: 0.5}
-    max_score: 2.0
   amcl_split:
     type: hypothesis_split
     sources: {pose: amcl, hypotheses: amcl_particles}
@@ -291,7 +284,9 @@ conduct:
   slow_speed_mps: 0.3
   table:
     uninitialized: {light: normal, medium: slow, heavy: slow}
-    suspect: {light: normal, medium: slow, heavy: slow}
+    # 疑いは、余裕が狭いとき (重い) だけ減速する (地図と GNSS のどちらが正しいか見分けられない区間を、開けた所でまで
+    # 減速すると、変換の誤差だけの区間をずっと低速で走るため)
+    suspect: {light: normal, medium: normal, heavy: slow}
     undecided: {light: slow, medium: slow, heavy: slow}
     unobserved: {light: slow, medium: slow, heavy: slow}
     recovering: {light: slow, medium: slow, heavy: slow}
