@@ -108,6 +108,9 @@ def generate_launch_description():
     motion_gate_config_arg = launch_argument_creator.create(
         "motion_gate_config", default=EnvironmentVariable("LOCALIZATION_GATE_CONFIG", default_value=os.path.join(
             get_package_share_directory("mg_localization_supervisor"), "config", "motion_gate.yaml")))
+    # 監督ノードの中で門を使うか (localization_monitor:=supervisor のとき)。既定は環境変数 LOCALIZATION_GATE
+    localization_gate_arg = launch_argument_creator.create(
+        "localization_gate", default=EnvironmentVariable("LOCALIZATION_GATE", default_value="false"))
     # 監督の設定に重ねるプロファイル (mg_localization_supervisor/config/supervision.yaml の profiles。空は基本設定)
     localization_profile_arg = launch_argument_creator.create(
         "localization_profile", default=EnvironmentVariable("LOCALIZATION_PROFILE", default_value=""))
@@ -219,6 +222,7 @@ def generate_launch_description():
             "localization_supervisor": localization_supervisor_arg.launch_config,
             "supervisor_config": supervisor_config_arg.launch_config,
             "motion_gate_config": motion_gate_config_arg.launch_config,
+            "localization_gate": localization_gate_arg.launch_config,
             "localization_profile": PythonExpression([
                 "','.join(p for p in ('", localization_profile_arg.launch_config, "', '",
                 localization_test_profile_arg.launch_config, "') if p)"]),

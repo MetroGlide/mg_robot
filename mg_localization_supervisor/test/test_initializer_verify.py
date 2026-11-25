@@ -4,7 +4,7 @@ import math
 import numpy as np
 
 from localization_supervisor.core.grid import OccupancyMap
-from mg_localization_supervisor.initializer.verify import VerifyConfig, covariance_6x6, verify_pose
+from localization_supervisor.core.initial_search import InitialSearchConfig, covariance_6x6, search_initial_pose
 
 TRUTH = (1.0, -1.5, 0.4)
 
@@ -37,11 +37,11 @@ def _scan_points(occupancy, pose, n=360, max_range=15.0):
 def test_a_shifted_gnss_pose_is_corrected_to_the_scan_match():
     room = _room()
     gnss = (TRUTH[0] + 2.0, TRUTH[1] - 1.5, TRUTH[2] + 0.2)
-    result = verify_pose(room, _scan_points(room, TRUTH), gnss, VerifyConfig())
+    result = search_initial_pose(room, _scan_points(room, TRUTH), gnss, InitialSearchConfig())
     assert result.reason == 'matched'
     assert math.hypot(result.pose[0] - TRUTH[0], result.pose[1] - TRUTH[1]) < 0.2
     assert abs(result.pose[2] - TRUTH[2]) < 0.06
-    assert result.std_m == VerifyConfig().matched_std_m
+    assert result.std_m == InitialSearchConfig().matched_std_m
 
 
 def test_an_ambiguous_scan_falls_back_to_the_gnss_pose_with_a_wide_covariance():
@@ -49,8 +49,8 @@ def test_an_ambiguous_scan_falls_back_to_the_gnss_pose_with_a_wide_covariance():
     room = _room(with_feature=False)
     truth = (0.0, 0.0, 0.0)
     gnss = (0.5, 0.5, 0.0)
-    cfg = VerifyConfig(search_yaw_rad=math.pi, step_yaw_rad=0.1)
-    result = verify_pose(room, _scan_points(room, truth), gnss, cfg)
+    cfg = InitialSearchConfig(search_yaw_rad=math.pi, step_yaw_rad=0.1)
+    result = search_initial_pose(room, _scan_points(room, truth), gnss, cfg)
     assert result.reason == 'ambiguous'
     assert result.pose == gnss and result.std_m == cfg.fallback_std_m
 
@@ -58,16 +58,16 @@ def test_an_ambiguous_scan_falls_back_to_the_gnss_pose_with_a_wide_covariance():
 def test_missing_inputs_fall_back():
     room = _room()
     gnss = (0.0, 0.0, 0.0)
-    assert verify_pose(None, _scan_points(room, TRUTH), gnss, VerifyConfig()).reason == 'no_map'
-    assert verify_pose(room, None, gnss, VerifyConfig()).reason == 'too_few_points'
-    assert verify_pose(room, np.zeros((3, 2)), gnss, VerifyConfig()).reason == 'too_few_points'
+    assert search_initial_pose(None, _scan_points(room, TRUTH), gnss, InitialSearchConfig()).reason == 'no_map'
+    assert search_initial_pose(room, None, gnss, InitialSearchConfig()).reason == 'too_few_points'
+    assert search_initial_pose(room, np.zeros((3, 2)), gnss, InitialSearchConfig()).reason == 'too_few_points'
 
 
 def test_a_scan_that_does_not_fit_the_map_falls_back():
     room = _room()
     points = np.random.default_rng(0).uniform(-3.0, 3.0, size=(200, 2))
-    result = verify_pose(room, points, (0.0, 0.0, 0.0), VerifyConfig())
-    assert result.reason == 'low_ratio' and result.std_m == VerifyConfig().fallback_std_m
+    result = search_initial_pose(room, points, (0.0, 0.0, 0.0), InitialSearchConfig())
+    assert result.reason == 'low_ratio' and result.std_m == InitialSearchConfig().fallback_std_m
 
 
 def test_covariance_fills_x_y_and_yaw():
@@ -125,7 +125,7 @@ def test_vegetation_bands_never_lead_to_a_wrong_pose():
     for truth in truths:
         offset = rng.uniform(-math.pi, math.pi)
         gnss = (truth[0] + 2.0 * math.cos(offset), truth[1] + 2.0 * math.sin(offset), rng.uniform(-math.pi, math.pi))
-        result = verify_pose(garden, _sparse_scan(garden, band, truth, rng), gnss, VerifyConfig())
+        result = search_initial_pose(garden, _sparse_scan(garden, band, truth, rng), gnss, InitialSearchConfig())
         if result.reason != 'matched':
             assert result.pose == gnss
             continue
@@ -138,4 +138,4 @@ def test_vegetation_bands_never_lead_to_a_wrong_pose():
 def test_points_beyond_the_scan_radius_are_not_used():
     room = _room()
     far = _scan_points(room, TRUTH) * 0.0 + np.array([30.0, 0.0])
-    assert verify_pose(room, far, TRUTH, VerifyConfig()).reason == 'too_few_points'
+    assert search_initial_pose(room, far, TRUTH, InitialSearchConfig()).reason == 'too_few_points'

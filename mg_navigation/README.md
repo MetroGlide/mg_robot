@@ -67,6 +67,7 @@ AMCL の初期化・入/切の調停・監督ノードは [mg_localization_super
 | `use_gnss_amcl_initializer` | GNSS から AMCL の初期姿勢を与えるノード |
 | `localization_monitor` | 自己位置の監視ノード: `none` / `watchdog` / `supervisor` (既定。検知して自動で復旧する) / `motion_gate` (門のノード。AMCL を照合で確かめてから EKF に入れる) |
 | `localization_supervisor` | `true` で、監視が `watchdog` のまま、監督ノードを並行して通知だけで動かす |
+| `localization_gate` | `true` で、監督ノードの中で門を使う (監視が `supervisor` のとき。置き直し・起動の直後の姿勢も監督ノードが決め、GNSS による初期化ノードは起動しない) |
 | `supervisor_config` | 監督の設定ファイル (既定は `mg_localization_supervisor` の `config/supervision.yaml`) |
 | `localization_profile` | 監督の設定に重ねるプロファイル (空は基本設定。監視が `watchdog` のときは `notify_only`) |
 | `rviz` | RViz2 の起動 |

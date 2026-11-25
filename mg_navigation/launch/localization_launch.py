@@ -70,6 +70,10 @@ def generate_launch_description():
     motion_gate_config = arg.create(
         'motion_gate_config', default=os.path.join(supervisor_dir, 'config', 'motion_gate.yaml'),
         description='門のノードの設定ファイル (localization_monitor:=motion_gate のとき)').launch_config
+    localization_gate = arg.create(
+        'localization_gate', default='false',
+        description='監督ノードの中で門を使うか (localization_monitor:=supervisor のとき。AMCL を地図との照合で'
+                    '確かめてから EKF に入れ、置き直し・一時停止を門が決める)').launch_config
     supervisor_config = arg.create(
         'supervisor_config', default=os.path.join(supervisor_dir, 'config', 'supervision.yaml'),
         description='監督の設定ファイル').launch_config
@@ -214,6 +218,7 @@ def generate_launch_description():
             'localization_profile': supervisor_profile,
             'use_motion_gate': PythonExpression(["'", localization_monitor, "' == 'motion_gate'"]),
             'motion_gate_config': motion_gate_config,
+            'use_supervisor_gate': localization_gate,
         }.items())
 
     def create_watchdog(context):

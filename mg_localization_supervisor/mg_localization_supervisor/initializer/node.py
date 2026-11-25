@@ -28,7 +28,7 @@ from localization_supervisor.core.grid import scan_points_in_map
 from localization_supervisor.ros.adapters.standard import occupancy_from_msg, yaw_from_quaternion
 from localization_supervisor.core.geometry import Pose2, wrap_angle
 from mg_localization_supervisor.initializer.attempts import InitAttempts, propagate
-from mg_localization_supervisor.initializer.verify import VerifyConfig, covariance_6x6, verify_pose
+from localization_supervisor.core.initial_search import InitialSearchConfig, covariance_6x6, search_initial_pose
 from mg_utils.event_log import EventLog
 
 import tf_transformations
@@ -303,8 +303,8 @@ class GNSSAMCLInitializer(Node):
         # (門のノードの置き直しを、外からの姿勢として直し直さないため)
         self.declare_parameter('check_external_initialpose', True)
         self.verify_by_scan = self.get_parameter('verify_by_scan').value
-        self.verify_config = VerifyConfig()
-        for key, default in vars(VerifyConfig()).items():
+        self.verify_config = InitialSearchConfig()
+        for key, default in vars(InitialSearchConfig()).items():
             self.declare_parameter(f'verify.{key}', default)
             setattr(self.verify_config, key, type(default)(self.get_parameter(f'verify.{key}').value))
 
@@ -448,7 +448,7 @@ class GNSSAMCLInitializer(Node):
     def _attempt(self, msg: PoseWithCovarianceStamped, yaw: float, scan: Optional[LaserScan]) -> None:
         try:
             gnss = (msg.pose.pose.position.x, msg.pose.pose.position.y, yaw)
-            result = verify_pose(self._occupancy, self._scan_points_base(scan), gnss, self.verify_config)
+            result = search_initial_pose(self._occupancy, self._scan_points_base(scan), gnss, self.verify_config)
             matched = result.reason == 'matched'
             with self._lock:
                 if self.attempts.decided:
@@ -517,7 +517,7 @@ class GNSSAMCLInitializer(Node):
         cfg = dataclasses.replace(
             self.verify_config, search_range_m=self.get_parameter('external_search_range_m').value,
             search_yaw_rad=self.get_parameter('external_search_yaw_rad').value)
-        result = verify_pose(self._occupancy, self._scan_points_base(scan), center, cfg)
+        result = search_initial_pose(self._occupancy, self._scan_points_base(scan), center, cfg)
         shift = math.hypot(result.pose[0] - center[0], result.pose[1] - center[1])
         turn = abs(wrap_angle(result.pose[2] - center[2]))
         corrected = result.reason == 'matched' and (

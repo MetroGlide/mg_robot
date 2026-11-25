@@ -27,7 +27,8 @@ GNSS による初期化と監督ノードは、他のノードが立ち上がる
 | `use_sim_time` | シミュレーション・rosbag 再生の時刻を使う |
 | `use_gnss_amcl_initializer` | GNSS による初期化ノードを起動するか |
 | `use_supervisor` | 監督ノードを起動するか (`localization_launch.py` は `localization_monitor:=supervisor` か `localization_supervisor:=true` のときに true を渡す) |
-| `use_motion_gate` | 門のノードを起動するか (`localization_launch.py` は `localization_monitor:=motion_gate` のときに true を渡す)。false なら、手動の初期姿勢をそのまま `/initialpose` へ送る中継を起動する |
+| `use_motion_gate` | 門のノードを起動するか (`localization_launch.py` は `localization_monitor:=motion_gate` のときに true を渡す) |
+| `use_supervisor_gate` | 監督ノードの中で門を使うか (`use_supervisor` と組。`localization_launch.py` は `localization_gate` を渡す)。true なら、GNSS による初期化ノードは起動しない (起動の直後の姿勢も門が決める)。門 (この引数か `use_motion_gate`) がなければ、手動の初期姿勢をそのまま `/initialpose` へ送る中継を起動する |
 | `supervisor_config` | 監督の設定ファイル (既定は `config/supervision.yaml`) |
 | `localization_profile` | 監督の設定に重ねるプロファイル (空は基本設定) |
 | `initializer_verify` | GNSS による初期姿勢を、スキャンと地図の照合で確かめるか (初期化ノードの `verify_by_scan`)。既定は環境変数 `LOCALIZATION_INITIALIZER_VERIFY` (なければ `false`) |
@@ -56,12 +57,13 @@ GNSS による初期化と監督ノードは、他のノードが立ち上がる
 - `localization_monitor:=supervisor` (既定) では、watchdog の代わりに監督ノードだけを動かし、基本設定の自動復旧を使う。watchdog と並行して動かすときは、プロファイル `notify_only` になる (二重に再初期化しない)。
 - 設定は `supervisor_config`、プロファイルは `localization_profile` (既定は環境変数 `LOCALIZATION_PROFILE`) で渡す。走行中は `ros2 service call /localization_supervisor_node/set_profile localization_supervisor_msgs/srv/SetProfile "{profile: gnss_fallback}"` で切り替えられる。
 - GNSS による初期化 (`gnss_amcl_initializer_node`)・watchdog・人による `/initialpose`・`/set_pose` は、外からの再初期化として扱う (状態を戻して猶予を置く)。
+- `localization_gate:=true` (`bringup_navigation.launch.py` では環境変数 `LOCALIZATION_GATE` が既定値) で、監督ノードの中で門 (`supervision.yaml` の `gate` 節) を使う。置き直し・AMCL の門・一時停止・起動の直後の姿勢 (GNSS の周りの全周の照合) を門が決め、監督の復旧も門の照合で決める (分担は [design.md](../localization_supervisor/doc/design.md#門を入れたとき))。初期化ノードと手動の初期姿勢の中継は起動しない。外からの `/initialpose` は、外からの再初期化ではなく、AMCL の飛びとして門が判定する。AMCL の門の要求元は監督 (`supervisor`) だけになる。
 - 診断 `localization_supervisor_node: localization` は、集約で `/Robot/Localization/Monitor`。watchdog と並行して動かすときは、watchdog の診断も同じ集約に入る (悪いほうのレベルになる)。Web UI の「自己位置」のタイルに、状態・疑わしい情報源・異常の判定・障害物の中かが出る。
 - シーケンサを通らないゴール (手動のゴール) は、自動復旧の一時停止 (`pause_request`) でも止まらない。
 
 ## 門のノード (motion_gate_node)
 
-役割・規則・入出力は [localization_supervisor/doc/motion_gate.md](../localization_supervisor/doc/motion_gate.md)。このロボットでの使い方:
+役割・規則・入出力は [localization_supervisor/doc/motion_gate.md](../localization_supervisor/doc/motion_gate.md)。監督ノードの中の門 (`localization_gate:=true`) と比べる基準として残している。このロボットでの使い方:
 
 - `localization_monitor:=motion_gate` で起動する。監視は 1 つしか選べないので、watchdog と監督ノードは起動しない (どれも AMCL と EKF を置き直すため、同時に動かすと互いの置き直しを取り違える)。
 - このとき、初期化ノードの「外からの `/initialpose` の確かめ」(`check_external_initialpose`) を止める (門のノードの置き直しを、初期化ノードが外からの姿勢として直し直さないため)。GNSS による起動時の初期化は続ける。
@@ -201,7 +203,7 @@ EKF の初期共分散が大きく、AMCL の初期値 (原点) に引かれる�
 | `external_check_delay_sec`・`external_search_range_m`・`external_search_yaw_rad` | 外から初期姿勢を与えられてから照合するまでの時間と、その姿勢の周りを探す範囲 |
 | `external_accept_distance_m` | 外から与えられた初期姿勢に従うのは、起動してからこれだけ動くまで (スタート地点で止まって与える想定) |
 | `check_external_initialpose` | 外から与えられた `/initialpose` に従い、確かめるか (`verify_by_scan` が `true` のとき)。門のノードで動かすときは launch が `false` にする |
-| `verify.*` | 照合の範囲と刻み、一致とみなす距離 (粗い格子の `coarse_tolerance_m` と細かい格子の `tolerance_m`)、絞り込む候補の数、合うとみなす一致率 (`min_ratio`)、似た一致の候補との差 (`ambiguity_margin`)、合ったとき・確かめられないときの標準偏差 (`initializer/verify.py` の `VerifyConfig`) |
+| `verify.*` | 照合の範囲と刻み、一致とみなす距離 (粗い格子の `coarse_tolerance_m` と細かい格子の `tolerance_m`)、絞り込む候補の数、合うとみなす一致率 (`min_ratio`)、似た一致の候補との差 (`ambiguity_margin`)、合ったとき・確かめられないときの標準偏差 (`localization_supervisor` の `core/initial_search.py` の `InitialSearchConfig`。監督ノードの中の門の全周の照合と同じ部品) |
 
 実際の値は `config/initializer.yaml` が正 (書いていないものはノードの既定値)。
 
@@ -221,6 +223,7 @@ GNSS の位置は、地図と GNSS の位置合わせのずれ (場所で変わ�
   - `localization.initial_pose_external_checked`: その姿勢の周りの照合。直したか、ずれの大きさ、GNSS との差。
 - 処理の負荷: 照合は、初期姿勢が決まるまで、GNSS の位置が一定の距離を動くごとに 1 回 (開発 PC で 1 回 0.1 s 程度、例)。決まった後と、正常な走行中は 0。
 - 戻し方: `initializer_verify:=false` (既定)。
+- 監督ノードの中で門を使うとき (`localization_gate:=true`) は、このノードを起動せず、同じ照合を門が行う ([motion_gate.md](../localization_supervisor/doc/motion_gate.md#未初期化の処理-全周の照合があるとき))。
 - 地図を切り替えたときの照合は、まだしない (初期化ノードは地図の切り替えを受け取っていない)。
 
 ## テスト

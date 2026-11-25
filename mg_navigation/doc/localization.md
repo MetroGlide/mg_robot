@@ -22,6 +22,8 @@ gnss_amcl_initializer_node ◄─ /odom/gps ◄─ slam_gnss_nav_bridge ◄─ /
 
 `localization_monitor:=motion_gate` では、watchdog と監督ノードの代わりに門のノード (`motion_gate_node`) が動き、ゲートの調停を通して AMCL を EKF から切り離し、地図との照合で決めてから `/initialpose` と `/set_pose` で置き直す。
 
+`localization_monitor:=supervisor` と `localization_gate:=true` では、同じ門を監督ノードの中で動かす。置き直し・AMCL の門・一時停止・起動の直後の姿勢 (GNSS の周りの全周の照合) を監督ノードが 1 か所で決め、`gnss_amcl_initializer_node` と `manual_pose_relay` は起動しない ([mg_localization_supervisor](../../mg_localization_supervisor/README.md#監督ノード-localization_supervisor_node))。
+
 EKF の周期は `mg_drivers/params/ekf_global.yaml` の `frequency`。
 
 | ノード | 役割 |
@@ -131,6 +133,7 @@ AMCL の位置の共分散を監視し、大きい状態が続いたら、`gnss_
 
 - `localization_monitor:=watchdog` にすれば、従来の監視 (共分散による再初期化だけ)。
 - 門のノード (`localization_monitor:=motion_gate`) をやめるときは、`localization_monitor` を `supervisor` か `watchdog` に戻す。Web UI の手動の初期姿勢は、中継を通して従来どおり `/initialpose` に届く。
+- 監督ノードの中の門をやめるときは、`localization_gate:=false` (既定)。初期化ノードと中継が起動し、監督は門なしの復旧に戻る。
 - `localization_profile:=gnss_fallback` で、AMCL と GNSS が乖離したら GNSS で引き戻すだけの、以前の動作 (監督ノードのまま)。
 - `localization_profile:=notify_only` で、監督ノードは検知と通知だけ (自動復旧しない)。
 - `use_odom_corrector:=false` で、ホイールオドメトリの補正なし ([mg_drivers](../../mg_drivers/doc/wheel_odom_corrector.md))。

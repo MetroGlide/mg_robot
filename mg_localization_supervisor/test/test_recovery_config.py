@@ -126,11 +126,13 @@ def test_pause_request_is_active_only_while_holding(monkeypatch):
     monkeypatch.setattr(pause_request, 'PauseRequest', SimpleNamespace)
     node = MagicMock()
     actuator = PauseRequestActuator('pause', {'topic': '/t', 'requester_id': 'localization'}, node)
-    actuator.apply(SimpleNamespace(hold_requested=True, state=State.RECOVERING, blame='amcl'))
-    actuator.apply(SimpleNamespace(hold_requested=False, state=State.NORMAL, blame=''))
-    first, second = [call.args[0] for call in node.create_publisher.return_value.publish.call_args_list]
+    actuator.apply(SimpleNamespace(hold_requested=True, state=State.RECOVERING, blame='amcl', hold_reason=''))
+    actuator.apply(SimpleNamespace(hold_requested=False, state=State.NORMAL, blame='', hold_reason=''))
+    actuator.apply(SimpleNamespace(hold_requested=True, state=State.ISOLATED, blame='', hold_reason='undecided'))
+    first, second, third = [call.args[0] for call in node.create_publisher.return_value.publish.call_args_list]
     assert first.active is True and 'RECOVERING' in first.reason and first.requester_id == 'localization'
     assert second.active is False
+    assert third.active is True and 'gate=undecided' in third.reason
 
 
 def _spin_actuator(monkeypatch):

@@ -200,10 +200,11 @@ recovery:
   # min_score は、この地図で正しい姿勢の一致率 (0.55 以上) より低くする
   selection: {min_score: 0.35, ambiguity_margin: 0.1, separation_m: 1.0, retry_sec: 2.0}
 
-  # 選んだ姿勢の送り先 (AMCL と EKF)。監督が送ったものは、外からの再初期化と見なさない
+  # 選んだ姿勢の送り先 (AMCL と EKF)。監督が送ったものは、外からの再初期化と見なさない。
+  # role は門の置き直しの送り先の役 (推定器 / 融合。門が AMCL を採って EKF だけを直すときは fused だけに送る)
   resetters:
-    - {type: amcl}
-    - {type: robot_localization}
+    - {type: amcl, role: estimator}
+    - {type: robot_localization, role: fused}
 
   # 対処。いずれも、プロファイルでは変えられない (起動時に作る)
   actuators:
@@ -256,6 +257,131 @@ grace:
 # 監督以外 (GNSS による初期化、watchdog、人の操作) が推定器を初期化し直したら、人による上書きとして扱う
 external_reinit:
   topics: [/initialpose, /set_pose]
+
+# 門: AMCL の姿勢を EKF に入れる前に確かめる (localization_supervisor/doc/motion_gate.md)。監督のノードのパラメータ
+# use_gate (launch の引数) で有効にする (enabled はここでは書かない)。門があるときは、置き直し・AMCL の門の開閉・
+# 一時停止を門が決め、監督の復旧も門の照合で決める (localization_supervisor/doc/design.md)。プロファイルでは
+# 変えられない (起動時に作る)。
+# 閉じる理由・照合・戻し方の値は、記録の再生の評価で決めた仮の値で、実機で確かめて調整する
+gate:
+  period_sec: 0.2
+  settings:
+    estimator: amcl
+    fused: ekf
+    motion: odom
+    reference: map_scan
+    gnss: gnss
+    max_age_sec: 2.0
+    gnss_max_age_sec: 2.0
+    # GNSS の候補は、申告の精度がこれ以下のときだけ。探す範囲は申告の標準偏差の倍
+    gnss_max_std_m: 1.0
+    gnss_sigma_k: 3.0
+    # 前の続きの候補の探す範囲を広げる量 (確かめてから走った道のり 1 m あたり)。オドメトリの誤差の目安より大きく
+    continuation_xy_per_m: 0.05
+    continuation_yaw_per_m: 0.01
+    # 手動の初期姿勢の候補の探す範囲。人が与える姿勢のおおよその誤差を覆う。照合の範囲の上限
+    # (map_match の cap_xy_m・cap_yaw_rad) の中にする
+    manual_xy_m: 1.5
+    manual_yaw_rad: 0.5
+    retry_sec: 2.0
+    # 門が開いている間に、AMCL と前の続きを照合して、確かめた姿勢を更新する道のり
+    confirm_distance_m: 10.0
+    # 置き直しの後は、収束の途中なので閉じる理由を使わない (active_in_grace の部品を除く)。時間は、時間の窓で比べる
+    # 閉じる理由 (gate_amcl_window の window_sec + max_gap_sec) より長くする (置き直しの前の標本と比べないため)
+    grace_after_reset_m: 1.0
+    grace_after_reset_sec: 15.0
+    # 融合の結果 (走行に使う姿勢) との差がこれ以下なら、その場で置き直す。超えれば止まってから置き直す
+    small_correction_m: 0.3
+    small_correction_rad: 0.1
+    stopped_speed_mps: 0.05
+    stopped_yaw_rate_rps: 0.05
+    stopped_sec: 1.0
+    correction_hold_max_sec: 10.0
+    # 閉じたまま決まらないときの上限 (時間か道のり)。超えたら止めて照合し、決まらなければ解いて少し走らせる。
+    # 監督が AMCL の異常を確かめて閉じさせたときは、最初から上限を超えたものとして扱う
+    max_closed_sec: 30.0
+    max_closed_m: 15.0
+    undecided_hold_sec: 10.0
+    undecided_drive_m: 5.0
+    reset_std_m: 0.1
+    reset_std_yaw_rad: 0.05
+    # 全周の照合 (initial_search) に使う GNSS: 申告の精度の上限と、続けて満たす標本の数 (初期化ノードと同じ)
+    initial_gnss_max_std_m: 5.0
+    initial_gnss_consecutive: 2
+
+  # 閉じる理由の部品 (判定の書き方)。どれかの異常が close_after_sec 続いたら閉じる。誤って閉じても照合 1 回で戻る。
+  # 名前は判定のインスタンスと分ける (状態のメッセージに両方を並べる)
+  closers:
+    # 1 回ごとの飛び (AMCL の姿勢とホイールオドメトリが示す map->odom の変化)
+    gate_amcl_jump:
+      type: pose_jump
+      sources: {pose: amcl, motion: odom}
+      params: {threshold_m: 1.0, threshold_rad: 0.3}
+    # 直近の時間の窓での変化 (飛ばされた AMCL が少しずつ戻る・滑るのを見逃さない)
+    gate_amcl_window:
+      type: pose_jump
+      sources: {pose: amcl, motion: odom}
+      params: {threshold_m: 1.0, threshold_rad: 0.3, window_sec: 10.0}
+    # GNSS と離れたまま (動きの合意では気づけない、ゆっくりしたずれ)。精度の良い GNSS だけを使う。
+    # 今の AMCL と今の GNSS を比べ、置き直しの前の標本を使わないので、置き直しの後の猶予の間も使う。
+    # 監督が GNSS を疑っている間は使わない
+    gate_amcl_gnss:
+      type: pose_consistency
+      sources: {a: amcl, b: gnss}
+      params: {metric: distance, threshold: 1.5, b_max_std_m: 0.5}
+      close_after_sec: 3.0
+      active_in_grace: true
+
+  map_match:
+    min_ratio: 0.35
+    margin: 0.1
+    separation_m: 1.0
+    separation_yaw_rad: 0.2
+    narrow_xy_m: 0.5
+    narrow_yaw_rad: 0.15
+    step_xy_m: 0.1
+    step_yaw_rad: 0.05
+    cap_xy_m: 2.0
+    cap_yaw_rad: 0.55
+    wide_step_xy_m: 0.25
+    wide_step_yaw_rad: 0.1
+    tolerance_m: 0.3
+    coarse_tolerance_m: 0.5
+    coarse_candidates: 5
+    max_points: 400
+    field_radius_m: 25.0
+
+  # 照合に使う、直近のスキャンを重ねたもの
+  scan_buffer:
+    keyframe_distance_m: 0.3
+    keyframe_angle_rad: 0.2
+    window_distance_m: 3.0
+    max_points_per_scan: 90
+    max_range_m: 25.0
+
+  # 確かめた姿勢がない間 (起動の直後、地図の切り替えの後) に、GNSS の周りを向きの全周で照合した姿勢を候補に足す。
+  # 推定器と別の仮説に置き直すのは、この姿勢と同じ仮説に決まったときだけ。合わなければ、最初の 1 回だけ GNSS の
+  # 位置を広い共分散で出す (AMCL に広く探させる)。GNSS の精度の条件は settings の initial_gnss_*。
+  # 値は GNSS による初期化ノード (initializer.yaml、verify.*) の照合と同じ
+  initial_search:
+    search_range_m: 4.0
+    step_xy_m: 0.5
+    step_yaw_rad: 0.1
+    scan_radius_m: 15.0
+    tolerance_m: 0.15
+    coarse_tolerance_m: 0.4
+    coarse_candidates: 8
+    min_points: 30
+    min_ratio: 0.5
+    ambiguity_margin: 0.1
+    separation_m: 1.0
+    matched_std_m: 0.3
+    matched_std_yaw_rad: 0.1
+    fallback_std_m: 2.0
+    fallback_std_yaw_rad: 0.5
+
+  # 手動の初期姿勢の専用トピック (Web UI が送る。門がないときは、launch の中継がそのまま /initialpose へ送る)
+  manual_pose_topic: /localization/manual_initial_pose
 
 events:
   prefix: localization
