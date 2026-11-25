@@ -25,6 +25,7 @@
 | `grace.after_reset_sec` | 外からの再初期化・地図の切り替えの後に総合しない時間 [s] |
 | `external_reinit.topics` | 届いたら外からの再初期化として扱うトピック (`geometry_msgs/PoseWithCovarianceStamped`。ノード)。プロファイルで減らせる。門を使うときは見ない |
 | `gate` | 門 (下記)。ノードの `use_gate` で有効にする |
+| `conduct` | 走り方 (状況 × 程度 → 減速。下記)。門があるときだけ使う。書かなければ減速しない |
 | `events.prefix` | イベントの名前の前置き (`<prefix>.state_changed`) |
 | `events.sink` | イベントの出力のプラグイン `{type, パラメータ...}` ([plugins.md](./plugins.md#イベントの出力-eventsink))。書かなければ `logfmt` |
 | `output.status_topic`、`output.diagnostic_name`、`output.hardware_id` | 状態のメッセージのトピック、診断の名前とハードウェア ID (ノード) |
@@ -210,6 +211,23 @@ residuals:
 | `scan_buffer` | 照合に使う、直近のスキャンの重ね方 |
 | `initial_search` | 確かめた姿勢がない間に、GNSS の周りを向きの全周で照合する設定 (`core/initial_search.py` の `InitialSearchConfig`)。書かなければしない。`settings.gnss` が要る |
 | `manual_pose_topic` | 手動の初期姿勢のトピック (空なら受けない) |
+
+## conduct
+
+走り方。状況 (確かめた姿勢がない・疑い・決めきれない・見えない・復旧中) と程度 (起こりうる誤差 ÷ 余裕) から、対応表で対処 (`normal` / `slow`) を選び、速度の上限を `StepResult.conduct` に出す (考え方は [architecture_target.md](./architecture_target.md#状態--程度--対処-未実装))。余裕は `safety` の footprint から計画用地図の致死セルまでの距離で、`safety` がなければ分からないものとして重いにする。止める対処は持たない。監督の復旧が無効 (`recovery_enabled: false`) なら速度の上限は出さない。値は各ロボットの設定ファイルが正。
+
+| キー | 内容 |
+| :--- | :--- |
+| `error_per_m` | 最後に確かめてから走った道のり 1 m あたりに増やす、起こりうる誤差 |
+| `floors` | 状況ごとの起こりうる誤差の下限 [m] (`uninitialized`・`suspect`・`undecided`・`unobserved`・`recovering`)。書いた状況だけ既定に重ねる |
+| `unobserved_after_m` | 地図との照合で確かめないまま、これだけ走ったら「見えない」 |
+| `undecided_after_sec` | 門が閉じてから、これだけ決まらなければ「決めきれない」 |
+| `medium_ratio`・`heavy_ratio` | 程度の境 (起こりうる誤差 ÷ 余裕)。`0 < medium_ratio <= heavy_ratio` |
+| `lower_hold_sec` | 程度を軽くするのは、軽い側がこの時間続いてから (上げるのはすぐ) |
+| `slow_speed_mps` | 減速の速度の上限 [m/s] |
+| `table` | 状況 → 程度 (`light`・`medium`・`heavy`) → 対処 (`normal`・`slow`)。書いた升目だけ既定に重ね、プロファイルで升目ごとに差し替えられる。正常の状況は書けない (正常では減速しない) |
+
+- 疑い・見えないから正常へは、門が地図との照合で確かめた周期 (`pose_confirmed`・`gate_opened`) にだけ戻る。
 
 ## profiles
 

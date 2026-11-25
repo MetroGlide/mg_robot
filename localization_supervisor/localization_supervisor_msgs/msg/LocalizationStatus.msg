@@ -31,6 +31,17 @@ bool footprint_in_lethal
 # 致死セルへの食い込みの深さ [m] (かかっていなければ 0、計算できなければ -1)
 float32 lethal_depth_m
 
+# 走り方 (門と走り方の設定があるとき。なければ situation は空)
+# 状況: uninitialized / normal / suspect / undecided / unobserved / recovering
+string situation
+# 程度: 0 使わない (正常)、1 軽い、2 中、3 重い
+uint8 degree
+# 起こりうる誤差 [m] と、footprint から計画用地図の通れない所までの距離 [m] (分からなければ -1)
+float32 possible_error_m
+float32 clearance_m
+# 速度の上限 [m/s] (0 は上限なし)
+float32 speed_limit
+
 # 使っているプロファイル (空は基本設定)
 string profile
 # 直近に起きたこと (例: "suspect: amcl_jump"、"map_changed")

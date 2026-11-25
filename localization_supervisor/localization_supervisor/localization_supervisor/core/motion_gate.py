@@ -273,6 +273,16 @@ class MotionGate:
 
     # ------------------------------------------------------------------ 周期
 
+    def since_confirmed_m(self) -> Optional[float]:
+        """最後に確かめてから走った道のり [m]。確かめた姿勢がなければ None。"""
+        return None if self._anchor is None else self._odometer - self._anchor.odometer
+
+    def closed_for_sec(self, t: float) -> float:
+        """閉じてからの時間 [s] (開いていれば 0)。"""
+        if self.state not in (GateState.CLOSED, GateState.CORRECTING):
+            return 0.0
+        return t - self._closed_since[0]
+
     def step(self, snapshot: Snapshot, result: Optional[Tuple[MatchRequest, MatchDecision]] = None,
              distrust: frozenset = frozenset()) -> GateStep:
         """distrust の情報源を使う閉じる理由の部品は閉じず、その情報源の候補は使わない。"""

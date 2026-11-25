@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Mapping, Optional, Tuple
 import yaml
 
 from .anchors import AnchorConfig
+from .conduct import Action as ConductAction, ConductConfig, Degree, Situation
 from .detectors import STANDARD_DETECTORS
 from .fusion import STANDARD_FUSIONS
 from .initial_search import InitialSearchConfig
@@ -36,7 +37,7 @@ from .timeline import AlignmentConfig
 TOP_LEVEL_KEYS = {
     'version', 'period_sec', 'sources', 'timeline', 'detectors', 'enabled_detectors', 'fusion', 'trust',
     'state_machine', 'recovery', 'anchors', 'safety', 'residuals', 'grace', 'external_reinit', 'events', 'output',
-    'profiles', 'gate',
+    'profiles', 'gate', 'conduct',
 }
 GATE_KEYS = {
     'enabled', 'observe_only', 'period_sec', 'settings', 'closers', 'map_match', 'scan_buffer', 'initial_search',
@@ -118,6 +119,8 @@ class SupervisorConfig:
     # 判定・総合・状態遷移は period_sec ごとに回す
     gate: Optional[MotionGateConfig] = None
     gate_period_sec: float = 0.2
+    # 走り方 (状況 × 程度 → 減速。門があるときだけ使う)
+    conduct: Optional[ConductConfig] = None
     # 手動の初期姿勢のトピック (門があるときにノードが購読する)
     manual_pose_topic: str = ''
     period_sec: float = 1.0
@@ -326,6 +329,35 @@ def _dataclass_from(cls: type, raw: Mapping[str, Any], where: str) -> Any:
             raise ConfigError(f'{where}.{key}: expected a string')
         values[key] = value
     return cls(**values)
+
+
+def _parse_conduct(raw: Mapping[str, Any]) -> ConductConfig:
+    """conduct 節。floors と table は既定に重ねる (プロファイルで升目ごとに差し替えられる)。"""
+    raw = dict(raw)
+    floors_raw = _mapping(raw.pop('floors', None), 'conduct.floors')
+    table_raw = _mapping(raw.pop('table', None), 'conduct.table')
+    config = _dataclass_from(ConductConfig, raw, 'conduct')
+    situations = {s.value for s in Situation if s != Situation.NORMAL}
+    _check_keys(floors_raw, situations, 'conduct.floors')
+    for key, value in floors_raw.items():
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0.0:
+            raise ConfigError(f'conduct.floors.{key}: expected a non-negative number')
+        config.floors[key] = float(value)
+    _check_keys(table_raw, situations, 'conduct.table')
+    degrees = {d.name.lower() for d in Degree if d != Degree.NONE}
+    actions = {a.value for a in ConductAction}
+    for situation, row in table_raw.items():
+        row = _mapping(row, f'conduct.table.{situation}')
+        _check_keys(row, degrees, f'conduct.table.{situation}')
+        for degree, action in row.items():
+            if action not in actions:
+                raise ConfigError(f'conduct.table.{situation}.{degree}: expected one of {sorted(actions)}')
+            config.table[situation][degree] = action
+    if not 0.0 < config.medium_ratio <= config.heavy_ratio:
+        raise ConfigError('conduct: expected 0 < medium_ratio <= heavy_ratio')
+    if config.slow_speed_mps <= 0.0:
+        raise ConfigError('conduct.slow_speed_mps: must be positive')
+    return config
 
 
 def parse_gate_parts(
@@ -669,6 +701,7 @@ def parse_config(
         convergence_mode=_convergence_mode(recovery.get('convergence_mode', 'all')),
         anchors=anchors, safety=safety, period_sec=period_sec, **recovery_parts,
         gate=gate, gate_period_sec=gate_period_sec, manual_pose_topic=manual_pose_topic,
+        conduct=_parse_conduct(_mapping(merged['conduct'], 'conduct')) if 'conduct' in merged else None,
         residuals=_parse_residuals(_mapping(merged.get('residuals'), 'residuals'), sources),
         startup_grace_sec=_number(grace, 'startup_sec', 0.0, 'grace'),
         grace_after_recovery_sec=_number(grace, 'after_recovery_sec', 0.0, 'grace'),

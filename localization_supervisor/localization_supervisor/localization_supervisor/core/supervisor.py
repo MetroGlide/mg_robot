@@ -29,6 +29,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 
 from .anchors import Anchor, AnchorStore
+from .conduct import Conduct, ConductInputs, ConductPlanner, Situation
 from .config import SupervisorConfig
 from .geometry import Pose2
 from .interfaces import (
@@ -95,6 +96,8 @@ class StepResult:
     hold_reason: str = ''
     # 門の周期の結果 (門がなければ None)
     gate: Optional[GateStep] = None
+    # 走り方 (状況・程度・速度の上限。設定の conduct と門がなければ None)
+    conduct: Optional[Conduct] = None
 
 
 def make_store(config: SupervisorConfig, track_scales: bool = True) -> SampleStore:
@@ -136,6 +139,10 @@ class Supervisor:
         self._observe_motion: Optional[Pose2] = None
         # 門 (プロファイルで変えない。状態を保つため、プロファイルを変えても作り直さない)
         self.gate: Optional[MotionGate] = MotionGate(config.gate) if config.gate is not None else None
+        # 走り方は、確かめた姿勢を門が持つので、門があるときだけ
+        self.conduct: Optional[ConductPlanner] = (
+            ConductPlanner(config.conduct) if config.conduct is not None and self.gate is not None else None)
+        self._clearance: Optional[float] = None
         self._last: Optional[StepResult] = None
         self._next_supervise = 0.0
         # 監督の復旧を門に任せて、門が決めるのを待っている。切り離しの間 (再初期化を求める前) に門が決めた
@@ -256,7 +263,32 @@ class Supervisor:
             result = dataclasses.replace(self._last, stamp=now, events=[], directives=[], plan=None)
         gate_step = self.gate.step(snapshot, match, self._gate_distrust())
         self._apply_gate(now, result, gate_step)
+        if self.conduct is not None:
+            result.conduct = self._update_conduct(now, gate_step)
         return result
+
+    def _update_conduct(self, now: float, gate_step: GateStep) -> Conduct:
+        """監督と門の状態から状況を決め、走り方を決める。復旧が無効 (通知だけ・判定だけ) なら、減速は出さない。"""
+        cfg = self.conduct.config
+        state = self.machine.state
+        since = self.gate.since_confirmed_m()
+        if gate_step.state == GateState.UNCONFIRMED:
+            situation = Situation.UNINITIALIZED
+        elif state in (State.ISOLATED, State.RECOVERING) and self.machine.hold_requested:
+            situation = Situation.RECOVERING
+        elif state == State.DEGRADED or self.gate.closed_for_sec(now) >= cfg.undecided_after_sec:
+            situation = Situation.UNDECIDED
+        elif state != State.NORMAL or gate_step.state != GateState.OPEN:
+            situation = Situation.SUSPECT
+        elif since is not None and since >= cfg.unobserved_after_m:
+            situation = Situation.UNOBSERVED
+        else:
+            situation = Situation.NORMAL
+        confirmed = any(event.name in ('pose_confirmed', 'gate_opened') for event in gate_step.events)
+        conduct = self.conduct.update(ConductInputs(now, situation, since, self._clearance, confirmed))
+        if not self.config.machine.recovery_enabled:
+            conduct = dataclasses.replace(conduct, speed_limit_mps=0.0)
+        return conduct
 
     def _gate_distrust(self) -> frozenset:
         """門に使わせない情報源: 監督が切り離している GNSS と、残差の倍率が大きい GNSS。"""
@@ -633,8 +665,11 @@ class Supervisor:
         occupancy = snapshot.reference(cfg.map).occupancy
         aligned = snapshot.pose_aligned(cfg.pose, cfg.max_age_sec)
         if occupancy is None or aligned is None:
+            self._clearance = None
             return None
         result = self.safety.check(occupancy, aligned[0].pose)
+        if self.conduct is not None:
+            self._clearance = 0.0 if result.in_lethal else self.safety.clearance(occupancy, aligned[0].pose)
         if result.in_lethal != self._in_lethal:
             self._in_lethal = result.in_lethal
             self._emit('lethal', 'warn' if result.in_lethal else 'info', {

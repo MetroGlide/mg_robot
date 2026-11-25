@@ -44,6 +44,11 @@ class StatusView:
     in_grace: bool = False
     footprint_in_lethal: bool = False
     lethal_depth_m: float = -1.0
+    situation: str = ''
+    degree: int = 0
+    possible_error_m: float = 0.0
+    clearance_m: float = -1.0
+    speed_limit: float = 0.0
     profile: str = ''
     last_event: str = ''
     checks: List[CheckView] = field(default_factory=list)
@@ -78,7 +83,18 @@ def status_view(result: StepResult, config: SupervisorConfig, profile: str) -> S
         fusion_level=result.fusion.level, trusted=trusted, in_grace=in_grace,
         footprint_in_lethal=safety is not None and safety.in_lethal,
         lethal_depth_m=-1.0 if safety is None else safety.depth_m,
-        profile=profile, last_event=result.last_event, checks=checks)
+        profile=profile, last_event=result.last_event, checks=checks, **_conduct_fields(result))
+
+
+def _conduct_fields(result: StepResult) -> dict:
+    conduct = result.conduct
+    if conduct is None:
+        return {}
+    return {
+        'situation': conduct.situation.value, 'degree': int(conduct.degree),
+        'possible_error_m': conduct.possible_error_m,
+        'clearance_m': -1.0 if conduct.clearance_m is None else conduct.clearance_m,
+        'speed_limit': conduct.speed_limit_mps}
 
 
 GATE_STATES = {
@@ -144,6 +160,10 @@ def localization_health(view: StatusView) -> Tuple[str, str, Dict[str, str]]:
         'profile': view.profile,
         'last_event': view.last_event,
     }
+    if view.situation:
+        values.update({
+            'situation': view.situation, 'degree': str(view.degree),
+            'clearance_m': f'{view.clearance_m:.2f}', 'speed_limit': f'{view.speed_limit:.2f}'})
     for check in view.checks:
         text = check.status.value
         if check.status != Status.UNKNOWN:
