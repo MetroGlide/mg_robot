@@ -116,12 +116,14 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# 起動の確かめは launch のログで行う (ros2 のコマンドは、並列に回すと discovery で固まり、起動済みでも無効になる)。
+# AMCL などの自己位置推定の lifecycle が active になり、EKF のプロセスが起動していれば準備済み
 wait_ready() {
+  local log="$1"
   local waited=0
   while [ "$waited" -lt "$READY_TIMEOUT_SEC" ]; do
-    # ros2 のコマンドは discovery で固まることがあるので、必ずタイムアウトをつける
-    if timeout 20 ros2 lifecycle get /amcl 2>/dev/null | grep -q "active" \
-       && timeout 20 ros2 node list 2>/dev/null | grep -q "ekf_global_node"; then
+    if grep -q "\[lifecycle_manager_localization\]: .*Managed nodes are active" "$log" 2>/dev/null \
+       && grep -q "\[ekf_node-[0-9]*\]: process started" "$log" 2>/dev/null; then
       return 0
     fi
     sleep 2
@@ -158,7 +160,7 @@ run_once() {
     > "$run_dir/launch.log" 2>&1 &
   LAUNCH_PID=$!
 
-  if ! wait_ready; then
+  if ! wait_ready "$run_dir/launch.log"; then
     echo "[replay] run $run/$RUNS: ${READY_TIMEOUT_SEC}秒以内にスタックが起動しませんでした (この試行は無効。$run_dir/launch.log)" >&2
     stop_group "$LAUNCH_PID"; LAUNCH_PID=""
     return 1
