@@ -45,17 +45,18 @@ AMCL が弱る区間のシナリオは、現実の弱り方 (人混み 5、横�
 
 ### 比べる構成
 
-異常パターンの評価は、`current` と `new` の 2 つの構成で同じシナリオを回して比べる。`supervisor` は、結果が説明できないときに、監督の基本設定のせいかを確かめるために使う。シミュレータでは `make scenario-test-all LOCALIZATION_CONFIG=<名前>` で選ぶ (中身は `make/test.mk`)。シナリオは、監視・プリセット・プロファイルを `stack_args` に書かない (書くと構成の選択より優先される)。
+異常パターンの評価は、`legacy` と `supervised` の 2 つの構成で同じシナリオを回して比べる。シミュレータでは `make scenario-test-all LOCALIZATION_CONFIG=<名前>` で選ぶ (中身は `make/test.mk`)。シナリオは、監視・プリセット・プロファイルを `stack_args` に書かない (書くと構成の選択より優先される)。
 
 | 名前 | 内容 |
 | :--- | :--- |
-| `current` | 実機で最後に走った構成 (タグ v2.1)。監視は `amcl_watchdog_node` だけ、プリセットなし |
-| `new` | AMCL のプリセット `robust` と監督 (監督ノードの中の門を使う。`LOCALIZATION_GATE`)、監督のプロファイル `robust_recovery`。起動の直後の姿勢も門が決める (GNSS による初期化ノードは起動しない)。ロバスト化の対策は、監督のプロファイルなどとしてここに足す。2026-11-25 より前の計測の `new` は、門なしで、初期化ノードの照合 (`LOCALIZATION_INITIALIZER_VERIFY`) を使っていた |
-| `supervisor` | launch の既定。監督 (基本設定)、プリセットなし |
+| `legacy` | 実機で最後に走った構成 (タグ v2.1)。監視は `amcl_watchdog_node` だけ、プリセットなし |
+| `supervised` | 最新の構成。AMCL のプリセット `robust` と監督 (監督ノードの中の門を使う。`LOCALIZATION_GATE`)、監督のプロファイル `robust_recovery`。起動の直後の姿勢も門が決める (GNSS による初期化ノードは起動しない)。ロバスト化の対策は、監督のプロファイルなどとしてここに足す |
+
+監督が判定するだけで何も操作しない形は、構成の名前を持たず、`supervised` に監督のプロファイル `notify_only` を重ねて作る (`LOCALIZATION_PROFILE=notify_only`)。2026-11-25 より前の記録の構成の名前は、`current` が `legacy`、`new` が `supervised` の前身 (2026-11-25 の統合より前は門なしで、初期化ノードの照合を使っていた)。
 
 シナリオは `anomaly` (対策の調整に使う) と `anomaly_holdout` (調整に使わず、調整した結果が場所・向き・大きさを変えても成り立つかを確かめる) のタグで分ける ([scenarios/README.md](../../mg_scenario_test/scenarios/README.md))。
 
-`current` は、v2.1 のコードそのものではなく、今のコードを v2.1 の構成で動かしたもの。v2.1 との主な違いは、走行側の BT の自己位置の確認と障害物の領域からの脱出 (`IsLocalizationHealthy`、`FindFreeStart`)、ホイールオドメトリの補正の跳びの扱いの修正、GNSS のブリッジの分散の倍率の受け取り (監督がいないと倍率は 1 のまま)。AMCL と EKF の params は同じ。
+`legacy` は、v2.1 のコードそのものではなく、今のコードを v2.1 の構成で動かしたもの。v2.1 との主な違いは、走行側の BT の自己位置の確認と障害物の領域からの脱出 (`IsLocalizationHealthy`、`FindFreeStart`)、ホイールオドメトリの補正の跳びの扱いの修正、GNSS のブリッジの分散の倍率の受け取り (監督がいないと倍率は 1 のまま)。AMCL と EKF の params は同じ。
 
 ### 今の構成での扱い
 
@@ -124,7 +125,7 @@ watchdog の構成は、AMCL の共分散が大きいときに GNSS で再初期
 
 ### 異常パターンのシナリオの合格の目安
 
-`anomaly`・`anomaly_holdout` のシナリオで、構成 `new` が満たす目安。対策前の基準 (2026-11-15、`current` と `new` を各 3 回) から決めた。結果の図は `make scenario-plot` で出す。
+`anomaly`・`anomaly_holdout` のシナリオで、構成 `supervised` が満たす目安。対策前の基準 (2026-11-15、`legacy` と `supervised` の前身を各 3 回) から決めた。結果の図は `make scenario-plot` で出す。
 
 | 指標 | 異常のシナリオ | 対照 (`anomaly_baseline`・`_gnss_building`・`_gnss_field`・`_odom_slip`) |
 | :--- | :--- | :--- |
@@ -134,7 +135,7 @@ watchdog の構成は、AMCL の共分散が大きいときに GNSS で再初期
 | 真値と 1 m 以上ずれたまま走った距離 | 3 m 以下 | 1 m 以下 |
 
 - 4 つを同時に、すべての回 (各シナリオ 3 回、段階の終わりは 5 回) で満たす。止まれば「ずれたまま走った距離」を、這えば「停止」を満たせるので、1 つだけでは満たしたとしない。
-- 異常のシナリオの 3 m は、対策前の `new` が異常に気づくまでに走る距離を上限に取った。対照の 1 m は、対策前の構成でも出る揺れの大きさ。
+- 異常のシナリオの 3 m は、対策前の `supervised` の前身が異常に気づくまでに走る距離を上限に取った。対照の 1 m は、対策前の構成でも出る揺れの大きさ。
 - 地図の食い違い (`anomaly_map_mismatch`) は、地図に頼る視点と頼らない視点を分けて扱う対策までは、記録だけにする。
 - 満たさないときは目安を緩めず、原因を切り分ける。
 
