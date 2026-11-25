@@ -254,7 +254,8 @@ class Supervisor:
         if self.gate is None:
             return self._supervise(snapshot)
         now = snapshot.stamp
-        if self._last is None or now >= self._next_supervise:
+        fresh = self._last is None or now >= self._next_supervise
+        if fresh:
             result = self._supervise(snapshot)
             # 門の周期の揺らぎで 1 周期遅れないよう、門の周期の半分だけ早めに許す
             self._next_supervise = now + self.config.period_sec - 0.5 * self.config.gate_period_sec
@@ -264,11 +265,15 @@ class Supervisor:
         gate_step = self.gate.step(snapshot, match, self._gate_distrust())
         self._apply_gate(now, result, gate_step)
         if self.conduct is not None:
-            result.conduct = self._update_conduct(now, gate_step)
+            result.conduct = self._update_conduct(now, gate_step, result, fresh)
         return result
 
-    def _update_conduct(self, now: float, gate_step: GateStep) -> Conduct:
-        """監督と門の状態から状況を決め、走り方を決める。復旧が無効 (通知だけ・判定だけ) なら、減速は出さない。"""
+    def _update_conduct(self, now: float, gate_step: GateStep, result: StepResult, fresh: bool) -> Conduct:
+        """監督と門の状態から状況を決め、走り方を決める。復旧が無効 (通知だけ・判定だけ) なら、減速は出さない。
+
+        正常に戻すのは、門が地図との照合で確かめ、その後の監督の新しい判定がどれも異常でないとき (地図が現場と食い違うと、
+        照合は誤った姿勢も確かめるので、GNSS などとの食い違いが残る間は戻さない)。
+        """
         cfg = self.conduct.config
         state = self.machine.state
         since = self.gate.since_confirmed_m()
@@ -285,7 +290,8 @@ class Supervisor:
         else:
             situation = Situation.NORMAL
         confirmed = any(event.name in ('pose_confirmed', 'gate_opened') for event in gate_step.events)
-        conduct = self.conduct.update(ConductInputs(now, situation, since, self._clearance, confirmed))
+        contradicted = any(e.status == Status.ANOMALY for e in result.evidences.values()) if fresh else None
+        conduct = self.conduct.update(ConductInputs(now, situation, since, self._clearance, confirmed, contradicted))
         if not self.config.machine.recovery_enabled:
             conduct = dataclasses.replace(conduct, speed_limit_mps=0.0)
         return conduct

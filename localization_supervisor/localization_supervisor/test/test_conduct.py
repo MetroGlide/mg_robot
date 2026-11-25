@@ -15,8 +15,8 @@ from test_supervisor_gate import RAW, Sim
 FOOTPRINT = [(0.4, 0.25), (0.4, -0.25), (-0.2, -0.3), (-0.2, 0.3)]
 
 
-def _step(planner, t, situation, since=0.0, clearance=0.5, confirmed=False):
-    return planner.update(ConductInputs(t, situation, since, clearance, confirmed))
+def _step(planner, t, situation, since=0.0, clearance=0.5, confirmed=False, contradicted=False):
+    return planner.update(ConductInputs(t, situation, since, clearance, confirmed, contradicted))
 
 
 def test_normal_never_slows_even_without_clearance():
@@ -49,6 +49,17 @@ def test_suspect_returns_to_normal_only_when_confirmed():
     _step(planner, 0.0, Situation.SUSPECT, clearance=0.4)
     assert _step(planner, 1.0, Situation.NORMAL, clearance=0.4).situation == Situation.SUSPECT
     assert _step(planner, 2.0, Situation.NORMAL, clearance=0.4, confirmed=True).situation == Situation.NORMAL
+
+
+def test_a_confirmation_is_cancelled_by_a_later_anomaly_and_waits_for_fresh_checks():
+    planner = ConductPlanner(ConductConfig())
+    _step(planner, 0.0, Situation.SUSPECT, clearance=0.4)
+    # 確かめた周期に新しい判定がなければ待ち、次の新しい判定に異常があれば取り消す
+    assert _step(planner, 1.0, Situation.NORMAL, confirmed=True, contradicted=None).situation == Situation.SUSPECT
+    assert _step(planner, 2.0, Situation.NORMAL, contradicted=True).situation == Situation.SUSPECT
+    assert _step(planner, 3.0, Situation.NORMAL).situation == Situation.SUSPECT
+    _step(planner, 4.0, Situation.NORMAL, confirmed=True, contradicted=None)
+    assert _step(planner, 5.0, Situation.NORMAL).situation == Situation.NORMAL
 
 
 def test_degree_rises_at_once_and_lowers_after_the_hold():
@@ -112,6 +123,17 @@ def test_supervisor_slows_while_the_gate_is_closed_and_not_after_it_confirms():
     slowed = [r for r in results if r.conduct.action == Action.SLOW]
     assert slowed and slowed[0].conduct.situation in (Situation.SUSPECT, Situation.UNDECIDED)
     assert results[-1].conduct.situation == Situation.NORMAL and results[-1].conduct.speed_limit_mps == 0.0
+
+
+def test_a_confirmation_while_gnss_still_disagrees_does_not_return_to_normal():
+    """地図との照合で確かめても、GNSS との食い違いが残る間は正常に戻らない (地図と現場が食い違うと、照合は誤った姿勢も
+    確かめるため)。"""
+    sim = Sim(_raw_with_conduct())
+    sim.run(18.0)
+    sim.gnss_offset = (0.0, 2.5)
+    results = sim.run(10.0)
+    assert sim.events('gate_opened') or sim.events('pose_confirmed')
+    assert results[-1].conduct.situation != Situation.NORMAL
 
 
 def test_supervisor_without_recovery_does_not_slow():

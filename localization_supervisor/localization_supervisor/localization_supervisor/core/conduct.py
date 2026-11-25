@@ -75,6 +75,8 @@ class ConductInputs:
     clearance_m: Optional[float]
     # 地図との照合で確かめた周期か (疑いから戻す条件)
     confirmed: bool = False
+    # 新しい判定の結果に異常があるか (None はこの周期に新しい判定がない)。確かめた後に異常があれば、確かめを取り消す
+    contradicted: Optional[bool] = None
 
 
 @dataclass
@@ -99,6 +101,8 @@ class ConductPlanner:
         self._situation = Situation.UNINITIALIZED
         self._degree = Degree.NONE
         self._lighter_since: Optional[float] = None
+        # 疑いの後に確かめ、その後の判定に異常がない
+        self._confirmed = False
 
     @property
     def situation(self) -> Situation:
@@ -120,11 +124,20 @@ class ConductPlanner:
         return Conduct(situation, degree, error, inputs.clearance_m, action, speed)
 
     def _next_situation(self, inputs: ConductInputs) -> Situation:
-        """重い状況へはすぐに移る。疑い・見えないから正常へは、確かめたときだけ戻る。"""
+        """重い状況へはすぐに移る。疑い・見えないから正常へは、確かめ、その後の判定に異常がないときだけ戻る。"""
         wanted = inputs.situation
         current = self._situation
-        if wanted == Situation.NORMAL and current in (Situation.SUSPECT, Situation.UNOBSERVED) and not inputs.confirmed:
-            return current
+        if wanted != Situation.NORMAL and wanted != current:
+            self._confirmed = False
+        if inputs.confirmed:
+            self._confirmed = True
+        if inputs.contradicted:
+            self._confirmed = False
+        if wanted == Situation.NORMAL and current in (Situation.SUSPECT, Situation.UNOBSERVED):
+            if not self._confirmed or inputs.contradicted is None:
+                return current
+        if wanted == Situation.NORMAL:
+            self._confirmed = False
         self._situation = wanted
         return wanted
 
