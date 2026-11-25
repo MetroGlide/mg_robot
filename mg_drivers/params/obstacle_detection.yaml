@@ -23,13 +23,16 @@ obstacle_detection_3d_node:
     # x・y は、コストマップの STVL の消去の錐台 (nav2_params.yaml の sensor_frame・FOV・max_z) を
     # 含むように取る。錐台が ROI からはみ出すと、検出していない場所の障害物を消してしまう。
     # z_min は地面の点を外す高さ（地面ノイズの余裕）。検出できる最小の高さは z_min + delta_z_threshold。
-    # z_max はロボットが接触し得る高さに合わせる（これより高い点は無視される）
+    # z_max は、STVL の錐台の上端 (手前の面) 以下にする。錐台より上でマークした点は消去されず、
+    # 時間切れまで残る (立ち去った人の上半身などが跡として残り、走行の再開が遅れる)。
+    # これより高い物は、地面から立ち上がる部分で検出する。地面から浮いた物 (この高さと上 LiDAR の面の間だけに
+    # ある物) は、どちらにも見えない
     cropbox_x_min: 0.0
     cropbox_x_max: 3.0
     cropbox_y_min: -1.5
     cropbox_y_max: 1.5
     cropbox_z_min: 0.05
-    cropbox_z_max: 1.15
+    cropbox_z_max: 0.35
 
     # グリッドの一辺 [m]。大きいほど速く、位置分解能は粗くなる
     grid_size: 0.05

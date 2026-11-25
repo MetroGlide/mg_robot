@@ -27,7 +27,7 @@ struct ObstacleDetectionParams
   double cropbox_y_min = -1.5;
   double cropbox_y_max = 1.5;
   double cropbox_z_min = 0.05;
-  double cropbox_z_max = 1.15;
+  double cropbox_z_max = 0.35;
 
   // 2.5D ΔZ 評価
   double grid_size = 0.05;

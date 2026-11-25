@@ -347,3 +347,18 @@ def test_local_stvl_remembers_obstacles_while_the_controller_waits(params):
     assert local['decay_model'] == 0
     assert local['voxel_decay'] > controller['failure_tolerance']
     assert local['voxel_decay'] <= global_['voxel_decay']
+
+
+@pytest.mark.parametrize('costmap', sorted(STVL_SOURCES))
+def test_detection_roi_top_is_below_the_stvl_frustum(params, costmap):
+    # 錐台より上でマークした点は消去されず、時間切れまで残る (立ち去った人の跡で再開が遅れる)。
+    # 錐台の上の面は遠いほど高いので、手前の面の上端で比べる
+    source = _stvl_source(params, costmap)
+    with open(OBSTACLE_DETECTION, encoding='utf-8') as f:
+        roi = yaml.safe_load(f)['obstacle_detection_3d_node']['ros__parameters']
+    position, rotation = _camera_pose_in_base_footprint()
+    near_top = [c for c in _frustum_corners(source)[:4] if c[1] < 0.0]
+    heights = [position[2] + _apply(rotation, _optical_to_link(c))[2] for c in near_top]
+    # 光学座標系の原点とカメラの座標系の原点のずれ (数 cm) の余裕
+    margin = 0.02
+    assert roi['cropbox_z_max'] <= min(heights) - margin

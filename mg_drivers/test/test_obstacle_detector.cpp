@@ -117,7 +117,8 @@ TEST(ObstacleDetector, PillarIsDetectedWithBoundingBox)
   EXPECT_NEAR(c.max_y, 0.10f, 0.05f);
   // ROI の下限より下の点 (地面と柱の根元) は集計しない
   EXPECT_NEAR(c.min_z, defaultParams().cropbox_z_min, 0.05f);
-  EXPECT_NEAR(c.max_z, 0.5f, 0.05f);
+  // ROI の上限より上の点も集計しない
+  EXPECT_NEAR(c.max_z, defaultParams().cropbox_z_max, 0.05f);
   EXPECT_EQ(static_cast<size_t>(c.num_points), detector.obstacle_points().size());
 }
 
@@ -228,7 +229,7 @@ TEST(ObstacleDetector, SensorTransformIsApplied)
 
   ASSERT_EQ(detector.clusters().size(), 1u);
   EXPECT_NEAR(detector.clusters()[0].min_x, 1.5f, 0.03f);
-  EXPECT_NEAR(detector.clusters()[0].max_z, 0.5f, 0.03f);
+  EXPECT_NEAR(detector.clusters()[0].max_z, defaultParams().cropbox_z_max, 0.05f);
 }
 
 TEST(ObstacleDetector, IsolatedSingleCellNoiseIsRemoved)
@@ -295,7 +296,7 @@ TEST(ObstacleDetector, OutlierTrimIgnoresSingleFlyingPixel)
   CloudBuilder cloud;
   // ROI 内の平らな面 (台の上面) に 1 点だけ高い点（フライングピクセル）
   cloud.addPlane(1.00f, 1.05f, 0.0f, 0.05f, 0.1f, 0.01f);
-  cloud.add(1.02f, 0.02f, 0.6f);
+  cloud.add(1.02f, 0.02f, 0.3f);
 
   auto base_params = defaultParams();
   base_params.min_cluster_cells = 1;
