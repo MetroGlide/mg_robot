@@ -337,3 +337,13 @@ def test_stvl_frustum_is_within_the_markable_region(params, costmap):
         x, y, _ = [p + d for p, d in zip(position, _apply(rotation, _optical_to_link(corner)))]
         assert roi['cropbox_x_min'] + margin <= x <= roi['cropbox_x_max'] - margin
         assert roi['cropbox_y_min'] + margin <= y <= roi['cropbox_y_max'] - margin
+
+
+def test_local_stvl_remembers_obstacles_while_the_controller_waits(params):
+    # 低い物の手前で止まると、物がカメラの死角に入る。RPP が待つ間に忘れると、空いたと判定して接触する
+    local = params['local_costmap']['local_costmap']['ros__parameters']['obstacle_stvl_layer']
+    global_ = params['global_costmap']['global_costmap']['ros__parameters']['obstacle_stvl_layer']
+    controller = _ros_params(params, 'controller_server')
+    assert local['decay_model'] == 0
+    assert local['voxel_decay'] > controller['failure_tolerance']
+    assert local['voxel_decay'] <= global_['voxel_decay']

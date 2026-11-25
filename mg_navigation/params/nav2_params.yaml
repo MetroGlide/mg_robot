@@ -294,7 +294,10 @@ local_costmap:
       obstacle_stvl_layer:
         plugin: "spatio_temporal_voxel_layer/SpatioTemporalVoxelLayer"
         enabled: True
-        voxel_decay: 5.0
+        # 錐台の外 (横・後ろ・バンパー直前の死角) の障害物を覚えている時間 [s]。見えている範囲は錐台で消える。
+        # 低い物の手前で止まって物が死角に入っても、RPP の待ち (failure_tolerance) の間は忘れない長さにする。
+        # global の voxel_decay 以下 (test_nav2_params_consistency.py が検査する)
+        voxel_decay: 15.0
         decay_model: 0
         voxel_size: 0.05
         track_unknown_space: True
