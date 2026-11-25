@@ -23,7 +23,8 @@
 | `residuals` | 2 つの姿勢の情報源の残差から求める、分散の倍率 (下記) |
 | `grace.startup_sec`、`grace.after_recovery_sec` | 起動直後・復旧直後に総合しない時間 [s] |
 | `grace.after_reset_sec` | 外からの再初期化・地図の切り替えの後に総合しない時間 [s] |
-| `external_reinit.topics` | 届いたら外からの再初期化として扱うトピック (`geometry_msgs/PoseWithCovarianceStamped`。ノード)。プロファイルで減らせる |
+| `external_reinit.topics` | 届いたら外からの再初期化として扱うトピック (`geometry_msgs/PoseWithCovarianceStamped`。ノード)。プロファイルで減らせる。門を使うときは見ない |
+| `gate` | 門 (下記)。ノードの `use_gate` で有効にする |
 | `events.prefix` | イベントの名前の前置き (`<prefix>.state_changed`) |
 | `events.sink` | イベントの出力のプラグイン `{type, パラメータ...}` ([plugins.md](./plugins.md#イベントの出力-eventsink))。書かなければ `logfmt` |
 | `output.status_topic`、`output.diagnostic_name`、`output.hardware_id` | 状態のメッセージのトピック、診断の名前とハードウェア ID (ノード) |
@@ -116,7 +117,7 @@ detectors:
 | `scorers` | 候補を評価するもの (下記) |
 | `selection` | 選び方 (下記) |
 | `observe` | 観測を増やす指示と、撒き直しの条件 (下記)。書かなければ、指示を出さず、撒き直しも制限しない |
-| `resetters` | 選んだ姿勢の送り先 `[{type, name?, params?}, ...]` ([plugins.md](./plugins.md#再初期化の送り先-poseresetter))。ノードが使う。オフライン評価は使わない |
+| `resetters` | 選んだ姿勢の送り先 `[{type, name?, role?, params?}, ...]` ([plugins.md](./plugins.md#再初期化の送り先-poseresetter))。ノードが使う。オフライン評価は使わない。`role` は `estimator` (推定器。既定) か `fused` (融合)。門を使うときは両方の役が要る (門が推定器を採って融合だけを直すときは、`fused` だけに送る) |
 | `actuators` | 対処 `[{type, name?, params?}, ...]` ([plugins.md](./plugins.md#対処-actuator))。ノードが使う。`name` を書かなければ `type` が名前になる |
 
 ```yaml
@@ -196,6 +197,20 @@ residuals:
 
 残差から求めた倍率は `StepResult.residuals` に、受け取る側に出す倍率 (a を切り離しているあいだは上限) は `StepResult.applied_scales` に出る。出力は対処 `variance_scale` が配信し、受け取る側 (例: GNSS のブリッジ) が a の分散にかける ([plugins.md](./plugins.md#対処-actuator))。
 
+## gate
+
+門 ([motion_gate.md](./motion_gate.md)、監督との分担は [design.md](./design.md#門を入れたとき))。ノードのパラメータ `use_gate` で有効にする (`enabled` は書かない。オフライン評価は使わない)。プロファイルでは変えられない。
+
+| キー | 内容 |
+| :--- | :--- |
+| `period_sec` | 門の周期 [s]。`period_sec` 以下にする |
+| `settings` | 門をかける推定器・融合の結果・動き・地図とスキャン・GNSS の情報源の名前と、候補の探す範囲、確かめる道のり、置き直しの後の猶予、戻し方、閉じたまま決まらないときの上限、全周の照合に使う GNSS の精度の条件 (`core/motion_gate.py` の `GateSettings`) |
+| `closers` | 閉じる理由の部品 (門のノードの設定と同じ書き方)。名前は `detectors` のインスタンスと分ける (状態のメッセージに両方を並べる) |
+| `map_match` | 照合で決める規則 (`core/map_match.py` の `MapMatchConfig`) |
+| `scan_buffer` | 照合に使う、直近のスキャンの重ね方 |
+| `initial_search` | 確かめた姿勢がない間に、GNSS の周りを向きの全周で照合する設定 (`core/initial_search.py` の `InitialSearchConfig`)。書かなければしない。`settings.gnss` が要る |
+| `manual_pose_topic` | 手動の初期姿勢のトピック (空なら受けない) |
+
 ## profiles
 
 ```yaml
@@ -203,6 +218,6 @@ profiles:
   <名前>: profiles/<名前>.yaml   # または、その場に辞書で書く
 ```
 
-プロファイルのファイルは、基本設定と同じキーで、変えるところだけを書く。辞書は再帰的に重ね、リストや値は置き換える。`type` が変わる辞書 (別の総合の方式など) は、重ねずに置き換える。`version` と `profiles` は書けない。
+プロファイルのファイルは、基本設定と同じキーで、変えるところだけを書く。辞書は再帰的に重ね、リストや値は置き換える。`type` が変わる辞書 (別の総合の方式など) は、重ねずに置き換える。`version`・`profiles`・`gate` は書けない。
 使うときは、カンマで区切って複数を指定できる (例: `a,b`)。左から順に重ねるので、同じキーは右のプロファイルの値になる。
 ノードは、入力のアダプタを起動時に基本設定で作るので、`sources` を変えるプロファイルは起動時に落とす。

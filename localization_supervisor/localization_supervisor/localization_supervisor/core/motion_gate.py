@@ -5,6 +5,9 @@
 
 周期ごとに step(snapshot, result) を呼ぶ。照合が要るときは GateStep.request を返すので、呼び出し側が
 MapMatcher.decide で照合して (重いので別のスレッドで)、次の周期の step に result として渡す。
+
+監督の部品として使うときは、監督が疑った情報源を step の distrust に渡し (GNSS を使う閉じる理由と候補を使わない)、
+監督が推定器の異常を確かめたら force_close で閉じさせる (候補を足せる。決まるまで止めて照合する)。
 """
 import enum
 import math
@@ -14,14 +17,19 @@ from typing import Any, Dict, List, Mapping, Optional, Tuple
 import numpy as np
 
 from .geometry import Pose2, compose, inverse, separated, wrap_angle
-from .grid import OccupancyMap
+from .grid import OccupancyMap, scan_points_in_map
+from .initial_search import InitialSearchConfig, InitialSearchResult, search_initial_pose
 from .interfaces import Detector, Evidence, SourceKind, Status
-from .map_match import CandidatePose, MapMatchConfig, MatchDecision
+from .map_match import CandidatePose, MapMatchConfig, MapMatcher, MatchDecision
 from .scan_buffer import ScanBuffer, ScanBufferConfig
 from .snapshot import DistanceFieldCache, Snapshot
 
 CONTINUATION = 'continuation'
 MANUAL = 'manual'
+# 起動の直後と地図の切り替えの後に、GNSS の周りを向きの全周で照合して見つけた姿勢の候補
+INITIAL = 'initial_search'
+# 全周の照合に使う、1 回分のスキャンの点の数の上限
+INITIAL_MAX_POINTS = 360
 
 
 class GateState(enum.Enum):
@@ -75,6 +83,9 @@ class GateSettings:
     # 置き直す姿勢の標準偏差
     reset_std_m: float = 0.1
     reset_std_yaw_rad: float = 0.05
+    # 全周の照合 (設定の initial_search があるとき) に使う GNSS の申告の精度の上限と、続けて満たす標本の数
+    initial_gnss_max_std_m: float = 5.0
+    initial_gnss_consecutive: int = 2
 
 
 @dataclass
@@ -98,6 +109,17 @@ class MotionGateConfig:
     map_match: MapMatchConfig
     scan_buffer: ScanBufferConfig
     kinds: Dict[str, SourceKind] = field(default_factory=dict)
+    # 確かめた姿勢がない間 (起動の直後、地図の切り替えの後) に、GNSS の周りを向きの全周で照合する (None ならしない)
+    initial_search: Optional[InitialSearchConfig] = None
+
+
+@dataclass
+class InitialSearch:
+    """全周の照合の依頼。center (GNSS の位置) と points (1 回分のスキャン、base の座標) は、動きが motion の時刻のもの。"""
+    center: Pose2
+    points: np.ndarray
+    motion: Pose2
+    config: InitialSearchConfig
 
 
 @dataclass
@@ -112,9 +134,28 @@ class MatchRequest:
     points: np.ndarray
     occupancy: OccupancyMap
     fields: DistanceFieldCache
+    initial: Optional[InitialSearch] = None
+    # 全周の照合の結果 (run_match が入れる)
+    initial_result: Optional[InitialSearchResult] = None
 
     def field_for(self, x: float, y: float, radius: float):
         return self.fields.around(self.occupancy, x, y, radius)
+
+
+def run_match(matcher: MapMatcher, request: MatchRequest) -> MatchDecision:
+    """照合の依頼を処理する (重いので、周期の処理と別のスレッドで呼ぶ)。
+
+    全周の照合の依頼があれば先に行い、はっきり合った姿勢を候補 INITIAL として足してから、ほかの候補と同じ規則で決める。
+    """
+    candidates = dict(request.candidates)
+    initial = request.initial
+    if initial is not None:
+        result = search_initial_pose(request.occupancy, initial.points, initial.center, initial.config)
+        request.initial_result = result
+        if result.reason == 'matched':
+            candidates[INITIAL] = CandidatePose(
+                _propagate(result.pose, initial.motion, request.motion), result.std_m, result.std_yaw_rad)
+    return matcher.decide(request.field_for, request.points, candidates)
 
 
 @dataclass
@@ -190,6 +231,17 @@ class MotionGate:
         self._manual: Optional[Pose2] = None
         self._map_version: Optional[int] = None
         self._last_scan_stamp: Optional[float] = None
+        self._distrust: frozenset = frozenset()
+        # 外から足された候補 (force_close。次に閉じたまま照合するときに一度だけ使う) と、出していないイベント
+        self._extra: Dict[str, CandidatePose] = {}
+        self._pending: List[GateEvent] = []
+        # 外から閉じさせた (融合の結果も汚れているおそれがある) ので、決まるまで止めて照合する
+        self._escalated = False
+        # 全周の照合に使える GNSS の標本が続いた数と、最後に数えた標本の時刻。GNSS の位置を広い共分散で出したか
+        # (最初に確かめるまでに 1 回だけ。推定器に広く探させる)
+        self._gnss_good = 0
+        self._gnss_stamp: Optional[float] = None
+        self._fallback_done = False
 
     # ------------------------------------------------------------------ 外から
 
@@ -198,12 +250,35 @@ class MotionGate:
         self._manual = pose
         self._generation += 1
 
+    def force_close(self, t: float, reason: str, extra: Optional[Mapping[str, CandidatePose]] = None) -> None:
+        """外 (監督) が推定器の異常を確かめた。門を閉じ、extra を候補に足して照合し直す。
+
+        閉じた理由の部品より遅く気づくので、融合の結果も推定器に引かれているおそれがある。そのため、決まらない間は
+        閉じたまま決まらないときの上限を超えたものとして扱い、止めて照合する (止める時間と、解いて走る道のりは同じ上限)。
+        確かめる前 (起動の直後など) と、止めてから置き直す途中は、そのまま続ける。
+        """
+        self._extra = dict(extra or {})
+        if self.state in (GateState.UNCONFIRMED, GateState.CORRECTING):
+            return
+        self._escalated = True
+        if self.state == GateState.OPEN:
+            self.state = GateState.CLOSED
+            self._closed_since = (t, self._odometer)
+            self._next_undecided_hold = -math.inf
+            self._pending.append(GateEvent('gate_closed', 'warn', {'reason': reason}))
+        self._next_match = min(self._next_match, t)
+        self._generation += 1
+
     # ------------------------------------------------------------------ 周期
 
-    def step(self, snapshot: Snapshot, result: Optional[Tuple[MatchRequest, MatchDecision]] = None) -> GateStep:
+    def step(self, snapshot: Snapshot, result: Optional[Tuple[MatchRequest, MatchDecision]] = None,
+             distrust: frozenset = frozenset()) -> GateStep:
+        """distrust の情報源を使う閉じる理由の部品は閉じず、その情報源の候補は使わない。"""
         s = self.settings
         t = snapshot.stamp
         out = GateStep(self.state, self.state != GateState.CLOSED and self.state != GateState.CORRECTING)
+        out.events, self._pending = self._pending, []
+        self._distrust = frozenset(distrust)
         if result is not None:
             self._busy = False
         motion = snapshot.motion_at(s.motion, t)
@@ -212,6 +287,7 @@ class MotionGate:
         self._advance(t, motion)
         self._watch_map(snapshot, out)
         self._buffer_scan(snapshot)
+        self._count_initial_gnss(snapshot)
         out.evidences = {c.name: c.detector.evaluate(snapshot) for c in self.config.closers}
         closing = self._closing(t, out.evidences)
         out.closing = closing
@@ -279,11 +355,44 @@ class MotionGate:
         if motion is not None:
             self._buffer.add(scan, motion)
 
+    def _count_initial_gnss(self, snapshot: Snapshot) -> None:
+        """全周の照合に使える (申告の精度が上限以下の) GNSS の標本が、続けていくつ届いたか。"""
+        s = self.settings
+        if self.config.initial_search is None or not s.gnss:
+            return
+        sample = snapshot.pose(s.gnss, s.gnss_max_age_sec)
+        if sample is None or sample.stamp == self._gnss_stamp:
+            return
+        self._gnss_stamp = sample.stamp
+        sigma = math.sqrt(max(float(sample.cov[0][0]), float(sample.cov[1][1]), 0.0))
+        self._gnss_good = self._gnss_good + 1 if sigma <= s.initial_gnss_max_std_m else 0
+
+    def _initial_search(self, snapshot: Snapshot) -> Optional[InitialSearch]:
+        """全周の照合の依頼 (GNSS の精度が続けて足り、GNSS を疑っておらず、スキャンがあるとき)。"""
+        s = self.settings
+        cfg = self.config.initial_search
+        if cfg is None or s.gnss in self._distrust or self._gnss_good < s.initial_gnss_consecutive:
+            return None
+        gnss = snapshot.pose(s.gnss, s.gnss_max_age_sec)
+        scan = snapshot.reference(s.reference).scan
+        if gnss is None or scan is None:
+            return None
+        motion = snapshot.motion_at(s.motion, scan.stamp)
+        if motion is None:
+            return None
+        points = scan_points_in_map(
+            np.asarray(scan.ranges, dtype=float), scan.angle_min, scan.angle_increment, scan.range_min,
+            scan.range_max, (0.0, 0.0, 0.0), scan.sensor_pose or (0.0, 0.0, 0.0), INITIAL_MAX_POINTS)
+        # GNSS の時刻からスキャンの時刻へ、動きで進める (向きは全周を探すので、GNSS の向きのまま使う)
+        gnss_motion = snapshot.motion_at(s.motion, gnss.stamp)
+        center = gnss.pose if gnss_motion is None else _propagate(gnss.pose, gnss_motion, motion)
+        return InitialSearch(center, points, motion, cfg)
+
     def _closing(self, t: float, evidences: Mapping[str, Evidence]) -> List[str]:
         """異常が close_after_sec 続いた閉じる理由の部品。"""
         closing = []
         for closer in self.config.closers:
-            if evidences[closer.name].status != Status.ANOMALY:
+            if evidences[closer.name].status != Status.ANOMALY or self._distrust & set(closer.sources.values()):
                 self._anomaly_since.pop(closer.name, None)
                 continue
             since = self._anomaly_since.setdefault(closer.name, t)
@@ -307,6 +416,9 @@ class MotionGate:
         self._grace_until = (t + self.settings.grace_after_reset_sec,
                              self._odometer + self.settings.grace_after_reset_m)
         self._anomaly_since.clear()
+        self._escalated = False
+        self._extra = {}
+        self._fallback_done = True
         if self._undecided_hold_since is not None:
             out.events.append(GateEvent('hold', 'info', {'active': False, 'reason': 'undecided'}))
         self._undecided_hold_since = None
@@ -360,7 +472,7 @@ class MotionGate:
                 out.events.append(GateEvent('hold', 'warn', {'active': False, 'reason': 'undecided'}))
             return
         since_t, since_odometer = self._closed_since
-        over = t - since_t >= s.max_closed_sec or self._odometer - since_odometer >= s.max_closed_m
+        over = self._escalated or t - since_t >= s.max_closed_sec or self._odometer - since_odometer >= s.max_closed_m
         if over and self._odometer >= self._next_undecided_hold:
             self._undecided_hold_since = t
             self._next_match = min(self._next_match, t)
@@ -395,7 +507,8 @@ class MotionGate:
         if occupancy is None or not len(self._buffer):
             return None
         candidates = self._candidates(snapshot, motion, reason)
-        if not candidates:
+        initial = self._initial_search(snapshot) if reason == 'startup' else None
+        if not candidates and initial is None:
             return None
         if reason == MANUAL:
             self._manual = None
@@ -403,7 +516,7 @@ class MotionGate:
             self._last_confirm_odometer = self._odometer
         points = self._buffer.points_in((0.0, 0.0, 0.0), motion)
         return MatchRequest(self._generation, reason, t, motion, self._odometer, candidates, points, occupancy,
-                            self._fields)
+                            self._fields, initial)
 
     def _candidates(self, snapshot: Snapshot, motion: Pose2, reason: str) -> Dict[str, CandidatePose]:
         s = self.settings
@@ -418,6 +531,7 @@ class MotionGate:
                 candidates[name] = CandidatePose(pose, *narrow)
         if reason == 'startup':
             # 推定器が出す前に決めると、収束する前の推定器を、融合の結果を照合した姿勢へ置き直してしまう
+            # (全周の照合があるときは、その結果だけで決められる)
             if s.estimator not in candidates:
                 return {}
             # 推定器と融合の結果がともにずれた起動 (動きながらの起動など) でも、健全な GNSS の周りで正しい姿勢を探す
@@ -436,6 +550,8 @@ class MotionGate:
                 continuation_yaw)
         if reason == 'confirm':
             return candidates
+        for name, extra in self._extra.items():
+            candidates.setdefault(name, extra)
         yaw_from = candidates.get(CONTINUATION) or candidates.get(s.fused) or candidates.get(s.estimator)
         self._add_gnss(snapshot, candidates, yaw_from,
                        continuation_yaw if continuation_yaw is not None else c.cap_yaw_rad)
@@ -445,7 +561,7 @@ class MotionGate:
                   yaw_from: Optional[CandidatePose], yaw_range: float) -> None:
         """申告の精度が良い GNSS の位置を候補に足す。向きは yaw_from から借りる。"""
         s = self.settings
-        if not s.gnss or yaw_from is None:
+        if not s.gnss or yaw_from is None or s.gnss in self._distrust:
             return
         gnss = snapshot.pose_aligned(s.gnss, s.gnss_max_age_sec)
         if gnss is None:
@@ -479,6 +595,9 @@ class MotionGate:
             self._correction = None
             self._reset(t, now(pose), 'all', MANUAL, out, motion, fused)
             return
+        if request.reason == 'startup' and self.config.initial_search is not None:
+            self._apply_startup(request, decision, t, motion, fused, out)
+            return
         if decision.best is None:
             if request.reason != 'confirm':
                 self._next_match = t + s.retry_sec
@@ -503,3 +622,42 @@ class MotionGate:
             self._open(t, 'startup', out, target, motion)
             return
         self._correct(t, target, 'none' if adopted else 'all', out, motion, fused)
+
+    def _apply_startup(self, request: MatchRequest, decision: MatchDecision, t: float, motion: Pose2,
+                       fused: Optional[Pose2], out: GateStep) -> None:
+        """全周の照合があるときの、確かめた姿勢がない間の決め方。
+
+        - 推定器と同じ仮説に決まれば、置き直さずに開ける (収束の途中を邪魔しない)
+        - 別の仮説に置き直すのは、全周の照合の姿勢と同じ仮説に決まったときだけ (狭い候補だけで、低い一致率の
+          別の仮説を選ばない)。まだ走行に使う姿勢が定まっていないので、止まるのを待たずにその場で置き直す
+        - 全周の照合が合わず、まだ一度も確かめていなければ、GNSS の位置を広い共分散で 1 回だけ出す
+          (推定器に広く探させる。確かめていないので、確かめた姿勢がない状態のまま)
+        """
+        s = self.settings
+        result = request.initial_result
+        if result is not None:
+            out.events.append(GateEvent('initial_search', 'info' if result.reason == 'matched' else 'warn', {
+                'result': result.reason, 'ratio': round(result.ratio, 3), 'margin': round(result.margin, 3),
+                **_pose_fields(result.pose), **_pose_fields(request.initial.center, 'gnss_')}))
+        if self.state != GateState.UNCONFIRMED:
+            return
+
+        def now(pose: Pose2) -> Pose2:
+            return _propagate(pose, request.motion, motion)
+
+        if decision.best is not None and s.estimator in decision.same:
+            given = request.candidates[s.estimator].pose if s.estimator in decision.agree else decision.pose
+            self._open(t, 'startup', out, now(given), motion)
+            return
+        if decision.best is not None and INITIAL in decision.same:
+            self._reset(t, now(decision.pose), 'all', 'startup', out, motion, None)
+            return
+        self._next_match = t + s.retry_sec
+        if result is None or result.reason == 'matched' or self._fallback_done:
+            return
+        self._fallback_done = True
+        cfg = self.config.initial_search
+        pose = now(_propagate(request.initial.center, request.initial.motion, request.motion))
+        out.reset = ResetCommand(pose, np.diag([cfg.fallback_std_m ** 2, cfg.fallback_std_m ** 2,
+                                                cfg.fallback_std_yaw_rad ** 2]), 'all')
+        out.events.append(GateEvent('pose_reset', 'warn', {'how': 'fallback', 'targets': 'all', **_pose_fields(pose)}))

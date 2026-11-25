@@ -100,8 +100,8 @@ def _candidate():
     return Candidate((1.0, 2.0, 0.5), cov, 'gnss')
 
 
-def _result(hold=False, blame='', directives=()):
-    return SimpleNamespace(hold_requested=hold, blame=blame, directives=list(directives))
+def _result(hold=False, blame='', directives=(), gate=None):
+    return SimpleNamespace(hold_requested=hold, blame=blame, directives=list(directives), gate=gate)
 
 
 # ---------------------------------------------------------------- 自分のメッセージの目印

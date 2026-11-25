@@ -9,10 +9,14 @@ import numpy as np
 import pytest
 
 from localization_supervisor.core.geometry import compose
+import dataclasses
+
 from localization_supervisor.core.grid import scan_points_in_map
+from localization_supervisor.core.initial_search import InitialSearchConfig
 from localization_supervisor.core.interfaces import MotionSample, PoseSample
 from localization_supervisor.core.map_match import CandidatePose, MapMatchConfig, MapMatcher
-from localization_supervisor.core.motion_gate import CONTINUATION, MANUAL, GateState, MotionGate
+from localization_supervisor.core.motion_gate import (
+    CONTINUATION, INITIAL, MANUAL, GateState, MotionGate, run_match)
 from localization_supervisor.core.motion_gate_config import parse_gate_config
 from localization_supervisor.core.plugins import ConfigError
 from localization_supervisor.core.snapshot import DistanceFieldCache, SampleStore
@@ -81,6 +85,7 @@ class Sim:
         self.amcl_shift = (0.0, 0.0)
         self.blind = False
         self.pending = None
+        self.distrust = frozenset()
         self.steps = []
 
     def amcl(self):
@@ -104,11 +109,10 @@ class Sim:
         if self.blind:
             scan.ranges[:] = np.inf
         self.store.set_scan('map_scan', scan)
-        step = self.gate.step(self.store.snapshot(t), self.pending)
+        step = self.gate.step(self.store.snapshot(t), self.pending, self.distrust)
         self.pending = None
         if step.request is not None:
-            self.pending = (step.request, self.matcher.decide(
-                step.request.field_for, step.request.points, step.request.candidates))
+            self.pending = (step.request, run_match(self.matcher, step.request))
         if step.reset is not None:
             rel = _relative(self.true, step.reset.pose)
             self.ekf_offset = rel
@@ -199,6 +203,76 @@ def test_startup_finds_the_pose_around_gnss_when_estimator_and_fused_are_off():
     assert sim.events('pose_reset')
     error_xy, error_yaw = _error(sim)
     assert error_xy < 0.3 and error_yaw < 0.1
+
+
+def _searching(**gate):
+    """全周の照合 (initial_search) を使う門。"""
+    sim = Sim(**gate)
+    sim.gate = MotionGate(dataclasses.replace(sim.config.gate, initial_search=InitialSearchConfig()))
+    return sim
+
+
+def test_startup_search_resets_at_once_when_estimator_and_fused_are_off():
+    """推定器と融合の結果がともにずれた起動では、全周の照合と同じ仮説に決まり、止まるのを待たずに置き直す。"""
+    sim = _searching()
+    sim.amcl_offset = (3.0, 0.0, 1.0)
+    sim.ekf_offset = (3.0, 0.0, 1.0)
+    sim.run(4.0)
+    searched = sim.events('initial_search')
+    assert searched and searched[-1].fields['result'] == 'matched'
+    resets = sim.events('pose_reset')
+    assert [r.fields['how'] for r in resets] == ['startup']
+    assert not any(s.hold for s in sim.steps)
+    assert sim.gate.state == GateState.OPEN
+    assert _error(sim)[0] < 0.3
+
+
+def test_startup_search_keeps_a_correct_estimator():
+    sim = _searching()
+    sim.run(4.0)
+    assert sim.events('gate_opened')[0].fields['how'] == 'startup'
+    assert not sim.events('pose_reset')
+
+
+def test_startup_search_decides_without_the_estimator():
+    """推定器がまだ出していなくても、全周の照合で決めて置き直す (初期化ノードの代わり)。最初の照合が決まらなければ
+    (重ねたスキャンが少ない起動の直後など)、GNSS の位置を広い共分散で出してから、決まったときに置き直す。"""
+    sim = _searching()
+    sim.store.add_pose = _skip_amcl(sim.store.add_pose)
+    sim.ekf_offset = (3.0, 0.0, 1.0)
+    sim.run(4.0)
+    resets = sim.events('pose_reset')
+    assert resets and resets[-1].fields['how'] == 'startup' and resets[-1].fields['targets'] == 'all'
+    assert [r.fields['how'] for r in resets[:-1]] in ([], ['fallback'])
+    assert sim.gate.state == GateState.OPEN
+    assert _error(sim)[0] < 0.3
+
+
+def test_startup_search_falls_back_to_gnss_once_when_it_cannot_match():
+    """全周の照合が合わなければ、GNSS の位置を広い共分散で 1 回だけ出し、確かめた姿勢がないまま照合を続ける。"""
+    sim = _searching()
+    sim.store.add_pose = _skip_amcl(sim.store.add_pose)
+    sim.gnss_offset = (6.0, 0.0)
+    sim.run(8.0)
+    resets = sim.events('pose_reset')
+    assert [r.fields['how'] for r in resets] == ['fallback']
+    step = next(s for s in sim.steps if s.reset is not None)
+    assert step.reset.cov[0][0] == pytest.approx(InitialSearchConfig().fallback_std_m ** 2)
+    assert sim.gate.state == GateState.UNCONFIRMED
+
+
+def test_startup_does_not_reset_to_a_hypothesis_away_from_the_search():
+    """全周の照合がある起動では、狭い候補だけで決まった別の仮説 (GNSS の候補など) には置き直さない。"""
+    sim = _searching()
+    sim.amcl_offset = (1.5, 0.8, 0.1)
+    sim.ekf_offset = (1.5, 0.8, 0.1)
+    # 全周の照合は、GNSS の精度が続けて足りないと行わない
+    sim.gate.settings = dataclasses.replace(sim.gate.settings, initial_gnss_max_std_m=0.01)
+    sim.run(4.0)
+    assert not sim.events('initial_search')
+    assert sim.events('map_match')[0].fields['result'] == 'gnss'
+    assert not sim.events('pose_reset')
+    assert all(e.fields['how'] == 'startup' for e in sim.events('gate_opened'))
 
 
 def test_jump_closes_the_gate_and_resets_to_the_continuation():
@@ -358,6 +432,46 @@ def test_gnss_disagreement_closes_the_gate_for_slow_drift():
     sim.run(4.0)
     assert sim.events('pose_reset')
     assert _error(sim)[0] < 0.3
+
+
+def test_distrusted_gnss_neither_closes_the_gate_nor_becomes_a_candidate():
+    """監督が GNSS を疑っている間は、GNSS との食い違いでは閉じず、閉じても GNSS を候補にしない。"""
+    sim = _confirmed(confirm_distance_m=1000.0)
+    sim.distrust = frozenset({'gnss'})
+    sim.gnss_offset = (0.0, 2.5)
+    sim.run(6.0)
+    assert not sim.events('gate_closed')
+    before = len(sim.events('map_match'))
+    sim.amcl_offset = (1.5, 0.0, 0.0)
+    sim.run(2.0)
+    matches = sim.events('map_match')[before:]
+    assert sim.events('gate_closed') and matches
+    assert all('ratio_gnss' not in e.fields for e in matches)
+
+
+def test_force_close_holds_at_once_and_matches_the_extra_candidates():
+    """監督が推定器の異常を確かめて閉じさせたら、すぐ止めて照合し、足した候補も照合する。"""
+    sim = _confirmed(confirm_distance_m=1000.0)
+    sim.amcl_offset = (0.0, 1.2, 0.0)
+    sim.ekf_offset = (0.0, 1.2, 0.0)
+    sim.gnss = False
+    sim.gate.force_close(sim.t, 'supervisor', {'recovery_dead_reckoning': CandidatePose(sim.true, 0.5, 0.15)})
+    step = sim.step()
+    assert step.state == GateState.CLOSED and step.hold and step.hold_reason == 'undecided'
+    assert sim.events('gate_closed')[0].fields['reason'] == 'supervisor'
+    sim.moving = False
+    sim.run(4.0)
+    assert any('ratio_recovery_dead_reckoning' in e.fields for e in sim.events('map_match'))
+    assert sim.events('pose_reset')
+    assert _error(sim)[0] < 0.3
+
+
+def test_force_close_while_unconfirmed_does_nothing():
+    sim = Sim()
+    sim.gate.force_close(0.0, 'supervisor')
+    sim.run(4.0)
+    assert sim.gate.state == GateState.OPEN
+    assert not sim.events('gate_closed') and not any(s.hold for s in sim.steps)
 
 
 def test_periodic_confirmation_moves_the_confirmed_pose():

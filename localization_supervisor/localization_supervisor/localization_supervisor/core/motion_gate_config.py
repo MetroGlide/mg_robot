@@ -8,21 +8,17 @@ from typing import Any, Dict, List, Mapping
 import yaml
 
 from .config import (
-    OutputConfig, SourceConfig, _check_keys, _dataclass_from, _enabled, _mapping, _number, _parse_detector,
-    _parse_sources, _plugin_list, _source)
-from .interfaces import CONTRACT_VERSION, SourceKind
-from .map_match import MapMatchConfig
-from .motion_gate import CloserConfig, GateSettings, MotionGateConfig
+    OutputConfig, SourceConfig, _check_keys, _dataclass_from, _mapping, _number, _parse_sources, _plugin_list,
+    parse_gate_parts)
+from .interfaces import CONTRACT_VERSION
+from .motion_gate import MotionGateConfig
 from .plugins import ConfigError
-from .scan_buffer import ScanBufferConfig
 
 TOP_LEVEL_KEYS = {
     'version', 'period_sec', 'timeline', 'sources', 'gate', 'closers', 'map_match', 'scan_buffer', 'resetters',
     'gate_service', 'hold_output', 'manual_pose_topic', 'events', 'output',
 }
 RESETTER_ROLES = {'estimator', 'fused'}
-# 閉じる理由の部品に、判定の書き方に足すキー
-GATE_CLOSER_KEYS = {'close_after_sec', 'active_in_grace'}
 
 
 @dataclass
@@ -56,35 +52,9 @@ def parse_gate_config(raw: Mapping[str, Any]) -> GateNodeConfig:
         raise ConfigError(f'version: expected {CONTRACT_VERSION}, got {raw.get("version")!r}')
     sources = _parse_sources(_mapping(raw.get('sources'), 'sources'))
 
-    settings = _dataclass_from(GateSettings, _mapping(raw.get('gate'), 'gate'), 'gate')
-    for key, kind in (('estimator', SourceKind.POSE), ('fused', SourceKind.POSE), ('motion', SourceKind.MOTION),
-                      ('reference', SourceKind.REFERENCE)):
-        _source(sources, getattr(settings, key), kind, f'gate.{key}')
-    if settings.gnss:
-        _source(sources, settings.gnss, SourceKind.POSE, 'gate.gnss')
-
-    closers = []
-    for name, body in _mapping(raw.get('closers'), 'closers').items():
-        where = f'closers.{name}'
-        body = _mapping(body, where)
-        close_after = _number(body, 'close_after_sec', 0.0, where)
-        active_in_grace = body.get('active_in_grace', False)
-        if not isinstance(active_in_grace, bool):
-            raise ConfigError(f'{where}.active_in_grace: expected true or false')
-        enabled = _enabled(body, where)
-        detector = _parse_detector(name, {k: v for k, v in body.items() if k not in GATE_CLOSER_KEYS}, sources,
-                                   None, None)
-        if enabled:
-            closers.append(CloserConfig(name, detector.cls(name, detector.params, detector.sources), close_after,
-                                        active_in_grace, detector.type, dict(detector.sources)))
-    if not closers:
-        raise ConfigError('closers: at least one enabled closer is required')
-
-    map_match = _dataclass_from(MapMatchConfig, _mapping(raw.get('map_match'), 'map_match'), 'map_match')
-    buffer_raw = _mapping(raw.get('scan_buffer'), 'scan_buffer')
-    _check_keys(buffer_raw, set(vars(ScanBufferConfig())) - {'reference', 'motion'}, 'scan_buffer')
-    scan_buffer = _dataclass_from(
-        ScanBufferConfig, dict(buffer_raw, reference=settings.reference, motion=settings.motion), 'scan_buffer')
+    gate = parse_gate_parts(
+        _mapping(raw.get('gate'), 'gate'), _mapping(raw.get('closers'), 'closers'),
+        _mapping(raw.get('map_match'), 'map_match'), _mapping(raw.get('scan_buffer'), 'scan_buffer'), sources)
 
     resetters_raw = _mapping(raw.get('resetters'), 'resetters')
     _check_keys(resetters_raw, RESETTER_ROLES, 'resetters')
@@ -110,9 +80,7 @@ def parse_gate_config(raw: Mapping[str, Any]) -> GateNodeConfig:
         raise ConfigError('gate_service: required')
 
     return GateNodeConfig(
-        gate=MotionGateConfig(settings, closers, map_match, scan_buffer,
-                              {name: source.kind for name, source in sources.items()}),
-        sources=sources, period_sec=period_sec,
+        gate=gate, sources=sources, period_sec=period_sec,
         horizon_sec=_number(timeline, 'horizon_sec', 30.0, 'timeline'),
         max_extrapolation_sec=_number(timeline, 'max_extrapolation_sec', 0.5, 'timeline'),
         resetters=resetters, gate_service=gate_service, hold_output=hold_output,

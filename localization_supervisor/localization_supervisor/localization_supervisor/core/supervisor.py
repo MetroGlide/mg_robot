@@ -11,7 +11,17 @@
   7. イベントを作る
 
 外からの再初期化 (人による上書き) は external_reinit で知らせる。プロファイルは、走行中に set_profile で変えられる。
+
+門 (設定の gate、core/motion_gate.py) があるときは、step を門の周期で呼ぶ。判定・総合・状態遷移 (上の 1〜7) は
+period_sec ごとに回し、門は毎回回す。門との分担:
+  - 置き直しと、推定器を融合に入れるかの門、一時停止は、門が決める。監督の復旧は、再初期化の指示で門を閉じさせ
+    (force_close)、候補を作るものの候補を足して、門の照合の規則で決める (監督の候補の評価と選び方は使わない)
+  - 門が置き直したら、監督は累積・判定の内部状態を捨てて猶予を置く (置き直しによる飛びを異常と見ない)
+  - 監督が GNSS を疑っている間は、門は GNSS を使う閉じる理由の部品と GNSS の候補を使わない
+  - 外からの再初期化 (/initialpose など) は見ない。外からの推定器の飛びは、門が閉じる理由の部品で判定する
+  - 観測を増やす指示 (observe) は出さない。決まらないときは、門が止めて照合し、解いて少し走らせる
 """
+import dataclasses
 import math
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
@@ -24,6 +34,8 @@ from .geometry import Pose2
 from .interfaces import (
     Candidate, Detector, Evidence, FusionResult, FusionStrategy, InstanceInfo, PoseSample, RecoveryContext,
     SourceKind, Status)
+from .map_match import CandidatePose, MatchDecision
+from .motion_gate import GateState, GateStep, MatchRequest, MotionGate
 from .recovery.planner import RecoveryPlan, RecoveryPlanner
 from .residuals import ResidualStats, ResidualTracker
 from .safety import FootprintChecker, SafetyResult
@@ -48,10 +60,13 @@ class Directive:
       reinit  : candidate の姿勢で推定器を初期化し直す
       restore : 切り離したものを戻す
       observe : 止まったままでは決められないので、観測を増やす動作 (その場の首振りなど) をしてほしい
+
+    targets は reinit の送り先: all (推定器と融合)、fused (融合だけ。門が推定器を採って、融合だけを直すとき)。
     """
     kind: str
     blame: str = ''
     candidate: Optional[Candidate] = None
+    targets: str = 'all'
 
 
 @dataclass
@@ -76,6 +91,10 @@ class StepResult:
     residuals: Dict[str, ResidualStats] = field(default_factory=dict)
     # 受け取る側に出す、分散の倍率 (設定の residuals ごと。残差の a の分散にかける。1 以上、max_scale 以下)
     applied_scales: Dict[str, float] = field(default_factory=dict)
+    # 一時停止の理由 (門があるときの門の理由。correction / undecided)
+    hold_reason: str = ''
+    # 門の周期の結果 (門がなければ None)
+    gate: Optional[GateStep] = None
 
 
 def make_store(config: SupervisorConfig, track_scales: bool = True) -> SampleStore:
@@ -115,6 +134,13 @@ class Supervisor:
         self._observe_at: Optional[float] = None
         self._since_reinit: Optional[List[float]] = None
         self._observe_motion: Optional[Pose2] = None
+        # 門 (プロファイルで変えない。状態を保つため、プロファイルを変えても作り直さない)
+        self.gate: Optional[MotionGate] = MotionGate(config.gate) if config.gate is not None else None
+        self._last: Optional[StepResult] = None
+        self._next_supervise = 0.0
+        # 監督の復旧を門に任せて、門が決めるのを待っている。切り離しの間 (再初期化を求める前) に門が決めた
+        self._awaiting_gate = False
+        self._gate_decided = False
         self._build(config)
 
     def _build(self, config: SupervisorConfig) -> None:
@@ -200,9 +226,9 @@ class Supervisor:
     def external_reinit(self, now: float, topic: str) -> None:
         """外から推定器が初期化し直された (人による上書き)。復旧をやめて、状態を NORMAL に戻し、捨てて猶予を置く。
 
-        今のプロファイルの external_reinit.topics にないトピックからのものは無視する。
+        今のプロファイルの external_reinit.topics にないトピックからのものと、門があるときは無視する。
         """
-        if topic not in self.config.external_reinit_topics:
+        if self.gate is not None or topic not in self.config.external_reinit_topics:
             return
         before = self.machine.state
         self.machine = StateMachine(self.config.machine)
@@ -211,7 +237,67 @@ class Supervisor:
         self.start_grace(now, self.config.grace_after_reset_sec)
         self._emit('external_reinit', 'warn', {'topic': topic, 'state': before.name})
 
-    def step(self, snapshot: Snapshot) -> StepResult:
+    def manual_pose(self, pose: Pose2) -> None:
+        """手動の初期姿勢 (門があるときだけ。門がその周りを照合してから置き直す)。"""
+        if self.gate is not None:
+            self.gate.manual_pose(pose)
+
+    def step(self, snapshot: Snapshot, match: Optional[Tuple[MatchRequest, MatchDecision]] = None) -> StepResult:
+        """周期の処理。門があるときは、門の照合の結果 (前の周期の request を照合したもの) を match に渡す。"""
+        if self.gate is None:
+            return self._supervise(snapshot)
+        now = snapshot.stamp
+        if self._last is None or now >= self._next_supervise:
+            result = self._supervise(snapshot)
+            # 門の周期の揺らぎで 1 周期遅れないよう、門の周期の半分だけ早めに許す
+            self._next_supervise = now + self.config.period_sec - 0.5 * self.config.gate_period_sec
+            self._last = result
+        else:
+            result = dataclasses.replace(self._last, stamp=now, events=[], directives=[], plan=None)
+        gate_step = self.gate.step(snapshot, match, self._gate_distrust())
+        self._apply_gate(now, result, gate_step)
+        return result
+
+    def _gate_distrust(self) -> frozenset:
+        """門に使わせない情報源: 監督が切り離している GNSS と、残差の倍率が大きい GNSS。"""
+        gnss = self.gate.settings.gnss
+        if not gnss:
+            return frozenset()
+        if self.machine.isolating and self.machine.blame == gnss:
+            return frozenset({gnss})
+        if any(high and self.config.residuals[name].a == gnss for name, high in self._residual_high.items()):
+            return frozenset({gnss})
+        return frozenset()
+
+    def _apply_gate(self, now: float, result: StepResult, gate_step: GateStep) -> None:
+        """門の結果を、周期の結果 (イベント・置き直しの指示・一時停止) に入れ、置き直したら累積と判定を捨てる。"""
+        for event in gate_step.events:
+            result.events.append(Event(f'{self.config.event_prefix}.{event.name}', event.level, event.fields))
+            self._last_event = result.last_event = event.name
+        reset = gate_step.reset
+        if reset is not None:
+            result.directives.append(Directive(
+                'reinit', self.machine.blame, Candidate(reset.pose, reset.cov, 'gate'),
+                'fused' if reset.targets == 'fused' else 'all'))
+        decided = reset is not None or any(event.name == 'gate_opened' for event in gate_step.events)
+        if decided and self._awaiting_gate and self.machine.state in (State.RECOVERING, State.DEGRADED):
+            self._awaiting_gate = False
+            self._after_reinit(now)
+        else:
+            if decided and self._awaiting_gate:
+                # 切り離しの間 (再初期化を求める前) に決まった。再初期化を求めたときに、決まったものとして数える
+                self._awaiting_gate = False
+                self._gate_decided = True
+            if reset is not None:
+                self.fusion.reset()
+                for detector in self.detectors.values():
+                    detector.reset()
+                self.start_grace(now, self.config.grace_after_reset_sec)
+        result.hold_requested = gate_step.hold
+        result.hold_reason = gate_step.hold_reason
+        result.gate = gate_step
+
+    def _supervise(self, snapshot: Snapshot) -> StepResult:
         now = snapshot.stamp
         if self._grace_until is None:
             self._grace_until = now + self.config.startup_grace_sec
@@ -234,6 +320,8 @@ class Supervisor:
         if state == State.NORMAL and state_before != State.NORMAL:
             self._suspect_since = None
             self._since_reinit = None
+            self._awaiting_gate = False
+            self._gate_decided = False
             self.fusion.reset()
         if Action.REINIT in decision.actions:
             self.fusion.reset()
@@ -242,6 +330,10 @@ class Supervisor:
             self._plan_attempts = 0
         if Action.RESTORE in decision.actions and self.config.grace_after_recovery_sec > 0.0:
             self.start_grace(now, self.config.grace_after_recovery_sec)
+        if self.gate is not None and Action.ISOLATE in decision.actions and self.machine.hold_requested:
+            # 切り離した時点で門を閉じさせる (再初期化を求めるまでの間も、疑わしい推定器を融合に入れない)
+            self.gate.force_close(now, 'supervisor')
+            self._awaiting_gate = True
         if decision.event:
             self._last_event = decision.event
         directives = self._directives(decision)
@@ -252,7 +344,8 @@ class Supervisor:
         for name, detector in self.detectors.items():
             detector.after_step(evidences[name], normal)
 
-        trusted = normal and not in_grace and self._trusted(evidences, fusion)
+        gate_open = self.gate is None or self.gate.state == GateState.OPEN
+        trusted = normal and not in_grace and gate_open and self._trusted(evidences, fusion)
         self._update_anchors(snapshot, trusted)
         safety = self._check_safety(snapshot)
         residuals = self._update_residuals(snapshot, trusted)
@@ -343,6 +436,9 @@ class Supervisor:
             self._reinit_pending = False
         if not self._reinit_pending or now < self._next_plan:
             return None
+        if self.gate is not None:
+            self._recover_by_gate(snapshot)
+            return None
         if self.planner is None:
             self._reinit_pending = False
             self._emit('reinit_skipped', 'error', {'reason': 'no_generators'})
@@ -364,6 +460,37 @@ class Supervisor:
             directives.append(Directive('reinit', self.machine.blame, plan.chosen))
             self._after_reinit(now)
         return plan
+
+    def _recover_by_gate(self, snapshot: Snapshot) -> None:
+        """門を閉じさせ、候補を作るものの候補を足して、門の照合の規則で決めさせる。決まったら _apply_gate が受ける。"""
+        now = snapshot.stamp
+        self._reinit_pending = False
+        self._plan_attempts += 1
+        if self._gate_decided:
+            # 切り離しの間に門が決めた (置き直した、または推定器を採った)
+            self._gate_decided = False
+            self._after_reinit(now)
+            self._emit('reinit_requested', 'warn', {
+                'via': 'gate', 'blame': self.machine.blame, 'attempt': self._plan_attempts, 'decided': True})
+            return
+        extra: Dict[str, CandidatePose] = {}
+        notes: Dict[str, str] = {}
+        if self.planner is not None:
+            context = RecoveryContext(
+                snapshot=snapshot, anchors=self.anchors, suspect_since=self._suspect_since, scans=self.scans,
+                safety=self.config.safety)
+            exclude = {self.machine.blame} | set(self._gate_distrust())
+            candidates, notes = self.planner.generate(context, exclude)
+            for candidate in candidates:
+                name = f'recovery_{candidate.origin}'
+                if name in extra:
+                    name = f'{name}_{len(extra)}'
+                extra[name] = _candidate_pose(candidate)
+        self.gate.force_close(now, 'supervisor', extra)
+        self._awaiting_gate = True
+        self._emit('reinit_requested', 'warn', {
+            'via': 'gate', 'blame': self.machine.blame, 'attempt': self._plan_attempts,
+            'candidates': ','.join(extra), 'generators': ','.join(f'{n}:{s}' for n, s in notes.items())})
 
     def _plan_events(self, plan: RecoveryPlan) -> None:
         for candidate in plan.candidates:
@@ -425,7 +552,7 @@ class Supervisor:
     ) -> None:
         """RECOVERING で、再初期化も収束の確認もできない時間が続いたら、観測を増やす動作を求める (指示 observe)。"""
         cfg = self.config.observe
-        if cfg is None or cfg.request_after_sec <= 0.0 or state != State.RECOVERING:
+        if self.gate is not None or cfg is None or cfg.request_after_sec <= 0.0 or state != State.RECOVERING:
             return
         if before != State.RECOVERING:
             self._progress_at = now
@@ -531,6 +658,14 @@ def _residual_terms(a: PoseSample, b: PoseSample, extra_std_m: float) -> Tuple[f
     var_a = float(np.mean(np.diag(np.asarray(a.cov, dtype=float))[:2]))
     var_b = float(np.mean(np.diag(np.asarray(b.cov, dtype=float))[:2]))
     return delta2, var_a, var_b + extra_std_m ** 2
+
+
+def _candidate_pose(candidate: Candidate, sigma_k: float = 3.0) -> CandidatePose:
+    """復旧の候補を、門の照合の候補にする。探す範囲は共分散の標準偏差の sigma_k 倍 (照合が狭い範囲と上限で挟む)。"""
+    cov = np.asarray(candidate.cov, dtype=float)
+    std_xy = math.sqrt(max(cov[0][0], cov[1][1], 0.0))
+    std_yaw = math.sqrt(max(cov[2][2], 0.0))
+    return CandidatePose(candidate.pose, sigma_k * std_xy, sigma_k * std_yaw)
 
 
 def _pose_fields(pose: Pose2) -> Dict[str, float]:

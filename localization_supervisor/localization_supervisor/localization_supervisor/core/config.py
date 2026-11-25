@@ -16,9 +16,12 @@ import yaml
 from .anchors import AnchorConfig
 from .detectors import STANDARD_DETECTORS
 from .fusion import STANDARD_FUSIONS
+from .initial_search import InitialSearchConfig
 from .interfaces import (
     CONTRACT_VERSION, CandidateGenerator, CandidateScorer, Detector, FusionStrategy, Matcher, SourceKind)
+from .map_match import MapMatchConfig
 from .matcher import STANDARD_MATCHERS
+from .motion_gate import CloserConfig, GateSettings, MotionGateConfig
 from .plugins import ConfigError, build
 from .recovery import STANDARD_GENERATORS, STANDARD_SCORERS
 from .recovery.planner import GeneratorConfig, ObserveConfig, ScorerConfig, SelectionConfig
@@ -33,8 +36,14 @@ from .timeline import AlignmentConfig
 TOP_LEVEL_KEYS = {
     'version', 'period_sec', 'sources', 'timeline', 'detectors', 'enabled_detectors', 'fusion', 'trust',
     'state_machine', 'recovery', 'anchors', 'safety', 'residuals', 'grace', 'external_reinit', 'events', 'output',
-    'profiles',
+    'profiles', 'gate',
 }
+GATE_KEYS = {
+    'enabled', 'period_sec', 'settings', 'closers', 'map_match', 'scan_buffer', 'initial_search', 'manual_pose_topic'}
+# 閉じる理由の部品に、判定の書き方に足すキー
+GATE_CLOSER_KEYS = {'close_after_sec', 'active_in_grace'}
+# 置き直しの送り先の役: 推定器 (門の置き直しの 'all' で送る) と融合 ('all' と 'fused' で送る)
+RESETTER_ROLES = ('estimator', 'fused')
 
 
 @dataclass
@@ -104,6 +113,12 @@ class SupervisorConfig:
     anchors: Optional[AnchorConfig] = None
     safety: Optional[SafetyConfig] = None
     residuals: Dict[str, ResidualConfig] = field(default_factory=dict)
+    # 門 (推定器の姿勢を融合に入れる前に確かめる。gate.enabled のときだけ)。周期 gate_period_sec ごとに回し、
+    # 判定・総合・状態遷移は period_sec ごとに回す
+    gate: Optional[MotionGateConfig] = None
+    gate_period_sec: float = 0.2
+    # 手動の初期姿勢のトピック (門があるときにノードが購読する)
+    manual_pose_topic: str = ''
     period_sec: float = 1.0
     startup_grace_sec: float = 0.0
     grace_after_recovery_sec: float = 0.0
@@ -135,6 +150,15 @@ class SupervisorConfig:
     def with_profile(self, profile: str) -> 'SupervisorConfig':
         """プロファイルを重ねた設定。'' は基本設定。カンマで区切ると、左から順に重ねる。"""
         return parse_config(self.raw, profile=profile, profiles=self.profiles)
+
+    def with_gate(self, enabled: bool) -> 'SupervisorConfig':
+        """門 (gate 節) を有効 / 無効にした設定。プロファイルはそのまま。"""
+        raw = copy.deepcopy(self.raw)
+        if enabled and 'gate' not in raw:
+            raise ConfigError('gate: the config has no gate section')
+        if 'gate' in raw:
+            raw['gate'] = dict(_mapping(raw['gate'], 'gate'), enabled=enabled)
+        return parse_config(raw, profile=self.profile, profiles=self.profiles)
 
 
 def merge(base: Mapping[str, Any], override: Mapping[str, Any]) -> Dict[str, Any]:
@@ -301,6 +325,82 @@ def _dataclass_from(cls: type, raw: Mapping[str, Any], where: str) -> Any:
     return cls(**values)
 
 
+def parse_gate_parts(
+    settings_raw: Mapping[str, Any], closers_raw: Mapping[str, Any], map_match_raw: Mapping[str, Any],
+    buffer_raw: Mapping[str, Any], sources: Mapping[str, SourceConfig], where: str = '',
+    initial_raw: Optional[Mapping[str, Any]] = None,
+) -> MotionGateConfig:
+    """門の設定 (設定・閉じる理由の部品・照合・スキャンの重ね・全周の照合 (initial_raw が None ならしない))。
+    where は場所の前置き (例 'gate.')。"""
+    settings = _dataclass_from(GateSettings, settings_raw, f'{where}settings' if where else 'gate')
+    for key, kind in (('estimator', SourceKind.POSE), ('fused', SourceKind.POSE), ('motion', SourceKind.MOTION),
+                      ('reference', SourceKind.REFERENCE)):
+        _source(sources, getattr(settings, key), kind, f'{where}settings.{key}' if where else f'gate.{key}')
+    if settings.gnss:
+        _source(sources, settings.gnss, SourceKind.POSE, f'{where}settings.gnss' if where else 'gate.gnss')
+
+    closers = []
+    for name, body in closers_raw.items():
+        at = f'{where}closers.{name}'
+        body = _mapping(body, at)
+        close_after = _number(body, 'close_after_sec', 0.0, at)
+        active_in_grace = body.get('active_in_grace', False)
+        if not isinstance(active_in_grace, bool):
+            raise ConfigError(f'{at}.active_in_grace: expected true or false')
+        enabled = _enabled(body, at)
+        detector = _parse_detector(name, {k: v for k, v in body.items() if k not in GATE_CLOSER_KEYS}, sources,
+                                   None, None)
+        if enabled:
+            closers.append(CloserConfig(name, detector.cls(name, detector.params, detector.sources), close_after,
+                                        active_in_grace, detector.type, dict(detector.sources)))
+    if not closers:
+        raise ConfigError(f'{where}closers: at least one enabled closer is required')
+
+    map_match = _dataclass_from(MapMatchConfig, map_match_raw, f'{where}map_match')
+    _check_keys(buffer_raw, set(vars(ScanBufferConfig())) - {'reference', 'motion'}, f'{where}scan_buffer')
+    scan_buffer = _dataclass_from(
+        ScanBufferConfig, dict(buffer_raw, reference=settings.reference, motion=settings.motion),
+        f'{where}scan_buffer')
+    initial = None
+    if initial_raw is not None:
+        initial = _dataclass_from(InitialSearchConfig, initial_raw, f'{where}initial_search')
+        if not settings.gnss:
+            raise ConfigError(f'{where}initial_search: requires settings.gnss (the search is around the GNSS position)')
+    return MotionGateConfig(settings, closers, map_match, scan_buffer,
+                            {name: source.kind for name, source in sources.items()}, initial)
+
+
+def _parse_gate(
+    raw: Mapping[str, Any], sources: Mapping[str, SourceConfig], detectors: Mapping[str, DetectorConfig],
+    resetters: List[Dict[str, Any]],
+) -> Tuple[Optional[MotionGateConfig], float, str]:
+    """gate 節。(門の設定 (無効なら None), 周期, 手動の初期姿勢のトピック)。"""
+    _check_keys(raw, GATE_KEYS, 'gate')
+    period_sec = _number(raw, 'period_sec', 0.2, 'gate')
+    if period_sec <= 0.0:
+        raise ConfigError('gate.period_sec: must be positive')
+    manual = raw.get('manual_pose_topic', '')
+    if not isinstance(manual, str):
+        raise ConfigError('gate.manual_pose_topic: expected a string')
+    enabled = raw.get('enabled', False)
+    if not isinstance(enabled, bool):
+        raise ConfigError('gate.enabled: expected true or false')
+    if not raw or not enabled:
+        return None, period_sec, manual
+    gate = parse_gate_parts(
+        _mapping(raw.get('settings'), 'gate.settings'), _mapping(raw.get('closers'), 'gate.closers'),
+        _mapping(raw.get('map_match'), 'gate.map_match'), _mapping(raw.get('scan_buffer'), 'gate.scan_buffer'),
+        sources, 'gate.',
+        None if raw.get('initial_search') is None else _mapping(raw['initial_search'], 'gate.initial_search'))
+    for closer in gate.closers:
+        if closer.name in detectors:
+            raise ConfigError(f'gate.closers.{closer.name}: the name is used by a detector (status shows both)')
+    roles = {item.get('role', 'estimator') for item in resetters}
+    if not set(RESETTER_ROLES) <= roles:
+        raise ConfigError('gate: recovery.resetters requires both roles (role: estimator and role: fused)')
+    return gate, period_sec, manual
+
+
 def _parse_safety(raw: Mapping[str, Any], sources: Mapping[str, SourceConfig]) -> SafetyConfig:
     _check_keys(raw, {'pose', 'map', 'footprint', 'max_age_sec', 'depth_range_m'}, 'safety')
     pose, map_name = raw.get('pose'), raw.get('map')
@@ -392,6 +492,9 @@ def _parse_recovery(
         _source(sources, scan_buffer.motion, SourceKind.MOTION, 'recovery.scan_buffer.motion')
 
     resetters = _plugin_list(recovery.get('resetters'), 'recovery.resetters')
+    for i, item in enumerate(resetters):
+        if item.get('role', 'estimator') not in RESETTER_ROLES:
+            raise ConfigError(f'recovery.resetters[{i}].role: expected one of {list(RESETTER_ROLES)}')
     actuators = _plugin_list(recovery.get('actuators'), 'recovery.actuators')
     return {'generators': generators, 'scorers': scorers, 'selection': selection, 'observe': observe,
             'matcher_cls': matcher_cls,
@@ -462,8 +565,9 @@ def parse_config(
         if name not in profiles:
             raise ConfigError(f'profile {name!r} is not defined (profiles: {sorted(profiles)})')
         override = _mapping(profiles[name], f'profiles.{name}')
-        if 'profiles' in override or 'version' in override:
-            raise ConfigError(f'profiles.{name}: cannot override version or profiles')
+        if 'profiles' in override or 'version' in override or 'gate' in override:
+            raise ConfigError(f'profiles.{name}: cannot override version, profiles or gate '
+                              '(the gate is built at startup)')
         merged = merge(merged, override)
     _check_keys(merged, TOP_LEVEL_KEYS, 'config')
     if merged.get('version') != CONTRACT_VERSION:
@@ -534,6 +638,10 @@ def parse_config(
     period_sec = _number(merged, 'period_sec', 1.0, 'config')
     if period_sec <= 0.0:
         raise ConfigError('period_sec: must be positive')
+    gate, gate_period_sec, manual_pose_topic = _parse_gate(
+        _mapping(merged.get('gate'), 'gate'), sources, detectors, recovery_parts['resetters'])
+    if gate is not None and gate_period_sec > period_sec:
+        raise ConfigError('gate.period_sec: must not exceed period_sec')
 
     return SupervisorConfig(
         sources=sources, detectors=detectors, fusion_type=fusion_type, fusion_cls=fusion_cls,
@@ -550,6 +658,7 @@ def parse_config(
             _names(recovery.get('convergence'), 'recovery.convergence'), detectors, 'recovery.convergence'),
         convergence_mode=_convergence_mode(recovery.get('convergence_mode', 'all')),
         anchors=anchors, safety=safety, period_sec=period_sec, **recovery_parts,
+        gate=gate, gate_period_sec=gate_period_sec, manual_pose_topic=manual_pose_topic,
         residuals=_parse_residuals(_mapping(merged.get('residuals'), 'residuals'), sources),
         startup_grace_sec=_number(grace, 'startup_sec', 0.0, 'grace'),
         grace_after_recovery_sec=_number(grace, 'after_recovery_sec', 0.0, 'grace'),

@@ -9,10 +9,17 @@
 | :--- | :--- |
 | `config_file` | 設定ファイルのパス (必須。[parameters.md](./parameters.md)) |
 | `profile` | 重ねるプロファイル (空は基本設定。カンマで区切ると左から順に重ねる) |
+| `use_gate` | 設定の `gate` 節の門を使う (起動時だけ。[motion_gate.md](./motion_gate.md)) |
 
-`profile` は走行中に変えられる (`ros2 param set`)。知らない名前は拒否する。変えると、判定・総合・状態遷移・復旧を作り直す (状態は `NORMAL` から)。
+`profile` は走行中に変えられる (`ros2 param set`)。知らない名前は拒否する。変えると、判定・総合・状態遷移・復旧を作り直す (状態は `NORMAL` から)。門は作り直さない (状態を保つ)。
 
-設定ファイルは起動時にすべて検証する (プロファイルも)。入力のアダプタ・再初期化の送り先・対処は起動時に基本設定で作るので、プロファイルで `sources`・`recovery.resetters`・`recovery.actuators` は変えられない。`recovery_enabled` にした設定 (プロファイルを含む) には、`recovery.resetters` が要る。
+設定ファイルは起動時にすべて検証する (プロファイルも)。入力のアダプタ・再初期化の送り先・対処・門は起動時に基本設定で作るので、プロファイルで `sources`・`recovery.resetters`・`recovery.actuators`・`gate` は変えられない。`recovery_enabled` にした設定 (プロファイルを含む) には、`recovery.resetters` が要る。
+
+### 門を使うとき
+
+- 周期は門の周期 (`gate.period_sec`) にし、判定・総合・状態遷移は `period_sec` ごとに回す。門の照合は、周期の処理と別のスレッドで回す。
+- 置き直し・推定器を融合に入れるかの門・一時停止は、門が決める。監督の復旧も、門を閉じさせて門の照合で決める (分担は [design.md](./design.md#門を入れたとき))。
+- `external_reinit.topics` は購読しない。外からの `/initialpose` は、推定器の飛びとして門が判定する。手動の初期姿勢は `gate.manual_pose_topic` で受ける。
 
 ## 入出力
 
@@ -20,7 +27,8 @@
 | :--- | :--- | :--- | :--- |
 | 購読 | 設定の `sources.<名前>.input` | アダプタごと | 情報源の標本 ([plugins.md](./plugins.md#入力のアダプタ-sourceadapter)) |
 | TF | アダプタが引く座標 | | センサの取り付け位置など |
-| 購読 | 設定 (基本設定とすべてのプロファイル) の `external_reinit.topics` | `geometry_msgs/PoseWithCovarianceStamped` | 外からの再初期化 (下記) |
+| 購読 | 設定 (基本設定とすべてのプロファイル) の `external_reinit.topics` | `geometry_msgs/PoseWithCovarianceStamped` | 外からの再初期化 (下記)。門を使うときは購読しない |
+| 購読 | 設定の `gate.manual_pose_topic` | `geometry_msgs/PoseWithCovarianceStamped` | 手動の初期姿勢 (門を使うとき) |
 | 配信 | 設定の `output.status_topic` | `localization_supervisor_msgs/LocalizationStatus` | 周期ごとの状態 |
 | 配信 | 設定の `recovery.resetters` | 送り先ごと | 選んだ姿勢 ([plugins.md](./plugins.md#再初期化の送り先-poseresetter)) |
 | 配信・サービス | 設定の `recovery.actuators` | 対処ごと | ゲートの開閉、一時停止の要求など ([plugins.md](./plugins.md#対処-actuator)) |

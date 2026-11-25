@@ -11,6 +11,7 @@ from .base import Actuator
 class Gate(Actuator):
     """ゲート (SetBool で開閉するサービス。複数の要求元を調停するゲートの調停ノードの、この監督用の窓口) を、
     走行を止めてほしい状態 (hold_requested) で、blame が blames にあるあいだ閉じる (data=false)。戻ったら開ける。
+    門 (設定の gate) があるときは、門の開閉に従う (監督の復旧も門を閉じさせて行う)。
 
     状態から毎周期求めて、変わったとき・まだ届いていないときだけ呼ぶ (サービスがなくても、次の周期で再び試す)。
     """
@@ -26,6 +27,9 @@ class Gate(Actuator):
         self._pending = False
 
     def apply(self, result: StepResult) -> None:
+        if result.gate is not None:
+            self._set(result.gate.gate_open)
+            return
         self._set(not (result.hold_requested and result.blame in self.params['blames']))
 
     def _set(self, attach: bool) -> None:

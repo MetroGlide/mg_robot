@@ -7,14 +7,18 @@
   パラメータ
     config_file : 設定ファイル (必須。書き方は doc/parameters.md)
     profile     : 重ねるプロファイル (空は基本設定)。走行中に変えられる (サービス ~/set_profile でも)
+    use_gate    : 設定の gate 節の門を使う (起動時だけ)。門の周期で回し、門の照合を別のスレッドで回す
   入力
     設定の sources.<名前>.input のアダプタが購読するトピックと TF
     external_reinit.topics: 今のプロファイルのトピックに届いたら、人による上書きとして、状態を NORMAL に戻して
-                            猶予を置く (どのプロファイルのトピックも購読しておく)
+                            猶予を置く (どのプロファイルのトピックも購読しておく。門があるときは購読しない)
+    gate.manual_pose_topic: 手動の初期姿勢 (門があるとき。門がその周りを照合してから置き直す)
   出力
     output.status_topic (LocalizationStatus)、診断 output.diagnostic_name、イベント (events.sink)
 """
-from typing import Optional
+import threading
+import time
+from typing import Optional, Tuple
 
 import rclpy
 import tf2_ros
@@ -29,9 +33,12 @@ from rclpy.parameter import Parameter
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy, qos_profile_sensor_data
 
 from ..core.config import ConfigError, SupervisorConfig, load_config
+from ..core.map_match import MapMatcher, MatchDecision
+from ..core.motion_gate import MatchRequest, run_match
 from ..core.status import StatusView, status_view
 from ..core.supervisor import Supervisor, make_store
 from .adapters import build_adapters
+from .adapters.standard import pose_from_msg
 from .actuators import build_actuators
 from .actuators.variance_scale import delivered_scales
 from .diagnostics import LocalizationTask
@@ -84,9 +91,12 @@ class LocalizationSupervisorNode(Node):
         super().__init__('localization_supervisor_node')
         config_file = self.declare_parameter('config_file', '').value
         profile = self.declare_parameter('profile', '').value
+        use_gate = self.declare_parameter('use_gate', False).value
         if not config_file:
             raise ConfigError('parameter config_file is required')
         config = load_config(config_file)
+        if use_gate or 'gate' in config.raw:
+            config = config.with_gate(use_gate)
         check_node_supports(config)
         self._config = config
         self._supervisor = Supervisor(config)
@@ -102,15 +112,26 @@ class LocalizationSupervisorNode(Node):
             for sub in adapter.subscriptions():
                 self.create_subscription(sub.msg_type, sub.topic, sub.handler, _QOS[sub.qos])
         self._own = OwnMessages()
-        self._resetters = build_resetters(config.resetters, self, self._own)
+        resetters = build_resetters(config.resetters, self, self._own)
+        self._resetters = [(item.get('role', 'estimator'), resetter)
+                           for item, resetter in zip(config.resetters, resetters)]
         self._actuators = build_actuators(config.actuators, self)
         # 購読は起動時に作るので、どのプロファイルのトピックも購読し、使うかは今のプロファイルで決める
         topics = dict.fromkeys(config.external_reinit_topics)
         for name in config.profiles:
             topics.update(dict.fromkeys(config.with_profile(name).external_reinit_topics))
-        for topic in topics:
+        for topic in topics if config.gate is None else ():
             self.create_subscription(
                 PoseWithCovarianceStamped, topic, lambda msg, t=topic: self._on_external_reinit(t, msg), 10)
+
+        # 門の照合 (重いので周期の処理と別のスレッドで回し、結果を次の周期に渡す) と、手動の初期姿勢
+        self._lock = threading.Lock()
+        self._match: Optional[Tuple[MatchRequest, MatchDecision]] = None
+        self._manual = None
+        self._match_ms = 0.0
+        self._matcher = MapMatcher(config.gate.map_match) if config.gate is not None else None
+        if config.gate is not None and config.manual_pose_topic:
+            self.create_subscription(PoseWithCovarianceStamped, config.manual_pose_topic, self._on_manual, 10)
 
         output = config.output
         self._status_pub = self.create_publisher(LocalizationStatus, output.status_topic, 10)
@@ -120,10 +141,10 @@ class LocalizationSupervisorNode(Node):
         self._updater = Updater(self)
         self._updater.setHardwareID(output.hardware_id)
         self._updater.add(LocalizationTask(output.diagnostic_name, lambda: self._view))
-        self.create_timer(config.period_sec, self._on_timer)
+        self.create_timer(config.gate_period_sec if config.gate is not None else config.period_sec, self._on_timer)
         self._events.info(
             'node.started', name=self.get_name(), config=config_file, profile=profile,
-            detectors=','.join(self._supervisor.detectors))
+            detectors=','.join(self._supervisor.detectors), gate=config.gate is not None)
 
     def _now(self) -> float:
         return self.get_clock().now().nanoseconds * 1e-9
@@ -153,17 +174,40 @@ class LocalizationSupervisorNode(Node):
         response.message = result.reason or f'profile: {request.profile or "(base)"}'
         return response
 
+    def _on_manual(self, msg: PoseWithCovarianceStamped) -> None:
+        with self._lock:
+            self._manual = pose_from_msg(msg.pose.pose)
+
+    def _run_match(self, request: MatchRequest) -> None:
+        started = time.monotonic()
+        decision = run_match(self._matcher, request)
+        with self._lock:
+            self._match_ms = (time.monotonic() - started) * 1000.0
+            self._match = (request, decision)
+
     def _on_timer(self) -> None:
         now = self._now()
         if now == 0.0:
             return
-        result = self._supervisor.step(self._store.snapshot(now))
+        with self._lock:
+            match, self._match = self._match, None
+            manual, self._manual = self._manual, None
+            match_ms = self._match_ms
+        if manual is not None:
+            self._supervisor.manual_pose(manual)
+        result = self._supervisor.step(self._store.snapshot(now), match)
+        map_match_event = f'{self._config.event_prefix}.map_match'
         for event in result.events:
-            self._events.emit(event.name, event.level, event.fields)
+            fields = dict(event.fields, duration_ms=round(match_ms, 1)) if event.name == map_match_event \
+                else event.fields
+            self._events.emit(event.name, event.level, fields)
         for directive in result.directives:
             if directive.kind == 'reinit':
-                for resetter in self._resetters:
-                    resetter.reset(directive.candidate)
+                for role, resetter in self._resetters:
+                    if directive.targets == 'all' or role == directive.targets:
+                        resetter.reset(directive.candidate)
+        if result.gate is not None and result.gate.request is not None:
+            threading.Thread(target=self._run_match, args=(result.gate.request,), daemon=True).start()
         for actuator in self._actuators:
             actuator.apply(result)
         for name, scale in delivered_scales(self._actuators, result.applied_scales).items():

@@ -50,6 +50,8 @@ class StatusView:
 
 
 def status_view(result: StepResult, config: SupervisorConfig, profile: str) -> StatusView:
+    """監督の周期の結果の状態。門があるときは、監督の状態と門の状態 (gate_state) の重い方を出し、
+    門の閉じる理由の部品も判定の並びに足す (門が閉じている間に、走行側が正常と見て動かないため)。"""
     checks = []
     for name, evidence in result.evidences.items():
         detector = config.detectors[name]
@@ -58,10 +60,22 @@ def status_view(result: StepResult, config: SupervisorConfig, profile: str) -> S
             score=0.0 if evidence.status == Status.UNKNOWN else evidence.score,
             accumulated=result.fusion.accumulated.get(name, 0.0), values=dict(evidence.values)))
     safety = result.safety
+    state = result.state
+    isolated = list(result.isolated_sources)
+    trusted = result.trusted
+    in_grace = result.in_grace
+    if result.gate is not None and config.gate is not None:
+        state = max(state, gate_state(result.gate))
+        checks.extend(_closer_checks(result.gate, config.gate))
+        estimator = config.gate.settings.estimator
+        if not result.gate.gate_open and estimator not in isolated:
+            isolated.append(estimator)
+        trusted = trusted and result.gate.state == GateState.OPEN and not result.gate.in_grace
+        in_grace = in_grace or result.gate.in_grace or result.gate.state == GateState.UNCONFIRMED
     return StatusView(
-        state=result.state, blame=result.fusion.blame, contaminated=list(result.fusion.contaminated),
-        isolated_sources=list(result.isolated_sources), hold_requested=result.hold_requested,
-        fusion_level=result.fusion.level, trusted=result.trusted, in_grace=result.in_grace,
+        state=state, blame=result.fusion.blame, contaminated=list(result.fusion.contaminated),
+        isolated_sources=isolated, hold_requested=result.hold_requested,
+        fusion_level=result.fusion.level, trusted=trusted, in_grace=in_grace,
         footprint_in_lethal=safety is not None and safety.in_lethal,
         lethal_depth_m=-1.0 if safety is None else safety.depth_m,
         profile=profile, last_event=result.last_event, checks=checks)
@@ -75,16 +89,15 @@ GATE_STATES = {
 }
 
 
-def gate_status_view(step: GateStep, config: MotionGateConfig, last_event: str) -> StatusView:
-    """門のノードの周期の結果を、監督と同じ形の状態にする。
-
-    確かめる前と門が開いている間は NORMAL、閉じている間は ISOLATED、止めて戻す間は RECOVERING、
-    閉じたまま決まらず止めている間は DEGRADED。安全の信号は出さない (lethal_depth_m は -1)。
-    """
-    state = GATE_STATES[step.state]
+def gate_state(step: GateStep) -> State:
+    """門の状態を監督の状態に写す。確かめる前と開いている間は NORMAL、閉じている間は ISOLATED、止めて戻す間は
+    RECOVERING、閉じたまま決まらず止めている間は DEGRADED。"""
     if step.state == GateState.CLOSED and step.hold:
-        state = State.DEGRADED
-    closed = step.state in (GateState.CLOSED, GateState.CORRECTING)
+        return State.DEGRADED
+    return GATE_STATES[step.state]
+
+
+def _closer_checks(step: GateStep, config: MotionGateConfig) -> List[CheckView]:
     checks = []
     for closer in config.closers:
         evidence = step.evidences.get(closer.name)
@@ -93,6 +106,18 @@ def gate_status_view(step: GateStep, config: MotionGateConfig, last_event: str) 
         checks.append(CheckView(
             name=closer.name, detector=closer.type, sources=list(closer.sources.values()), status=evidence.status,
             score=0.0 if evidence.status == Status.UNKNOWN else evidence.score, values=dict(evidence.values)))
+    return checks
+
+
+def gate_status_view(step: GateStep, config: MotionGateConfig, last_event: str) -> StatusView:
+    """門のノードの周期の結果を、監督と同じ形の状態にする。
+
+    確かめる前と門が開いている間は NORMAL、閉じている間は ISOLATED、止めて戻す間は RECOVERING、
+    閉じたまま決まらず止めている間は DEGRADED。安全の信号は出さない (lethal_depth_m は -1)。
+    """
+    state = gate_state(step)
+    closed = step.state in (GateState.CLOSED, GateState.CORRECTING)
+    checks = _closer_checks(step, config)
     return StatusView(
         state=state, isolated_sources=[config.settings.estimator] if closed else [], hold_requested=step.hold,
         trusted=step.state == GateState.OPEN and not step.in_grace,
