@@ -224,6 +224,9 @@ recovery:
     # variance_scale_topic と同じトピック
     - type: variance_scale
       params: {topic: /gnss_variance_scale, residual: gnss_vs_ekf}
+    # 走り方 (conduct) の速度の上限を、controller_server の /speed_limit に出す (門があるときだけ上限が出る)
+    - name: speed_limit
+      type: "mg_localization_supervisor.actuators.speed_limit:SpeedLimitActuator"
 
 anchors:
   pose: ekf
@@ -263,6 +266,29 @@ external_reinit:
 # 一時停止を門が決め、監督の復旧も門の照合で決める (localization_supervisor/doc/design.md)。プロファイルでは
 # 変えられない (起動時に作る)。
 # 閉じる理由・照合・戻し方の値は、記録の再生の評価で決めた仮の値で、実機で確かめて調整する
+# 走り方: 状況 (確かめた姿勢がない / 疑い / 決めきれない / 見えない / 復旧中) と程度 (起こりうる誤差 ÷ 余裕) から
+# 減速を決める (localization_supervisor/doc/architecture_target.md の「状態 × 程度 → 対処」)。門があるときだけ使う。
+# 余裕は safety の footprint と計画用地図から求める。止める対処は持たない (止めるのは門と監督の上限つきの仕組み)
+conduct:
+  # 確かめてから走った道のり 1 m あたりの誤差の増え方。門の continuation_xy_per_m と同じ考え方
+  error_per_m: 0.05
+  # 状況ごとの起こりうる誤差の下限 [m]
+  floors: {uninitialized: 2.0, suspect: 1.0, undecided: 1.5, unobserved: 1.0, recovering: 1.5}
+  # 門の確かめ (gate.settings.confirm_distance_m) が 2 回続けて合わなかったくらいの道のり
+  unobserved_after_m: 25.0
+  undecided_after_sec: 3.0
+  medium_ratio: 0.5
+  heavy_ratio: 1.0
+  lower_hold_sec: 3.0
+  # 減速の上限 [m/s]。RPP の desired_linear_vel (巡航) より小さく
+  slow_speed_mps: 0.3
+  table:
+    uninitialized: {light: normal, medium: slow, heavy: slow}
+    suspect: {light: normal, medium: slow, heavy: slow}
+    undecided: {light: slow, medium: slow, heavy: slow}
+    unobserved: {light: slow, medium: slow, heavy: slow}
+    recovering: {light: slow, medium: slow, heavy: slow}
+
 gate:
   period_sec: 0.2
   settings:

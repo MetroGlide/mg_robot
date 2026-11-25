@@ -20,6 +20,7 @@ from localization_supervisor.ros.supervisor_node import check_node_supports
 from mg_localization_supervisor.actuators import pause_request
 from mg_localization_supervisor.actuators.clear_costmap import ClearCostmap
 from mg_localization_supervisor.actuators.pause_request import PauseRequestActuator
+from mg_localization_supervisor.actuators.speed_limit import SpeedLimitActuator
 from mg_localization_supervisor.actuators import spin_observe
 from mg_localization_supervisor.actuators.spin_observe import SpinObserve
 
@@ -57,7 +58,8 @@ def test_actuators_and_resetters_are_built_from_the_config():
     node = MagicMock()
     actuators = build_actuators(config.actuators, node)
     assert [type(a) for a in actuators][1:4] == [PauseRequestActuator, SpinObserve, ClearCostmap]
-    assert [a.name for a in actuators][4:] == ['variance_scale']
+    assert [a.name for a in actuators][4:] == ['variance_scale', 'speed_limit']
+    assert type(actuators[5]) is SpeedLimitActuator
     resetters = build_resetters(config.resetters, node, OwnMessages())
     assert [r.name for r in resetters] == ['amcl', 'robot_localization']
 
@@ -110,7 +112,7 @@ def test_a_gnss_that_disagrees_is_only_isolated_and_amcl_is_vouched_for_by_the_s
 def test_actuators_are_the_same_in_every_profile():
     base = load_config(SUPERVISION)
     assert [a.get('name', a['type']) for a in base.actuators] == [
-        'gate', 'pause_request', 'spin_observe', 'clear_costmap', 'variance_scale']
+        'gate', 'pause_request', 'spin_observe', 'clear_costmap', 'variance_scale', 'speed_limit']
     for profile in base.profiles:
         assert load_config(SUPERVISION, profile).actuators == base.actuators
 
