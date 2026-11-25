@@ -65,8 +65,23 @@ scenario-test: ## シナリオを 1 本実行 [SCENARIO=<名前> GUI PROFILE ROB
 #   EXAMPLES=1       examples/ も含める
 #   KNOWN=1          known_issue タグ (既知の問題で失敗するシナリオ) も含める (既定は除外)
 #   GUI=1 / PROFILE=<名前> / ROBOT=<実機PCのIP>  scenario-test と同じ
-scenario-test-all: ## 回帰テストを一括実行 [TIER TAGS REPEAT EXAMPLES KNOWN GUI PROFILE ROBOT LOCALIZATION_CONFIG LOCALIZATION_MONITOR LOCALIZATION_PRESET LOCALIZATION_PROFILE LOCALIZATION_GATE]
-	$(_scenario_run)="run-all $(_scenario_dir)/regression $(if $(EXAMPLES),$(_scenario_dir)/examples) $(_scenario_results) $(_remote_arg) $(if $(KNOWN),,--exclude-tags known_issue) $(if $(filter smoke,$(TIER)),--tags smoke) $(if $(TAGS),--tags $(TAGS)) $(if $(REPEAT),--repeat $(REPEAT)) $(if $(GUI),--gui) $(if $(PROFILE),--profile $(PROFILE))" scenario-test
+#   SHARDS=N         N 本に分けて並列に実行する。結果は同じディレクトリにまとめ、進み具合と junit は分け札ごと
+#                    (progress_<I>of<N>.json)。ROS_DOMAIN_ID と Gazebo の区画を分けて隔離する。ROBOT・GUI とは使えない
+_run_all_args = run-all $(_scenario_dir)/regression $(if $(EXAMPLES),$(_scenario_dir)/examples) $(_remote_arg) $(if $(KNOWN),,--exclude-tags known_issue) $(if $(filter smoke,$(TIER)),--tags smoke) $(if $(TAGS),--tags $(TAGS)) $(if $(REPEAT),--repeat $(REPEAT)) $(if $(GUI),--gui) $(if $(PROFILE),--profile $(PROFILE))
+scenario-test-all: ## 回帰テストを一括実行 [TIER TAGS REPEAT EXAMPLES KNOWN GUI PROFILE ROBOT SHARDS LOCALIZATION_CONFIG LOCALIZATION_MONITOR LOCALIZATION_PRESET LOCALIZATION_PROFILE LOCALIZATION_GATE]
+ifeq ($(SHARDS),)
+	$(_scenario_run)="$(_run_all_args) $(_scenario_results)" scenario-test
+else
+	$(if $(ROBOT)$(GUI),$(error SHARDS は ROBOT・GUI と使えません))
+	@ts=$$(date +%Y%m%d_%H%M%S); \
+	for i in $$(seq 1 $(SHARDS)); do \
+	  $(_scenario_run)="$(_run_all_args) --results-dir /root/ros2_data/scenario_results/$$ts --shard $$i/$(SHARDS)" \
+	    -e ROS_DOMAIN_ID=$$((60 + i)) -e IGN_PARTITION=scenario_shard$$i -e GZ_PARTITION=scenario_shard$$i \
+	    scenario-test 2>&1 | sed -u "s/^/[$$i] /" & \
+	done; \
+	wait; \
+	echo "results: /root/ros2_data/scenario_results/$$ts"
+endif
 
 # make scenario-env の起動が前提。シミュレータを起動し直さずに繰り返し実行する。
 #   SCENARIO=<名前|パス>  必須 / PROFILE=<名前>
