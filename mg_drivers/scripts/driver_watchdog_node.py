@@ -20,6 +20,7 @@ from diagnostic_updater import Updater
 from mg_msgs.msg import PauseRequest
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
+from rcl_interfaces.msg import SetParametersResult
 from rclpy.parameter import Parameter
 
 from driver_watchdog_core import ProcessTerminator, RestartPolicy
@@ -63,6 +64,11 @@ class DriverWatchdogNode(Node):
         startup_grace = self.declare_parameter('startup_grace_sec', 30.0).value
         hz_warn_ratio = self.declare_parameter('hz_warn_ratio', 0.5).value
         self._pause_on_fault = self.declare_parameter('pause_on_fault', True).value
+        # 一時停止を出さないソース (走行中に変えられる)。自己位置の監督が、欠けたセンサなしの組で走らせるときに
+        # 外から足す (診断と起動し直しは続ける)
+        self._pause_exempt = list(self.declare_parameter(
+            'pause_exempt_sources', Parameter.Type.STRING_ARRAY).value or [])
+        self.add_on_set_parameters_callback(self._on_set_parameters)
         self._pause_requester = self.declare_parameter(
             'pause_requester_id', 'driver_watchdog').value
         pause_topic = self.declare_parameter(
@@ -154,10 +160,17 @@ class DriverWatchdogNode(Node):
             return 'reports disconnected'
         return 'no data'
 
+    def _on_set_parameters(self, params: list) -> SetParametersResult:
+        for param in params:
+            if param.name == 'pause_exempt_sources':
+                self._pause_exempt = list(param.value or [])
+                self._events.info('watchdog.pause_exempt_changed', sources=','.join(self._pause_exempt))
+        return SetParametersResult(successful=True)
+
     def _publish_pause(self) -> None:
         if not self._pause_on_fault:
             return
-        faulted = [w.id for w in self._sources if w.faulted]
+        faulted = [w.id for w in self._sources if w.faulted and w.id not in self._pause_exempt]
         request = PauseRequest()
         request.requester_id = self._pause_requester
         request.active = bool(faulted)

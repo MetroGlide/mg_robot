@@ -1,0 +1,46 @@
+version: "2.0"
+name: anomaly_lidar_lost
+description: >
+  LiDAR が止まり、起動し直しても戻らない (スキャンが届かない)。基準の GNSS のまま、西の通路でスキャンを止め、最後まで
+  戻さない。期待する動作: センサの組を LiDAR なしにして、collision_monitor の scan の途絶による停止を外し、深度の
+  障害物 (ローカルコストマップ) と組の速度の上限で走りきる。シミュレーションにはセンサの途絶の見張りがないので、
+  見張りの一時停止の引き継ぎは試さない。構成は LOCALIZATION_CONFIG で選ぶ。
+profile: mg01
+world: warehouse
+tags: [localization, anomaly_sensor, mg_sequencer]
+timeout: 600
+
+record_topics: [/sim_scenario_test/entity_poses, /amcl_pose_origin, /odom/gps, /ekf_global_odom, /odom, /localization/status, /cmd_vel, /initialpose, /diagnostics_agg, /rosout]
+
+sim_args:
+  sensor_fault_file: "pkg://mg_scenario_test/scenarios/data/faults/anomaly_lidar_lost.yaml"
+
+stack_args:
+  map_path: "pkg://mg_scenario_test/scenarios/data/map_realistic/localization.yaml"
+
+setup:
+  - respawn: { pose: { x: 0.0, y: 0.0, yaw: 0.0 }, settle_sec: 3.0 }
+
+monitors:
+  # 合否の上限は置かず、構成どうしの比較のために値を残す
+  - pose_error: { deviation_m: 1.0 }
+  # 合否に使わない記録: ずれたまま止める要求も減速もなく走った距離、減速した時間
+  - localization_outcome: {}
+  - max_stop_duration: { max_stop_sec: 60.0, from_goal_started: 2, until_goal_reached: 8 }
+  - map_overlap: { max_overlap_sec: 60.0 }
+  - localization_hold: {}
+
+run:
+  mg_sequencer:
+    waypoints_file: "{world.waypoints}"
+    waypoint_timeout_sec: 200.0
+
+timeline:
+  - name: lost
+    when: { robot_near: { x: -4.6, y: -20.0, radius: 1.5, pose_source: sim } }
+    do:
+      - call_set_bool: { service: /fault_injector/trigger/lost, value: true }
+
+expect:
+  - reached_all
+  - time_limit: { sec: 900 }

@@ -227,6 +227,20 @@ recovery:
     # 走り方 (conduct) の速度の上限を、controller_server の /speed_limit に出す (門があるときだけ上限が出る)
     - name: speed_limit
       type: "mg_localization_supervisor.actuators.speed_limit:SpeedLimitActuator"
+    # センサの組が変わったら、ほかのノードのパラメータを切り替える (センサの途絶の見張りからの引き継ぎ)。
+    # LiDAR なしの組では、collision_monitor の scan の途絶による停止を切り、見張りの LiDAR の一時停止を外して、
+    # 深度の障害物 (ローカルコストマップ) と組の速度の上限で走る。all は全部の組に戻ったときの値 (設定ファイルと同じ)
+    - name: sensor_set
+      type: "mg_localization_supervisor.actuators.sensor_set:SensorSetParameters"
+      params:
+        sets:
+          no_lidar:
+            /collision_monitor: {scan_top.stop_on_timeout: false}
+            /driver_watchdog_node: {pause_exempt_sources: [top_lidar]}
+          all:
+            /collision_monitor: {scan_top.stop_on_timeout: true}
+            # 空の並びは ROS のパラメータの型が決まらないので、どのソースにも当たらない [""] にする
+            /driver_watchdog_node: {pause_exempt_sources: [""]}
 
 anchors:
   pose: ekf
@@ -266,6 +280,16 @@ external_reinit:
 # 一時停止を門が決め、監督の復旧も門の照合で決める (localization_supervisor/doc/design.md)。プロファイルでは
 # 変えられない (起動時に作る)。
 # 閉じる理由・照合・戻し方の値は、記録の再生の評価で決めた仮の値で、実機で確かめて調整する
+# センサの組: LiDAR (map_scan) が missing_after_sec 届かなければ LiDAR なしの組にし、組の速度の上限で走る。
+# missing_after_sec は、センサの途絶の見張り (mg_drivers の driver_watchdog.yaml) が起動し直しを試す時間
+# (restart_after_sec と restart_cooldown_sec の数回分) より長くする。戻ったら present_after_sec 待って全部の組へ
+sensor_sets:
+  - name: no_lidar
+    missing: [map_scan]
+    missing_after_sec: 30.0
+    present_after_sec: 5.0
+    speed_limit_mps: 0.3
+
 # 走り方: 状況 (確かめた姿勢がない / 疑い / 決めきれない / 見えない / 復旧中) と程度 (起こりうる誤差 ÷ 余裕) から
 # 減速を決める (localization_supervisor/doc/architecture_target.md の「状態 × 程度 → 対処」)。門があるときだけ使う。
 # 余裕は safety の footprint と計画用地図から求める。止める対処は持たない (止めるのは門と監督の上限つきの仕組み)

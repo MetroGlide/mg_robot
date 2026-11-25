@@ -16,6 +16,7 @@ _ROS2_MODULES = [
     "rclpy.serialization",
     "rcl_interfaces",
     "rcl_interfaces.msg",
+    "rcl_interfaces.srv",
     "diagnostic_msgs",
     "diagnostic_msgs.msg",
     "diagnostic_updater",
