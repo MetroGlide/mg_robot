@@ -113,6 +113,13 @@ detectors:
     vouch: [amcl]
   # AMCL の粒子が、離れた姿勢の仮説に割れているか。割れても AMCL が正しい方を選ぶことが多いので、重み 0 で
   # 記録だけする (正しい姿勢と、ずれたときの値の分布を確かめてから重みを決める)
+  # GNSS の動いた量を、ホイールオドメトリの示す動きと窓で比べる (精度の良い申告のまま GNSS がずれていくのを見る)。
+  # 申告の精度が悪い標本は使わない (揺れを飛びと見ない)。向きは GNSS のブリッジが進む向きから作るので見ない
+  gnss_motion:
+    type: pose_jump
+    sources: {pose: gnss, motion: odom}
+    params: {window_sec: 10.0, threshold_m: 1.5, threshold_rad: 100.0, max_std_m: 0.5}
+    max_score: 2.0
   amcl_split:
     type: hypothesis_split
     sources: {pose: amcl, hypotheses: amcl_particles}
@@ -334,6 +341,11 @@ gate:
     # 全周の照合 (initial_search) に使う GNSS: 申告の精度の上限と、続けて満たす標本の数 (初期化ノードと同じ)
     initial_gnss_max_std_m: 5.0
     initial_gnss_consecutive: 2
+    # GNSS の見習い期間: 申告の精度が直近の窓の最も悪い値 (gnss_max_std_m より悪い) から ratio 倍以上良くなったら、
+    # この時間だけ門は GNSS を使わない (屋根を抜けた直後など、位置はずれたまま申告だけが良くなるため)
+    gnss_probation_sec: 10.0
+    gnss_probation_ratio: 3.0
+    gnss_probation_window_sec: 10.0
 
   # 閉じる理由の部品 (判定の書き方)。どれかの異常が close_after_sec 続いたら閉じる。誤って閉じても照合 1 回で戻る。
   # 名前は判定のインスタンスと分ける (状態のメッセージに両方を並べる)
