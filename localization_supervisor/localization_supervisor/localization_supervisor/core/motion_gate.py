@@ -11,8 +11,9 @@ MapMatcher.decide で照合して (重いので別のスレッドで)、次の�
 """
 import enum
 import math
+from collections import deque
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Mapping, Optional, Tuple
+from typing import Any, Deque, Dict, List, Mapping, Optional, Tuple
 
 import numpy as np
 
@@ -86,6 +87,12 @@ class GateSettings:
     # 全周の照合 (設定の initial_search があるとき) に使う GNSS の申告の精度の上限と、続けて満たす標本の数
     initial_gnss_max_std_m: float = 5.0
     initial_gnss_consecutive: int = 2
+    # GNSS の見習い期間: 申告の精度が、直近 gnss_probation_window_sec の最も悪い値から gnss_probation_ratio 倍以上
+    # 良くなり、その最も悪い値が gnss_max_std_m より悪かったら、gnss_probation_sec の間 GNSS を使わない
+    # (屋根を抜けた直後などに、位置はずれたまま申告だけが良くなるため)。0 なら使わない
+    gnss_probation_sec: float = 0.0
+    gnss_probation_ratio: float = 3.0
+    gnss_probation_window_sec: float = 10.0
 
 
 @dataclass
@@ -234,6 +241,9 @@ class MotionGate:
         self._map_version: Optional[int] = None
         self._last_scan_stamp: Optional[float] = None
         self._distrust: frozenset = frozenset()
+        # GNSS の申告の精度の履歴 (時刻, 標準偏差) と、見習い期間の終わり
+        self._gnss_std: Deque[Tuple[float, float]] = deque()
+        self._probation_until = -math.inf
         # 外から足された候補 (force_close。次に閉じたまま照合するときに一度だけ使う) と、出していないイベント
         self._extra: Dict[str, CandidatePose] = {}
         self._pending: List[GateEvent] = []
@@ -303,7 +313,7 @@ class MotionGate:
         t = snapshot.stamp
         out = GateStep(self.state, self.state != GateState.CLOSED and self.state != GateState.CORRECTING)
         out.events, self._pending = self._pending, []
-        self._distrust = frozenset(distrust)
+        self._distrust = frozenset(distrust) | self._probation(snapshot, t, out)
         if result is not None:
             self._busy = False
         motion = snapshot.motion_at(s.motion, t)
@@ -379,6 +389,24 @@ class MotionGate:
         motion = snapshot.motion_at(s.motion, scan.stamp)
         if motion is not None:
             self._buffer.add(scan, motion)
+
+    def _probation(self, snapshot: Snapshot, t: float, out: GateStep) -> frozenset:
+        """GNSS の見習い期間なら {GNSS}。申告の精度が急に良くなったら始める。"""
+        s = self.settings
+        if not s.gnss or s.gnss_probation_sec <= 0.0:
+            return frozenset()
+        sample = snapshot.pose(s.gnss, s.gnss_max_age_sec)
+        if sample is not None and (not self._gnss_std or sample.stamp > self._gnss_std[-1][0]):
+            std = math.sqrt(max(float(sample.cov[0][0]), float(sample.cov[1][1]), 0.0))
+            while self._gnss_std and self._gnss_std[0][0] < sample.stamp - s.gnss_probation_window_sec:
+                self._gnss_std.popleft()
+            worst = max((v for _, v in self._gnss_std), default=0.0)
+            self._gnss_std.append((sample.stamp, std))
+            if worst > s.gnss_max_std_m and std * s.gnss_probation_ratio <= worst and t >= self._probation_until:
+                self._probation_until = t + s.gnss_probation_sec
+                out.events.append(GateEvent('gnss_probation', 'info', {
+                    'std_m': round(std, 3), 'worst_std_m': round(worst, 3), 'sec': s.gnss_probation_sec}))
+        return frozenset({s.gnss}) if t < self._probation_until else frozenset()
 
     def _count_initial_gnss(self, t: float, snapshot: Snapshot) -> None:
         """全周の照合に使える (申告の精度が上限以下の) GNSS の標本が、続けていくつ届いたか。

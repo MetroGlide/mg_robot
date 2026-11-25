@@ -13,6 +13,7 @@ class PoseJump(Detector):
     window_sec が 0 なら前の標本と比べる (飛び)。正なら window_sec 以上前の最も新しい標本と比べ、
     1 回ごとは小さくても、続けて同じ向きにずれていくもの (旋回中に向きが回りすぎるなど) を見る。
     新しい標本がない周期は判定できない。比べる標本との間が window_sec + max_gap_sec を超えたら比べない。
+    max_std_m が正なら、申告の精度 (位置の標準偏差) がこれより悪い標本は使わない (GNSS の揺れを飛びと見ないため)。
     """
     SOURCES = {'pose': SourceKind.POSE, 'motion': SourceKind.MOTION}
     SUBJECTS = ('pose',)
@@ -21,6 +22,7 @@ class PoseJump(Detector):
         'threshold_rad': ParamSpec(float, 0.35),
         'max_gap_sec': ParamSpec(float, 5.0),
         'window_sec': ParamSpec(float, 0.0),
+        'max_std_m': ParamSpec(float, 0.0),
     }
 
     def __init__(self, name, params, sources) -> None:
@@ -49,6 +51,8 @@ class PoseJump(Detector):
         self._last_stamp = new[-1].stamp
         worst: Optional[Evidence] = None
         for sample in new:
+            if p['max_std_m'] > 0.0 and _std_m(sample) > p['max_std_m']:
+                continue
             odom_base = snapshot.motion_at(self.sources['motion'], sample.stamp)
             if odom_base is None:
                 continue
@@ -62,3 +66,8 @@ class PoseJump(Detector):
             if worst is None or score > worst.score:
                 worst = Evidence.from_score(score, jump_m=dpos, jump_rad=dyaw)
         return worst if worst is not None else Evidence.unknown()
+
+
+def _std_m(sample) -> float:
+    cov = sample.cov
+    return float(max(cov[0][0], cov[1][1], 0.0)) ** 0.5

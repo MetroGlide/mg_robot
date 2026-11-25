@@ -206,6 +206,23 @@ def test_pose_jump_detects_only_new_jumps():
     assert detector.evaluate(store.snapshot(30.0)).status == Status.UNKNOWN
 
 
+def test_pose_jump_skips_samples_with_poor_reported_accuracy():
+    """max_std_m より申告の精度が悪い標本 (揺れる GNSS) は、飛びの判定に使わない。"""
+    drive = Drive()
+    store = _store()
+    detector = _detector(PoseJump, 'gnss_motion', {'pose': 'amcl', 'motion': 'odom'}, max_std_m=0.5)
+    results = []
+    for i in range(6):
+        t = float(i)
+        store.add_motion('odom', drive.motion(t))
+        # 揺れの大きい標本 (申告 2 m) は 3 m 飛んでいても見ない。精度の良い標本だけを比べる
+        jump = 3.0 if i % 2 else 0.0
+        store.add_pose('amcl', pose_sample(t, compose(drive.map(t), (jump, 0.0, 0.0)), std_xy=2.0 if i % 2 else 0.1))
+        results.append(detector.evaluate(store.snapshot(t)))
+    assert all(r.status != Status.ANOMALY for r in results)
+    assert any(r.status == Status.NORMAL for r in results)
+
+
 def test_pose_jump_window_detects_slow_yaw_drift():
     drive = Drive()
     store = _store()

@@ -92,6 +92,7 @@ class Sim:
         self.amcl_reset = None
         self.gnss = True
         self.gnss_offset = (0.0, 0.0)
+        self.gnss_std = 0.2
         # 推定器の地図の座標でのずれ (ゆっくりしたずれ)
         self.amcl_shift = (0.0, 0.0)
         self.blind = False
@@ -115,7 +116,7 @@ class Sim:
         self.store.add_pose('ekf', PoseSample(t, compose(self.true, self.ekf_offset), cov()))
         if self.gnss:
             self.store.add_pose('gnss', PoseSample(
-                t, (self.true[0] + self.gnss_offset[0], self.true[1] + self.gnss_offset[1], 0.0), cov(0.2)))
+                t, (self.true[0] + self.gnss_offset[0], self.true[1] + self.gnss_offset[1], 0.0), cov(self.gnss_std)))
         scan = room_scan(t, self.true)
         if self.blind:
             scan.ranges[:] = np.inf
@@ -489,6 +490,32 @@ def test_distrusted_gnss_neither_closes_the_gate_nor_becomes_a_candidate():
     matches = sim.events('map_match')[before:]
     assert sim.events('gate_closed') and matches
     assert all('ratio_gnss' not in e.fields for e in matches)
+
+
+def test_gnss_whose_report_suddenly_improves_is_on_probation():
+    """申告の精度が急に良くなった GNSS (屋根を抜けた直後など) は、見習い期間の間、閉じる理由にも候補にも使わない。"""
+    sim = _confirmed(confirm_distance_m=1000.0, gnss_probation_sec=8.0)
+    sim.gnss_std = 3.0
+    sim.run(3.0)
+    sim.gnss_std = 0.2
+    sim.gnss_offset = (0.0, 2.5)
+    sim.run(4.0)
+    assert sim.events('gnss_probation')
+    assert not sim.events('gate_closed')
+    before = len(sim.events('map_match'))
+    sim.amcl_offset = (1.5, 0.0, 0.0)
+    sim.run(2.0)
+    matches = sim.events('map_match')[before:]
+    assert matches and all('ratio_gnss' not in e.fields for e in matches)
+
+
+def test_gnss_probation_is_off_by_default():
+    sim = _confirmed(confirm_distance_m=1000.0)
+    sim.gnss_std = 3.0
+    sim.run(3.0)
+    sim.gnss_std = 0.2
+    sim.run(2.0)
+    assert not sim.events('gnss_probation')
 
 
 def test_force_close_holds_at_once_and_matches_the_extra_candidates():
