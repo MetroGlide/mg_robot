@@ -83,6 +83,33 @@ ros2 launch mg_drivers obstacle_detection_3d.launch.py
 | `use_sensor_data_qos` | QoS の切り替え |
 | `param_file` | パラメータの YAML |
 
+## 実機での確認と調整
+
+低床障害物を検出するための値 (ROI の下限と ΔZ の閾値) と、コストマップの STVL の消去の錐台は、シミュレータと記録の再生でしか確かめていない。実機では、次の順に確かめて調整する。決めた値は yaml に書き戻す。
+
+### 機能のオンオフ
+
+| 対象 | 切り替え方 | 効く時期 |
+| :--- | :--- | :--- |
+| カメラの層 (STVL) をコストマップから外す | `ros2 param set /local_costmap/local_costmap obstacle_stvl_layer.enabled false` (global は `/global_costmap/global_costmap`) | すぐ |
+| 検出の感度・範囲 | `ros2 param set /obstacle_detection_3d_node <名前> <値>` (上の「パラメータ」) | 次のフレーム |
+| 錐台の視野・奥行き、観測の高さの範囲 | `ros2 param set /local_costmap/local_costmap obstacle_stvl_layer.obstacle_points.<名前> <値>` (`vertical_fov_angle`、`horizontal_fov_angle`、`min_z`、`max_z`、`min_obstacle_height`、`max_obstacle_height`。global の観測源の名前は `pointcloud`) | すぐ |
+| 錐台の消去の速さ (`decay_acceleration`)、時間切れ (`voxel_decay`) | `mg_navigation/params/nav2_params.yaml` を編集して、ナビゲーションを起動し直す (実行中には変えられない) | 起動し直し |
+| カメラと検出をまとめて止める | ナビゲーションの launch 引数 `use_realsense:=false` | 起動し直し |
+
+### 確かめる順と、見るもの
+
+RViz (`mg_navigation/rviz/rviz.rviz`) で、点群 (`/camera/camera/depth/color/points`)、検出 (`/obstacle_detection_3d_node/points_obstacle` と `cluster_markers`)、STVL のボクセル (`/local_costmap/voxel_grid`。global は `publish_voxel_map` が false なので出ない) を重ねて見る。
+
+1. **カメラの取り付け角度**: 平らな地面だけの前方で、点群の地面が、`base_footprint` の高さ 0 に、距離によらず乗っているかを見る。遠くほど上 (または下) にずれるなら、URDF のカメラの角度 (`mg_description` の `realsense_d435i` の `rpy`) が実物と違う。ずれたままだと、遠くの地面が ROI の下限を越えて、判定に入りやすくなる
+2. **点群の実際の視野と錐台**: 前方の左右と上下の端に物を置き、点群が届く範囲より錐台 (ボクセルが消える範囲) が狭いかを見る。物を除いたときに、点群の外でボクセルが消えるなら、錐台が広すぎる。視野の角度を下げる。`test/test_nav2_params_consistency.py` の点群の視野の定数も、測った値に直す
+3. **低床障害物の検出と停止**: 対象の高さの箱を進路に置き、何 m 手前から検出され、どこで止まり、避けるかを見る。手前で止めて待っても (RPP の待ち)、走り出して箱に当たらないかを見る (箱がカメラの視野の下に入っても、`voxel_decay` の間は覚えている)。見落とすなら ΔZ の閾値か ROI の下限を下げる
+4. **立ち去る人**: 正面に人が立ち、立ち去ったあと、何秒で走り出すかを見る。遅いなら、ボクセルが錐台の外に残っていないか (ROI の上限と錐台の上端の関係) と、`decay_acceleration` を見る
+5. **走路の脇と路面**: 縁石・草・側溝の格子・タイルの目地などで、検出が出るかと、走行 (減速・停止・迂回) にどう効くかを見る。止めたくない物で止まるなら、ΔZ の閾値・`min_cluster_cells`・`min_points_per_cell`・`z_outlier_trim` を上げる。どの値で、何が検出から外れるかを記録する
+6. **横・後ろの跡**: リカバリー (後退・首振り) の前後で、視野の外に残ったボクセル (人や壁の跡) が、再開を遅らせていないかを見る。遅らせるなら local の `voxel_decay` を短くする (短くしすぎると、3 の箱を待つ間に忘れる)
+
+調べる走行は `tools/scripts/record.sh -m all` で記録する (深度画像と検出結果が入る)。あとで「rosbag でのリプレイ確認」の手順で、パラメータを変えて比べられる。
+
 ## rosbag でのリプレイ確認
 
 bag に点群 (`PointCloud2`) が含まれないとき、深度画像から点群を復元しながら確認する。
