@@ -11,6 +11,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/LocalizationCheck.msg"
   "msg/GateState.msg"
   "srv/SetProfile.srv"
+  "srv/RequestVerify.srv"
   DEPENDENCIES std_msgs diagnostic_msgs
 )
 

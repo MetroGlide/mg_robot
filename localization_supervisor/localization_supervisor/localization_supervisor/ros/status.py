@@ -24,6 +24,8 @@ def to_message(view: StatusView, stamp) -> LocalizationStatus:
     msg.possible_error_m = float(view.possible_error_m)
     msg.clearance_m = float(view.clearance_m)
     msg.speed_limit = float(view.speed_limit)
+    msg.verify_id = int(view.verify_id)
+    msg.verify_result = view.verify_result
     msg.profile = view.profile
     msg.last_event = view.last_event
     for check in view.checks:

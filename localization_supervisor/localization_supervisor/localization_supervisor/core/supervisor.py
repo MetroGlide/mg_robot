@@ -244,6 +244,10 @@ class Supervisor:
         self.start_grace(now, self.config.grace_after_reset_sec)
         self._emit('external_reinit', 'warn', {'topic': topic, 'state': before.name})
 
+    def request_verify(self, now: float) -> Optional[int]:
+        """走行側からの確かめの要求 (門があるときだけ)。受け付ければ番号を返す。"""
+        return None if self.gate is None else self.gate.request_verify(now)
+
     def manual_pose(self, pose: Pose2) -> None:
         """手動の初期姿勢 (門があるときだけ。門がその周りを照合してから置き直す)。"""
         if self.gate is not None:

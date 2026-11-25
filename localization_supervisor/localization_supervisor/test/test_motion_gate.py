@@ -14,7 +14,7 @@ import dataclasses
 from localization_supervisor.core.grid import scan_points_in_map
 from localization_supervisor.core.initial_search import InitialSearchConfig
 from localization_supervisor.core.interfaces import MotionSample, PoseSample
-from localization_supervisor.core.map_match import CandidatePose, MapMatchConfig, MapMatcher
+from localization_supervisor.core.map_match import CandidatePose, MapMatchConfig, MapMatcher, MatchDecision
 from localization_supervisor.core.motion_gate import (
     CONTINUATION, INITIAL, MANUAL, GateState, MotionGate, run_match)
 from localization_supervisor.core.config import _parse_sources, parse_gate_parts
@@ -516,6 +516,67 @@ def test_gnss_probation_is_off_by_default():
     sim.gnss_std = 0.2
     sim.run(2.0)
     assert not sim.events('gnss_probation')
+
+
+def _verified(sim, seconds=2.0):
+    sim.run(seconds)
+    return [s.verified for s in sim.steps if s.verified is not None]
+
+
+def test_verify_request_confirms_a_correct_estimator():
+    sim = _confirmed(confirm_distance_m=1000.0)
+    number = sim.gate.request_verify(sim.t)
+    assert number is not None
+    assert _verified(sim) == [(number, 'confirmed')]
+    assert sim.gate.state == GateState.OPEN and sim.gate.last_verify == (number, 'confirmed')
+
+
+def test_verify_request_relocates_an_estimator_on_another_hypothesis():
+    sim = _confirmed(confirm_distance_m=1000.0)
+    # 閉じる理由の部品で先に閉じないようにして、確かめの要求の照合だけで見つける
+    sim.gate.config.closers = []
+    sim.amcl_offset = (1.5, 0.0, 0.0)
+    sim.ekf_offset = (0.2, 0.0, 0.0)
+    sim.run(0.4)
+    number = sim.gate.request_verify(sim.t)
+    assert _verified(sim, 4.0) == [(number, 'relocated')]
+    assert sim.events('pose_reset')
+    assert _error(sim)[0] < 0.3
+
+
+def test_verify_request_that_cannot_decide_closes_and_holds():
+    sim = _confirmed(confirm_distance_m=1000.0)
+    sim.matcher.decide = lambda *args: MatchDecision(None, None, 'ambiguous')
+    number = sim.gate.request_verify(sim.t)
+    assert _verified(sim) == [(number, 'undecided')]
+    assert sim.gate.state == GateState.CLOSED
+    assert any(s.hold for s in sim.steps[-5:])
+
+
+def test_verify_request_while_not_open_is_undecided_at_once():
+    sim = _searching()
+    number = sim.gate.request_verify(0.0)
+    sim.step()
+    assert sim.steps[-1].verified == (number, 'undecided')
+
+
+def test_verify_request_that_cannot_be_matched_is_undecided():
+    """照合の依頼を作れない (スキャンがない) 要求は、待たせずに決まらないで返す。"""
+    sim = _confirmed(confirm_distance_m=1000.0)
+    sim.gate._buffer.clear()
+    sim.blind = True
+    number = sim.gate.request_verify(sim.t)
+    assert _verified(sim, 0.4) == [(number, 'undecided')]
+
+
+def test_verify_requests_are_rate_limited():
+    sim = _confirmed(confirm_distance_m=1000.0)
+    first = sim.gate.request_verify(sim.t)
+    assert first is not None and sim.gate.request_verify(sim.t) is None
+    sim.run(2.0)
+    assert sim.gate.request_verify(sim.t) is None
+    sim.run(4.0)
+    assert sim.gate.request_verify(sim.t) == first + 1
 
 
 def test_force_close_holds_at_once_and_matches_the_extra_candidates():

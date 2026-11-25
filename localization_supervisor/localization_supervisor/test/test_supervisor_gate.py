@@ -268,6 +268,21 @@ def test_observe_only_supervisor_sends_no_reset_for_a_gate_decision():
     assert all(r.gate.gate_open and not r.hold_requested for r in results)
 
 
+def test_verify_request_result_is_shown_in_the_status():
+    sim = _opened()
+    number = sim.supervisor.request_verify(sim.t)
+    assert number is not None
+    result = sim.run(2.0)[-1]
+    view = status_view(result, sim.config, '')
+    assert (view.verify_id, view.verify_result) == (number, 'confirmed')
+
+
+def test_verify_request_without_the_gate_is_not_accepted():
+    raw = _raw()
+    raw['gate'] = dict(raw['gate'], enabled=False)
+    assert Supervisor(parse_config(raw)).request_verify(0.0) is None
+
+
 def test_config_rejects_a_closer_named_like_a_detector():
     raw = _raw()
     raw['gate'] = copy.deepcopy(raw['gate'])

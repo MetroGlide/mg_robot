@@ -42,6 +42,10 @@ float32 clearance_m
 # 速度の上限 [m/s] (0 は上限なし)
 float32 speed_limit
 
+# 直近に決着した確かめの要求 (~/request_verify) の番号 (0 はまだない) と結果 (confirmed / relocated / undecided)
+uint32 verify_id
+string verify_result
+
 # 使っているプロファイル (空は基本設定)
 string profile
 # 直近に起きたこと (例: "suspect: amcl_jump"、"map_changed")

@@ -26,7 +26,7 @@ import tf2_ros
 from diagnostic_updater import Updater
 from geometry_msgs.msg import PoseWithCovarianceStamped
 from localization_supervisor_msgs.msg import LocalizationStatus
-from localization_supervisor_msgs.srv import SetProfile
+from localization_supervisor_msgs.srv import RequestVerify, SetProfile
 from rcl_interfaces.msg import SetParametersResult
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
@@ -138,6 +138,7 @@ class LocalizationSupervisorNode(Node):
         output = config.output
         self._status_pub = self.create_publisher(LocalizationStatus, output.status_topic, 10)
         self.create_service(SetProfile, '~/set_profile', self._on_set_profile)
+        self.create_service(RequestVerify, '~/request_verify', self._on_request_verify)
         self._events = build_event_sink(config.event_sink, self.get_logger())
         self._view: Optional[StatusView] = None
         self._updater = Updater(self)
@@ -175,6 +176,17 @@ class LocalizationSupervisorNode(Node):
         result = self.set_parameters([Parameter('profile', Parameter.Type.STRING, request.profile)])[0]
         response.success = result.successful
         response.message = result.reason or f'profile: {request.profile or "(base)"}'
+        return response
+
+    def _on_request_verify(self, request, response):
+        """走行側からの確かめの要求。周期の処理と同じ実行器で呼ばれるので、そのまま門に渡す。"""
+        number = self._supervisor.request_verify(self._now())
+        response.accepted = number is not None
+        response.id = number or 0
+        response.message = (f'verify {number} accepted' if number is not None
+                            else 'not accepted (no gate, too soon, or a request is pending)')
+        self._events.info(f'{self._config.event_prefix}.verify_requested', requester=request.requester,
+                          accepted=response.accepted, id=response.id)
         return response
 
     def _on_manual(self, msg: PoseWithCovarianceStamped) -> None:

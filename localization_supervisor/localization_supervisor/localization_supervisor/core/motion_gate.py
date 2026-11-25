@@ -27,6 +27,8 @@ from .snapshot import DistanceFieldCache, Snapshot
 
 CONTINUATION = 'continuation'
 MANUAL = 'manual'
+# 走行側からの確かめの要求の照合
+VERIFY = 'verify'
 # 起動の直後と地図の切り替えの後に、GNSS の周りを向きの全周で照合して見つけた姿勢の候補
 INITIAL = 'initial_search'
 # 全周の照合に使う、1 回分のスキャンの点の数の上限
@@ -93,6 +95,8 @@ class GateSettings:
     gnss_probation_sec: float = 0.0
     gnss_probation_ratio: float = 3.0
     gnss_probation_window_sec: float = 10.0
+    # 確かめの要求 (走行側から) を受け付ける間隔の下限 [s]
+    verify_min_interval_sec: float = 5.0
 
 
 @dataclass
@@ -194,6 +198,17 @@ class GateStep:
     evidences: Dict[str, Evidence] = field(default_factory=dict)
     closing: List[str] = field(default_factory=list)
     in_grace: bool = False
+    # この周期に決着した確かめの要求 (番号, 結果)。結果は VERIFY_RESULTS のどれか
+    verified: Optional[Tuple[int, str]] = None
+    # 直近に決着した確かめの要求 (状態に出し続ける)
+    last_verify: Optional[Tuple[int, str]] = None
+
+
+# 確かめの要求の結果: 推定器のまま確かめた / 別の姿勢へ置き直す / 決まらない (門を閉じ、止めて照合する)
+VERIFY_CONFIRMED = 'confirmed'
+VERIFY_RELOCATED = 'relocated'
+VERIFY_UNDECIDED = 'undecided'
+VERIFY_RESULTS = (VERIFY_CONFIRMED, VERIFY_RELOCATED, VERIFY_UNDECIDED)
 
 
 @dataclass
@@ -238,6 +253,12 @@ class MotionGate:
         self._correction: Optional[Tuple[Pose2, Pose2, str]] = None
         self._correction_since = 0.0
         self._manual: Optional[Pose2] = None
+        # 確かめの要求: 番号の続き、待っている番号、受け付けた時刻、直近の決着 (番号, 結果)
+        self._verify_seq = 0
+        self._verify_pending: Optional[int] = None
+        self._verify_at = -math.inf
+        self._verify_undecided: Optional[int] = None
+        self.last_verify: Optional[Tuple[int, str]] = None
         self._map_version: Optional[int] = None
         self._last_scan_stamp: Optional[float] = None
         self._distrust: frozenset = frozenset()
@@ -261,6 +282,22 @@ class MotionGate:
         """手動の初期姿勢を受けた。次の周期で、その周りを照合してから置き直す (照合中の結果は捨てる)。"""
         self._manual = pose
         self._generation += 1
+
+    def request_verify(self, t: float) -> Optional[int]:
+        """走行側からの確かめの要求。受け付ければ番号を返す (間隔の下限より早い・待っている要求があれば None)。
+
+        門が開いていれば、次の周期に、閉じたときと同じ候補で照合する。開いていなければ (確かめた姿勢がない、閉じて照合・
+        停止の最中)、次の周期に「決まらない」として返す。
+        """
+        if self._verify_pending is not None or t - self._verify_at < self.settings.verify_min_interval_sec:
+            return None
+        self._verify_seq += 1
+        self._verify_at = t
+        if self.state == GateState.OPEN:
+            self._verify_pending = self._verify_seq
+        else:
+            self._verify_undecided = self._verify_seq
+        return self._verify_seq
 
     def force_close(self, t: float, reason: str, extra: Optional[Mapping[str, CandidatePose]] = None) -> None:
         """外 (監督) が推定器の異常を確かめた。門を閉じ、extra を候補に足して照合し直す。
@@ -297,6 +334,10 @@ class MotionGate:
              distrust: frozenset = frozenset()) -> GateStep:
         """distrust の情報源を使う閉じる理由の部品は閉じず、その情報源の候補は使わない。"""
         out = self._step(snapshot, result, distrust)
+        if self._verify_undecided is not None:
+            self._finish_verify(self._verify_undecided, VERIFY_UNDECIDED, out)
+            self._verify_undecided = None
+        out.last_verify = self.last_verify
         if self.config.observe_only:
             # 門の中では置き直したものとして続ける (決めた姿勢を確かめた姿勢にする)。外へは何も出さない
             out.reset = None
@@ -559,16 +600,20 @@ class MotionGate:
             if t < self._next_match:
                 return None
             reason = 'startup' if self.state == GateState.UNCONFIRMED else 'closed'
+        elif self._verify_pending is not None:
+            reason = VERIFY
         elif self._odometer - self._last_confirm_odometer >= s.confirm_distance_m:
             reason = 'confirm'
         else:
             return None
         occupancy = snapshot.reference(s.reference).occupancy
-        if occupancy is None or not len(self._buffer):
-            return None
-        candidates = self._candidates(snapshot, motion, reason)
-        initial = self._initial_search(snapshot) if reason == 'startup' else None
+        ready = occupancy is not None and len(self._buffer) > 0
+        candidates = self._candidates(snapshot, motion, reason) if ready else {}
+        initial = self._initial_search(snapshot) if reason == 'startup' and ready else None
         if not candidates and initial is None:
+            if reason == VERIFY:
+                # 照合できない (地図・スキャン・候補がない) 要求は、待たせずに「決まらない」で返す
+                self._verify_undecided, self._verify_pending = self._verify_pending, None
             return None
         if reason == MANUAL:
             self._manual = None
@@ -658,6 +703,9 @@ class MotionGate:
         if request.reason == 'startup' and self.config.initial_search is not None:
             self._apply_startup(request, decision, t, motion, fused, out)
             return
+        if request.reason == VERIFY:
+            self._apply_verify(request, decision, t, motion, fused, out)
+            return
         if decision.best is None:
             if request.reason != 'confirm':
                 self._next_match = t + s.retry_sec
@@ -682,6 +730,40 @@ class MotionGate:
             self._open(t, 'startup', out, target, motion)
             return
         self._correct(t, target, 'none' if adopted else 'all', out, motion, fused)
+
+    def _apply_verify(self, request: MatchRequest, decision: MatchDecision, t: float, motion: Pose2,
+                      fused: Optional[Pose2], out: GateStep) -> None:
+        """確かめの要求の照合の結果。推定器と同じ仮説なら確かめた姿勢を更新し、別の仮説なら閉じて置き直し、
+        決まらなければ閉じて止めて照合する (監督が閉じさせたときと同じ)。"""
+        number = self._verify_pending
+        self._verify_pending = None
+        if number is None or self.state != GateState.OPEN:
+            if number is not None:
+                self._finish_verify(number, VERIFY_UNDECIDED, out)
+            return
+        estimator = self.settings.estimator
+        if decision.best is None:
+            self.force_close(t, VERIFY)
+            self._finish_verify(number, VERIFY_UNDECIDED, out)
+            return
+        adopted = estimator in decision.agree
+        target = _propagate(request.candidates[estimator].pose if adopted else decision.pose, request.motion, motion)
+        # 確かめたのは、推定器をそのまま採れるときだけ (近くても採れなければ、決めた姿勢へ置き直す)
+        if adopted:
+            self._anchor = _Anchor(request.candidates[estimator].pose, request.motion, request.odometer)
+            self._last_confirm_odometer = self._odometer
+            out.events.append(GateEvent('pose_confirmed', 'info', _pose_fields(target)))
+            self._finish_verify(number, VERIFY_CONFIRMED, out)
+            return
+        self._close(t, VERIFY, out, result=decision.best)
+        self._correct(t, target, 'all', out, motion, fused)
+        self._finish_verify(number, VERIFY_RELOCATED, out)
+
+    def _finish_verify(self, number: int, result: str, out: GateStep) -> None:
+        self.last_verify = (number, result)
+        out.verified = (number, result)
+        out.events.append(GateEvent('verify_result', 'info' if result == VERIFY_CONFIRMED else 'warn',
+                                    {'id': number, 'result': result}))
 
     def _apply_startup(self, request: MatchRequest, decision: MatchDecision, t: float, motion: Pose2,
                        fused: Optional[Pose2], out: GateStep) -> None:

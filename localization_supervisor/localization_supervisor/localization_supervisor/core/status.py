@@ -49,6 +49,8 @@ class StatusView:
     possible_error_m: float = 0.0
     clearance_m: float = -1.0
     speed_limit: float = 0.0
+    verify_id: int = 0
+    verify_result: str = ''
     profile: str = ''
     last_event: str = ''
     checks: List[CheckView] = field(default_factory=list)
@@ -83,7 +85,15 @@ def status_view(result: StepResult, config: SupervisorConfig, profile: str) -> S
         fusion_level=result.fusion.level, trusted=trusted, in_grace=in_grace,
         footprint_in_lethal=safety is not None and safety.in_lethal,
         lethal_depth_m=-1.0 if safety is None else safety.depth_m,
-        profile=profile, last_event=result.last_event, checks=checks, **_conduct_fields(result))
+        profile=profile, last_event=result.last_event, checks=checks, **_conduct_fields(result),
+        **_verify_fields(result))
+
+
+def _verify_fields(result: StepResult) -> dict:
+    if result.gate is None or result.gate.last_verify is None:
+        return {}
+    number, outcome = result.gate.last_verify
+    return {'verify_id': number, 'verify_result': outcome}
 
 
 def _conduct_fields(result: StepResult) -> dict:
