@@ -43,6 +43,7 @@ tools/
     ├── eval_slam.py                 # SLAM 出力の RTK(GNSS) 比較評価 (make bag-eval-slam)
     ├── eval_localization.py         # 自己位置推定 (EKF 融合) の評価 (make bag-eval-localization)
     ├── run_localization_variant.sh  # 自己位置推定のパラメータ変種を rosbag 再生で評価 (ホスト側の入口)
+    ├── measure_snapshot.sh          # 計測を、指定のコミットのコードの書き出しから make で実行 (計測中の編集を混ぜない)
     ├── localization_replay.sh       # 上記の本体 (コンテナ内で スタック起動・再生・記録・評価)
     ├── loc_init_pose.py             # 再生評価で AMCL と EKF の初期姿勢を真値から与える
     ├── loc_recorder.py              # 再生評価の出力をシミュレーション時刻で rosbag2 に記録する
