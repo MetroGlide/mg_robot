@@ -69,8 +69,9 @@ def generate_launch_description():
                     '(状態 /localization/status は監督ノードが出す)').launch_config
     localization_gate = arg.create(
         'localization_gate', default='false',
-        description='監督ノードの中で門を使うか (localization_monitor:=supervisor のとき。AMCL を地図との照合で'
-                    '確かめてから EKF に入れ、置き直し・一時停止を門が決める)').launch_config
+        description='監督ノードの中で門を使うか (true | false | observe)。true は localization_monitor:=supervisor のとき'
+                    '(AMCL を地図との照合で確かめてから EKF に入れ、置き直し・一時停止を門が決める)。observe は判定と'
+                    '照合だけで、watchdog と並行する監督でも使える').launch_config
     supervisor_config = arg.create(
         'supervisor_config', default=os.path.join(supervisor_dir, 'config', 'supervision.yaml'),
         description='監督の設定ファイル').launch_config
@@ -119,6 +120,10 @@ def generate_launch_description():
 
     def create_localization_nodes(context):
         """map_server・AMCL・lifecycle_manager を作る。プリセットがあれば、AMCL の params の後に重ねる。"""
+        monitor = context.perform_substitution(localization_monitor)
+        if context.perform_substitution(localization_gate).lower() == 'true' and monitor != 'supervisor':
+            # 門が置き直すので、watchdog と組むと互いの置き直しを取り違える
+            raise RuntimeError(f'localization_gate:=true は localization_monitor:=supervisor と組で使います (今は {monitor})')
         amcl_params = [configured_params, *preset_files(
             context.perform_substitution(localization_preset),
             context.perform_substitution(localization_monitor), navigation_dir)]

@@ -38,25 +38,16 @@ _remote_env = $(if $(ROBOT),-e ROS_DOMAIN_ID=$(or $(_scenario_domain_id),42) -e 
 _remote_arg = $(if $(ROBOT),--remote-stack http://$(ROBOT):8001)
 # LOCALIZATION_PRESET=<名前> / LOCALIZATION_PROFILE=<名前> を指定すると、.env の値に代えて、自己位置推定のプリセットを
 # 重ねた / 監督のプロファイルを重ねたスタックで実行する (ROBOT 指定時は実機PCの .env が使われる)
-# LOCALIZATION_GATE=true は、監督ノードの中で門を使う (LOCALIZATION_MONITOR=supervisor のとき)
-# LOCALIZATION_CONFIG=<名前> は、比べる構成 (監視・プリセット・プロファイル・門の組) をまとめて選ぶ
-# (mg_navigation/doc/localization_failure_ledger.md の「比べる構成」)。個別の変数を書けば、そちらが優先する。
-#   legacy      実機の今の構成 (v2.1 相当)。watchdog だけ、プリセットなし
-#   supervised  最新の構成。監督 (門を入れる) とプリセット robust、監督のプロファイル robust_recovery
-_loc_monitor_legacy = watchdog
-_loc_monitor_supervised = supervisor
-_loc_preset_supervised = robust
-_loc_profile_supervised = robust_recovery
-_loc_gate_supervised = true
-_loc_config_check = $(if $(LOCALIZATION_CONFIG),$(if $(filter legacy supervised,$(LOCALIZATION_CONFIG)),,$(error LOCALIZATION_CONFIG は legacy / supervised のどちらかです)))
-_loc_monitor = $(or $(LOCALIZATION_MONITOR),$(_loc_monitor_$(LOCALIZATION_CONFIG)))
-_loc_preset = $(or $(LOCALIZATION_PRESET),$(_loc_preset_$(LOCALIZATION_CONFIG)))
-_loc_profile = $(or $(LOCALIZATION_PROFILE),$(_loc_profile_$(LOCALIZATION_CONFIG)))
-_preset_env = $(_loc_config_check) \
-              $(if $(_loc_monitor),-e LOCALIZATION_MONITOR=$(_loc_monitor),) \
-              $(if $(LOCALIZATION_CONFIG),-e LOCALIZATION_PRESET=$(_loc_preset),$(if $(LOCALIZATION_PRESET),-e LOCALIZATION_PRESET=$(LOCALIZATION_PRESET),)) \
-              $(if $(LOCALIZATION_CONFIG),-e LOCALIZATION_PROFILE=$(_loc_profile),$(if $(LOCALIZATION_PROFILE),-e LOCALIZATION_PROFILE=$(LOCALIZATION_PROFILE),)) \
-              $(if $(LOCALIZATION_CONFIG),-e LOCALIZATION_GATE=$(or $(LOCALIZATION_GATE),$(_loc_gate_$(LOCALIZATION_CONFIG)),false),$(if $(LOCALIZATION_GATE),-e LOCALIZATION_GATE=$(LOCALIZATION_GATE),))
+# LOCALIZATION_GATE=<true|false|observe> は、監督ノードの中で門を使うか
+# LOCALIZATION_CONFIG=<名前> は、自己位置推定の構成 (監視・監督の並走・門・プリセット・プロファイルの組) を選ぶ。
+# 中身は mg_navigation/mg_navigation/localization_config.py (launch の既定は supervised)。個別の変数を書けば、そちらが
+# 優先する (プリセット・プロファイルを外すときは none)。比べるのは legacy (v2.1) と supervised (最新)
+#   (mg_navigation/doc/localization_failure_ledger.md の「比べる構成」)
+# 構成を選んだときは、.env の個別の値を混ぜないよう、書いていない個別の変数を空 (構成に従う) で渡す
+_loc_var = $(if $($(1)),-e $(1)=$($(1)),$(if $(LOCALIZATION_CONFIG),-e $(1)=,))
+_preset_env = $(if $(LOCALIZATION_CONFIG),-e LOCALIZATION_CONFIG=$(LOCALIZATION_CONFIG),) \
+              $(call _loc_var,LOCALIZATION_MONITOR) $(call _loc_var,LOCALIZATION_PRESET) \
+              $(call _loc_var,LOCALIZATION_PROFILE) $(call _loc_var,LOCALIZATION_GATE)
 _scenario_run = $(COMPOSE) run --rm $(_remote_env) $(_preset_env) -e SCENARIO_ARGS
 
 # シミュレータ・ナビゲーションごと起動して 1 本実行する (既定はヘッドレス)。

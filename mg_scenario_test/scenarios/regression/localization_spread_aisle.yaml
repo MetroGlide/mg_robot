@@ -16,6 +16,8 @@ timeout: 300
 stack_args:
   waypoints_load_path: "pkg://mg_scenario_test/scenarios/data/drift_aisle_waypoints.yaml"
   localization_monitor: supervisor
+  localization_gate: "false"
+  localization_profile: none
   localization_preset: robust
   localization_test_profile: fault_injection
 

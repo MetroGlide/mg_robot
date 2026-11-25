@@ -14,6 +14,8 @@ timeout: 240
 stack_args:
   planning_map_path: "pkg://mg_scenario_test/scenarios/data/keepout/planning.yaml"
   localization_monitor: supervisor
+  localization_gate: "false"
+  localization_profile: none
 
 setup:
   - respawn: { pose: { x: 0.0, y: 0.0, yaw: 0.0 }, settle_sec: 3.0 }

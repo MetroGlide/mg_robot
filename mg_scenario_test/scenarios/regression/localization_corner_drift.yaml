@@ -12,6 +12,8 @@ timeout: 500
 
 stack_args:
   localization_monitor: supervisor
+  localization_gate: "false"
+  localization_profile: none
   localization_preset: robust
   localization_test_profile: fault_injection
 

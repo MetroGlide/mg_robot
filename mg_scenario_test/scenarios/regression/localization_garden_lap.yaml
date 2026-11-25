@@ -17,6 +17,8 @@ sim_args:
 
 stack_args:
   localization_monitor: supervisor
+  localization_gate: "false"
+  localization_profile: none
 
 setup:
   - respawn: { pose: { x: 0.0, y: 0.0, yaw: 0.0 }, settle_sec: 3.0 }

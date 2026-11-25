@@ -14,6 +14,8 @@ record_topics: [/scan_top_lidar, /tf, /tf_static, /particle_cloud, /amcl_pose_or
 
 stack_args:
   localization_monitor: supervisor
+  localization_gate: "false"
+  localization_profile: none
   map_path: "pkg://mg_simulation/maps/garden/localization_true.yaml"
 
 setup:

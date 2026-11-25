@@ -52,7 +52,7 @@ AMCL が弱る区間のシナリオは、現実の弱り方 (人混み 5、横�
 | `legacy` | 実機で最後に走った構成 (タグ v2.1)。監視は `amcl_watchdog_node` だけ、プリセットなし |
 | `supervised` | 最新の構成。AMCL のプリセット `robust` と監督 (監督ノードの中の門を使う。`LOCALIZATION_GATE`)、監督のプロファイル `robust_recovery`。起動の直後の姿勢も門が決める (GNSS による初期化ノードは起動しない)。ロバスト化の対策は、監督のプロファイルなどとしてここに足す |
 
-監督が判定するだけで何も操作しない形は、構成の名前を持たず、`supervised` に監督のプロファイル `notify_only` を重ねて作る (`LOCALIZATION_PROFILE=notify_only`)。2026-11-25 より前の記録の構成の名前は、`current` が `legacy`、`new` が `supervised` の前身 (2026-11-25 の統合より前は門なしで、初期化ノードの照合を使っていた)。
+構成の中身は `mg_navigation/mg_navigation/localization_config.py` が正で、launch の既定は `supervised` ([localization.md](./localization.md#自己位置推定の構成))。実機で判定だけを測る構成 `observe` もあるが、比べる構成には使わない。2026-11-25 より前の記録の構成の名前は、`current` が `legacy`、`new` が `supervised` の前身 (2026-11-25 の統合より前は門なしで、初期化ノードの照合を使っていた)。
 
 シナリオは `anomaly` (対策の調整に使う) と `anomaly_holdout` (調整に使わず、調整した結果が場所・向き・大きさを変えても成り立つかを確かめる) のタグで分ける ([scenarios/README.md](../../mg_scenario_test/scenarios/README.md))。
 

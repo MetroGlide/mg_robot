@@ -15,6 +15,8 @@ sim_args:
 
 stack_args:
   localization_monitor: supervisor
+  localization_gate: "false"
+  localization_profile: none
   localization_preset: robust
 
 setup:

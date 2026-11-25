@@ -83,9 +83,22 @@ AMCL の位置の共分散を監視し、大きい状態が続いたら、`gnss_
 - 診断 `amcl_watchdog_node: localization` (NORMAL=OK、DEGRADED=ERROR、その他=WARN。集約で `/Robot/Localization/Monitor`)
 - イベント: `localization.state_changed` (`from`、`to`、`reason`)、`localization.reinit_requested` (`attempt`、`metric`、`value`、`threshold`)、`localization.reinit_result` (`success`、`message`) ([doc/monitoring.md](../../doc/monitoring.md))
 
+## 自己位置推定の構成
+
+監視・監督の並走・門・プリセット・プロファイルの組を、構成の名前 1 つで選ぶ (`bringup_navigation.launch.py` の `localization_config`、環境変数 `LOCALIZATION_CONFIG`)。組は `mg_navigation/mg_navigation/localization_config.py` が正。個別の引数 (環境変数) は、空なら構成の値を使い、書けばそちらが優先する (プリセット・プロファイルを外すときは `none`)。
+
+| 構成 | 中身 | 使い方 |
+| :--- | :--- | :--- |
+| `legacy` | watchdog だけ (タグ v2.1 の構成) | 戻すルート |
+| `observe` | `legacy` で走り、監督ノードと門を判定と照合だけで並走させる (門は開けたまま、置き直しも停止もしない) | 実機で誤った判定の率を測る |
+| `supervised` | 監督 (門を入れる)、プリセット `robust`、監督のプロファイル `robust_recovery` | 既定。最新の構成 |
+
+- 実機では `legacy` → `observe` → `supervised` の順に有効にする。`observe` のイベントでは、門が置き直したはずの姿勢 (`localization.pose_reset` の `applied=false`) と閉じた理由を見る。
+- 比べる構成 (シミュレータ・再生) は `legacy` と `supervised` ([台帳](./localization_failure_ledger.md#比べる構成))。
+
 ## 自己位置推定のプリセット
 
-`localization_preset:=<名前>` (既定は環境変数 `LOCALIZATION_PRESET`。空なら何もしない) で、`params/localization_presets/<名前>.yaml` を、AMCL (`nav2_params.yaml`) と EKF (`mg_drivers/params/ekf_global.yaml`) の params の後に重ねる。書いたキーだけが変わる。
+`localization_preset:=<名前>` (既定は構成の値。`none` なら何もしない) で、`params/localization_presets/<名前>.yaml` を、AMCL (`nav2_params.yaml`) と EKF (`mg_drivers/params/ekf_global.yaml`) の params の後に重ねる。書いたキーだけが変わる。
 プリセットは、監督 (`localization_monitor:=supervisor`) と組で使う。ほかの監視で指定すると、launch が起動の前に落ちる。
 
 | プリセット | 内容 |
@@ -94,12 +107,10 @@ AMCL の位置の共分散を監視し、大きい状態が続いたら、`gnss_
 
 ### 実機で試す
 
-前提は、監督が既定の監視 (`localization_monitor:=supervisor`) で、プロファイルが基本設定 (`LOCALIZATION_PROFILE` が空) であること。
-
-- 切り替え: `.env` の `LOCALIZATION_PRESET` に `robust` を書き、ナビゲーションを起動し直す。実機の前に、シミュレータで `make scenario-test-all TIER=smoke LOCALIZATION_PRESET=robust` と `make scenario-test-all TAGS=localization LOCALIZATION_PRESET=robust` が通ることを確かめる。
+プリセット `robust` は構成 `supervised` に入っている。実機の前に、シミュレータで `make scenario-test-all TIER=smoke` と `make scenario-test-all TAGS=localization` が通ることを確かめる。
 - 戻し方 (軽い順):
   - 監督の自動復旧だけ止める: `LOCALIZATION_PROFILE=notify_only` (検知と通知は残る)。
-  - プリセットを外す: `LOCALIZATION_PRESET` を空にする (AMCL と EKF が従来の params に戻る)。
+  - プリセットを外す: `LOCALIZATION_PRESET=none` (AMCL と EKF が従来の params に戻る)。
   - 監督ごと外す: [従来の構成に戻す](#従来の構成に戻す)。
   - どれも、起動し直すと効く。
 - 走らせ方: 角でずれたことのある経路を、オペレータがすぐ止められる状態で走らせる。記録は `record_bag:=true` で残す。
@@ -128,8 +139,8 @@ AMCL の位置の共分散を監視し、大きい状態が続いたら、`gnss_
 
 ## 従来の構成に戻す
 
-- `localization_monitor:=watchdog` にすれば、従来の監視 (共分散による再初期化だけ)。
-- 監督ノードの中の門をやめるときは、`localization_gate:=false` (既定)。初期化ノードと中継が起動し、監督は門なしの復旧に戻る。Web UI の手動の初期姿勢は、中継を通して従来どおり `/initialpose` に届く。
+- `LOCALIZATION_CONFIG=legacy` (または `localization_config:=legacy`) にすれば、従来の監視 (共分散による再初期化だけ)。
+- 監督ノードの中の門だけをやめるときは、`localization_gate:=false`。初期化ノードと中継が起動し、監督は門なしの復旧に戻る。Web UI の手動の初期姿勢は、中継を通して従来どおり `/initialpose` に届く。
 - `localization_profile:=gnss_fallback` で、AMCL と GNSS が乖離したら GNSS で引き戻すだけの、以前の動作 (監督ノードのまま)。
 - `localization_profile:=notify_only` で、監督ノードは検知と通知だけ (自動復旧しない)。
 - `use_odom_corrector:=false` で、ホイールオドメトリの補正なし ([mg_drivers](../../mg_drivers/doc/wheel_odom_corrector.md))。

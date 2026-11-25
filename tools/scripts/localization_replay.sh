@@ -142,8 +142,8 @@ run_once() {
   echo "[replay] run $run/$RUNS: スタックを起動します"
 
   # 空の値の launch 引数 (name:=) は解釈できないので、プロファイルは指定したときだけ渡す
-  local profile_args=()
-  [ -n "${PROFILE:-}" ] && profile_args=(localization_profile:="$PROFILE")
+  # 構成 (launch の既定は supervised) のプリセットとプロファイルは使わない。AMCL・EKF の params は変種のファイルで渡す
+  local profile_args=(localization_preset:=none localization_profile:="${PROFILE:-none}")
   setsid ros2 launch mg_bringup bringup_navigation.launch.py \
     use_navigation:=false use_realsense:=false use_slam_gnss_bridge:=true \
     use_odom_corrector:=true \

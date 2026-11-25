@@ -17,6 +17,8 @@ sim_args:
 
 stack_args:
   localization_monitor: supervisor
+  localization_gate: "false"
+  localization_profile: none
   map_path: "pkg://mg_simulation/maps/garden/localization_thick.yaml"
 
 setup:

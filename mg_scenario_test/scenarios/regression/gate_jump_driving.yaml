@@ -19,6 +19,7 @@ stack_args:
   localization_monitor: supervisor
   localization_gate: "true"
   localization_profile: notify_only
+  localization_preset: none
 
 setup:
   - respawn: { pose: { x: -4.0, y: 3.0, yaw: 3.1416 }, settle_sec: 3.0 }
