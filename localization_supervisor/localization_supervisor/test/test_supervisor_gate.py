@@ -244,6 +244,30 @@ def test_with_gate_switches_the_gate_and_keeps_the_profile():
     assert enabled.with_gate(False).gate is None
 
 
+def test_observe_only_gate_disables_the_supervisor_recovery_even_with_a_profile():
+    """判定だけのときは、プロファイルが復旧を有効にしても、監督も何もしない (プロファイルを変えても保つ)。"""
+    profiles = {'acting': {'state_machine': {'recovery_enabled': True}}}
+    config = parse_config(_raw(), profile='acting', profiles=profiles)
+    assert config.machine.recovery_enabled
+    observing = config.with_gate(True, observe_only=True)
+    assert observing.gate.observe_only and not observing.machine.recovery_enabled
+    assert not observing.with_profile('acting').machine.recovery_enabled
+    assert not config.with_gate(True).gate.observe_only
+
+
+def test_observe_only_supervisor_sends_no_reset_for_a_gate_decision():
+    raw = _raw()
+    raw['gate'] = dict(raw['gate'], observe_only=True)
+    sim = Sim(raw)
+    sim.run(18.0)
+    sim.amcl_offset = (1.5, 0.0, 0.0)
+    sim.ekf_offset = (0.3, 0.0, 0.0)
+    results = sim.run(6.0)
+    assert sim.events('gate_closed') and sim.events('pose_reset')
+    assert not any(d.kind == 'reinit' for r in results for d in r.directives)
+    assert all(r.gate.gate_open and not r.hold_requested for r in results)
+
+
 def test_config_rejects_a_closer_named_like_a_detector():
     raw = _raw()
     raw['gate'] = copy.deepcopy(raw['gate'])

@@ -8,6 +8,7 @@
     config_file : 設定ファイル (必須。書き方は doc/parameters.md)
     profile     : 重ねるプロファイル (空は基本設定)。走行中に変えられる (サービス ~/set_profile でも)
     use_gate    : 設定の gate 節の門を使う (起動時だけ)。門の周期で回し、門の照合を別のスレッドで回す
+    gate_observe_only : 門を判定と照合だけにする (use_gate のとき。門も監督も何もせず、イベントと状態だけ出す)
   入力
     設定の sources.<名前>.input のアダプタが購読するトピックと TF
     external_reinit.topics: 今のプロファイルのトピックに届いたら、人による上書きとして、状態を NORMAL に戻して
@@ -92,11 +93,12 @@ class LocalizationSupervisorNode(Node):
         config_file = self.declare_parameter('config_file', '').value
         profile = self.declare_parameter('profile', '').value
         use_gate = self.declare_parameter('use_gate', False).value
+        gate_observe_only = self.declare_parameter('gate_observe_only', False).value
         if not config_file:
             raise ConfigError('parameter config_file is required')
         config = load_config(config_file)
         if use_gate or 'gate' in config.raw:
-            config = config.with_gate(use_gate)
+            config = config.with_gate(use_gate, observe_only=use_gate and gate_observe_only)
         check_node_supports(config)
         self._config = config
         self._supervisor = Supervisor(config)
@@ -144,7 +146,8 @@ class LocalizationSupervisorNode(Node):
         self.create_timer(config.gate_period_sec if config.gate is not None else config.period_sec, self._on_timer)
         self._events.info(
             'node.started', name=self.get_name(), config=config_file, profile=profile,
-            detectors=','.join(self._supervisor.detectors), gate=config.gate is not None)
+            detectors=','.join(self._supervisor.detectors), gate=config.gate is not None,
+            gate_observe_only=config.gate is not None and config.gate.observe_only)
 
     def _now(self) -> float:
         return self.get_clock().now().nanoseconds * 1e-9

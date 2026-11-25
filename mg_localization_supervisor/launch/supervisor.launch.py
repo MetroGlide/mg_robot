@@ -37,7 +37,8 @@ def generate_launch_description():
         'localization_profile', default='', description='監督の設定に重ねるプロファイル (空は基本設定)')
     use_supervisor_gate = arg.create(
         'use_supervisor_gate', default='false',
-        description='監督ノードの中で門を使うか (supervision.yaml の gate 節。use_supervisor と組で使う)')
+        description='監督ノードの中で門を使うか (true | false | observe。supervision.yaml の gate 節。use_supervisor と組で'
+                    '使う)。observe は判定と照合だけで、門も監督も何もしない (初期化ノードと中継は起動する)')
 
     def create_nodes(context):
         """TimerAction の中の LaunchConfiguration は、タイマーが発火するとき (include のスコープを抜けた後) に
@@ -50,8 +51,12 @@ def generate_launch_description():
             return value(launch_argument).lower() == 'true'
 
         sim_time = flag(use_sim_time)
-        supervisor_gate = flag(use_supervisor_gate)
-        if supervisor_gate and not flag(use_supervisor):
+        gate_mode = value(use_supervisor_gate).lower()
+        if gate_mode not in ('true', 'false', 'observe'):
+            raise RuntimeError(f'use_supervisor_gate は true / false / observe のどれかです: {gate_mode}')
+        # 門が置き直しと手動の初期姿勢を受け持つか (observe では受け持たない)
+        supervisor_gate = gate_mode == 'true'
+        if gate_mode != 'false' and not flag(use_supervisor):
             raise RuntimeError('use_supervisor_gate は use_supervisor と組で使います (門は監督ノードの中で動く)')
         actions = [
             Node(
@@ -82,7 +87,8 @@ def generate_launch_description():
                 parameters=[{
                     'config_file': value(supervisor_config),
                     'profile': value(localization_profile),
-                    'use_gate': supervisor_gate,
+                    'use_gate': gate_mode != 'false',
+                    'gate_observe_only': gate_mode == 'observe',
                     'use_sim_time': sim_time,
                 }],
             )]))

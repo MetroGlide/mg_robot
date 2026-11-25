@@ -25,7 +25,7 @@ GNSS による初期化と監督ノードは、他のノードが立ち上がる
 | `use_sim_time` | シミュレーション・rosbag 再生の時刻を使う |
 | `use_gnss_amcl_initializer` | GNSS による初期化ノードを起動するか |
 | `use_supervisor` | 監督ノードを起動するか (`localization_launch.py` は `localization_monitor:=supervisor` か `localization_supervisor:=true` のときに true を渡す) |
-| `use_supervisor_gate` | 監督ノードの中で門を使うか (`use_supervisor` と組。`localization_launch.py` は `localization_gate` を渡す)。true なら、GNSS による初期化ノードは起動しない (起動の直後の姿勢も門が決める)。この引数が false なら、手動の初期姿勢をそのまま `/initialpose` へ送る中継を起動する |
+| `use_supervisor_gate` | 監督ノードの中で門を使うか (`true` / `false` / `observe`。`use_supervisor` と組。`localization_launch.py` は `localization_gate` を渡す)。`true` なら、GNSS による初期化ノードは起動しない (起動の直後の姿勢も門が決める)。`true` でなければ、手動の初期姿勢をそのまま `/initialpose` へ送る中継を起動する。`observe` は判定と照合だけ (ノードの `gate_observe_only`) |
 | `supervisor_config` | 監督の設定ファイル (既定は `config/supervision.yaml`) |
 | `localization_profile` | 監督の設定に重ねるプロファイル (空は基本設定) |
 
@@ -49,10 +49,11 @@ GNSS による初期化と監督ノードは、他のノードが立ち上がる
 パラメータ・入出力・イベントは [localization_supervisor/doc/supervisor_node.md](../localization_supervisor/doc/supervisor_node.md)。このロボットでの使い方:
 
 - `localization_supervisor:=true` で、既定の監視 (`mg_navigation` の `amcl_watchdog_node`。共分散が大きければ GNSS で初期化し直す) のまま、監督ノードを並行して動かす。状態 `/localization/status` は監督ノードが出す (watchdog は出さない)。実機で通知の質を確かめるときに使う。watchdog と二重に再初期化しないよう、プロファイルは `notify_only` になる。
-- `localization_monitor:=supervisor` (既定) では、watchdog の代わりに監督ノードだけを動かし、基本設定の自動復旧を使う。watchdog と並行して動かすときは、プロファイル `notify_only` になる (二重に再初期化しない)。
-- 設定は `supervisor_config`、プロファイルは `localization_profile` (既定は環境変数 `LOCALIZATION_PROFILE`) で渡す。走行中は `ros2 service call /localization_supervisor_node/set_profile localization_supervisor_msgs/srv/SetProfile "{profile: gnss_fallback}"` で切り替えられる。
+- `localization_monitor:=supervisor` では、watchdog の代わりに監督ノードだけを動かし、基本設定の自動復旧を使う。watchdog と並行して動かすときは、プロファイル `notify_only` になる (二重に再初期化しない)。
+- 設定は `supervisor_config`、プロファイルは `localization_profile` (既定は構成の値) で渡す。走行中は `ros2 service call /localization_supervisor_node/set_profile localization_supervisor_msgs/srv/SetProfile "{profile: gnss_fallback}"` で切り替えられる。
 - GNSS による初期化 (`gnss_amcl_initializer_node`)・watchdog・人による `/initialpose`・`/set_pose` は、外からの再初期化として扱う (状態を戻して猶予を置く)。
-- `localization_gate:=true` (`bringup_navigation.launch.py` では環境変数 `LOCALIZATION_GATE` が既定値) で、監督ノードの中で門 (`supervision.yaml` の `gate` 節) を使う。置き直し・AMCL の門・一時停止・起動の直後の姿勢 (GNSS の周りの全周の照合) を門が決め、監督の復旧も門の照合で決める (分担は [design.md](../localization_supervisor/doc/design.md#門を入れたとき))。初期化ノードと手動の初期姿勢の中継は起動しない。外からの `/initialpose` は、外からの再初期化ではなく、AMCL の飛びとして門が判定する。AMCL の門の要求元は監督 (`supervisor`) だけになる。
+- `localization_gate:=true` (既定は構成の値) で、監督ノードの中で門 (`supervision.yaml` の `gate` 節) を使う。置き直し・AMCL の門・一時停止・起動の直後の姿勢 (GNSS の周りの全周の照合) を門が決め、監督の復旧も門の照合で決める (分担は [design.md](../localization_supervisor/doc/design.md#門を入れたとき))。初期化ノードと手動の初期姿勢の中継は起動しない。外からの `/initialpose` は、外からの再初期化ではなく、AMCL の飛びとして門が判定する。AMCL の門の要求元は監督 (`supervisor`) だけになる。
+- `localization_gate:=observe` では、門は判定と照合だけをし、門を開けたまま、置き直しも止める要求も出さない。監督も通知だけになる (プロファイルが復旧を有効にしても)。初期化ノードと中継は起動する。構成 `observe` (watchdog と並走) で使う。
 - 診断 `localization_supervisor_node: localization` は、集約で `/Robot/Localization/Monitor`。watchdog と並行して動かすときは、watchdog の診断も同じ集約に入る (悪いほうのレベルになる)。Web UI の「自己位置」のタイルに、状態・疑わしい情報源・異常の判定・障害物の中かが出る。
 - シーケンサを通らないゴール (手動のゴール) は、自動復旧の一時停止 (`pause_request`) でも止まらない。
 

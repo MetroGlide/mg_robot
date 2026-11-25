@@ -317,6 +317,23 @@ def test_jump_closes_the_gate_and_resets_to_the_continuation():
     assert sim.gate.state == GateState.OPEN
 
 
+def test_observe_only_judges_and_matches_but_does_nothing():
+    """判定だけの門は、閉じて照合し、置き直したものとして続けるが、門を開けたまま、置き直しも止める要求も出さない。"""
+    sim = _confirmed()
+    sim.gate.config.observe_only = True
+    sim.amcl_offset = (1.5, 0.0, 0.0)
+    sim.ekf_offset = (1.0, 0.0, 0.0)
+    steps = sim.run(6.0)
+    assert sim.events('gate_closed')
+    resets = sim.events('pose_reset')
+    assert resets and all(r.fields['applied'] is False for r in resets)
+    # 大きい補正でも止まるのを待たない
+    assert resets[0].fields['how'] == 'immediate'
+    assert all(s.gate_open and not s.hold and s.reset is None for s in steps)
+    # 推定器は動かされない
+    assert sim.amcl_reset is None
+
+
 def test_large_correction_stops_before_resetting():
     sim = _confirmed()
     sim.amcl_offset = (1.5, 0.0, 0.0)

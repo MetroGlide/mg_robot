@@ -10,6 +10,7 @@
 | `config_file` | 設定ファイルのパス (必須。[parameters.md](./parameters.md)) |
 | `profile` | 重ねるプロファイル (空は基本設定。カンマで区切ると左から順に重ねる) |
 | `use_gate` | 設定の `gate` 節の門を使う (起動時だけ。[motion_gate.md](./motion_gate.md)) |
+| `gate_observe_only` | 門を判定と照合だけにする (`use_gate` のとき。門も監督も何もせず、イベントと状態だけ出す) |
 
 `profile` は走行中に変えられる (`ros2 param set`)。知らない名前は拒否する。変えると、判定・総合・状態遷移・復旧を作り直す (状態は `NORMAL` から)。門は作り直さない (状態を保つ)。
 

@@ -199,7 +199,7 @@ residuals:
 
 ## gate
 
-門 ([motion_gate.md](./motion_gate.md)、監督との分担は [design.md](./design.md#門を入れたとき))。ノードのパラメータ `use_gate` で有効にする (`enabled` は書かない。オフライン評価は使わない)。プロファイルでは変えられない。
+門 ([motion_gate.md](./motion_gate.md)、監督との分担は [design.md](./design.md#門を入れたとき))。ノードのパラメータ `use_gate` で有効にする (`enabled` は書かない。オフライン評価は使わない)。判定と照合だけにするのはノードのパラメータ `gate_observe_only` (`observe_only` は書かない。このとき監督の `state_machine.recovery_enabled` も偽になる)。プロファイルでは変えられない。
 
 | キー | 内容 |
 | :--- | :--- |

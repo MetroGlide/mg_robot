@@ -111,6 +111,8 @@ class MotionGateConfig:
     kinds: Dict[str, SourceKind] = field(default_factory=dict)
     # 確かめた姿勢がない間 (起動の直後、地図の切り替えの後) に、GNSS の周りを向きの全周で照合する (None ならしない)
     initial_search: Optional[InitialSearchConfig] = None
+    # 判定と照合だけをし、何もしない (門を開けたまま、置き直さず、止める要求を出さない)。イベントは出す
+    observe_only: bool = False
 
 
 @dataclass
@@ -274,6 +276,19 @@ class MotionGate:
     def step(self, snapshot: Snapshot, result: Optional[Tuple[MatchRequest, MatchDecision]] = None,
              distrust: frozenset = frozenset()) -> GateStep:
         """distrust の情報源を使う閉じる理由の部品は閉じず、その情報源の候補は使わない。"""
+        out = self._step(snapshot, result, distrust)
+        if self.config.observe_only:
+            # 門の中では置き直したものとして続ける (決めた姿勢を確かめた姿勢にする)。外へは何も出さない
+            out.reset = None
+            out.gate_open = True
+            out.hold, out.hold_reason = False, ''
+            for event in out.events:
+                if event.name == 'pose_reset':
+                    event.fields['applied'] = False
+        return out
+
+    def _step(self, snapshot: Snapshot, result: Optional[Tuple[MatchRequest, MatchDecision]],
+              distrust: frozenset) -> GateStep:
         s = self.settings
         t = snapshot.stamp
         out = GateStep(self.state, self.state != GateState.CLOSED and self.state != GateState.CORRECTING)
@@ -445,7 +460,9 @@ class MotionGate:
                  fused: Optional[Pose2]) -> None:
         """決めた姿勢 (今の時刻) へ戻す。融合の結果との差が小さければその場で、大きければ止まってから。"""
         s = self.settings
-        if fused is None or not separated(pose, fused, s.small_correction_m, s.small_correction_rad):
+        # 判定だけのときは止まるのを待たない (止める要求を出さないので、待つと上限の時間まで決着が遅れる)
+        if (self.config.observe_only or fused is None
+                or not separated(pose, fused, s.small_correction_m, s.small_correction_rad)):
             if targets == 'none':
                 self._open(t, 'adopted', out, pose, motion)
             else:

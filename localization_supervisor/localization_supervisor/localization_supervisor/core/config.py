@@ -39,7 +39,8 @@ TOP_LEVEL_KEYS = {
     'profiles', 'gate',
 }
 GATE_KEYS = {
-    'enabled', 'period_sec', 'settings', 'closers', 'map_match', 'scan_buffer', 'initial_search', 'manual_pose_topic'}
+    'enabled', 'observe_only', 'period_sec', 'settings', 'closers', 'map_match', 'scan_buffer', 'initial_search',
+    'manual_pose_topic'}
 # 閉じる理由の部品に、判定の書き方に足すキー
 GATE_CLOSER_KEYS = {'close_after_sec', 'active_in_grace'}
 # 置き直しの送り先の役: 推定器 (門の置き直しの 'all' で送る) と融合 ('all' と 'fused' で送る)
@@ -151,13 +152,15 @@ class SupervisorConfig:
         """プロファイルを重ねた設定。'' は基本設定。カンマで区切ると、左から順に重ねる。"""
         return parse_config(self.raw, profile=profile, profiles=self.profiles)
 
-    def with_gate(self, enabled: bool) -> 'SupervisorConfig':
-        """門 (gate 節) を有効 / 無効にした設定。プロファイルはそのまま。"""
+    def with_gate(self, enabled: bool, observe_only: bool = False) -> 'SupervisorConfig':
+        """門 (gate 節) を有効 / 無効にした設定。observe_only なら判定と照合だけ (門も監督も何もしない)。
+        プロファイルはそのまま。"""
         raw = copy.deepcopy(self.raw)
-        if enabled and 'gate' not in raw:
+        if (enabled or observe_only) and 'gate' not in raw:
             raise ConfigError('gate: the config has no gate section')
         if 'gate' in raw:
-            raw['gate'] = dict(_mapping(raw['gate'], 'gate'), enabled=enabled)
+            raw['gate'] = dict(_mapping(raw['gate'], 'gate'), enabled=enabled or observe_only,
+                               observe_only=observe_only)
         return parse_config(raw, profile=self.profile, profiles=self.profiles)
 
 
@@ -385,6 +388,9 @@ def _parse_gate(
     enabled = raw.get('enabled', False)
     if not isinstance(enabled, bool):
         raise ConfigError('gate.enabled: expected true or false')
+    observe_only = raw.get('observe_only', False)
+    if not isinstance(observe_only, bool):
+        raise ConfigError('gate.observe_only: expected true or false')
     if not raw or not enabled:
         return None, period_sec, manual
     gate = parse_gate_parts(
@@ -398,6 +404,7 @@ def _parse_gate(
     roles = {item.get('role', 'estimator') for item in resetters}
     if not set(RESETTER_ROLES) <= roles:
         raise ConfigError('gate: recovery.resetters requires both roles (role: estimator and role: fused)')
+    gate.observe_only = observe_only
     return gate, period_sec, manual
 
 
@@ -642,6 +649,9 @@ def parse_config(
         _mapping(merged.get('gate'), 'gate'), sources, detectors, recovery_parts['resetters'])
     if gate is not None and gate_period_sec > period_sec:
         raise ConfigError('gate.period_sec: must not exceed period_sec')
+    if gate is not None and gate.observe_only:
+        # 判定だけのときは、監督も何もしない (プロファイルが復旧を有効にしても、通知だけにする)
+        machine.recovery_enabled = False
 
     return SupervisorConfig(
         sources=sources, detectors=detectors, fusion_type=fusion_type, fusion_cls=fusion_cls,
