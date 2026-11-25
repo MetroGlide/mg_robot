@@ -61,11 +61,11 @@
 - 門は、監督が GNSS を疑っている間 (切り離し、または残差の倍率が大きい間)、GNSS を使う閉じる理由の部品と GNSS の候補を使わない (実装済み)。
 - AMCL のプリセット `robust` (EKF が外れた AMCL を棄却する) は監督と組む。監督ノードの中の門と組める (実装済み。構成 `supervised`)。
 
-## 走行側の BT との受け渡し (未実装)
+## 走行側の BT との受け渡し (一部)
 
 - `IsLocalizationHealthy` ([bt_plugins.md](./bt_plugins.md#islocalizationhealthy)) は、状態が `NORMAL` かではなく、直近に確かめたかを見る。
 - 監督が止めている間は、BT の後退・首振りを止める。
-- 計画の失敗 (始点が占有にある) とめり込み (ロボットの形が計画用地図の通れないセルにかかる) のとき、BT から監督に確かめの要求を出す ([枠組みの確かめの要求](../../localization_supervisor/doc/architecture_target.md#確かめの要求-未実装))。
+- 計画の失敗 (始点が占有にある) とめり込み (ロボットの形が計画用地図の通れないセルにかかる) のとき、BT から監督に確かめの要求を出す ([枠組みの確かめの要求](../../localization_supervisor/doc/architecture_target.md#確かめの要求-実装済み))。めり込みからの脱出の前は実装済み (`VerifyLocalization`、[bt_plugins.md](./bt_plugins.md#verifylocalization))。
 - 変えるのは `mg_navigation` の BT のプラグインと、`mg_waypoint_navigation` の XML。
 
 ## センサの組 (未実装)

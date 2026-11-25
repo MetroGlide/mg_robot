@@ -123,6 +123,7 @@ set(BT_PLUGIN_LIBS
   mg_commit_path_action_bt_node
   mg_find_free_start_action_bt_node
   mg_is_localization_healthy_condition_bt_node
+  mg_verify_localization_action_bt_node
 )
 add_library(mg_is_path_clear_condition_bt_node SHARED
   src/bt_plugins/is_path_clear_condition.cpp)
@@ -135,6 +136,8 @@ add_library(mg_find_free_start_action_bt_node SHARED
   src/bt_plugins/find_free_start_action.cpp)
 add_library(mg_is_localization_healthy_condition_bt_node SHARED
   src/bt_plugins/is_localization_healthy_condition.cpp)
+add_library(mg_verify_localization_action_bt_node SHARED
+  src/bt_plugins/verify_localization_action.cpp)
 foreach(bt_plugin ${BT_PLUGIN_LIBS})
   target_link_libraries(${bt_plugin} mg_bt_path_clearance)
   ament_target_dependencies(${bt_plugin} ${BT_PLUGIN_DEPENDENCIES})
@@ -204,6 +207,10 @@ if(BUILD_TESTING)
   target_link_libraries(
     test_is_localization_healthy_condition mg_is_localization_healthy_condition_bt_node)
   ament_target_dependencies(test_is_localization_healthy_condition ${BT_PLUGIN_DEPENDENCIES})
+
+  ament_add_gtest(test_verify_localization_action test/test_verify_localization_action.cpp)
+  target_link_libraries(test_verify_localization_action mg_verify_localization_action_bt_node)
+  ament_target_dependencies(test_verify_localization_action ${BT_PLUGIN_DEPENDENCIES})
 endif()
 
 ################################################################################

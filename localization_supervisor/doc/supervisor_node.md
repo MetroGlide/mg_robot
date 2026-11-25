@@ -34,6 +34,7 @@
 | 配信 | 設定の `recovery.resetters` | 送り先ごと | 選んだ姿勢 ([plugins.md](./plugins.md#再初期化の送り先-poseresetter)) |
 | 配信・サービス | 設定の `recovery.actuators` | 対処ごと | ゲートの開閉、一時停止の要求など ([plugins.md](./plugins.md#対処-actuator)) |
 | サービス | `~/set_profile` | `localization_supervisor_msgs/SetProfile` | プロファイルの切り替え (`profile` パラメータを変えるのと同じ) |
+| サービス | `~/request_verify` | `localization_supervisor_msgs/RequestVerify` | 走行側からの確かめの要求 ([motion_gate.md](./motion_gate.md#確かめの要求))。番号を返し、結果は状態の `verify_id`・`verify_result` に出す。門がなければ `supported` が偽 |
 
 ## 状態のメッセージ
 

@@ -181,6 +181,7 @@ class LocalizationSupervisorNode(Node):
     def _on_request_verify(self, request, response):
         """走行側からの確かめの要求。周期の処理と同じ実行器で呼ばれるので、そのまま門に渡す。"""
         number = self._supervisor.request_verify(self._now())
+        response.supported = self._supervisor.gate is not None
         response.accepted = number is not None
         response.id = number or 0
         response.message = (f'verify {number} accepted' if number is not None

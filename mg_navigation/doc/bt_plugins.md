@@ -53,7 +53,7 @@ RPP (Humble 1.1.20 の `RegulatedPurePursuitController`) の衝突判定と同�
 - 衝突の判定は RPP と同じ (フットプリントのコストが致死以上。`IsPathClear` と同じ `PathClearanceChecker`)。フットプリントとコストマップは `global_costmap` から取得する (設定値は持たない)
 - 探し方: ロボットの姿勢が衝突しているとき、衝突している領域の中だけを通る最短の道のり (ダイクストラ法。8 近傍) で、衝突しない最初の位置を選ぶ。領域の外に出てから進入禁止の線をまたぐことはしない。出口は、`margin` 以内に衝突する位置がない場所にする (出た直後に衝突へ戻らないため)。向きはロボットの今の向きのまま
 - SUCCESS は `free_start` を出したときだけ。ロボットがめり込んでいない (探す必要がない)、`max_distance` 以内に出られない、判定できない (フットプリントの未取得、コストマップが未受信・古い、TF が取れない) ときは FAILURE (`free_start` は変えない)
-- 自己位置が疑わしいときに領域から出ようとしても、誤った場所へ出るだけなので、`IsLocalizationHealthy` と組み合わせて使う
+- 自己位置が疑わしいときに領域から出ようとしても、誤った場所へ出るだけなので、`VerifyLocalization` と組み合わせて使う
 - ログ (bt_navigator): 最初に見つけたとき INFO (`the robot is inside an obstacle of the global costmap`)、出られないとき WARN
 
 | ポート | 既定値 | 内容 |
@@ -64,6 +64,22 @@ RPP (Humble 1.1.20 の `RegulatedPurePursuitController`) の衝突判定と同�
 | `controller_node` / `controller_id` | `controller_server` / `FollowPath` | `PathClearanceMonitor` の設定取得先 (RPP の設定は判定に使わない) |
 | `costmap_node` / `costmap_topic` | `global_costmap/global_costmap` / `global_costmap/costmap_raw` | コストマップのパラメータの取得先と購読するトピック |
 | `transform_tolerance` | `0.2` | TF の許容時間 [s] |
+
+## VerifyLocalization
+
+自己位置の監督 (`localization_supervisor_node`) に確かめの要求 (`~/request_verify`。地図との照合を 1 回) を出し、結果を状態 `/localization/status` の `verify_id`・`verify_result` で待つ (枠組みの [motion_gate.md](../../localization_supervisor/doc/motion_gate.md#確かめの要求))。
+
+- SUCCESS は、今の推定 (AMCL) をそのまま確かめたとき。走行側は自己位置を頼りに動いてよい (障害物の領域からの脱出など)
+- FAILURE は、別の姿勢へ置き直した (次の段階で計画し直す)、決まらない (監督が門を閉じ、止めて照合する)、要求を受け付けられない (間隔の下限より早い・待っている要求がある)、`timeout` 秒以内に結果が来ないとき
+- 監督が確かめを扱えない (監督がいない、門のない構成) ときは、従来どおり、直近の状態が `NORMAL` なら SUCCESS (構成 `legacy` など)
+- 結果を INFO で出す
+
+| ポート | 既定値 | 内容 |
+| :--- | :--- | :--- |
+| `service` | `/localization_supervisor_node/request_verify` | 確かめの要求のサービス |
+| `topic` | `/localization/status` | 状態のトピック |
+| `timeout` | `15.0` | 結果を待つ時間の上限 [s] |
+| `requester` | `bt` | 要求元の名前 (記録用) |
 
 ## IsLocalizationHealthy
 
