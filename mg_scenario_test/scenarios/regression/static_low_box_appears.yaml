@@ -1,0 +1,36 @@
+version: "2.0"
+name: static_low_box_appears
+description: >
+  走行中に、進路の正面へ低い箱 (高さ 0.2m の低床障害物。上 LiDAR と collision_monitor には見えない) が出現する。
+  手前で止まって待つ間に箱がカメラの視野の下 (バンパー直前の死角) に入っても、local の STVL の時間切れで忘れて
+  再開せず、居座るのでリカバリーで迂回し、箱に接触せずにゴールへ到達することを確認する。
+profile: mg01
+world: warehouse
+tags: [full, static_obstacle, obstacle_detection, nav2_goals]
+
+obstacles:
+  low_box:
+    model: { type: primitive, shape: box, size: { x: 0.4, y: 0.8, z: 0.2 }, static: true }
+
+setup:
+  - respawn: { pose: { x: 0.0, y: 0.0, yaw: 0.0 }, settle_sec: 3.0 }
+  # 箱は待避位置に置き、出現時に teleport で正面へ出す
+  - spawn: { obstacle: low_box, pose: { frame: map, x: -30.0, y: -30.0, z: 0.1 } }
+
+run:
+  nav2_goals:
+    goals:
+      - pose: { x: 8.0, y: 0.0, yaw: 0.0 }
+
+timeline:
+  - name: box_appears
+    when: { robot_travelled: { distance: 2.0 } }
+    do:
+      - teleport: { entity: low_box, pose: { frame: robot, x: 1.5, y: 0.0, z: 0.1 } }
+
+monitors:
+  - obstacle_clearance: { obstacles: [low_box], min_clearance: 0.0, require_within: 1.5, pose_source: sim }
+
+expect:
+  - reached_all
+  - time_limit: { sec: 150 }
