@@ -13,6 +13,7 @@
 
 #include "geometry_msgs/msg/point.hpp"
 #include "obstacle_detection/obstacle_detector.hpp"
+#include "rcl_interfaces/msg/set_parameters_result.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/point_cloud2.hpp"
 #include "visualization_msgs/msg/marker_array.hpp"
@@ -64,8 +65,10 @@ class ObstacleDetection3DNode : public rclcpp::Node
 public:
   ObstacleDetection3DNode() : Node("obstacle_detection_3d_node")
   {
-    const auto params = loadParams();
-    detector_ = std::make_unique<obstacle_detection::ObstacleDetector>(params);
+    params_ = loadParams();
+    detector_ = std::make_unique<obstacle_detection::ObstacleDetector>(params_);
+    param_callback_ = this->add_on_set_parameters_callback(
+      std::bind(&ObstacleDetection3DNode::onSetParameters, this, _1));
 
     tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
@@ -121,18 +124,85 @@ private:
     }
 
     obstacle_detection::ObstacleDetector::validate(p);
+    logParams("params", p);
+    return p;
+  }
 
+  void logParams(const char * label, const obstacle_detection::ObstacleDetectionParams & p)
+  {
     RCLCPP_INFO(
       this->get_logger(),
-      "params: target_frame=%s stride=%d crop x[%.2f,%.2f] y[%.2f,%.2f] z[%.2f,%.2f] "
+      "%s: target_frame=%s stride=%d crop x[%.2f,%.2f] y[%.2f,%.2f] z[%.2f,%.2f] "
       "grid_size=%.3f delta_z_threshold=%.3f min_points_per_cell=%d z_outlier_trim=%d "
       "cluster_tolerance=%.3f min_cluster_cells=%d publish_markers=%d publish_stats=%d "
       "stats_period=%.1f",
-      target_frame_.c_str(), p.stride, p.cropbox_x_min, p.cropbox_x_max, p.cropbox_y_min,
-      p.cropbox_y_max, p.cropbox_z_min, p.cropbox_z_max, p.grid_size, p.delta_z_threshold,
-      p.min_points_per_cell, p.z_outlier_trim, p.cluster_tolerance, p.min_cluster_cells,
-      publish_markers_, publish_stats_, stats_period_);
-    return p;
+      label, target_frame_.c_str(), p.stride, p.cropbox_x_min, p.cropbox_x_max,
+      p.cropbox_y_min, p.cropbox_y_max, p.cropbox_z_min, p.cropbox_z_max, p.grid_size,
+      p.delta_z_threshold, p.min_points_per_cell, p.z_outlier_trim, p.cluster_tolerance,
+      p.min_cluster_cells, publish_markers_, publish_stats_, stats_period_);
+  }
+
+  // 実行中の ros2 param set で、検出のパラメータと target_frame を変える (実機での調整用)。
+  // 値はまとめて検証し、不正なら理由を返して何も変えない。出力の有無と QoS は起動時だけ
+  rcl_interfaces::msg::SetParametersResult onSetParameters(
+    const std::vector<rclcpp::Parameter> & parameters)
+  {
+    rcl_interfaces::msg::SetParametersResult result;
+    result.successful = true;
+    auto p = params_;
+    std::string frame = target_frame_;
+    try {
+      for (const auto & param : parameters) {
+        const auto & name = param.get_name();
+        if (name == "target_frame") {
+          frame = param.as_string();
+        } else if (name == "stride") {
+          p.stride = static_cast<int>(param.as_int());
+        } else if (name == "cropbox_x_min") {
+          p.cropbox_x_min = param.as_double();
+        } else if (name == "cropbox_x_max") {
+          p.cropbox_x_max = param.as_double();
+        } else if (name == "cropbox_y_min") {
+          p.cropbox_y_min = param.as_double();
+        } else if (name == "cropbox_y_max") {
+          p.cropbox_y_max = param.as_double();
+        } else if (name == "cropbox_z_min") {
+          p.cropbox_z_min = param.as_double();
+        } else if (name == "cropbox_z_max") {
+          p.cropbox_z_max = param.as_double();
+        } else if (name == "grid_size") {
+          p.grid_size = param.as_double();
+        } else if (name == "delta_z_threshold") {
+          p.delta_z_threshold = param.as_double();
+        } else if (name == "min_points_per_cell") {
+          p.min_points_per_cell = static_cast<int>(param.as_int());
+        } else if (name == "z_outlier_trim") {
+          p.z_outlier_trim = static_cast<int>(param.as_int());
+        } else if (name == "cluster_tolerance") {
+          p.cluster_tolerance = param.as_double();
+        } else if (name == "min_cluster_cells") {
+          p.min_cluster_cells = static_cast<int>(param.as_int());
+        } else if (name == "use_sensor_data_qos" || name == "publish_markers" ||
+          name == "publish_stats" || name == "stats_period")
+        {
+          throw std::invalid_argument(name + " can only be set at startup");
+        }
+      }
+      if (frame.empty()) {
+        throw std::invalid_argument("target_frame must not be empty");
+      }
+      auto detector = std::make_unique<obstacle_detection::ObstacleDetector>(p);
+      detector_ = std::move(detector);
+    } catch (const std::exception & ex) {
+      result.successful = false;
+      result.reason = ex.what();
+      RCLCPP_WARN(this->get_logger(), "rejected parameter change: %s", ex.what());
+      return result;
+    }
+    params_ = p;
+    target_frame_ = frame;
+    logParams("params updated", params_);
+    return result;
   }
 
   void pointcloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg)
@@ -333,6 +403,8 @@ private:
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_markers_;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_;
 
+  obstacle_detection::ObstacleDetectionParams params_;
+  OnSetParametersCallbackHandle::SharedPtr param_callback_;
   std::string target_frame_;
   bool publish_markers_ = true;
   bool publish_stats_ = true;

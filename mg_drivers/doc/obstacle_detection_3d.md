@@ -25,8 +25,13 @@ RealSense D435i の点群 (`points`) を処理の座標系 (`target_frame`) に�
 
 ## パラメータ
 
-`params/obstacle_detection.yaml` を編集し、**ノードを再起動**して調整する。実行中の `ros2 param set` には対応していない。
-起動時に、採用した値が `INFO` ログに出る。不正な値 (`grid_size<=0`、min>max など) は、理由付きのエラーでノードが終了する。
+`params/obstacle_detection.yaml` が既定。起動時に、採用した値が `INFO` ログに出る。不正な値 (`grid_size<=0`、min>max など) は、理由付きのエラーでノードが終了する。
+
+実機での調整のため、検出のパラメータと `target_frame` は、実行中に `ros2 param set` で変えられる (次のフレームから効く。yaml は変わらないので、決めた値は yaml に書き戻す)。値はまとめて検証し、不正なら理由を返して何も変えない (ログに `rejected parameter change`)。受け付けると `params updated` のログに全体の値が出る。`use_sensor_data_qos`・`publish_markers`・`publish_stats`・`stats_period` は起動時だけ。
+
+```bash
+ros2 param set /obstacle_detection_3d_node delta_z_threshold 0.15
+```
 
 主なパラメータ (単位と効果は、yaml のコメントにある)。
 
