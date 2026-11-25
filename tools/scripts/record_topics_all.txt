@@ -19,5 +19,9 @@
 /camera/camera/depth/image_rect_raw
 /camera/camera/depth/camera_info
 
+# 3D 障害物検出の結果 (走行中の検出と、再生での検出を比べる)
+/obstacle_detection_3d_node/points_obstacle
+/obstacle_detection_3d_node/cluster_markers
+
 # 6軸IMU (ジャイロ・加速度統合)
 /camera/camera/imu
