@@ -50,7 +50,7 @@ AMCL が弱る区間のシナリオは、現実の弱り方 (人混み 5、横�
 | 名前 | 内容 |
 | :--- | :--- |
 | `current` | 実機で最後に走った構成 (タグ v2.1)。監視は `amcl_watchdog_node` だけ、プリセットなし |
-| `new` | AMCL のプリセット `robust` と監督、監督のプロファイル `robust_recovery`。ロバスト化の対策は、監督のプロファイルなどとしてここに足す |
+| `new` | AMCL のプリセット `robust` と監督 (監督ノードの中の門を使う。`LOCALIZATION_GATE`)、監督のプロファイル `robust_recovery`。起動の直後の姿勢も門が決める (GNSS による初期化ノードは起動しない)。ロバスト化の対策は、監督のプロファイルなどとしてここに足す。2026-11-25 より前の計測の `new` は、門なしで、初期化ノードの照合 (`LOCALIZATION_INITIALIZER_VERIFY`) を使っていた |
 | `supervisor` | launch の既定。監督 (基本設定)、プリセットなし |
 
 シナリオは `anomaly` (対策の調整に使う) と `anomaly_holdout` (調整に使わず、調整した結果が場所・向き・大きさを変えても成り立つかを確かめる) のタグで分ける ([scenarios/README.md](../../mg_scenario_test/scenarios/README.md))。
