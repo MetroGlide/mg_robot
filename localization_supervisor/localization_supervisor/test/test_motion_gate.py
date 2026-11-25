@@ -227,6 +227,20 @@ def test_startup_search_resets_at_once_when_estimator_and_fused_are_off():
     assert _error(sim)[0] < 0.3
 
 
+def test_startup_search_runs_as_soon_as_gnss_is_good():
+    """GNSS が届く前の照合が決まらなくても、GNSS がそろったら、やり直しの間隔を待たずに全周の照合をする。"""
+    sim = _searching()
+    sim.amcl_offset = (3.0, 0.0, 1.0)
+    sim.ekf_offset = (3.0, 0.0, 1.0)
+    sim.gnss = False
+    sim.run(1.0)
+    assert sim.events('map_match') and not sim.events('initial_search')
+    sim.gnss = True
+    sim.run(1.0)
+    assert sim.events('initial_search')
+    assert sim.gate.state == GateState.OPEN
+
+
 def test_startup_search_keeps_a_correct_estimator():
     sim = _searching()
     sim.run(4.0)

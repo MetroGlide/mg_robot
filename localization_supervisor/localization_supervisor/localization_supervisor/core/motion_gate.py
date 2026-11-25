@@ -287,7 +287,7 @@ class MotionGate:
         self._advance(t, motion)
         self._watch_map(snapshot, out)
         self._buffer_scan(snapshot)
-        self._count_initial_gnss(snapshot)
+        self._count_initial_gnss(t, snapshot)
         out.evidences = {c.name: c.detector.evaluate(snapshot) for c in self.config.closers}
         closing = self._closing(t, out.evidences)
         out.closing = closing
@@ -355,8 +355,11 @@ class MotionGate:
         if motion is not None:
             self._buffer.add(scan, motion)
 
-    def _count_initial_gnss(self, snapshot: Snapshot) -> None:
-        """全周の照合に使える (申告の精度が上限以下の) GNSS の標本が、続けていくつ届いたか。"""
+    def _count_initial_gnss(self, t: float, snapshot: Snapshot) -> None:
+        """全周の照合に使える (申告の精度が上限以下の) GNSS の標本が、続けていくつ届いたか。
+
+        確かめた姿勢がない間に数が足りたら、やり直しの間隔を待たずに照合する (起動で走りながら待つ距離を減らす)。
+        """
         s = self.settings
         if self.config.initial_search is None or not s.gnss:
             return
@@ -366,6 +369,8 @@ class MotionGate:
         self._gnss_stamp = sample.stamp
         sigma = math.sqrt(max(float(sample.cov[0][0]), float(sample.cov[1][1]), 0.0))
         self._gnss_good = self._gnss_good + 1 if sigma <= s.initial_gnss_max_std_m else 0
+        if self._gnss_good == s.initial_gnss_consecutive and self.state == GateState.UNCONFIRMED:
+            self._next_match = min(self._next_match, t)
 
     def _initial_search(self, snapshot: Snapshot) -> Optional[InitialSearch]:
         """全周の照合の依頼 (GNSS の精度が続けて足り、GNSS を疑っておらず、スキャンがあるとき)。"""
