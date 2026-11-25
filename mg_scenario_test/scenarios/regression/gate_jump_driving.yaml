@@ -40,7 +40,7 @@ timeline:
     when:
       all_of:
         triggers:
-          - localization_ready: { checks: [amcl_gnss] }
+          - localization_ready: { checks: [gate_amcl_gnss] }
           - robot_near: { x: -3.0, y: 6.5, radius: 1.5 }
     do:
       - localization_spread: { offset: { y: 1.5 }, sigma: { x: 0.05, y: 0.05, yaw: 0.02 } }

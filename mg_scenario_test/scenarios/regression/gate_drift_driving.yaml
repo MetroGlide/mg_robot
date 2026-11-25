@@ -44,7 +44,7 @@ timeline:
     when:
       all_of:
         triggers:
-          - localization_ready: { checks: [amcl_gnss] }
+          - localization_ready: { checks: [gate_amcl_gnss] }
           - robot_near: { x: -3.0, y: 6.5, radius: 1.5 }
     do:
       # 通路に沿って (拘束の弱い向き) ゆっくりずらす。毎秒の /initialpose で AMCL の分布を絞り直すので、AMCL は
