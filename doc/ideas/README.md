@@ -29,4 +29,7 @@
 | [localization_gate_awareness.md](./localization_gate_awareness.md) | AMCL を意図して止めている区間で、自己位置の監督が AMCL の判定を自動で外す |
 | [localization_single_scan_checks.md](./localization_single_scan_checks.md) | 1 枚のスキャンを使う自己位置の判定 (光線の突き抜けと、少しずつのずれ) を、室内の地図などで試す |
 | [localization_graph_aggregator.md](./localization_graph_aggregator.md) | 窓つきの因子グラフで、オドメトリ・GNSS・AMCL の仮説をまとめ、監督の判定の基準と復旧の候補に使う |
+| [localization_directional_constraint.md](./localization_directional_constraint.md) | 照合の拘束の強さを向きごとに見て、通路の進行方向のずれを防ぐ |
+| [localization_without_lidar.md](./localization_without_lidar.md) | LiDAR を失った後の自己位置の精度を上げる (GNSS の動きの判定、IMU、カメラ) |
+| [localization_exceptions.md](./localization_exceptions.md) | 合格の条件を満たせない状況を「例外」として名前をつけて持つ |
 | [localization_pose_trust.md](./localization_pose_trust.md) | 自己位置の状態に「姿勢を信頼してよいか」の値を足し、GNSS だけを切り離している間も走行側の脱出が働くようにする |

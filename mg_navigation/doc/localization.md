@@ -120,7 +120,19 @@ AMCL の位置の共分散を監視し、大きい状態が続いたら、`gnss_
   - 旋回や滑りやすい場所で、AMCL の追従が遅れないか (動きのノイズを下げると、オドメトリが大きくずれたときに追いつきにくい)。
   - 負荷: 監督のプロセスの CPU 使用率 (コンテナの中で `top -b -d 5 -n 12 -p $(pgrep -f localization_supervisor_node)`)。重ければ、`mg_localization_supervisor/config/supervision.yaml` から粒子の情報源 `amcl_particles` と、それを使う `amcl_split`・候補 `hypotheses` を外す (粒子は 1 つのメッセージが大きく、受け取るだけで負荷がかかる)。
 - 分かっている限界: 止まっているあいだにロボットを押して動かすと、AMCL と GNSS のブリッジは動くまで推定を出さないので、監督が気づくのは走り出してからになり、自動で戻れないことがある。動かしたら、手で初期化し直す。
-- 記録 (`params/record_topic_list.txt`) には、監督の入力 (AMCL・EKF・GNSS・オドメトリ・スキャン・地図・粒子) と、監督の状態とイベントが入る。
+- 記録 (`params/record_topic_list.txt`) には、監督の入力 (AMCL・EKF・GNSS・オドメトリ・スキャン・地図・粒子) と、監督の状態とイベントが入る。カメラと IMU は入らないので、後で LiDAR を失った後の対策 ([構想](../../doc/ideas/localization_without_lidar.md)) を確かめるために、走行のうち一部は全トピックの記録 (例: `record_all_*`) で残す。
+- 本番の前に記録を取って評価し直す時間はない前提で、構成 `supervised` の仕組みは、それぞれ設定 1 つで切れるようにしてある。実機で困ったら、下の表の順に切る (どれも `mg_localization_supervisor/config/supervision.yaml` の値で、起動し直すと効く)。
+
+  | 仕組み | 実機で見ること | 切り方 |
+  | :--- | :--- | :--- |
+  | 走り方 (起こりうる誤差と余裕から、狭い所で減速) | 狭くない所で減速が続かないか (`/localization/status` の `situation`・`speed_limit`) | 対処 `speed_limit` を外す |
+  | 確かめの要求 (計画用地図の障害物から抜けた後に、門の照合で確かめる) | 脱出の後に止まる時間 | 門の `verify_min_interval_sec` を大きくする、または構成 `legacy` |
+  | 広い照合 (決まらずに止めた後に、続きの周りを全周で探す) | `localization.wide_search` の後の置き直しが正しいか | 門の `wide_search_after_holds` を 0 |
+  | GNSS の見習い期間・疑いの解けた GNSS の保留 | GNSS が良いのに候補に入らない時間 (`localization.gnss_probation`・`gnss_held`・`gnss_released`) | 門の `gnss_probation_sec` を 0、`gnss_hold_after_distrust` を偽 |
+  | スキャンの途絶の間は照合しない | LiDAR が止まった後に止まらず走るか (`localization.gate_scan_stale`) | 門の `scan_max_age_sec` を 0 |
+  | センサの組 (LiDAR なしで速度を下げて走る) | LiDAR が止まってから切り替わるまでの停止 (`localization.sensor_set_changed`) | `sensor_sets` を空にする |
+
+- LiDAR を失ったときは、精度を追わず、走りを続けることを優先する (センサの組 LiDAR なし)。自己位置はオドメトリと GNSS だけになり、GNSS が弱い区間や、精度を過大に申告したままずれる区間では数 m ずれうる。オペレータがずれを見て止める。
 
 ### 実機の記録を調べる
 
