@@ -308,9 +308,9 @@ conduct:
   slow_speed_mps: 0.3
   table:
     uninitialized: {light: normal, medium: slow, heavy: slow}
-    # 疑いは、余裕が狭いとき (重い) だけ減速する (地図と GNSS のどちらが正しいか見分けられない区間を、開けた所でまで
-    # 減速すると、変換の誤差だけの区間をずっと低速で走るため)
-    suspect: {light: normal, medium: normal, heavy: slow}
+    # 疑い (GNSS だけが食い違うなど) では減速しない。地図と GNSS のどちらが正しいか見分けられず、変換の誤差の区間で
+    # 誤った減速が続く割に、地図の食い違いへの効き目が小さかったため (2026-11-26 ユーザー判断)
+    suspect: {light: normal, medium: normal, heavy: normal}
     undecided: {light: slow, medium: slow, heavy: slow}
     unobserved: {light: slow, medium: slow, heavy: slow}
     recovering: {light: slow, medium: slow, heavy: slow}
