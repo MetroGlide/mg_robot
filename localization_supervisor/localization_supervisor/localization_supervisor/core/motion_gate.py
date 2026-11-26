@@ -267,6 +267,7 @@ class MotionGate:
         self._map_version: Optional[int] = None
         self._last_scan_stamp: Optional[float] = None
         self._distrust: frozenset = frozenset()
+        self._supervisor_distrust: frozenset = frozenset()
         # GNSS の申告の精度の履歴 (時刻, 標準偏差) と、見習い期間の終わり
         self._gnss_std: Deque[Tuple[float, float]] = deque()
         self._probation_until = -math.inf
@@ -359,7 +360,10 @@ class MotionGate:
         t = snapshot.stamp
         out = GateStep(self.state, self.state != GateState.CLOSED and self.state != GateState.CORRECTING)
         out.events, self._pending = self._pending, []
-        self._distrust = frozenset(distrust) | self._probation(snapshot, t, out)
+        # 監督が疑う GNSS (全周の照合にも使わない) と、見習い期間 (閉じる理由と候補にだけ使わない。全周の照合は
+        # GNSS を探す範囲の中心にだけ使い、地図との照合で確かめるので止めない)
+        self._supervisor_distrust = frozenset(distrust)
+        self._distrust = self._supervisor_distrust | self._probation(snapshot, t, out)
         if result is not None:
             self._busy = False
         motion = snapshot.motion_at(s.motion, t)
@@ -475,7 +479,7 @@ class MotionGate:
         """全周の照合の依頼 (GNSS の精度が続けて足り、GNSS を疑っておらず、スキャンがあるとき)。"""
         s = self.settings
         cfg = self.config.initial_search
-        if cfg is None or s.gnss in self._distrust or self._gnss_good < s.initial_gnss_consecutive:
+        if cfg is None or s.gnss in self._supervisor_distrust or self._gnss_good < s.initial_gnss_consecutive:
             return None
         gnss = snapshot.pose(s.gnss, s.gnss_max_age_sec)
         scan = snapshot.reference(s.reference).scan

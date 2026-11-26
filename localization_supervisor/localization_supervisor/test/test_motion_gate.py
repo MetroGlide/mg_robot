@@ -509,6 +509,20 @@ def test_gnss_whose_report_suddenly_improves_is_on_probation():
     assert matches and all('ratio_gnss' not in e.fields for e in matches)
 
 
+def test_gnss_probation_does_not_stop_the_startup_search():
+    """起動の直後に申告の精度が良くなっても、見習い期間で全周の照合を止めない (地図との照合で確かめるため)。"""
+    sim = _searching(gnss_probation_sec=8.0)
+    sim.amcl_offset = (3.0, 0.0, 1.0)
+    sim.ekf_offset = (3.0, 0.0, 1.0)
+    sim.gnss_std = 3.0
+    sim.run(1.0)
+    sim.gnss_std = 0.2
+    sim.run(3.0)
+    assert sim.events('gnss_probation')
+    assert sim.events('initial_search')
+    assert sim.gate.state == GateState.OPEN
+
+
 def test_gnss_probation_is_off_by_default():
     sim = _confirmed(confirm_distance_m=1000.0)
     sim.gnss_std = 3.0
