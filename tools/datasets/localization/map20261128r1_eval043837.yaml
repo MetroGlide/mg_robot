@@ -1,0 +1,14 @@
+# 評価セット map20261128 (GNSS と整合させた自己位置推定用の地図 map_for20261128 の領域ごとの区間) の 1 つ。
+# 地図の原点・GNSS の変換は map_for20261017 と同じで、画像だけを GNSS に合わせて直したもの。区間は
+# map20261017r1_eval043837 と同じ。真値の扱いも同じ (map.slam_dir のアンカーへ UTM 経由で移す)。
+name: map20261128r1_eval043837
+description: 評価セット (地図 map_for20261128 の Region1、評価 043837 の 1377-1596 s)
+map:
+  localization_yaml: /root/ros2_data/map_for20261128/Region1_jikoichi.yaml
+  gnss_transform: /root/ros2_data/map_for20261128/gnss_transform.yaml
+  slam_dir: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_051635/20260921_2243
+eval:
+  bag: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_043837
+  slam_dir: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_043837/20260921_2248
+  start_offset: 1377.0
+  duration: 219.0
