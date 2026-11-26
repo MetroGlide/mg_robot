@@ -96,6 +96,8 @@ class Sim:
         # 推定器の地図の座標でのずれ (ゆっくりしたずれ)
         self.amcl_shift = (0.0, 0.0)
         self.blind = False
+        # LiDAR が止まった (スキャンを新しくしない)
+        self.halted = False
         self.pending = None
         self.distrust = frozenset()
         self.steps = []
@@ -117,10 +119,11 @@ class Sim:
         if self.gnss:
             self.store.add_pose('gnss', PoseSample(
                 t, (self.true[0] + self.gnss_offset[0], self.true[1] + self.gnss_offset[1], 0.0), cov(self.gnss_std)))
-        scan = room_scan(t, self.true)
-        if self.blind:
-            scan.ranges[:] = np.inf
-        self.store.set_scan('map_scan', scan)
+        if not self.halted:
+            scan = room_scan(t, self.true)
+            if self.blind:
+                scan.ranges[:] = np.inf
+            self.store.set_scan('map_scan', scan)
         step = self.gate.step(self.store.snapshot(t), self.pending, self.distrust)
         self.pending = None
         if step.request is not None:
@@ -522,6 +525,31 @@ def test_gnss_is_used_right_after_the_distrust_ends_when_the_hold_is_off():
     sim.distrust = frozenset()
     sim.run(2.0)
     assert not sim.events('gnss_held')
+
+
+def test_stale_scans_are_never_matched_and_never_hold_the_robot():
+    """LiDAR が止まったら、溜めたスキャンで照合も停止もせず、戻ったら溜め直して照合する。"""
+    sim = _confirmed(scan_max_age_sec=2.0, max_closed_sec=3.0)
+    sim.halted = True
+    sim.run(3.0)
+    assert sim.events('gate_scan_stale')
+    before = len(sim.events('map_match'))
+    sim.amcl_offset = (1.5, 0.0, 0.0)
+    sim.run(20.0)
+    assert len(sim.events('map_match')) == before
+    assert not sim.events('pose_reset') and not any(s.hold for s in sim.steps[-100:])
+    sim.halted = False
+    sim.run(10.0)
+    assert sim.events('gate_scan_fresh') and len(sim.events('map_match')) > before
+
+
+def test_stale_scans_are_matched_when_the_age_limit_is_off():
+    sim = _confirmed(max_closed_sec=3.0)
+    sim.halted = True
+    before = len(sim.events('map_match'))
+    sim.amcl_offset = (1.5, 0.0, 0.0)
+    sim.run(10.0)
+    assert len(sim.events('map_match')) > before
 
 
 def test_gnss_whose_report_suddenly_improves_is_on_probation():

@@ -104,6 +104,10 @@ class GateSettings:
     # 広い照合: 決まらずに止めた回数がこれに達した後の停止の間は、確かめた姿勢の続き (なければ融合の結果) の周りを、
     # 全周の照合 (設定の initial_search) で探して候補に足す。0 なら使わない
     wide_search_after_holds: int = 0
+    # 地図と照合するスキャンの古さの上限 [s]。最新のスキャンがこれより古い間 (LiDAR が止まったなど) は、照合も、照合を
+    # 待つ停止もしない (溜めたスキャンをオドメトリで進めて照合すると、誤った姿勢へ置き直す)。溜めたスキャンは捨て、
+    # スキャンが戻ってから溜め直す。0 なら見ない
+    scan_max_age_sec: float = 0.0
 
 
 @dataclass
@@ -287,6 +291,8 @@ class MotionGate:
         self._gnss_good = 0
         self._gnss_stamp: Optional[float] = None
         self._fallback_done = False
+        # スキャンが古い (照合しない) 間か
+        self._scan_stale = False
 
     # ------------------------------------------------------------------ 外から
 
@@ -381,12 +387,17 @@ class MotionGate:
         self._advance(t, motion)
         self._watch_map(snapshot, out)
         self._buffer_scan(snapshot)
+        stale = self._watch_scan_age(snapshot, out)
         self._count_initial_gnss(t, snapshot)
         out.evidences = {c.name: c.detector.evaluate(snapshot) for c in self.config.closers}
         closing = self._closing(t, out.evidences)
         out.closing = closing
-        if result is not None and result[0].generation == self._generation:
+        if result is not None and result[0].generation == self._generation and not stale:
             self._apply(result[0], result[1], snapshot, motion, out)
+        if stale:
+            out.state = self.state
+            out.gate_open = self.state in (GateState.UNCONFIRMED, GateState.OPEN)
+            return out
 
         in_grace = t < self._grace_until[0] or self._odometer < self._grace_until[1]
         out.in_grace = in_grace
@@ -448,6 +459,28 @@ class MotionGate:
         motion = snapshot.motion_at(s.motion, scan.stamp)
         if motion is not None:
             self._buffer.add(scan, motion)
+
+    def _watch_scan_age(self, snapshot: Snapshot, out: GateStep) -> bool:
+        """最新のスキャンが古ければ真 (scan_max_age_sec)。古くなったら、溜めたスキャン・待っている照合・停止を捨てる。"""
+        s = self.settings
+        if s.scan_max_age_sec <= 0.0:
+            return False
+        t = snapshot.stamp
+        scan = snapshot.reference(s.reference).scan
+        stale = scan is not None and t - scan.stamp > s.scan_max_age_sec
+        if stale and not self._scan_stale:
+            self._buffer.clear()
+            self._generation += 1
+            self._undecided_hold_since = None
+            if self.state == GateState.CORRECTING:
+                self._correction = None
+                self.state = GateState.CLOSED
+            out.events.append(GateEvent('gate_scan_stale', 'warn', {'age_sec': round(t - scan.stamp, 1)}))
+        elif not stale and self._scan_stale:
+            self._closed_since = (t, self._odometer)
+            out.events.append(GateEvent('gate_scan_fresh', 'info', {}))
+        self._scan_stale = stale
+        return stale
 
     def _hold_released_gnss(self, distrust: frozenset, out: GateStep) -> None:
         """監督の疑いが解けた GNSS を、確かめた姿勢と合うまで使わない (gnss_hold_after_distrust)。"""
