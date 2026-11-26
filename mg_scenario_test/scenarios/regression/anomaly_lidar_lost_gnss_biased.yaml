@@ -4,12 +4,13 @@ description: >
   LiDAR が戻らない故障 (anomaly_lidar_lost) を、GNSS が精度を過大に申告したままずれる区間 (建物の近くのマルチパス)
   で起こす (2 つの故障の組み合わせ)。西の通路でスキャンを止めて最後まで戻さず、同じ通路の間だけ GNSS を東 (棚の側) へ
   ずらす。オドメトリには、実機の補正の後に残る程度の旋回の誤差を足す。LiDAR がないので、GNSS のずれに地図では
-  気づけない区間で、ずれたまま走る距離を見る。期待する動作: センサの組を LiDAR なしにして、collision_monitor の scan の途絶による停止を外し、深度の
+  気づけない区間で、ずれたまま走る距離を見る。既知の問題: EKF が GNSS のずれに約 3 m 引かれ、棚に当たって止まり、
+  推定だけが走りきる (LiDAR がないときは精度を追わない判断。実機では人が見て止める)。期待する動作: センサの組を LiDAR なしにして、collision_monitor の scan の途絶による停止を外し、深度の
   障害物 (ローカルコストマップ) と組の速度の上限で走りきる。シミュレーションにはセンサの途絶の見張りがないので、
   見張りの一時停止の引き継ぎは試さない。構成は LOCALIZATION_CONFIG で選ぶ。
 profile: mg01
 world: warehouse
-tags: [localization, anomaly_sensor, mg_sequencer]
+tags: [localization, anomaly_sensor, mg_sequencer, known_issue]
 timeout: 600
 
 record_topics: [/sim_scenario_test/entity_poses, /amcl_pose_origin, /odom/gps, /ekf_global_odom, /odom, /localization/status, /cmd_vel, /initialpose, /diagnostics_agg, /rosout]
@@ -24,8 +25,9 @@ setup:
   - respawn: { pose: { x: 0.0, y: 0.0, yaw: 0.0 }, settle_sec: 3.0 }
 
 monitors:
-  # 合否の上限は置かず、構成どうしの比較のために値を残す
-  - pose_error: { deviation_m: 1.0 }
+  # ずれの上限は置かない (LiDAR がないときは精度を追わない)。走りを続けることだけを、走行の終わりの位置の差で
+  # 見る (推定の上だけで走りきり、実際のロボットは障害物に当たって止まっている、を落とす)
+  - pose_error: { deviation_m: 1.0, max_end_error_m: 3.0 }
   # 合否に使わない記録: ずれたまま止める要求も減速もなく走った距離、減速した時間
   - localization_outcome: {}
   - max_stop_duration: { max_stop_sec: 60.0, from_goal_started: 2, until_goal_reached: 8 }

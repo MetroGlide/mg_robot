@@ -23,8 +23,9 @@ setup:
   - respawn: { pose: { x: 0.0, y: 0.0, yaw: 0.0 }, settle_sec: 3.0 }
 
 monitors:
-  # 合否の上限は置かず、構成どうしの比較のために値を残す
-  - pose_error: { deviation_m: 1.0 }
+  # ずれの上限は置かない (LiDAR がないときは精度を追わない)。走りを続けることだけを、走行の終わりの位置の差で
+  # 見る (推定の上だけで走りきり、実際のロボットは障害物に当たって止まっている、を落とす)
+  - pose_error: { deviation_m: 1.0, max_end_error_m: 3.0 }
   # 合否に使わない記録: ずれたまま止める要求も減速もなく走った距離、減速した時間
   - localization_outcome: {}
   - max_stop_duration: { max_stop_sec: 60.0, from_goal_started: 2, until_goal_reached: 8 }
