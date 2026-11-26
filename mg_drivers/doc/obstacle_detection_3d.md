@@ -89,6 +89,8 @@ ros2 launch mg_drivers obstacle_detection_3d.launch.py
 
 ### 機能のオンオフ
 
+カメラが繋がっていない・止まったときは、検出とコストマップのカメラの層が働かないだけで、走行は止めない (低い物は見えなくなる)。STVL は観測の届く間隔を見ていない (`expected_update_rate: 0.0`) ので、コストマップが古いとは扱われない。カメラの途絶の監視は、ここでは持たない。
+
 | 対象 | 切り替え方 | 効く時期 |
 | :--- | :--- | :--- |
 | カメラの層 (STVL) をコストマップから外す | `ros2 param set /local_costmap/local_costmap obstacle_stvl_layer.enabled false` (global は `/global_costmap/global_costmap`) | すぐ |
