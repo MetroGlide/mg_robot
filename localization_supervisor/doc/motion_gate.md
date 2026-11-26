@@ -152,6 +152,11 @@
   - `localization.hold`: 一時停止の要求の始まりと終わり、理由 (大きい補正 / 決まらない)。
   - `localization.pose_confirmed`: 一定の距離ごとの確かめの結果。
   - `localization.manual_pose`: 手動の初期姿勢を受けたことと、照合で直したか。
+  - `localization.wide_search`: 広い照合の結果 (合った / 決まらなかったわけ、一致率、次点との差、見つけた姿勢、探した中心)。
+  - `localization.verify_requested`・`localization.verify_result`: 走行側の確かめの要求の受け付けと結果 (確かめた / 置き直した / 決まらない)。
+  - `localization.gnss_probation`: GNSS の見習い期間の始まり (申告の精度と、窓の中の最も悪い値)。
+  - `localization.gnss_held`・`localization.gnss_released`: 疑いの解けた GNSS を保留にした・確かめた姿勢と合ったのでまた使う (差と申告の精度)。
+  - `localization.gate_scan_stale`・`localization.gate_scan_fresh`: スキャンが途絶えたので照合をやめた・戻った。
 
 ## 評価
 

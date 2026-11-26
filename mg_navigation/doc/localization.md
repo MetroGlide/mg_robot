@@ -132,6 +132,11 @@ AMCL の位置の共分散を監視し、大きい状態が続いたら、`gnss_
   | スキャンの途絶の間は照合しない | LiDAR が止まった後に止まらず走るか (`localization.gate_scan_stale`) | 門の `scan_max_age_sec` を 0 |
   | センサの組 (LiDAR なしで速度を下げて走る) | LiDAR が止まってから切り替わるまでの停止 (`localization.sensor_set_changed`) | `sensor_sets` を空にする |
 
+- 調整は、まず構成 `observe` で走らせた記録で、門の閉鎖・照合の結果・減速の回数を数えてから行う。パラメータごとの意味と調整の方針は、監督の [parameters.md](../../localization_supervisor/doc/parameters.md) (門は `gate.settings`、走り方は `conduct`、センサの組は `sensor_sets`)。値は `mg_localization_supervisor/config/supervision.yaml` が正。
+- 実機で最初に確かめること:
+  - 門の誤報: 故障のない区間で門が閉じる頻度と、そのうち照合が AMCL をそのまま確かめた割合 (`localization.gate_closed`・`localization.map_match`)。確かめる回が多ければ、閉じる理由の部品の閾値か比べる時間を広げる。
+  - 照合の決着: 閉じるたびに決まらない (`why=ambiguous`) 回の割合と、照合の所要時間 (`duration_ms`)。
+  - ホイールの速度: `/odom` の速度が 0 のまま姿勢だけ進む不具合が出ていないか (`tools/scripts/rosbag_summary.py`)。出ていれば、オドメトリの補正の `twist_source` を確かめる ([mg_drivers](../../mg_drivers/doc/wheel_odom_corrector.md))。
 - LiDAR を失ったときは、精度を追わず、走りを続けることを優先する (センサの組 LiDAR なし)。自己位置はオドメトリと GNSS だけになり、GNSS が弱い区間や、精度を過大に申告したままずれる区間では数 m ずれうる。オペレータがずれを見て止める。
 
 ### 実機の記録を調べる
@@ -151,7 +156,9 @@ AMCL の位置の共分散を監視し、大きい状態が続いたら、`gnss_
 
 ## 従来の構成に戻す
 
-- `LOCALIZATION_CONFIG=legacy` (または `localization_config:=legacy`) にすれば、従来の監視 (共分散による再初期化だけ)。
+- `LOCALIZATION_CONFIG=legacy` (`.env`、または `localization_config:=legacy`) にすれば、従来の監視 (共分散による再初期化だけ)。起動し直すと効く。走行側の BT の確かめの要求 (`VerifyLocalization`) は、門がなければ監督の状態を見るだけに戻る ([bt_plugins.md](./bt_plugins.md))。
+- `legacy` でも、自己位置推定と関係のない v2.1 からの変更 (ホイールオドメトリの補正、シーケンサの変更など) は戻らない。完全に戻すには、タグ v2.1 のコードを使う。
+- 判定だけを残して動作を v2.1 に戻すときは `LOCALIZATION_CONFIG=observe` (門は判定と照合だけで、置き直しも停止も減速もしない)。
 - 監督ノードの中の門だけをやめるときは、`localization_gate:=false`。初期化ノードと中継が起動し、監督は門なしの復旧に戻る。Web UI の手動の初期姿勢は、中継を通して従来どおり `/initialpose` に届く。
 - `localization_profile:=gnss_fallback` で、AMCL と GNSS が乖離したら GNSS で引き戻すだけの、以前の動作 (監督ノードのまま)。
 - `localization_profile:=notify_only` で、監督ノードは検知と通知だけ (自動復旧しない)。

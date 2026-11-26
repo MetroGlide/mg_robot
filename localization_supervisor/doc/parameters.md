@@ -206,12 +206,38 @@ residuals:
 | キー | 内容 |
 | :--- | :--- |
 | `period_sec` | 門の周期 [s]。`period_sec` 以下にする |
-| `settings` | 門をかける推定器・融合の結果・動き・地図とスキャン・GNSS の情報源の名前と、候補の探す範囲、確かめる道のり、置き直しの後の猶予、戻し方、閉じたまま決まらないときの上限、全周の照合に使う GNSS の精度の条件 (`core/motion_gate.py` の `GateSettings`) |
+| `settings` | 下の表 (`core/motion_gate.py` の `GateSettings`) |
 | `closers` | 閉じる理由の部品 (判定の書き方に、異常が続く時間 `close_after_sec` と、置き直しの後の猶予の間も使うか `active_in_grace` を足したもの)。名前は `detectors` のインスタンスと分ける (状態のメッセージに両方を並べる) |
 | `map_match` | 照合で決める規則 (`core/map_match.py` の `MapMatchConfig`) |
 | `scan_buffer` | 照合に使う、直近のスキャンの重ね方 |
 | `initial_search` | 確かめた姿勢がない間に、GNSS の周りを向きの全周で照合する設定 (`core/initial_search.py` の `InitialSearchConfig`)。書かなければしない。`settings.gnss` が要る |
 | `manual_pose_topic` | 手動の初期姿勢のトピック (空なら受けない) |
+
+### gate.settings
+
+調整の方針は、イベント ([motion_gate.md](./motion_gate.md#診断とイベント)) の何を見て、どちらへ動かすか。0 や偽で無効にできるキーは、その仕組みを切る手段にもなる ([mg_navigation の localization.md](../../mg_navigation/doc/localization.md#実機で試す))。
+
+| キー | 内容 | 調整の方針 |
+| :--- | :--- | :--- |
+| `estimator`・`fused`・`motion`・`reference`・`gnss` | 門をかける推定器・融合の結果・動き・地図とスキャン・GNSS の情報源の名前 (`sources` の名前。`gnss` は空なら使わない) | ロボットの構成で決まる。調整しない |
+| `max_age_sec`・`gnss_max_age_sec` | 候補に使う標本の古さの上限 [s] | 候補が「標本がない」で落ちるなら、情報源の周期より長くする |
+| `gnss_max_std_m`・`gnss_sigma_k` | GNSS を候補に使う申告の精度の上限と、GNSS の候補を探す範囲 (申告の標準偏差の倍) | GNSS の候補が誤った決着を出すなら上限を締める。GNSS が良いのに候補に入らないなら緩める |
+| `continuation_xy_per_m`・`continuation_yaw_per_m` | 前の続きの候補の探す範囲を、確かめてから走った道のり 1 m あたり広げる量 | 続きの候補が照合で範囲の端に張りつくなら上げる (オドメトリの誤差の目安より大きく) |
+| `manual_xy_m`・`manual_yaw_rad` | 手動の初期姿勢の候補の探す範囲 | 人が与える姿勢の誤差を覆う。`map_match` の範囲の上限の中にする |
+| `retry_sec` | 決まらなかったときに照合し直す間隔 [s] | 照合の負荷が重ければ長くする |
+| `confirm_distance_m` | 門が開いている間に、確かめた姿勢を更新する道のり | 続きの候補の範囲が上限に張りつくなら短くする。負荷が重ければ長くする |
+| `grace_after_reset_m`・`grace_after_reset_sec` | 置き直しの後に閉じる理由を使わない道のりと時間 | 置き直しの直後に閉じる回が多ければ延ばす。時間の窓で比べる閉じる理由の窓より長くする |
+| `small_correction_m`・`small_correction_rad` | その場で置き直す補正の大きさの上限。超えれば止まってから置き直す | 置き直しの直後の `cmd_vel` の急な変化が出る大きさより下に置く。止まる回数が多すぎれば上げる |
+| `stopped_speed_mps`・`stopped_yaw_rate_rps`・`stopped_sec`・`correction_hold_max_sec` | 止まったとみなす速さと続く時間、止まるのを待つ時間の上限 | 止まるのを待って上限に届く回が多ければ、止まったとみなす速さを緩める |
+| `max_closed_sec`・`max_closed_m` | 閉じたまま決まらないときの上限 (時間か道のり)。超えたら止めて照合する | 故障なしで上限に届く回が出ないよう、決まるまでの時間の分布より上に置く。ずれたまま走った距離が長ければ下げる |
+| `undecided_hold_sec`・`undecided_drive_m` | 決まらずに止める時間と、解いた後に走らせる道のり | 止まる時間が長すぎれば短くする。止まったままにしないための値で、0 にはしない |
+| `reset_std_m`・`reset_std_yaw_rad` | 置き直す姿勢の標準偏差 | 置き直しの後に AMCL が広がりすぎるなら小さくする |
+| `initial_gnss_max_std_m`・`initial_gnss_consecutive` | 全周の照合に使う GNSS の申告の精度の上限と、続けて満たす標本の数 | 起動の照合が始まらないなら緩める。誤った位置で始まるなら締める |
+| `gnss_probation_sec`・`gnss_probation_ratio`・`gnss_probation_window_sec` | 申告の精度が急に良くなった GNSS を、閉じる理由と候補に使わない見習い期間。0 なら使わない | 屋根を抜けた直後の誤った決着が残るなら延ばす。GNSS が良いのに候補に入らない時間が長ければ縮める |
+| `gnss_hold_after_distrust` | 監督の疑いが解けた GNSS を、確かめた姿勢と合うまで使わない | GNSS が戻らない時間 (`gnss_held` から `gnss_released` まで) が長すぎるなら偽 |
+| `verify_min_interval_sec` | 走行側の確かめの要求を受け付ける間隔の下限 [s] | 要求が多すぎて止まる時間が増えるなら長くする |
+| `wide_search_after_holds` | 決まらずに止めた回数がこれに達した後の停止で、続きの周りを全周で照合する。0 なら使わない | 広い照合の後の置き直しが誤っていれば 0 |
+| `scan_max_age_sec` | 最新のスキャンがこれより古い間は照合も停止もしない。0 なら見ない | スキャンの周期の乱れより長く、センサの組の `missing_after_sec` より短く |
 
 ## conduct
 
