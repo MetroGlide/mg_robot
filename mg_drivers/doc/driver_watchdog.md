@@ -93,7 +93,6 @@
 | `top_lidar` | `scan_top_lidar` | `top_rplidar_node` | |
 | `odom` | `odom` | なし | `wheel_odometry_node` が自分で再接続する |
 | `motor` | `/motor_driver_node/connected` | なし | 接続状態 (`std_msgs/msg/Bool`、`ok_field: data`)。`armed_on_first_message` で、モータドライバが無い構成でも異常にならない |
-| `obstacle_camera` | `/obstacle_detection_3d_node/points_obstacle` | なし | 3D 障害物検出の出力 (検出がなくても毎フレーム出る)。カメラと検出ノードのどちらが止まっても途絶える。上 LiDAR の面より低い物はカメラだけが見るので、止まったまま走らない。`realsense2_camera` は respawn を持たないので終了させない。`enabled` は launch が `use_realsense` と `watch_obstacle_camera` から決める |
 
 ## launch の引数 (`bringup.launch.py`)
 
@@ -101,7 +100,6 @@
 | :--- | :--- |
 | `use_driver_watchdog` | 監視ノードを起動する (シミュレーションでは起動しない) |
 | `respawn_drivers` | ドライバの respawn。`false` にすると、監視ノードの再起動も無効になる |
-| `watch_obstacle_camera` | 3D 障害物検出の出力の途絶で一時停止する (`use_realsense` が `false` なら監視しない) |
 
 ## 無効にする・元に戻す
 
@@ -110,7 +108,6 @@
 | 監視ごとやめる | `use_driver_watchdog:=false` |
 | 一時停止だけやめる (通知と再起動は残す) | `pause_on_fault: false` |
 | 再起動だけやめる | `restart_enabled: false` (または `respawn_drivers:=false`) |
-| カメラの途絶での一時停止だけやめる | `watch_obstacle_camera:=false` |
 | 従来のドライバの挙動に戻す | `use_driver_watchdog:=false respawn_drivers:=false` |
 
 ## 制約

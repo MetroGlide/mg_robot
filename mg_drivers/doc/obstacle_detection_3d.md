@@ -96,7 +96,6 @@ ros2 launch mg_drivers obstacle_detection_3d.launch.py
 | 錐台の視野・奥行き、観測の高さの範囲 | `ros2 param set /local_costmap/local_costmap obstacle_stvl_layer.obstacle_points.<名前> <値>` (`vertical_fov_angle`、`horizontal_fov_angle`、`min_z`、`max_z`、`min_obstacle_height`、`max_obstacle_height`。global の観測源の名前は `pointcloud`) | すぐ |
 | 錐台の消去の速さ (`decay_acceleration`)、時間切れ (`voxel_decay`) | `mg_navigation/params/nav2_params.yaml` を編集して、ナビゲーションを起動し直す (実行中には変えられない) | 起動し直し |
 | カメラと検出をまとめて止める | ナビゲーションの launch 引数 `use_realsense:=false` | 起動し直し |
-| カメラ・検出の途絶で走行を一時停止する監視 (`driver_watchdog` の `obstacle_camera`) をやめる | launch 引数 `watch_obstacle_camera:=false` ([driver_watchdog](./driver_watchdog.md)) | 起動し直し |
 
 ### 確かめる順と、見るもの
 

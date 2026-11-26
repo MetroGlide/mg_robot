@@ -25,12 +25,6 @@ analyzers:
           startswith: ['wheel_odometry_node: ', 'driver_watchdog_node: odom']
           expected: ['driver_watchdog_node: odom']
           timeout: 5.0
-        camera:
-          type: diagnostic_aggregator/GenericAnalyzer
-          path: Camera
-          # use_realsense:=false や watch_obstacle_camera:=false では出ないので、expected にしない
-          startswith: ['driver_watchdog_node: obstacle_camera']
-          timeout: 5.0
         gnss:
           type: diagnostic_aggregator/GenericAnalyzer
           path: GNSS
