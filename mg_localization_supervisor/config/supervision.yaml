@@ -365,6 +365,9 @@ gate:
     gnss_probation_sec: 10.0
     gnss_probation_ratio: 3.0
     gnss_probation_window_sec: 10.0
+    # 監督の疑いが解けた GNSS を、確かめた姿勢と合うまで使わない (疑いが AMCL に移っただけで、ずれた GNSS を候補に
+    # 採らないため)
+    gnss_hold_after_distrust: true
     # 決まらずに止めた回数がこれに達した後の停止では、確かめた姿勢の続きの周りを全周の照合 (initial_search) で探す
     wide_search_after_holds: 2
 

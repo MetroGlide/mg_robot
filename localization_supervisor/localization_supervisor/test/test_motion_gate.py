@@ -492,6 +492,38 @@ def test_distrusted_gnss_neither_closes_the_gate_nor_becomes_a_candidate():
     assert all('ratio_gnss' not in e.fields for e in matches)
 
 
+def test_gnss_stays_out_after_the_supervisor_stops_distrusting_it_until_a_confirmed_pose_agrees():
+    """監督の疑いが AMCL に移って GNSS の疑いが解けても、ずれた GNSS を候補にせず、確かめた姿勢と合えばまた使う。"""
+    sim = _confirmed(confirm_distance_m=5.0, gnss_hold_after_distrust=True)
+    sim.distrust = frozenset({'gnss'})
+    sim.gnss_offset = (0.0, 2.5)
+    sim.run(2.0)
+    sim.distrust = frozenset()
+    sim.run(0.4)
+    assert sim.events('gnss_held')
+    before = len(sim.events('map_match'))
+    sim.amcl_offset = (1.5, 0.0, 0.0)
+    sim.run(2.0)
+    matches = sim.events('map_match')[before:]
+    assert sim.events('gate_closed') and matches
+    assert all('ratio_gnss' not in e.fields for e in matches)
+    # GNSS が戻り、確かめた姿勢と合えば、また使う
+    sim.amcl_offset = (0.0, 0.0, 0.0)
+    sim.gnss_offset = (0.0, 0.0)
+    sim.run(20.0)
+    assert sim.events('pose_confirmed') and sim.events('gnss_released')
+    assert not sim.gate._gnss_held
+
+
+def test_gnss_is_used_right_after_the_distrust_ends_when_the_hold_is_off():
+    sim = _confirmed(confirm_distance_m=1000.0)
+    sim.distrust = frozenset({'gnss'})
+    sim.run(2.0)
+    sim.distrust = frozenset()
+    sim.run(2.0)
+    assert not sim.events('gnss_held')
+
+
 def test_gnss_whose_report_suddenly_improves_is_on_probation():
     """申告の精度が急に良くなった GNSS (屋根を抜けた直後など) は、見習い期間の間、閉じる理由にも候補にも使わない。"""
     sim = _confirmed(confirm_distance_m=1000.0, gnss_probation_sec=8.0)

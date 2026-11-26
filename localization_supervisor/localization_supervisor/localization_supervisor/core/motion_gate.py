@@ -95,6 +95,10 @@ class GateSettings:
     gnss_probation_sec: float = 0.0
     gnss_probation_ratio: float = 3.0
     gnss_probation_window_sec: float = 10.0
+    # 監督が疑った GNSS を、疑いが解けた後も、確かめた姿勢と合うまで使わない (疑いは「AMCL の方が悪い」に移るだけで
+    # 解けることがあり、GNSS が正しいとは確かめていないため)。確かめた姿勢 (推定器を採ったもの) と GNSS の位置の差が、
+    # 申告の標準偏差の gnss_sigma_k 倍以内で、申告の精度が gnss_max_std_m 以下なら、また使う
+    gnss_hold_after_distrust: bool = False
     # 確かめの要求 (走行側から) を受け付ける間隔の下限 [s]
     verify_min_interval_sec: float = 5.0
     # 広い照合: 決まらずに止めた回数がこれに達した後の停止の間は、確かめた姿勢の続き (なければ融合の結果) の周りを、
@@ -271,6 +275,8 @@ class MotionGate:
         # GNSS の申告の精度の履歴 (時刻, 標準偏差) と、見習い期間の終わり
         self._gnss_std: Deque[Tuple[float, float]] = deque()
         self._probation_until = -math.inf
+        # 監督の疑いが解けた後、確かめた姿勢と合うのを待っている GNSS
+        self._gnss_held = False
         # 外から足された候補 (force_close。次に閉じたまま照合するときに一度だけ使う) と、出していないイベント
         self._extra: Dict[str, CandidatePose] = {}
         self._pending: List[GateEvent] = []
@@ -362,8 +368,11 @@ class MotionGate:
         out.events, self._pending = self._pending, []
         # 監督が疑う GNSS (全周の照合にも使わない) と、見習い期間 (閉じる理由と候補にだけ使わない。全周の照合は
         # GNSS を探す範囲の中心にだけ使い、地図との照合で確かめるので止めない)
-        self._supervisor_distrust = frozenset(distrust)
-        self._distrust = self._supervisor_distrust | self._probation(snapshot, t, out)
+        distrust = frozenset(distrust)
+        self._hold_released_gnss(distrust, out)
+        self._supervisor_distrust = distrust
+        held = frozenset({s.gnss}) if self._gnss_held else frozenset()
+        self._distrust = self._supervisor_distrust | self._probation(snapshot, t, out) | held
         if result is not None:
             self._busy = False
         motion = snapshot.motion_at(s.motion, t)
@@ -439,6 +448,32 @@ class MotionGate:
         motion = snapshot.motion_at(s.motion, scan.stamp)
         if motion is not None:
             self._buffer.add(scan, motion)
+
+    def _hold_released_gnss(self, distrust: frozenset, out: GateStep) -> None:
+        """監督の疑いが解けた GNSS を、確かめた姿勢と合うまで使わない (gnss_hold_after_distrust)。"""
+        s = self.settings
+        if not s.gnss or not s.gnss_hold_after_distrust:
+            return
+        if s.gnss in distrust:
+            self._gnss_held = False
+        elif s.gnss in self._supervisor_distrust and not self._gnss_held:
+            self._gnss_held = True
+            out.events.append(GateEvent('gnss_held', 'info', {}))
+
+    def _release_held_gnss(self, snapshot: Snapshot, confirmed: Pose2, out: GateStep) -> None:
+        """確かめた姿勢と GNSS の位置が、申告の精度の範囲で合えば、GNSS をまた使う。"""
+        s = self.settings
+        if not self._gnss_held:
+            return
+        sample = snapshot.pose(s.gnss, s.gnss_max_age_sec)
+        if sample is None:
+            return
+        sigma = math.sqrt(max(float(sample.cov[0][0]), float(sample.cov[1][1]), 0.0))
+        distance = math.hypot(sample.pose[0] - confirmed[0], sample.pose[1] - confirmed[1])
+        if sigma <= s.gnss_max_std_m and distance <= s.gnss_sigma_k * sigma:
+            self._gnss_held = False
+            out.events.append(GateEvent('gnss_released', 'info', {
+                'distance_m': round(distance, 3), 'std_m': round(sigma, 3)}))
 
     def _probation(self, snapshot: Snapshot, t: float, out: GateStep) -> frozenset:
         """GNSS の見習い期間なら {GNSS}。申告の精度が急に良くなったら始める。"""
@@ -766,6 +801,7 @@ class MotionGate:
             if adopted:
                 self._anchor = _Anchor(request.candidates[estimator].pose, request.motion, request.odometer)
                 out.events.append(GateEvent('pose_confirmed', 'info', _pose_fields(target)))
+                self._release_held_gnss(snapshot, target, out)
             elif estimator not in decision.same:
                 self._close(t, 'confirm', out, result=decision.best)
                 self._correct(t, target, 'all', out, motion, fused)
