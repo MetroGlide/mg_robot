@@ -28,8 +28,8 @@
 #   EVAL_SKIP        INIT_MODE=gt のとき、評価の先頭から除く秒数 (既定 10。初期姿勢を与えた直後の過渡)
 #   USE_INITIALIZER  GNSS から AMCL の初期姿勢を与えるノードを起動するか (既定: gt なら false、gnss なら true)
 #   MONITOR          自己位置の監視ノード none | watchdog | supervisor (既定: gt なら none、gnss なら watchdog)
-#   PROFILE          監督の設定に重ねるプロファイル (既定: 基本設定)
-#   GATE             監督ノードの中で門を使うか (MONITOR=supervisor のとき。既定 false)
+#   PROFILE          自己位置監視の設定に重ねるプロファイル (既定: 基本設定)
+#   GATE             自己位置監視ノードの中で AMCL 検証ゲートを使うか (MONITOR=supervisor のとき。既定 false)
 #   RECORD_PARTICLES AMCL の粒子 (/particle_cloud) を記録するか (既定 true。記録の容量の大半を占める)
 #   BUILD_PKGS       起動前に増分ビルドするパッケージ (空ならビルドしない。ビルド済みのイメージで回す用)
 #   BUILD_ONLY       true ならビルドだけして終わる (ビルド済みのイメージを作る用。ほかの必須の変数は要らない)
@@ -210,7 +210,7 @@ run_once() {
   stop_group "$LAUNCH_PID"; LAUNCH_PID=""
 
   # AMCL は初期姿勢を受け取るたびに "Setting pose (<スタンプ>)" を出す。AMCL 自身の初期値のスタンプは 0
-  # 監督が自分で初期化しても AMCL には姿勢が届くので、真値の初期姿勢を送れたかも見る
+  # 自己位置監視が自分で初期化しても AMCL には姿勢が届くので、真値の初期姿勢を送れたかも見る
   if [ "$INIT_MODE" = "gt" ] && { [ "$init_status" != "0" ] \
        || ! grep -qE "Setting pose \([1-9]" "$run_dir/launch.log"; }; then
     echo "[replay] run $run/$RUNS: 真値の初期姿勢を送れなかったか、AMCL に届きませんでした (この試行は無効)" >&2

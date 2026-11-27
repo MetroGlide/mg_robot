@@ -1,4 +1,4 @@
-"""走り方の速度の上限を、Nav2 の controller_server の速度の上限 (nav2_msgs/SpeedLimit) に出す。
+"""走行制約の速度の上限を、Nav2 の controller_server の速度の上限 (nav2_msgs/SpeedLimit) に出す。
 
 周期ごとに出し続ける (controller_server は届いた上限をそのまま使い、後から起動しても次の周期で届く)。
 上限がないときは、上限なし (0) を出す。controller_server の後ろの behavior_server (首振り・後退) は、

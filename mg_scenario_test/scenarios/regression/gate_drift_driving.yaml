@@ -1,14 +1,14 @@
 version: "2.0"
 name: gate_drift_driving
 description: >
-  監督のノードの中の門 (localization_gate:=true) の戻し方を、走りへの影響で確かめる (大きい補正)。
-  監督のプロファイル notify_only で、監督の判定は通知だけにし、門だけを働かせる。
+  自己位置監視のノードの中の AMCL 検証ゲート (localization_gate:=true) の戻し方を、走りへの影響で確かめる (大きい補正)。
+  自己位置監視のプロファイル notify_only で、自己位置監視の判定は通知だけにし、AMCL 検証ゲートだけを働かせる。
   棚の列に沿った通路をシーケンサで走っている間に、AMCL を通路に沿って少しずつずらす (真の位置は動かさない)。
-  門が閉じる前に EKF がずれた AMCL を取り込むので、戻すときは EKF との差が大きい補正になる。
-  戻し方 (その場で置き直す / 止まってから置き直す / 大きさで分ける) は、監督の設定 (gate.settings の
+  AMCL 検証ゲートが閉じる前に EKF がずれた AMCL を取り込むので、戻すときは EKF との差が大きい補正になる。
+  戻し方 (その場で補正する / 止まってから補正する / 大きさで分ける) は、自己位置監視の設定 (gate.settings の
   small_correction_m・small_correction_rad) を差し替えて比べる。到達の判定はシミュレータ上の真の位置で行う。
-  ずらす注入は /initialpose で、門は専用のトピックを通らない /initialpose を推定器の振る舞いとして判定する。
-  通路に入る前に開けた場所を走り、門が起動の直後の確かめを済ませて通路に入ってから注入する。
+  ずらす注入は /initialpose で、AMCL 検証ゲートは専用のトピックを通らない /initialpose を推定器の振る舞いとして判定する。
+  通路に入る前に開けた場所を走り、AMCL 検証ゲートが起動の直後の確かめを済ませて通路に入ってから注入する。
 profile: mg01
 world: warehouse
 tags: [localization, gate, drift, mg_sequencer, known_issue]

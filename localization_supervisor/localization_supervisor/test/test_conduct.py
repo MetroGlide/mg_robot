@@ -1,4 +1,4 @@
-"""走り方 (core/conduct.py: 状況 × 程度 → 減速) と、その設定、footprint の余裕のテスト。"""
+"""走行制約 (core/conduct.py: 自己位置状況 × 危険度 → 減速) と、その設定、footprint の余裕距離のテスト。"""
 import copy
 
 import numpy as np
@@ -112,7 +112,7 @@ def test_clearance_is_the_distance_from_the_footprint_to_lethal_cells():
 
 
 def test_supervisor_slows_while_the_gate_is_closed_and_not_after_it_confirms():
-    """門が閉じると疑い (余裕が分からないので重い) で減速し、照合で決まって確かめれば正常に戻る。"""
+    """AMCL 検証ゲートが閉じると疑義 (余裕が分からないので重い) で減速し、照合で決まって確かめれば正常に戻る。"""
     sim = Sim(_raw_with_conduct())
     sim.run(18.0)
     assert sim.results[-1].conduct.situation == Situation.NORMAL
@@ -126,7 +126,7 @@ def test_supervisor_slows_while_the_gate_is_closed_and_not_after_it_confirms():
 
 
 def test_a_confirmation_while_gnss_still_disagrees_does_not_return_to_normal():
-    """地図との照合で確かめても、GNSS との食い違いが残る間は正常に戻らない (地図と現場が食い違うと、照合は誤った姿勢も
+    """地図照合で確かめても、GNSS との食い違いが残る間は正常に戻らない (地図と現場が食い違うと、照合は誤った姿勢も
     確かめるため)。"""
     sim = Sim(_raw_with_conduct())
     sim.run(18.0)

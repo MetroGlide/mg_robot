@@ -1,4 +1,4 @@
-"""自己位置推定の監督ノード。
+"""自己位置監視ノード。
 
 設定ファイルの情報源・判定・総合・状態遷移の組み合わせで、中核 (core/supervisor.py) の Supervisor を
 周期 (period_sec) ごとに回し、状態のメッセージ・診断・イベントを出す。判定と状態遷移は中核にあり、
@@ -7,13 +7,13 @@
   パラメータ
     config_file : 設定ファイル (必須。書き方は doc/parameters.md)
     profile     : 重ねるプロファイル (空は基本設定)。走行中に変えられる (サービス ~/set_profile でも)
-    use_gate    : 設定の gate 節の門を使う (起動時だけ)。門の周期で回し、門の照合を別のスレッドで回す
-    gate_observe_only : 門を判定と照合だけにする (use_gate のとき。門も監督も何もせず、イベントと状態だけ出す)
+    use_gate    : 設定の gate 節の AMCL 検証ゲートを使う (起動時だけ)。AMCL 検証ゲートの周期で回し、AMCL 検証ゲートの照合を別のスレッドで回す
+    gate_observe_only : AMCL 検証ゲートを判定と照合だけにする (use_gate のとき。AMCL 検証ゲートも自己位置監視も何もせず、イベントと状態だけ出す)
   入力
     設定の sources.<名前>.input のアダプタが購読するトピックと TF
     external_reinit.topics: 今のプロファイルのトピックに届いたら、人による上書きとして、状態を NORMAL に戻して
-                            猶予を置く (どのプロファイルのトピックも購読しておく。門があるときは購読しない)
-    gate.manual_pose_topic: 手動の初期姿勢 (門があるとき。門がその周りを照合してから置き直す)
+                            猶予を置く (どのプロファイルのトピックも購読しておく。AMCL 検証ゲートがあるときは購読しない)
+    gate.manual_pose_topic: 手動の初期姿勢 (AMCL 検証ゲートがあるとき。AMCL 検証ゲートがその周りを照合してから補正する)
   出力
     output.status_topic (LocalizationStatus)、診断 output.diagnostic_name、イベント (events.sink)
 """
@@ -72,7 +72,7 @@ def check_node_supports(config: SupervisorConfig) -> None:
 def check_profile_supported(config: SupervisorConfig, name: str) -> None:
     """プロファイル (カンマで区切った重ね合わせも) が、このノードで動かせるか。
 
-    - 入力のアダプタ・再初期化の送り先・対処は起動時に基本設定で作るので、プロファイルで変えることはできない
+    - 入力のアダプタ・再初期化の送り先・出力部は起動時に基本設定で作るので、プロファイルで変えることはできない
     - recovery_enabled には、再初期化の送り先 (recovery.resetters) が要る
     """
     profiled = config.with_profile(name)
@@ -126,7 +126,7 @@ class LocalizationSupervisorNode(Node):
             self.create_subscription(
                 PoseWithCovarianceStamped, topic, lambda msg, t=topic: self._on_external_reinit(t, msg), 10)
 
-        # 門の照合 (重いので周期の処理と別のスレッドで回し、結果を次の周期に渡す) と、手動の初期姿勢
+        # AMCL 検証ゲートの照合 (重いので周期の処理と別のスレッドで回し、結果を次の周期に渡す) と、手動の初期姿勢
         self._lock = threading.Lock()
         self._match: Optional[Tuple[MatchRequest, MatchDecision]] = None
         self._manual = None
@@ -179,7 +179,7 @@ class LocalizationSupervisorNode(Node):
         return response
 
     def _on_request_verify(self, request, response):
-        """走行側からの確かめの要求。周期の処理と同じ実行器で呼ばれるので、そのまま門に渡す。"""
+        """走行側からの検証要求。周期の処理と同じ実行器で呼ばれるので、そのまま AMCL 検証ゲートに渡す。"""
         number = self._supervisor.request_verify(self._now())
         response.supported = self._supervisor.gate is not None
         response.accepted = number is not None

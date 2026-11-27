@@ -2,8 +2,8 @@ version: "2.0"
 name: anomaly_lidar_lost
 description: >
   LiDAR が止まり、起動し直しても戻らない (スキャンが届かない)。基準の GNSS のまま、西の通路でスキャンを止め、最後まで
-  戻さない。期待する動作: センサの組を LiDAR なしにして、collision_monitor の scan の途絶による停止を外し、深度の
-  障害物 (ローカルコストマップ) と組の速度の上限で走りきる。シミュレーションにはセンサの途絶の見張りがないので、
+  戻さない。期待する動作: センサ構成を LiDAR なしにして、collision_monitor の scan の途絶による停止を外し、深度の
+  障害物 (ローカルコストマップ) と構成の速度の上限で走りきる。シミュレーションにはセンサの途絶の見張りがないので、
   見張りの一時停止の引き継ぎは試さない。構成は LOCALIZATION_CONFIG で選ぶ。
 profile: mg01
 world: warehouse

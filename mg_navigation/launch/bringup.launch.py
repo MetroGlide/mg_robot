@@ -41,14 +41,14 @@ def generate_launch_description():
     # 自己位置の監視ノード (none | watchdog | supervisor)
     localization_monitor_arg = launch_argument_creator.create(
         'localization_monitor', default="supervisor")
-    # 監視が watchdog のとき、監督ノードを並行して通知だけで動かすか
+    # 監視が watchdog のとき、自己位置監視ノードを並行して通知だけで動かすか
     localization_supervisor_arg = launch_argument_creator.create(
         'localization_supervisor', default="false")
     supervisor_config_arg = launch_argument_creator.create(
         'supervisor_config',
         default=os.path.join(
             get_package_share_directory('mg_localization_supervisor'), 'config', 'supervision.yaml'))
-    # 監督ノードの中で門を使うか (localization_monitor:=supervisor のとき)
+    # 自己位置監視ノードの中で AMCL 検証ゲートを使うか (localization_monitor:=supervisor のとき)
     localization_gate_arg = launch_argument_creator.create(
         'localization_gate', default="false")
     localization_profile_arg = launch_argument_creator.create(

@@ -43,9 +43,9 @@ TOP_LEVEL_KEYS = {
 GATE_KEYS = {
     'enabled', 'observe_only', 'period_sec', 'settings', 'closers', 'map_match', 'scan_buffer', 'initial_search',
     'manual_pose_topic'}
-# 閉じる理由の部品に、判定の書き方に足すキー
+# 遮断条件に、判定の書き方に足すキー
 GATE_CLOSER_KEYS = {'close_after_sec', 'active_in_grace'}
-# 置き直しの送り先の役: 推定器 (門の置き直しの 'all' で送る) と融合 ('all' と 'fused' で送る)
+# 姿勢補正の送り先の役: 推定器 (AMCL 検証ゲートの姿勢補正の 'all' で送る) と融合 ('all' と 'fused' で送る)
 RESETTER_ROLES = ('estimator', 'fused')
 
 
@@ -83,7 +83,7 @@ class DetectorConfig:
     max_score: float = 5.0
     enabled: bool = True
     options: Dict[str, Any] = field(default_factory=dict)
-    # 正常と判定できたとき、正しいと示す情報源 (この判定の疑いの対象のうち)
+    # 正常と判定できたとき、正しいと示す情報源 (この判定の疑義の対象のうち)
     vouch: List[str] = field(default_factory=list)
 
 
@@ -116,15 +116,15 @@ class SupervisorConfig:
     anchors: Optional[AnchorConfig] = None
     safety: Optional[SafetyConfig] = None
     residuals: Dict[str, ResidualConfig] = field(default_factory=dict)
-    # 門 (推定器の姿勢を融合に入れる前に確かめる。gate.enabled のときだけ)。周期 gate_period_sec ごとに回し、
+    # AMCL 検証ゲート (推定器の姿勢を融合に入れる前に確かめる。gate.enabled のときだけ)。周期 gate_period_sec ごとに回し、
     # 判定・総合・状態遷移は period_sec ごとに回す
     gate: Optional[MotionGateConfig] = None
     gate_period_sec: float = 0.2
-    # 走り方 (状況 × 程度 → 減速。門があるときだけ使う)
+    # 走行制約 (自己位置状況 × 危険度 → 減速。AMCL 検証ゲートがあるときだけ使う)
     conduct: Optional[ConductConfig] = None
-    # センサの組 (情報源の欠けから決める。上から順に最初に当てはまる組)
+    # センサ構成 (情報源の欠けから決める。上から順に最初に当てはまる組)
     sensor_sets: List[SensorSetConfig] = field(default_factory=list)
-    # 手動の初期姿勢のトピック (門があるときにノードが購読する)
+    # 手動の初期姿勢のトピック (AMCL 検証ゲートがあるときにノードが購読する)
     manual_pose_topic: str = ''
     period_sec: float = 1.0
     startup_grace_sec: float = 0.0
@@ -159,7 +159,7 @@ class SupervisorConfig:
         return parse_config(self.raw, profile=profile, profiles=self.profiles)
 
     def with_gate(self, enabled: bool, observe_only: bool = False) -> 'SupervisorConfig':
-        """門 (gate 節) を有効 / 無効にした設定。observe_only なら判定と照合だけ (門も監督も何もしない)。
+        """AMCL 検証ゲート (gate 節) を有効 / 無効にした設定。observe_only なら判定と照合だけ (AMCL 検証ゲートも自己位置監視も何もしない)。
         プロファイルはそのまま。"""
         raw = copy.deepcopy(self.raw)
         if (enabled or observe_only) and 'gate' not in raw:
@@ -395,7 +395,7 @@ def parse_gate_parts(
     buffer_raw: Mapping[str, Any], sources: Mapping[str, SourceConfig], where: str = '',
     initial_raw: Optional[Mapping[str, Any]] = None,
 ) -> MotionGateConfig:
-    """門の設定 (設定・閉じる理由の部品・照合・スキャンの重ね・全周の照合 (initial_raw が None ならしない))。
+    """AMCL 検証ゲートの設定 (設定・遮断条件・照合・スキャンの重ね・初期全周探索 (initial_raw が None ならしない))。
     where は場所の前置き (例 'gate.')。"""
     settings = _dataclass_from(GateSettings, settings_raw, f'{where}settings' if where else 'gate')
     for key, kind in (('estimator', SourceKind.POSE), ('fused', SourceKind.POSE), ('motion', SourceKind.MOTION),
@@ -439,7 +439,7 @@ def _parse_gate(
     raw: Mapping[str, Any], sources: Mapping[str, SourceConfig], detectors: Mapping[str, DetectorConfig],
     resetters: List[Dict[str, Any]],
 ) -> Tuple[Optional[MotionGateConfig], float, str]:
-    """gate 節。(門の設定 (無効なら None), 周期, 手動の初期姿勢のトピック)。"""
+    """gate 節。(AMCL 検証ゲートの設定 (無効なら None), 周期, 手動の初期姿勢のトピック)。"""
     _check_keys(raw, GATE_KEYS, 'gate')
     period_sec = _number(raw, 'period_sec', 0.2, 'gate')
     if period_sec <= 0.0:
@@ -510,7 +510,7 @@ def _parse_recovery(
     safety: Optional[SafetyConfig],
 ) -> Dict[str, Any]:
     """recovery の convergence 以外の項目 (候補を作るもの・評価するもの・選び方・照合・スキャンのバッファ・
-    送り先・対処)。SupervisorConfig の同名のフィールドに入れる辞書を返す。"""
+    送り先・出力部)。SupervisorConfig の同名のフィールドに入れる辞書を返す。"""
     generators: Dict[str, GeneratorConfig] = {}
     for name, body in _mapping(recovery.get('generators'), 'recovery.generators').items():
         where = f'recovery.generators.{name}'
@@ -712,7 +712,7 @@ def parse_config(
     if gate is not None and gate_period_sec > period_sec:
         raise ConfigError('gate.period_sec: must not exceed period_sec')
     if gate is not None and gate.observe_only:
-        # 判定だけのときは、監督も何もしない (プロファイルが復旧を有効にしても、通知だけにする)
+        # 判定だけのときは、自己位置監視も何もしない (プロファイルが復旧を有効にしても、通知だけにする)
         machine.recovery_enabled = False
 
     sensor_sets = _parse_sensor_sets(merged.get('sensor_sets'), sources)
@@ -750,7 +750,7 @@ def parse_config(
 
 
 def _check_scan_ages(buffers, sensor_sets: List[SensorSetConfig]) -> None:
-    """スキャンの溜め方の古さの上限は、そのスキャンが欠けて入るセンサの組の missing_after_sec より短くする
+    """スキャンの溜め方の古さの上限は、そのスキャンが欠けて入るセンサ構成の missing_after_sec より短くする
     (組を切り替える前に、古いスキャンでの照合をやめる)。"""
     for where, buffer in buffers:
         if buffer is None or buffer.max_scan_age_sec <= 0.0:

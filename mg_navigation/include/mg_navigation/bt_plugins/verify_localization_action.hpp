@@ -13,13 +13,13 @@ namespace mg_navigation
 namespace bt_plugins
 {
 
-// 自己位置の監督に確かめの要求 (地図との照合を 1 回) を出し、結果を待つ BT 行動ノード。
+// 自己位置監視に検証要求 (地図照合を 1 回) を出し、結果を待つ BT 行動ノード。
 // 計画用地図の障害物からの脱出など、走行側が自己位置を頼りに動く前に使う。
 //
 // SUCCESS は、照合で今の推定 (AMCL) をそのまま確かめたとき (脱出してよい)。
-// FAILURE は、別の姿勢へ置き直した (計画し直す)、決まらない (監督が止めて照合する)、要求を受け付けられない
+// FAILURE は、別の姿勢へ補正した (計画し直す)、決まらない (自己位置監視が止めて照合する)、要求を受け付けられない
 // (間隔の下限より早い)、timeout 秒以内に結果が来ないとき。
-// 監督が確かめを扱えない (監督がいない、門がない構成) ときは、従来どおり、状態が NORMAL なら SUCCESS。
+// 自己位置監視が確かめを扱えない (自己位置監視がいない、AMCL 検証ゲートがない構成) ときは、従来どおり、状態が NORMAL なら SUCCESS。
 // 結果は、状態 (localization_supervisor_msgs/LocalizationStatus) の verify_id・verify_result で受け取る。
 class VerifyLocalizationAction : public BT::StatefulActionNode
 {

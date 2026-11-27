@@ -20,7 +20,7 @@ eval_localization.py
   - turns       : 真値の軌跡から見つけた角ごとの誤差と、角で事象が起きたか・抜けた後も続いたか
   - gnss_weak   : GNSS が弱い (σ が大きい、または届いていない) 時間と強い時間に分けた位置誤差
   - faults      : --faults 指定時の検知・復旧の指標と、故障のない区間での誤検知
-  - hold        : 監督が走行を止めてほしいと要求した回数と時間
+  - hold        : 自己位置監視が走行を止めてほしいと要求した回数と時間
 """
 
 import argparse
@@ -263,7 +263,7 @@ def evaluate_turns(
 
 
 def evaluate_hold(status: np.ndarray) -> Dict[str, Any]:
-    """監督が走行を止めてほしいと要求した回数と時間 (実機ではこの間、走行が止まる)。"""
+    """自己位置監視が走行を止めてほしいと要求した回数と時間 (実機ではこの間、走行が止まる)。"""
     hold = status[:, 3] > 0.5
     starts = int(np.sum(hold[1:] & ~hold[:-1]) + (1 if hold[0] else 0))
     dt = np.diff(status[:, 0], append=status[-1, 0])
@@ -570,12 +570,12 @@ def format_summary(report: Dict[str, Any]) -> str:
         lines.append("")
     elif "status" in report:
         st = report["status"]
-        lines += ["## 監督ノードの状態", "",
+        lines += ["## 自己位置監視ノードの状態", "",
                   f"- NORMAL 以外へ入った回数 (誤検知): {st['false_detections']} 回", ""]
 
     hold = report.get("hold")
     if hold:
-        lines += ["## 監督の走行を止める要求", "",
+        lines += ["## 自己位置監視の走行を止める要求", "",
                   f"- 回数 {hold['count']} 回 / 時間 {hold['total_sec']:.0f} s", ""]
 
     sv = report.get("status_values")
@@ -583,7 +583,7 @@ def format_summary(report: Dict[str, Any]) -> str:
         names = {"NORMAL": 0, "SUSPECT": 1, "ISOLATED": 2, "RECOVERING": 3, "DEGRADED": 4}
         fractions = ", ".join(
             f"{name} {sv['state_fractions'].get(code, 0.0) * 100:.0f}%" for name, code in names.items())
-        lines += ["## 監督の総合の強さと判定の score (判定できた周期だけ)", "", f"- 状態の割合: {fractions}", "",
+        lines += ["## 自己位置監視の総合の強さと判定の score (判定できた周期だけ)", "", f"- 状態の割合: {fractions}", "",
                   "| 判定 | N | 最小 | 中央値 | p95 | 最大 |", "|---|---|---|---|---|---|"]
         for name, s in sv["values"].items():
             if s.get("n", 0) == 0:

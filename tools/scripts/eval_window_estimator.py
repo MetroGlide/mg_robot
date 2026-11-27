@@ -19,8 +19,8 @@ eval_window_estimator.py
   - 窓 (走った距離と時間の上限) を超えた古い姿勢は、今の解の周辺共分散を事前分布にして落とす。
   - 絶対の観測は外れ値に強い損失 (Cauchy) で入れる。AMCL は間引いて、共分散を割り引いて入れる
     (連続する出力は互いに独立ではなく、ホイールのオドメトリと地図を内部で使うため)。
-  - 情報源の切り離し (--gate、動きの合意): 直近の区間で、一方の絶対の情報源だけが動いた量でオドメトリと
-    合わないとき、その情報源を一時的に外す。動きが合い、切り離した時点の GNSS の偏りで位置も合えば戻す。
+  - 情報源の除外 (--gate、動きの合意): 直近の区間で、一方の絶対の情報源だけが動いた量でオドメトリと
+    合わないとき、その情報源を一時的に外す。動きが合い、除外した時点の GNSS の偏りで位置も合えば戻す。
     AMCL も GNSS もオドメトリと合わないときは、直近のオドメトリを弱める (スリップ)。位置が食い違うのに
     原因を決められないときは「割れ」として数える。
   - GNSS の偏り (--gnss-bias): GNSS の位置 = 姿勢 + 偏り として、偏りをゆっくり変わる量として推定する
@@ -75,7 +75,7 @@ MAP_OFFSET_WINDOW_SEC = 60.0
 ODOM_GAP_SEC = 0.5
 # どのオドメトリも欠けている区間をつなぐ拘束の σ (x [m], y [m], yaw [rad])
 UNCOVERED_SIGMA = (5.0, 5.0, 1.0)
-# 切り離しを判断するのに要る、直近の観測の数
+# 除外を判断するのに要る、直近の観測の数
 GATE_MIN_SAMPLES = 3
 
 
@@ -473,12 +473,12 @@ class WindowEstimator:
             m.active = trusted
 
     def _gate(self) -> bool:
-        """動きの合意で、外れた情報源を切り離す・戻す、またはオドメトリを弱める。切り替えたら True。
+        """動きの合意で、外れた情報源を除外する・戻す、またはオドメトリを弱める。切り替えたら True。
 
-        切り離す: 直近の区間で、一方の情報源だけが動いた量でオドメトリと合わない。
+        除外する: 直近の区間で、一方の情報源だけが動いた量でオドメトリと合わない。
         オドメトリを弱める: AMCL も GNSS もオドメトリと合わない。
-        戻す: 動きがオドメトリと合い、切り離した時点の GNSS の偏りで位置も合う。
-        位置の食い違いだけでは切り離さない (GNSS の偏りが、もう一方のゆっくりしたずれを吸収するため)。
+        戻す: 動きがオドメトリと合い、除外した時点の GNSS の偏りで位置も合う。
+        位置の食い違いだけでは除外しない (GNSS の偏りが、もう一方のゆっくりしたずれを吸収するため)。
         """
         gps, amcl = self._recent("gps"), self._recent("amcl")
         changed = self._check_motion_sources(gps + amcl)
@@ -748,11 +748,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--amcl-cov-scale", type=float, default=4.0,
                    help="AMCL の共分散に掛ける倍率 (オドメトリと地図を共有する分の割り引き)")
     p.add_argument("--amcl-kernel", type=float, default=1.0, help="AMCL の Cauchy の幅")
-    p.add_argument("--gate", action="store_true", help="情報源の切り離しを使う")
-    p.add_argument("--gate-sec", type=float, default=10.0, help="切り離しの判断に使う直近の時間 [s]")
+    p.add_argument("--gate", action="store_true", help="情報源の除外を使う")
+    p.add_argument("--gate-sec", type=float, default=10.0, help="除外の判断に使う直近の時間 [s]")
     p.add_argument("--gate-out", type=float, default=9.0,
                    help="AMCL と GNSS が食い違う (割れ) とみなす、白色化した距離の 2 乗の中央値")
-    p.add_argument("--gate-in", type=float, default=4.0, help="切り離した情報源を戻す、同じ値")
+    p.add_argument("--gate-in", type=float, default=4.0, help="除外した情報源を戻す、同じ値")
     p.add_argument("--motion-ratio", type=float, default=2.0,
                    help="原因とみなす、動きの差 (オドメトリとの) の、もう一方に対する比")
     p.add_argument("--motion-min", type=float, default=3.0, help="原因とみなす、動きの差の下限 (精度で割った値)")

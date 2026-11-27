@@ -1,5 +1,5 @@
 """MG-01 固有の monitor と trigger (カスタム nav2_msgs/CollisionMonitorState、mg_msgs/NavigationActivity、
-自己位置の監督の状態 localization_supervisor_msgs/LocalizationStatus を使うもの)。"""
+自己位置監視の状態 localization_supervisor_msgs/LocalizationStatus を使うもの)。"""
 from __future__ import annotations
 
 import threading
@@ -100,7 +100,7 @@ class LocalizationStateSpec:
 
 @register_monitor("localization_state", LocalizationStateSpec)
 class LocalizationStateMonitor(TopicMonitor):
-    """自己位置の監督の状態が state になった配信の回数を数え、その状態になる／ならないことを判定する。
+    """自己位置監視の状態が state になった配信の回数を数え、その状態になる／ならないことを判定する。
     ends_in を指定すると、最後に受信した状態がそれであること (復旧して戻ったこと) も判定する。"""
     MSG_TYPE = LocalizationStatus
 
@@ -133,7 +133,7 @@ class LocalizationStateMonitor(TopicMonitor):
 
 @dataclass
 class LocalizationHoldSpec:
-    # 監督が走行を止める要求 (hold_requested) を出していた時間の合計の上限 [s] (sim 時間。省略時は判定しない)
+    # 自己位置監視が走行を止める要求 (hold_requested) を出していた時間の合計の上限 [s] (sim 時間。省略時は判定しない)
     max_total_sec: Optional[float] = None
     # true なら、走行の終わりに要求が解けていること (止まったままでないこと) も判定する
     ends_released: bool = True
@@ -142,7 +142,7 @@ class LocalizationHoldSpec:
 
 @register_monitor("localization_hold", LocalizationHoldSpec)
 class LocalizationHoldMonitor(TopicMonitor):
-    """自己位置の監督が走行を止める要求を出していた回数と時間の合計を測る。"""
+    """自己位置監視が走行を止める要求を出していた回数と時間の合計を測る。"""
     MSG_TYPE = LocalizationStatus
 
     def __init__(self, ctx: "ScenarioContext", spec: LocalizationHoldSpec):
@@ -201,9 +201,9 @@ class LocalizationOutcomeSpec:
 
 @register_monitor("localization_outcome", LocalizationOutcomeSpec)
 class LocalizationOutcomeMonitor(TopicMonitor):
-    """真のずれと監督の止める要求の組み合わせで、走行を見逃し・誤停止・復旧中に分けて測る。
+    """真のずれと自己位置監視の止める要求の組み合わせで、走行を見逃し・誤停止・復旧中に分けて測る。
 
-    合否は監督が誰を疑ったかではなく、外から見える振る舞いで決める。
+    合否は自己位置監視が誰を疑ったかではなく、外から見える振る舞いで決める。
     """
     MSG_TYPE = Odometry
 
@@ -299,7 +299,7 @@ class LocalizationOutcomeMonitor(TopicMonitor):
 
 @dataclass
 class LocalizationReadySpec:
-    # この秒数 (sim 時間)、監督が NORMAL で、起動・再初期化の後の猶予の外である状態が続いたら成立する
+    # この秒数 (sim 時間)、自己位置監視が NORMAL で、起動・再初期化の後の猶予の外である状態が続いたら成立する
     for_sec: float = 5.0
     # 加えて、これらの判定のインスタンス (例: amcl_gnss) が一度は UNKNOWN 以外になっていること
     # (GNSS は走り出すまで出ないので、GNSS による初期化が済んだことの目安になる)
@@ -309,7 +309,7 @@ class LocalizationReadySpec:
 
 @register_trigger("localization_ready", LocalizationReadySpec)
 class LocalizationReady:
-    """自己位置の監督が、故障を注入してよい落ち着いた状態になったら成立する。
+    """自己位置監視が、故障を注入してよい落ち着いた状態になったら成立する。
 
     故障の注入 (/initialpose) と同じ経路を使う初期化を、準備の条件にしない。
     """

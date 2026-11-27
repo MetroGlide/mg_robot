@@ -1,11 +1,11 @@
 version: "2.0"
 name: gate_jump_driving
 description: >
-  監督のノードの中の門 (localization_gate:=true) の戻し方を、走りへの影響で確かめる (小さい補正)。
-  監督のプロファイル notify_only で、監督の判定は通知だけにし、門だけを働かせる。
+  自己位置監視のノードの中の AMCL 検証ゲート (localization_gate:=true) の戻し方を、走りへの影響で確かめる (小さい補正)。
+  自己位置監視のプロファイル notify_only で、自己位置監視の判定は通知だけにし、AMCL 検証ゲートだけを働かせる。
   棚の列に沿った通路をシーケンサで走っている間に、AMCL を 1 回だけ横へ飛ばす (真の位置は動かさない)。
-  門がすぐに閉じて EKF は飛んだ AMCL を取り込まないので、戻すときは EKF との差が小さい補正になる。
-  戻し方は gate_drift_driving と同じく、監督の設定 (gate.settings) を差し替えて比べる。
+  AMCL 検証ゲートがすぐに閉じて EKF は飛んだ AMCL を取り込まないので、戻すときは EKF との差が小さい補正になる。
+  戻し方は gate_drift_driving と同じく、自己位置監視の設定 (gate.settings) を差し替えて比べる。
   到達の判定はシミュレータ上の真の位置で行う。飛ばす注入は /initialpose (広がりの小さい分布) を使う。
 profile: mg01
 world: warehouse

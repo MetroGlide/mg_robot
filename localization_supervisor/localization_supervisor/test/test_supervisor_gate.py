@@ -1,7 +1,7 @@
-"""監督に門 (設定の gate) を入れたときの分担のテスト。
+"""自己位置監視に AMCL 検証ゲート (設定の gate) を入れたときの分担のテスト。
 
-部屋の中を円を描いて走るロボット (test_motion_gate と同じ) で、監督を門の周期で回す。照合の依頼は、次の周期の
-結果として同じスレッドで返す。置き直しの指示は、送り先の役 (推定器 / 融合) に合わせて姿勢を移す。
+部屋の中を円を描いて走るロボット (test_motion_gate と同じ) で、自己位置監視を AMCL 検証ゲートの周期で回す。照合の依頼は、次の周期の
+結果として同じスレッドで返す。姿勢補正の指示は、送り先の役 (推定器 / 融合) に合わせて姿勢を移す。
 """
 import copy
 import math
@@ -131,7 +131,7 @@ def _opened():
 def test_detectors_run_every_period_and_the_gate_every_gate_period():
     sim = Sim()
     sim.run(3.0)
-    # 判定の総合 (状態遷移のイベントや check の評価) は period_sec ごと、門は毎周期
+    # 判定の総合 (状態遷移のイベントや check の評価) は period_sec ごと、AMCL 検証ゲートは毎周期
     assert len(sim.results) == 15
     assert sum(1 for r in sim.results if r.gate is not None) == 15
     stamps = sorted({id(r.fusion) for r in sim.results})
@@ -169,8 +169,8 @@ def test_supervisor_recovery_closes_the_gate_holds_and_counts_the_gate_decision_
 
 
 def test_supervisor_isolation_closes_the_gate_before_asking_to_reinit():
-    """閉じる理由の部品が気づかないゆっくりしたずれを監督が確かめたら、切り離した時点で門を閉じさせて止める。
-    再初期化を求める前に門が決めれば、それを再初期化として数える。"""
+    """遮断条件が気づかないゆっくりしたずれを自己位置監視が確かめたら、除外した時点で AMCL 検証ゲートを閉じさせて止める。
+    再初期化を求める前に AMCL 検証ゲートが決めれば、それを再初期化として数える。"""
     raw = _raw()
     raw['gate'] = copy.deepcopy(raw['gate'])
     del raw['gate']['closers']['gate_amcl_gnss']
@@ -198,7 +198,7 @@ def test_supervisor_isolation_closes_the_gate_before_asking_to_reinit():
 
 
 def test_gnss_isolated_by_the_supervisor_is_not_used_by_the_gate():
-    """GNSS を切り離している (isolate_only の blame。止めず、再初期化もしない) 間は、門が GNSS との食い違いで閉じない。"""
+    """GNSS を除外している (isolate_only の blame。止めず、再初期化もしない) 間は、AMCL 検証ゲートが GNSS との食い違いで閉じない。"""
     sim = _opened()
     machine = sim.supervisor.machine
     machine.state, machine.blame, machine._soft = State.ISOLATED, 'gnss', True
@@ -218,7 +218,7 @@ def _held_sim(hold):
 
 
 def test_gnss_stays_distrusted_after_the_blame_moves_until_a_confirmed_pose_agrees():
-    """疑う相手が GNSS から推定器に移って切り離しが解けても、門と復旧に GNSS を使わせず、確かめた姿勢と合えば戻す。"""
+    """疑う相手が GNSS から推定器に移って除外が解けても、AMCL 検証ゲートと復旧に GNSS を使わせず、検証済み姿勢と合えば戻す。"""
     sim = _held_sim(True)
     machine = sim.supervisor.machine
     machine.state, machine.blame, machine._soft = State.ISOLATED, 'gnss', True
@@ -281,7 +281,7 @@ def test_with_gate_switches_the_gate_and_keeps_the_profile():
 
 
 def test_observe_only_gate_disables_the_supervisor_recovery_even_with_a_profile():
-    """判定だけのときは、プロファイルが復旧を有効にしても、監督も何もしない (プロファイルを変えても保つ)。"""
+    """判定だけのときは、プロファイルが復旧を有効にしても、自己位置監視も何もしない (プロファイルを変えても保つ)。"""
     profiles = {'acting': {'state_machine': {'recovery_enabled': True}}}
     config = parse_config(_raw(), profile='acting', profiles=profiles)
     assert config.machine.recovery_enabled

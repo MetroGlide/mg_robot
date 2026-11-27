@@ -379,11 +379,11 @@ def test_attribute_blame_uses_independent_sources_only():
         peaks = {**values, **(peaks or {})}
         return attribute(peaks, values, instances, independent, derived, 1.0)
 
-    # 2 つの情報源の食い違いだけでは決めきれない
+    # 2 つの情報源の食い違いだけでは判定保留
     assert run({'amcl_gnss': 9.0}) == ('unknown', [])
     # AMCL だけを疑う判定が加われば AMCL
     assert run({'amcl_gnss': 9.0, 'amcl_jump': 3.0}) == ('amcl', [])
-    # 飛びの累積が減っても、疑いが始まってからの最大値で数える
+    # 飛びの累積が減っても、疑義が始まってからの最大値で数える
     assert run({'amcl_gnss': 20.0}, {'amcl_jump': 3.0}) == ('amcl', [])
     # 融合の結果が関わる判定は blame に数えず、汚れているとする
     assert run({'scan_ekf': 2.0}) == ('unknown', ['ekf'])

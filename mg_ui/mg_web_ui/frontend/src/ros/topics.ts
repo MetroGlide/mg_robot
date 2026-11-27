@@ -13,7 +13,7 @@ export const TOPICS = {
   DIAGNOSTICS: nodeNs(NODE_NS.DIAGNOSTICS, '/diagnostics'),
   DIAGNOSTICS_AGG: '/diagnostics_agg',
   EVENTS: '/events',
-  // 手動の初期姿勢の専用トピック。門のノードが確かめてから置き直す (ないときは中継がそのまま /initialpose へ送る)
+  // 手動の初期姿勢の専用トピック。AMCL 検証ゲートのノードが確かめてから補正する (ないときは中継がそのまま /initialpose へ送る)
   MANUAL_INITIAL_POSE: nodeNs(NODE_NS.LOCALIZATION, '/localization/manual_initial_pose'),
   GOAL_POSE: '/goal_pose',
   NAV_ACTION_STATUS: '/navigate_to_pose/_action/status',

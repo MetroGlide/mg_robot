@@ -81,13 +81,13 @@ def test_variance_scale_topic_matches_the_gnss_bridge_parameters():
         with open(PACKAGE_DIR.parent / path, encoding='utf-8') as f:
             bridge = yaml.safe_load(f)['slam_gnss_nav_bridge']['ros__parameters']
         assert bridge['variance_scale_topic'] == topic, path
-    # 倍率を求める情報源は、監督の設定にある
+    # 倍率を求める情報源は、自己位置監視の設定にある
     residual = config.residuals[scale['params']['residual']]
     assert residual.a == 'gnss'
 
 
 def test_the_gnss_bridge_accepts_the_largest_scale_the_supervisor_publishes():
-    # ブリッジが上限で切ると、監督が割り戻す倍率とかけられた倍率が食い違い、GNSS の誤差を小さく見積もる
+    # ブリッジが上限で切ると、自己位置監視が割り戻す倍率とかけられた倍率が食い違い、GNSS の誤差を小さく見積もる
     config = load_config(SUPERVISION)
     residual = config.residuals['gnss_vs_ekf']
     for path in ('slam_gnss_2d/slam_gnss_2d/params/nav_bridge.yaml', 'mg_simulation/config/nav_bridge_sim.yaml'):
@@ -220,7 +220,7 @@ def test_gnss_fallback_matches_the_previous_initializer():
     cov = initializer['pose_covariance']
     assert gnss['min_std_m'] ** 2 == cov[0] and abs(gnss['yaw_std_rad'] ** 2 - cov[35]) < 1e-3
     assert [r['type'] for r in config.resetters] == ['amcl', 'robot_localization']
-    # 切り離しも一時停止もせず、すぐ初期化し直す
+    # 除外も一時停止もせず、すぐ初期化し直す
     assert config.machine.recovery_enabled and not config.machine.request_hold
     assert config.machine.isolate_hold_sec == 0.0
 

@@ -23,7 +23,7 @@ tools/
 │   ├── event_timeline.py  # イベントログ (evt=...) の解析・結合・絞り込み・整形 ※ROS 不要。書式の読み取りは mg_utils.event_log
 │   ├── faults.py          # 故障注入定義 (YAML) の読込
 │   ├── fault_apply.py     # 故障注入の計算 (numpy のみ。fault_injector.py が使う)
-│   └── offline_faults.py  # 故障注入定義を、自己位置の監督のオフライン評価の定義に直す
+│   └── offline_faults.py  # 故障注入定義を、自己位置監視のオフライン評価の定義に直す
 ├── datasets/localization/ # 自己位置推定の再生評価のデータセット定義 (地図・評価走行・真値の組)
 ├── doc/                   # ツールごとの詳細 (下の「ドキュメント」)
 ├── test/                  # tools のテスト (make test pkg=tools。[テスト](#テスト))
@@ -48,7 +48,7 @@ tools/
     ├── loc_init_pose.py             # 再生評価で AMCL と EKF の初期姿勢を真値から与える
     ├── loc_recorder.py              # 再生評価の出力をシミュレーション時刻で rosbag2 に記録する
     ├── fault_injector.py            # 再生評価で、センサ入力に故障を注入する (--faults。[doc](./doc/localization_evaluation.md#センサ故障の注入))
-    ├── eval_localization_offline.py # 自己位置の監督を、再生評価の記録でオフライン評価する ([doc](./doc/localization_evaluation.md#監督のオフライン評価))
+    ├── eval_localization_offline.py # 自己位置監視を、再生評価の記録でオフライン評価する ([doc](./doc/localization_evaluation.md#自己位置監視のオフライン評価))
     ├── eval_window_estimator.py     # 窓つきの推定器 (因子グラフ) の試作を、再生評価の記録の入力で回し、EKF と真値との誤差で比べる
     ├── lidar_odom_offline.sh        # 元の rosbag のスキャンから KISS-ICP で LiDAR オドメトリを作って記録する (上の 2 つの --lidar-odom 用。コンテナ内で実行)
     ├── loc_dataset.py               # データセット定義 (datasets/localization/) の読込
@@ -59,7 +59,7 @@ tools/
     ├── analyze_particle_modes.py    # 再生評価の記録の AMCL の粒子を仮説に分け、仮説の数と正しい仮説の重みを時系列で出す
     ├── plot_scan_on_map.py          # スキャンを真値と推定の姿勢に置いて地図に重ねる (自己位置のずれの原因の調査)
     ├── analyze_scan_conditions.py   # スキャンが地図に対して位置を決めやすいか (一致率・帯の太さ・不安定さ・視界の重なり) を時系列で測る
-    ├── plot_scenario.py             # シナリオテストの結果 (記録つき) の軌跡と時系列 (置き直しの直後の速度の指令の変化を含む)、構成どうしの比較を図にする (make scenario-plot)
+    ├── plot_scenario.py             # シナリオテストの結果 (記録つき) の軌跡と時系列 (姿勢補正の直後の速度の指令の変化を含む)、構成どうしの比較を図にする (make scenario-plot)
     ├── rewrite_scans.py             # 記録のスキャンを、地図にない点を除く・地図への光線追跡に置き換える (ずれの原因の切り分け)
     ├── rewrite_gnss.py              # 記録の GNSS を真値のアンテナ位置に置き換え、記録の GNSS の誤差の大きさと相関時間を出す
     ├── calib_wheel_odom.py          # ホイールオドメトリのスケール・バイアス・遅れを走行ログから推定
@@ -115,7 +115,7 @@ make test pkg=tools
 | `test_event_timeline.py` | イベントログの解析・結合・絞り込み・整形 (`common/event_timeline.py`) |
 | `test_status_timeline.py` | 診断のレベルの遷移とイベントの集計・整形 (`common/status_timeline.py`) |
 | `test_faults.py`、`test_fault_apply.py` | 故障注入の定義の読込と計算 |
-| `test_offline_faults.py` | 故障注入の定義の、監督のオフライン評価への変換 |
+| `test_offline_faults.py` | 故障注入の定義の、自己位置監視のオフライン評価への変換 |
 | `test_pose_graph.py` | `pose_graph.json` の読込・補間 |
 | `test_map_helpers.py` | 地図の読込と `map_list.txt` |
 | `test_static_transform.py` | 静的な座標変換の合成 (`common/geo.py`) |

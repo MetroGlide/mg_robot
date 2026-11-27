@@ -15,15 +15,15 @@
 #   --initializer true|false GNSS から AMCL の初期姿勢を与えるノード (既定: gt なら false、gnss なら true)
 #   --monitor none|watchdog|supervisor
 #                            自己位置の監視ノード (既定: gt なら none、gnss なら watchdog)
-#   --profile <名前>         監督の設定に重ねるプロファイル (mg_localization_supervisor/config/supervision.yaml)
-#   --gate true|false        監督ノードの中で門を使う (--monitor supervisor のとき。既定 false。門の設定は
+#   --profile <名前>         自己位置監視の設定に重ねるプロファイル (mg_localization_supervisor/config/supervision.yaml)
+#   --gate true|false        自己位置監視ノードの中で AMCL 検証ゲートを使う (--monitor supervisor のとき。既定 false。AMCL 検証ゲートの設定は
 #                            supervision.yaml の gate 節で、sup.gate.<key> で書き換える)
 #   --start S / --duration D 評価する区間 (データセットの値を上書き)
 #   --cpus N                 コンテナに使わせる CPU 数 (実機相当の負荷にしたいとき)
 #   --no-particles           AMCL の粒子 (/particle_cloud) を記録しない (記録の容量を抑える。仮説の解析や
 #                            記録を固定の入力にする評価に使わない試行で)
 #   --faults <yaml>          センサ入力に故障を注入する (tools/datasets/localization/faults/。復旧の評価用)
-#                            kidnap・amcl_drift は /initialpose を使うので、監督の external_reinit.topics を空にする
+#                            kidnap・amcl_drift は /initialpose を使うので、自己位置監視の external_reinit.topics を空にする
 #   --ekf-file / --nav2-file / --bridge-file / --odom-file / --supervisor-file <yaml>
 #                            パラメータファイルをリポジトリの既定ではなく、指定したファイルから複製する
 #                            (複数行のリストなど、1 行の書き換えでは変えられない変更に使う)
@@ -33,9 +33,9 @@
 #   amcl.<key>    mg_navigation/params/nav2_params.yaml の amcl
 #   bridge.<key>  slam_gnss_2d/params/nav_bridge.yaml の slam_gnss_nav_bridge
 #   odom.<key>    mg_drivers/params/wheel_odom_corrector.yaml の wheel_odom_corrector_node
-#   sup.<key>     mg_localization_supervisor/config/supervision.yaml (監督の設定。トップレベルからのパスで、
+#   sup.<key>     mg_localization_supervisor/config/supervision.yaml (自己位置監視の設定。トップレベルからのパスで、
 #                 フロー形式の中の値も書ける。例: sup.detectors.amcl_gnss.params.threshold=8.0)
-#                 門は sup.gate.<key> (例: sup.gate.settings.small_correction_m=100)
+#                 AMCL 検証ゲートは sup.gate.<key> (例: sup.gate.settings.small_correction_m=100)
 #
 # 例:
 #   tools/scripts/run_localization_variant.sh baseline
@@ -113,7 +113,7 @@ done
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
-# 故障の注入 (kidnap、amcl_drift) は /initialpose を使うので、監督が人による再初期化として受け入れないよう、
+# 故障の注入 (kidnap、amcl_drift) は /initialpose を使うので、自己位置監視が人による再初期化として受け入れないよう、
 # 外からの再初期化を見るトピックを空にする (sup.external_reinit.topics=... を渡せば、そちらが優先)
 if [ -n "$FAULTS" ]; then
   SUPERVISOR_UPDATES=("external_reinit.topics=[]" "${SUPERVISOR_UPDATES[@]}")
@@ -144,7 +144,7 @@ patch "${ODOM_FILE:-mg_drivers/params/wheel_odom_corrector.yaml}" wheel_odom_cor
 patch "${EKF_FILE:-mg_drivers/params/ekf_global.yaml}" ekf_global.yaml "${EKF_UPDATES[@]}"
 patch "${AMCL_FILE:-mg_navigation/params/nav2_params.yaml}" nav2_params.yaml "${AMCL_UPDATES[@]}"
 patch "${BRIDGE_FILE:-slam_gnss_2d/slam_gnss_2d/params/nav_bridge.yaml}" nav_bridge.yaml "${BRIDGE_UPDATES[@]}"
-# 監督の設定は ROS2 パラメータではないので --plain で書き換える。プロファイルは設定ファイルからの相対パスなので複製する
+# 自己位置監視の設定は ROS2 パラメータではないので --plain で書き換える。プロファイルは設定ファイルからの相対パスなので複製する
 SUPERVISOR_SRC="${SUPERVISOR_FILE:-mg_localization_supervisor/config/supervision.yaml}"
 python3 tools/scripts/patch_params.py --plain "$SUPERVISOR_SRC" "$VARIANT_REL/supervision.yaml" "${SUPERVISOR_UPDATES[@]}"
 rm -rf "$VARIANT_REL/profiles"

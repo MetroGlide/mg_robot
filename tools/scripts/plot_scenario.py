@@ -6,9 +6,9 @@ plot_scenario.py
 
   run     <結果>...           1 回分の結果 (result.json と bag/ のあるディレクトリ) ごとに、地図の上の軌跡
                               (真値・EKF・AMCL・GNSS) と、時系列 (真値との差、GNSS の申告の精度、速さ、速度の指令の
-                              回転、監督の状態) を <結果>/scenario_plot.png に出す。日時のディレクトリを渡すと、中の
-                              結果をすべて描く。自己位置の置き直し (evt=localization.pose_reset) ごとに、その直後の
-                              速度の指令の回転の急な変化を、置き直しの前と比べて表示する。
+                              回転、自己位置監視の状態) を <結果>/scenario_plot.png に出す。日時のディレクトリを渡すと、中の
+                              結果をすべて描く。自己位置の姿勢補正 (evt=localization.pose_reset) ごとに、その直後の
+                              速度の指令の回転の急な変化を、姿勢補正の前と比べて表示する。
   compare <日時の dir>=<名前>...  構成ごとの結果 (scenario-test-all の日時のディレクトリ) を、シナリオごとに並べる
                               (真値との最大の差、ずれたまま走った距離、最も長い停止。点 1 つが 1 回)。
 
@@ -118,7 +118,7 @@ def run_start(rosout: list) -> Optional[float]:
 
 
 def pose_resets(rosout: list) -> List[Tuple[float, str]]:
-    """自己位置の置き直しのイベントの (時刻, イベントの文)。"""
+    """自己位置の姿勢補正のイベントの (時刻, イベントの文)。"""
     return sorted((t, text[text.index("evt="):]) for t, _, text in rosout if "evt=localization.pose_reset" in text)
 
 
@@ -130,7 +130,7 @@ def turn_change(cmd_vel: list, start: float, end: float) -> Optional[float]:
 
 def reset_reactions(data: Dict[str, list], window_sec: float = 5.0) -> List[Tuple[float, str, Optional[float],
                                                                                    Optional[float]]]:
-    """置き直しごとの (時刻, イベントの文, 直後の回転の変化の最大, 直前の同じ長さの区間の回転の変化の最大)。"""
+    """姿勢補正ごとの (時刻, イベントの文, 直後の回転の変化の最大, 直前の同じ長さの区間の回転の変化の最大)。"""
     return [(t, text, turn_change(data["cmd_vel"], t, t + window_sec), turn_change(data["cmd_vel"], t - window_sec, t))
             for t, text in pose_resets(data["rosout"])]
 
@@ -226,7 +226,7 @@ def plot_run(run_dir: str, map_yaml: str, entity: str) -> Optional[str]:
     for t, text, after, before in resets:
         for ax in axes:
             ax.axvline(t - t0, color="#6250d6", lw=1.0, ls="-.")
-        print(f"  置き直し t={t - t0:.1f} s  回転の指令の変化の最大: 直後 {after} / 直前 {before} [rad/s]  {text}")
+        print(f"  姿勢補正 t={t - t0:.1f} s  回転の指令の変化の最大: 直後 {after} / 直前 {before} [rad/s]  {text}")
     if data["status"]:
         arr = np.asarray(sorted(data["status"]), dtype=float)
         axes[4].step(rel(arr[:, 0]), arr[:, 1], where="post", color=COLOR["amcl"], lw=1.5)

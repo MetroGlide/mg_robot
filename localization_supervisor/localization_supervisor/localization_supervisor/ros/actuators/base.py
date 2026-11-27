@@ -1,4 +1,4 @@
-"""対処の約束: 監督の状態に応じて、外に働きかける (ゲートの開閉、一時停止の要求、サービスの呼び出しなど)。"""
+"""対処の約束: 自己位置監視の状態に応じて、外に働きかける (ゲートの開閉、停止要求、サービスの呼び出しなど)。"""
 from typing import Any, Mapping
 
 from ...core.interfaces import ParamSpec, Plugin

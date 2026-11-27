@@ -1,9 +1,9 @@
-"""センサの組: 情報源の欠けから、今の組 (全部 / 例: LiDAR なし) を決める (ROS に依存しない)。
+"""センサ構成: 情報源の欠けから、今のセンサ構成 (全部 / 例: LiDAR なし) を決める (ROS に依存しない)。
 
-組ごとに、欠けると入る情報源 (missing) を書く。どれかが missing_after_sec 届かなければその組に入り、全部が
-present_after_sec 届き続ければ出る (全部の組 = 空の名前に戻る)。missing_after_sec は、センサの途絶の見張りが
-起動し直しを試す時間より長くする (起動し直しで戻る欠けでは組を変えない)。上から順に、最初に当てはまる組にする。
-組の速度の上限は、走り方の速度の上限と小さい方を使う (0 は上限なし)。
+組ごとに、欠けると入る情報源 (missing) を書く。どれかが missing_after_sec 届かなければその構成に入り、全部が
+present_after_sec 届き続ければ出る (全部のセンサ構成 = 空の名前に戻る)。missing_after_sec は、センサの途絶の見張りが
+起動し直しを試す時間より長くする (起動し直しで戻る欠けでは構成を変えない)。上から順に、最初に当てはまる組にする。
+構成の速度の上限は、走行制約の速度の上限と小さい方を使う (0 は上限なし)。
 """
 import math
 from dataclasses import dataclass, field
@@ -35,7 +35,7 @@ def latest_stamp(snapshot, name: str, kind: SourceKind) -> Optional[float]:
 
 
 class SensorSetTracker:
-    """周期ごとに情報源の届き方を見て、今の組を決める。"""
+    """周期ごとに情報源の届き方を見て、今のセンサ構成を決める。"""
 
     def __init__(self, configs: List[SensorSetConfig], kinds: Mapping[str, SourceKind]) -> None:
         self.configs = configs
@@ -49,7 +49,7 @@ class SensorSetTracker:
         return next((c for c in self.configs if c.name == name), None)
 
     def update(self, snapshot) -> Tuple[str, Optional[Tuple[str, str]]]:
-        """(今の組, 変わったなら (前, 後))。"""
+        """(今のセンサ構成, 変わったなら (前, 後))。"""
         now = snapshot.stamp
         if self._started is None:
             self._started = now
@@ -73,7 +73,7 @@ class SensorSetTracker:
                 break
         before = self.current
         if wanted != before:
-            # 全部の組へ戻るのは、欠けていた情報源が全部 present_after_sec 届き続けてから
+            # 全部のセンサ構成へ戻るのは、欠けていた情報源が全部 present_after_sec 届き続けてから
             leaving = self.config(before)
             if wanted == ALL and leaving is not None and not all(
                     present_for[s] >= leaving.present_after_sec for s in leaving.missing):

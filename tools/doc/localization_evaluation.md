@@ -29,10 +29,10 @@ make bag-eval-localization BAG=<bag> GT_DIR=<評価 bag の SLAM 出力> MAP_GT_
 | EKF と odom | EKF の速度とホイールオドメトリ速度の差・遅れ、EKF の σ |
 | AMCL | σ、遅延 (bag の記録時刻と header が同じ時計のときのみ)、届いた時点の推定姿勢との差 |
 | ずれた事象 | 推定が真値から大きくずれた区間。1 s ごとの誤差の中央値が、位置か yaw の閾値を超えた区間で、近い区間はつなぐ。時刻に沿って数えるので、角の外や、真値が途中で欠けた後の事象も数える。事象ごとに、最後までずれたままか、始まる前の GNSS の σ を出し、閾値を変えたときの件数 (感度) も出す |
-| 角 | 真値の軌跡から角 (短い時間で向きが大きく変わる区間) を見つけ、角ごとに**ずれた** (角の始まりから抜けた後までに事象が重なった。監督が後で戻したものも含む) か、**取り違えたまま** (その事象が抜けた後も続いた) かを出す |
+| 角 | 真値の軌跡から角 (短い時間で向きが大きく変わる区間) を見つけ、角ごとに**ずれた** (角の始まりから抜けた後までに事象が重なった。自己位置監視が後で戻したものも含む) か、**取り違えたまま** (その事象が抜けた後も続いた) かを出す |
 | GNSS が弱い時間 | `/odom/gps` の σ が大きいか、届いていない時間と、それ以外の時間に分けた位置誤差 |
 | 故障注入 (`FAULTS=`) | 故障ごとの最大誤差・復旧までの時間・検知までの時間、故障のない区間での誤検知の回数 |
-| 止める要求 | 監督が走行を止めてほしいと要求した回数と時間 (実機ではこの間、走行が止まる) |
+| 止める要求 | 自己位置監視が走行を止めてほしいと要求した回数と時間 (実機ではこの間、走行が止まる) |
 
 - `--start` / `--end`: 評価する区間 (先頭からの経過秒)
 - `--ok-threshold` / `--hold-sec`: 復旧とみなす位置誤差と、その誤差以下でいる時間
@@ -67,9 +67,9 @@ docker run --rm -v $PWD:/app -v ~/ros2_data:/root/ros2_data mg_develop:latest \
 | `--runs N` | 繰り返す回数。AMCL は乱数を使うため、分布で比べる |
 | `--init gt\|gnss` | 初期姿勢。`gt` は真値を与える、`gnss` は GNSS による初期化に任せて初期化も評価する |
 | `--initializer true\|false` | GNSS から AMCL の初期姿勢を与えるノード。`--init` に応じて切り替わる (`gt` では使わず、`gnss` では使う) |
-| `--monitor none\|watchdog\|supervisor` | 自己位置の監視ノード (門は `--gate true`)。`--init` に応じて切り替わる (`gt` では `none`、`gnss` では `watchdog`) |
-| `--profile <名前>` | 監督の設定に重ねるプロファイル (`--monitor supervisor` のとき) |
-| `--gate true\|false` | 監督ノードの中で門を使う (`--monitor supervisor` のとき。門の設定は `sup.gate.<key>` で書き換える) |
+| `--monitor none\|watchdog\|supervisor` | 自己位置の監視ノード (AMCL 検証ゲートは `--gate true`)。`--init` に応じて切り替わる (`gt` では `none`、`gnss` では `watchdog`) |
+| `--profile <名前>` | 自己位置監視の設定に重ねるプロファイル (`--monitor supervisor` のとき) |
+| `--gate true\|false` | 自己位置監視ノードの中で AMCL 検証ゲートを使う (`--monitor supervisor` のとき。AMCL 検証ゲートの設定は `sup.gate.<key>` で書き換える) |
 | `--faults <yaml>` | センサ入力に故障を注入して、復旧を評価する (`tools/datasets/localization/faults/`) |
 | `--no-particles` | AMCL の粒子 (`/particle_cloud`) を記録しない (記録の容量を抑える) |
 | `--start S` / `--duration D` | 評価する区間 (データセットの値を上書き) |
@@ -85,13 +85,13 @@ docker run --rm -v $PWD:/app -v ~/ros2_data:/root/ros2_data mg_develop:latest \
 | `amcl.` | `mg_navigation/params/nav2_params.yaml` | `amcl` |
 | `bridge.` | `slam_gnss_2d/slam_gnss_2d/params/nav_bridge.yaml` | `slam_gnss_nav_bridge` |
 | `odom.` | `mg_drivers/params/wheel_odom_corrector.yaml` | `wheel_odom_corrector_node` |
-| `sup.` | `mg_localization_supervisor/config/supervision.yaml` | (監督の設定。ROS2 パラメータではないので、トップレベルからのパスで書く。例: `sup.detectors.amcl_gnss.params.threshold=8.0`) |
+| `sup.` | `mg_localization_supervisor/config/supervision.yaml` | (自己位置監視の設定。ROS2 パラメータではないので、トップレベルからのパスで書く。例: `sup.detectors.amcl_gnss.params.threshold=8.0`) |
 
 - 出力: `<評価 bag>/eval_loc/<データセット>/<名前>/{params/, run_N/, summary.md}`。`run_N/eval_localization.md` に試行ごとの評価、`summary.md` に試行をまとめた表が入ります。
 - 起動前に、関連パッケージ (`localization_replay.sh` の `BUILD_PKGS`) をコンテナ内で増分ビルドします。ソースの変更はイメージの再ビルドなしで反映されます。
 - 書き換えられるのは既存のキーの値です。複数行にまたがるリスト (`odom0_config` など) も、`ekf.odom0_config="[true, true, ...]"` のように新しい値を 1 行で渡すとまとめて置き換えられます。キーが元のファイルに無い場合はエラーになります。
-- 再生にはシーケンサがないので、門 (`--gate true`) の「止まってから置き直す」は止まらないまま上限の時間を待つことになる。照合の判定を見るときは、補正の大きさの上限を広げて、その場で置き直す (`sup.gate.settings.small_correction_m`・`sup.gate.settings.small_correction_rad`)。止まってからの置き直しは、シナリオ試験で確かめる。
-- `sup.` は、監督の設定を YAML として読み直して書き出す (`patch_params.py --plain`) ので、フロー形式 (`{threshold: 6.0}`) の中の値も書き換えられます。複製した設定にはコメントが残りません。プロファイルのファイルも変種のディレクトリに複製します。
+- 再生にはシーケンサがないので、AMCL 検証ゲート (`--gate true`) の「止まってから補正する」は止まらないまま上限の時間を待つことになる。照合の判定を見るときは、補正の大きさの上限を広げて、その場で補正する (`sup.gate.settings.small_correction_m`・`sup.gate.settings.small_correction_rad`)。止まってからの姿勢補正は、シナリオ試験で確かめる。
+- `sup.` は、自己位置監視の設定を YAML として読み直して書き出す (`patch_params.py --plain`) ので、フロー形式 (`{threshold: 6.0}`) の中の値も書き換えられます。複製した設定にはコメントが残りません。プロファイルのファイルも変種のディレクトリに複製します。
 - 実機と同じく、ホイールオドメトリは補正ノードを通して `/odom/raw` → `/odom` になります。
 - ROS の通信は `ROS_LOCALHOST_ONLY=1` とランダムな `ROS_DOMAIN_ID` で隔離しており、実機や他のコンテナと混ざりません。複数の変種を並列に実行できます (各コンテナが起動時にビルドするので、同時に起動すると、スタックの起動が 180 s を超えて試行が無効になることがあります。多く並べるときは、1 回だけビルドする `run_localization_queue.py` を使います)。
 - 真値の初期姿勢を送れなかった試行と、初期姿勢が AMCL に届かなかった試行は、無効として 1 回だけやり直します。
@@ -142,7 +142,7 @@ python3 tools/scripts/plot_scan_on_map.py <評価 bag> --map <自己位置推定
 
 `--faults` で、再生中のセンサ入力に故障を注入して、検知と復旧を評価できます (`fault_injector.py`)。
 故障の定義は YAML で、時刻は再生開始からの経過秒です。
-kidnap と `amcl_drift` は `/initialpose` を使うので、監督が人による再初期化として受け入れないよう、`--faults` を指定すると監督の `external_reinit.topics` を空にします (`sup.external_reinit.topics=...` を渡せば、そちらが優先)。
+kidnap と `amcl_drift` は `/initialpose` を使うので、自己位置監視が人による再初期化として受け入れないよう、`--faults` を指定すると自己位置監視の `external_reinit.topics` を空にします (`sup.external_reinit.topics=...` を渡せば、そちらが優先)。
 
 | 種類 | 内容 |
 | :--- | :--- |
@@ -156,7 +156,7 @@ kidnap と `amcl_drift` は `/initialpose` を使うので、監督が人によ�
 | `scan_drop` | LiDAR のスキャンの一部の角度を欠測にする |
 | `amcl_drift` | 区間の中で `interval` 秒ごとに、AMCL の推定を `rate`×`interval` だけずらした姿勢を `/initialpose` に送り、AMCL を少しずつずらす (送るたびに粒子は送った姿勢の周りに撒き直される) |
 
-評価レポートには、故障ごとの最大誤差・復旧までの時間・監督ノードの検知までの時間と、
+評価レポートには、故障ごとの最大誤差・復旧までの時間・自己位置監視ノードの検知までの時間と、
 **故障のない区間で状態が NORMAL 以外になった回数 (誤検知)** が出ます。
 
 ### データセット
@@ -218,19 +218,19 @@ tools/scripts/run_localization_queue.py --set focus_short --runs 5 --min-runs 3 
 - `--baseline` の許容差 (「悪くならない」の範囲) は、`compare_localization_set.py` の `TOLERANCES` にあります。指標ごとに、絶対量と基準に対する割合の大きい方まで許します。比べる前に決めておき、試行の間のばらつきより大きくしてください。ずれた試行の割合と止める要求の回数は、基準より増えたら悪くなったとします。
 - 閾値を変えたときの、ずれた試行の割合の表も出ます。閾値の選び方で結論が変わらないかを確かめてください。
 
-## 監督のオフライン評価
+## 自己位置監視のオフライン評価
 
-`eval_localization_offline.py` は、自己位置の監督のフレームワーク ([localization_supervisor](../../localization_supervisor/doc/design.md#オフライン評価)) の判定と総合を、再生評価の記録 (`run_N/output`) で実時間を待たずに回します。1 本あたり数秒で終わるので、判定のしきい値・重み・プロファイルを大量の事例で比べられます。
+`eval_localization_offline.py` は、自己位置監視のフレームワーク ([localization_supervisor](../../localization_supervisor/doc/design.md#オフライン評価)) の判定と総合を、再生評価の記録 (`run_N/output`) で実時間を待たずに回します。1 本あたり数秒で終わるので、判定のしきい値・重み・プロファイルを大量の事例で比べられます。
 
-- 入力: 記録した推定器の出力 (AMCL・EKF・GNSS・オドメトリと、記録していれば AMCL の粒子 `/particle_cloud`) と、データセットの評価 bag のスキャン、データセットの地図。設定は `mg_localization_supervisor/config/supervision.yaml` ([mg_localization_supervisor](../../mg_localization_supervisor/README.md#監督の構成-supervisionyaml))
+- 入力: 記録した推定器の出力 (AMCL・EKF・GNSS・オドメトリと、記録していれば AMCL の粒子 `/particle_cloud`) と、データセットの評価 bag のスキャン、データセットの地図。設定は `mg_localization_supervisor/config/supervision.yaml` ([mg_localization_supervisor](../../mg_localization_supervisor/README.md#自己位置監視の構成-supervisionyaml))
 - `--faults`: 再生評価と同じ書式の故障を、**記録した標本に**注入します (`common/offline_faults.py` で変換)。kidnap と `amcl_drift` は AMCL の標本を、`gnss_bias` は GNSS の標本をずらし、`gnss_drop`・`scan_drop` は標本を欠かします。`odom_scale` は注入できません (記録した推定器の出力がオドメトリをすでに使っているため)。AMCL をずらすときは、AMCL の粒子 (設定の仮説の集合の情報源) も同じだけずらします (ずらさないと、粒子の仮説の判定と候補が、真の姿勢を知っていることになる)
 - `--followers ekf=<割合>`: AMCL のずれに、EKF もその割合だけ引きずられた状態にします (実際の推定器は AMCL に引きずられるため)
 - `--labels`: 記録したときに再生評価で注入されていた故障を、正解としてだけ使います (例: `kidnap_none` の変種の記録)
-- `--profile` を並べると、同じ入力でプロファイルを比べます (`''` は既定の設定。`consecutive` は今の監督ノードと同じ判定と回数。`notify_only` は自動復旧しない。`gnss_fallback` は以前の動作)
-- 自動復旧のプロファイルでは、監督が指示した再初期化を評価します。`--apply-reset`(既定 `amcl,ekf`)の姿勢の情報源は、指示の後の標本を、選んだ姿勢に合わせて、復旧して `NORMAL` に戻るまでを真似ます(空なら、指示を記録するだけ)。候補の誤差は、故障を注入する前の記録を真の姿勢として測り(`--truth`。既定は設定の `anchors.pose`)、`--ok-threshold` を超えたものを誤った復旧とします
+- `--profile` を並べると、同じ入力でプロファイルを比べます (`''` は既定の設定。`consecutive` は今の自己位置監視ノードと同じ判定と回数。`notify_only` は自動復旧しない。`gnss_fallback` は以前の動作)
+- 自動復旧のプロファイルでは、自己位置監視が指示した再初期化を評価します。`--apply-reset`(既定 `amcl,ekf`)の姿勢の情報源は、指示の後の標本を、選んだ姿勢に合わせて、復旧して `NORMAL` に戻るまでを真似ます(空なら、指示を記録するだけ)。候補の誤差は、故障を注入する前の記録を真の姿勢として測り(`--truth`。既定は設定の `anchors.pose`)、`--ok-threshold` を超えたものを誤った復旧とします
 
 ```bash
-# 採用している設定の記録 (run_1..N) に kidnap を注入し、既定の設定と今の監督ノード相当を比べる
+# 採用している設定の記録 (run_1..N) に kidnap を注入し、既定の設定と今の自己位置監視ノード相当を比べる
 tools/scripts/eval_localization_offline.py <評価 bag>/eval_loc/map043837_eval051635_short/adopted \
     --faults tools/datasets/localization/faults/kidnap.yaml --profile '' --profile consecutive
 
@@ -239,10 +239,10 @@ tools/scripts/eval_localization_offline.py <評価 bag>/eval_loc/map043837_eval0
     --dataset map043837_eval051635_movingstart
 ```
 
-develop コンテナで実行します (rosbag2_py を使うため)。出力は `<run>/offline/<故障の定義の名前>/<プロファイル>/` の `timeline.jsonl` (周期ごとの状態・総合・判定の値)、`events.jsonl`、`report.md` と、標準出力のプロファイルごとの比較表 (確認した故障の数、疑い・確認までの時間、`blame` の正解、誤検知、再初期化の回数・誤り・故障の区間の外・見送り、復旧までの時間) です。
+develop コンテナで実行します (rosbag2_py を使うため)。出力は `<run>/offline/<故障の定義の名前>/<プロファイル>/` の `timeline.jsonl` (周期ごとの状態・総合・判定の値)、`events.jsonl`、`report.md` と、標準出力のプロファイルごとの比較表 (確認した故障の数、疑義・確認までの時間、`blame` の正解、誤検知、再初期化の回数・誤り・故障の区間の外・見送り、復旧までの時間) です。
 
 - 検知の対象は姿勢をずらす故障だけです。標本が欠けるだけの故障の区間は、異常がない区間として誤検知を数えます。
 - 誤検知は「故障の区間の外で確認に移った回数」で、記録そのものが崩れていた試行 (`movingstart` の一部) では正しい検知も含みます。真値 (`eval_localization.json` の誤差) と突き合わせてください。
-- 記録済みの推定器の出力を使うので、監督が再初期化した後の挙動は `--apply-reset` の真似です。実際の推定器の収束は再生評価 (`run_localization_variant.sh`) で見ます。
+- 記録済みの推定器の出力を使うので、自己位置監視が再初期化した後の挙動は `--apply-reset` の真似です。実際の推定器の収束は再生評価 (`run_localization_variant.sh`) で見ます。
 - 記録に故障が含まれていた試行 (`--labels`) では、故障を注入する前の記録がないので、候補の誤差は真の姿勢と比べられません。`--gt` で、データセットの真値 (SLAM 出力) と比べます。故障を注入しない記録で実際にずれた事象 (角での誤収束) の、復旧の候補を確かめるのにも使います (再初期化ごとの差は `reinit_truth.json`、標準出力にプロファイルごとの表)。
 - 判定の `allowance` は、正常な記録の `timeline.jsonl` の判定ごとの `score` の分布より上にします。

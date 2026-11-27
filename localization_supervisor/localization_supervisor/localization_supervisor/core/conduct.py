@@ -1,10 +1,10 @@
-"""走り方: 自己位置の状況と程度から、対処 (通常 / 減速) と速度の上限を決める (ROS に依存しない)。
+"""走行制約: 自己位置状況と危険度から、対処 (通常 / 減速) と速度の上限を決める (ROS に依存しない)。
 
-  状況 (Situation): 監督と門の状態から決める。1 つ軽い状況へ戻るのは、地図との照合で確かめたときだけ
-  程度 (Degree)   : 起こりうる誤差 ÷ 余裕 (footprint から計画用地図の通れない所までの距離) の区分
-  対処            : 状況 × 程度の対応表。正常の状況では程度を使わない (正常時に減速しない)
+  自己位置状況 (Situation): 自己位置監視と AMCL 検証ゲートの状態から決める。1 つ軽い自己位置状況へ戻るのは、地図照合で確かめたときだけ
+  危険度 (Degree)   : 誤差見込み ÷ 余裕距離 (footprint から計画用地図の通れない所までの距離) の区分
+  対処            : 自己位置状況 × 危険度の対応表。正常の自己位置状況では危険度を使わない (正常時に減速しない)
 
-止める対処は持たない。止めるのは門と監督の、時間と距離に上限のある仕組みだけにする (止まったままにしない)。
+止める対処は持たない。止めるのは AMCL 検証ゲートと自己位置監視の、時間と距離に上限のある仕組みだけにする (止まったままにしない)。
 """
 import enum
 from dataclasses import dataclass, field
@@ -12,16 +12,16 @@ from typing import Dict, Optional
 
 
 class Situation(enum.Enum):
-    UNINITIALIZED = 'uninitialized'   # 確かめた姿勢がない (起動の直後、地図の切り替えの後)
+    UNINITIALIZED = 'uninitialized'   # 未初期化 (起動の直後、地図の切り替えの後)
     NORMAL = 'normal'
-    SUSPECT = 'suspect'               # 異常の疑い (監督の疑い、門が閉じた直後)
-    UNDECIDED = 'undecided'           # 照合で決まらない (門が閉じたまま、監督が復旧できていない)
-    UNOBSERVED = 'unobserved'         # 地図との照合で確かめないまま、一定の距離を走った
-    RECOVERING = 'recovering'         # 監督が切り離して復旧している
+    SUSPECT = 'suspect'               # 異常の疑義 (自己位置監視の疑義、AMCL 検証ゲートが閉じた直後)
+    UNDECIDED = 'undecided'           # 照合で決まらない (AMCL 検証ゲートが閉じたまま、自己位置監視が復旧できていない)
+    UNOBSERVED = 'unobserved'         # 地図照合で確かめないまま、一定の距離を走った
+    RECOVERING = 'recovering'         # 自己位置監視が除外して復旧している
 
 
 class Degree(enum.IntEnum):
-    NONE = 0     # 程度を使わない (正常)
+    NONE = 0     # 危険度を使わない (正常)
     LIGHT = 1
     MEDIUM = 2
     HEAVY = 3
@@ -32,7 +32,7 @@ class Action(enum.Enum):
     SLOW = 'slow'
 
 
-# 状況ごとの起こりうる誤差の下限の既定 [m] (例。値は設定が正)
+# 自己位置状況ごとの誤差見込みの下限の既定 [m] (例。値は設定が正)
 DEFAULT_FLOORS = {'uninitialized': 2.0, 'suspect': 1.0, 'undecided': 1.5, 'unobserved': 1.0, 'recovering': 1.5}
 DEFAULT_TABLE = {
     'uninitialized': {'light': 'normal', 'medium': 'slow', 'heavy': 'slow'},
@@ -45,22 +45,22 @@ DEFAULT_TABLE = {
 
 @dataclass
 class ConductConfig:
-    # 最後に確かめてから走った道のり 1 m あたりに増やす、起こりうる誤差 [m/m]
+    # 最後に確かめてから走った道のり 1 m あたりに増やす、誤差見込み [m/m]
     error_per_m: float = 0.05
-    # 状況ごとの起こりうる誤差の下限 [m]
+    # 自己位置状況ごとの誤差見込みの下限 [m]
     floors: Dict[str, float] = field(default_factory=lambda: dict(DEFAULT_FLOORS))
-    # 確かめないまま、これだけ走ったら「見えない」 [m]
+    # 確かめないまま、これだけ走ったら「未観測」 [m]
     unobserved_after_m: float = 25.0
-    # 門が閉じてから、これだけ決まらなければ「決めきれない」 [s]
+    # AMCL 検証ゲートが閉じてから、これだけ決まらなければ「判定保留」 [s]
     undecided_after_sec: float = 3.0
-    # 程度の区分 (起こりうる誤差 ÷ 余裕)。medium_ratio 以上で中、heavy_ratio 以上で重い
+    # 危険度の区分 (誤差見込み ÷ 余裕距離)。medium_ratio 以上で中、heavy_ratio 以上で重い
     medium_ratio: float = 0.5
     heavy_ratio: float = 1.0
-    # 程度・状況を軽くするのは、軽い側がこの時間続いてから (上げるのはすぐ)
+    # 危険度・状況を軽くするのは、軽い側がこの時間続いてから (上げるのはすぐ)
     lower_hold_sec: float = 3.0
     # 減速の速度の上限 [m/s]
     slow_speed_mps: float = 0.3
-    # 状況 × 程度 → 対処 ('normal' | 'slow')
+    # 自己位置状況 × 危険度 → 対処 ('normal' | 'slow')
     table: Dict[str, Dict[str, str]] = field(default_factory=lambda: {k: dict(v) for k, v in DEFAULT_TABLE.items()})
 
 
@@ -69,11 +69,11 @@ class ConductInputs:
     """周期ごとの入力。"""
     stamp: float
     situation: Situation
-    # 最後に確かめてから走った道のり [m] (確かめた姿勢がなければ None)
+    # 最後に確かめてから走った道のり [m] (検証済み姿勢がなければ None)
     since_confirmed_m: Optional[float]
     # footprint から計画用地図の通れない所までの距離 [m] (分からなければ None)
     clearance_m: Optional[float]
-    # 地図との照合で確かめた周期か (疑いから戻す条件)
+    # 地図照合で確かめた周期か (疑義から戻す条件)
     confirmed: bool = False
     # 新しい判定の結果に異常があるか (None はこの周期に新しい判定がない)。確かめた後に異常があれば、確かめを取り消す
     contradicted: Optional[bool] = None
@@ -91,7 +91,7 @@ class Conduct:
 
 
 class ConductPlanner:
-    """状況を確かめるまで保ち、程度を決め、対応表で対処を選ぶ。"""
+    """状況を確かめるまで保ち、危険度を決め、対応表で対処を選ぶ。"""
 
     def __init__(self, config: ConductConfig) -> None:
         self.config = config
@@ -101,7 +101,7 @@ class ConductPlanner:
         self._situation = Situation.UNINITIALIZED
         self._degree = Degree.NONE
         self._lighter_since: Optional[float] = None
-        # 疑いの後に確かめ、その後の判定に異常がない
+        # 疑義の後に確かめ、その後の判定に異常がない
         self._confirmed = False
 
     @property
@@ -124,7 +124,7 @@ class ConductPlanner:
         return Conduct(situation, degree, error, inputs.clearance_m, action, speed)
 
     def _next_situation(self, inputs: ConductInputs) -> Situation:
-        """重い状況へはすぐに移る。疑い・見えないから正常へは、確かめ、その後の判定に異常がないときだけ戻る。"""
+        """重い自己位置状況へはすぐに移る。疑義・見えないから正常へは、確かめ、その後の判定に異常がないときだけ戻る。"""
         wanted = inputs.situation
         current = self._situation
         if wanted != Situation.NORMAL and wanted != current:

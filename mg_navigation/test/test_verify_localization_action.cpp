@@ -25,7 +25,7 @@ const char * const kTreeXml =
     </BehaviorTree>
   </root>)";
 
-// 確かめの要求を受けて番号を返し、決めた結果を状態に出す偽の監督
+// 検証要求を受けて番号を返し、決めた結果を状態に出す偽の自己位置監視
 class FakeSupervisor
 {
 public:
@@ -79,7 +79,7 @@ protected:
     tree_ = factory_.createTreeFromText(kTreeXml, blackboard);
   }
 
-  // 偽の監督を回しながら tick し、RUNNING 以外が返るまで待つ
+  // 偽の自己位置監視を回しながら tick し、RUNNING 以外が返るまで待つ
   BT::NodeStatus run(FakeSupervisor * supervisor)
   {
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
@@ -103,7 +103,7 @@ protected:
   BT::Tree tree_;
 };
 
-// 監督の窓口が見つかるまで待つ (サービスの発見は非同期)
+// 自己位置監視の窓口が見つかるまで待つ (サービスの発見は非同期)
 void waitForService(const rclcpp::Node::SharedPtr & node)
 {
   auto client = node->create_client<RequestVerify>("/test_supervisor/request_verify");

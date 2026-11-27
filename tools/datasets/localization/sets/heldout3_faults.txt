@@ -1,4 +1,4 @@
-# 3 つ目の調整に使わない故障の組 (heldout2_faults を見てから直した 地図との照合の規則を確かめる)。
+# 3 つ目の調整に使わない故障の組 (heldout2_faults を見てから直した 地図照合の規則を確かめる)。
 # 1 行に 1 条件: <ラベル> <データセット> [run_localization_variant.sh の引数 ...]
 kidnap map043837_eval051635_short --faults tools/datasets/localization/faults/heldout3_kidnap.yaml
 drift_yaw map043837_eval051635_short --faults tools/datasets/localization/faults/heldout3_drift_yaw.yaml

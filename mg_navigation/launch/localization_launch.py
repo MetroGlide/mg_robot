@@ -65,25 +65,25 @@ def generate_launch_description():
         description='自己位置の監視ノード (none | watchdog | supervisor)').launch_config
     localization_supervisor = arg.create(
         'localization_supervisor', default='false',
-        description='監視が watchdog のとき、監督ノードを並行して通知だけで動かすか '
-                    '(状態 /localization/status は監督ノードが出す)').launch_config
+        description='監視が watchdog のとき、自己位置監視ノードを並行して通知だけで動かすか '
+                    '(状態 /localization/status は自己位置監視ノードが出す)').launch_config
     localization_gate = arg.create(
         'localization_gate', default='false',
-        description='監督ノードの中で門を使うか (true | false | observe)。true は localization_monitor:=supervisor のとき'
-                    '(AMCL を地図との照合で確かめてから EKF に入れ、置き直し・一時停止を門が決める)。observe は判定と'
-                    '照合だけで、watchdog と並行する監督でも使える').launch_config
+        description='自己位置監視ノードの中で AMCL 検証ゲートを使うか (true | false | observe)。true は localization_monitor:=supervisor のとき'
+                    '(AMCL を地図照合で確かめてから EKF に入れ、姿勢補正・一時停止を AMCL 検証ゲートが決める)。observe は判定と'
+                    '照合だけで、watchdog と並行する自己位置監視でも使える').launch_config
     supervisor_config = arg.create(
         'supervisor_config', default=os.path.join(supervisor_dir, 'config', 'supervision.yaml'),
-        description='監督の設定ファイル').launch_config
+        description='自己位置監視の設定ファイル').launch_config
     localization_profile = arg.create(
         'localization_profile', default='',
-        description='監督の設定に重ねるプロファイル (空は基本設定。監視が watchdog のときは、'
+        description='自己位置監視の設定に重ねるプロファイル (空は基本設定。監視が watchdog のときは、'
                     '二重に再初期化しないよう notify_only)').launch_config
     localization_preset = arg.create(
         'localization_preset', default='',
         description='AMCL の params に重ねる自己位置推定のプリセット (params/localization_presets/<名前>.yaml。'
                     '空は重ねない)').launch_config
-    # watchdog と並行して動かす監督は、通知だけにする (どちらも再初期化すると互いに上書きする)
+    # watchdog と並行して動かす自己位置監視は、通知だけにする (どちらも再初期化すると互いに上書きする)
     supervisor_profile = PythonExpression([
         "'notify_only' if '", localization_monitor, "' == 'watchdog' and '", localization_profile,
         "' == '' else '", localization_profile, "'"])
@@ -122,7 +122,7 @@ def generate_launch_description():
         """map_server・AMCL・lifecycle_manager を作る。プリセットがあれば、AMCL の params の後に重ねる。"""
         monitor = context.perform_substitution(localization_monitor)
         if context.perform_substitution(localization_gate).lower() == 'true' and monitor != 'supervisor':
-            # 門が置き直すので、watchdog と組むと互いの置き直しを取り違える
+            # AMCL 検証ゲートが補正するので、watchdog と組むと互いの姿勢補正を取り違える
             raise RuntimeError(f'localization_gate:=true は localization_monitor:=supervisor と組で使います (今は {monitor})')
         amcl_params = [configured_params, *preset_files(
             context.perform_substitution(localization_preset),
@@ -208,7 +208,7 @@ def generate_launch_description():
                     ("output_topic", "amcl_pose")]
     )
 
-    # 監督ノード・AMCL ゲートの調停・GNSS による初期化 (mg_localization_supervisor)
+    # 自己位置監視ノード・AMCL ゲートの調停・GNSS による初期化 (mg_localization_supervisor)
     supervisor_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(supervisor_dir, 'launch', 'supervisor.launch.py')),
         launch_arguments={
@@ -231,7 +231,7 @@ def generate_launch_description():
         if context.perform_substitution(localization_monitor) != 'watchdog':
             return []
         sim_time = context.perform_substitution(use_sim_time).lower() == 'true'
-        # 監督ノードを並行して動かすときは、状態の配信を監督ノードに任せる
+        # 自己位置監視ノードを並行して動かすときは、状態の配信を自己位置監視ノードに任せる
         with_supervisor = context.perform_substitution(localization_supervisor).lower() == 'true'
 
         # AMCL watchdog node: monitor amcl covariance and trigger reinitialization when needed

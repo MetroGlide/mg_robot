@@ -1,4 +1,4 @@
-"""このロボットの監督の構成 (config/supervision.yaml) が、フレームワークの検証を通り、他の設定と合っていることを確かめる。"""
+"""このロボットの自己位置監視の構成 (config/supervision.yaml) が、フレームワークの検証を通り、他の設定と合っていることを確かめる。"""
 import ast
 import pathlib
 from unittest.mock import MagicMock
@@ -72,7 +72,7 @@ def test_node_can_run_every_profile():
 
 
 def test_gate_loads_with_every_profile():
-    """門 (use_gate) を有効にしても、基本設定とすべてのプロファイルが動かせる。基本設定では門を使わない。"""
+    """AMCL 検証ゲート (use_gate) を有効にしても、基本設定とすべてのプロファイルが動かせる。基本設定では AMCL 検証ゲートを使わない。"""
     config = load_config(SUPERVISION)
     assert config.gate is None
     gated = config.with_gate(True)
@@ -83,14 +83,14 @@ def test_gate_loads_with_every_profile():
 
 
 def test_gate_grace_after_reset_covers_the_window_closer():
-    """置き直しの後の猶予は、時間の窓で比べる閉じる理由が、置き直しの前の標本と比べなくなるまで続く。"""
+    """姿勢補正の後の猶予は、時間の窓で比べる遮断条件が、姿勢補正の前の標本と比べなくなるまで続く。"""
     gate = load_config(SUPERVISION).with_gate(True).gate
     window = next(c for c in gate.closers if c.name == 'gate_amcl_window').detector.params
     assert gate.settings.grace_after_reset_sec >= window['window_sec'] + window['max_gap_sec']
 
 
 def test_only_the_gate_gnss_closer_is_active_in_grace():
-    """置き直しの前の標本と比べる部品 (動きの比較) は猶予の間に使わず、今の AMCL と GNSS を比べる部品は使う。"""
+    """姿勢補正の前の標本と比べる部品 (動きの比較) は猶予の間に使わず、今の AMCL と GNSS を比べる部品は使う。"""
     gate = load_config(SUPERVISION).with_gate(True).gate
     assert {c.name for c in gate.closers if c.active_in_grace} == {'gate_amcl_gnss'}
 

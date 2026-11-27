@@ -113,7 +113,7 @@ run:
 | `localization_drift` | `rate` (`x`, `y` [m/s]、`yaw` [rad/s]。地図座標), `duration_sec`, `interval_sec`=1.0, `topic`=/initialpose, `cov_xy`=0.01, `cov_yaw`=0.003 | 自己位置推定を少しずつずらす (推定器が誤った姿勢へ引きずられる状況の再現)。`interval_sec` ごとに、シミュレータ上の真の姿勢に `rate` × 開始からの経過時間を足した姿勢を `topic` に送る (推定器がスキャンで戻そうとしても、ずれは時間とともに増える)。`duration_sec` が過ぎたら送るのをやめ、推定器に任せる。真の姿勢は変えない。`topic` を外からの再初期化として扱う監視があれば、それを外して使う |
 | `localization_spread` | `offset` (`x`, `y` [m]、`yaw` [rad]。地図座標)=0, `sigma` (同じ形の標準偏差)=(1.5, 1.5, 0.3), `topic`=/initialpose | 自己位置推定の分布を 1 回だけ広げ、推定器に峰を選び直させる (尤度が割れて誤った峰が勝つ状況の再現)。シミュレータ上の真の姿勢に `offset` を足した姿勢を中心に、`sigma` の共分散で `topic` に 1 回送る。正しい峰を選び直すこともあり、結果は推定器と場所による。真の姿勢は変えない。`topic` を外からの再初期化として扱う監視があれば、それを外して使う |
 | `delay` | `sec` | sim 時間で待つ |
-| `wait_for` | `trigger` (トリガー 1 つ), `timeout_sec`=60 | トリガーが成立するまで待つ。`timeout_sec` (sim 時間) で成立しなければエラー。トリガーは action を始めた時点で作るので、それより前の出来事は見ない (例: waypoint のフックで、故障の注入の前に自己位置の監督の準備を待つ) |
+| `wait_for` | `trigger` (トリガー 1 つ), `timeout_sec`=60 | トリガーが成立するまで待つ。`timeout_sec` (sim 時間) で成立しなければエラー。トリガーは action を始めた時点で作るので、それより前の出来事は見ない (例: waypoint のフックで、故障の注入の前に自己位置監視の準備を待つ) |
 | `log` | `message` | ログとイベントに記録する |
 
 ## trigger (`timeline[].when` / `until`)
@@ -127,7 +127,7 @@ run:
 | `robot_travelled` | `distance` | 走行開始からのロボットの移動距離 (経路長) が `distance` [m] に達した |
 | `robot_near` | `x`, `y`, `radius`, `frame`=map (`map`/`world`), `pose_source`=tf (`tf`/`sim`) | ロボットが指定点から `radius` [m] 以内。`pose_source: sim` はシミュレータ上の真の姿勢で判定する (自己位置推定がずれる試験で、注入の場所を真の位置で決めるとき) |
 | `bt_node` | `node`, `status`=RUNNING (`IDLE`/`RUNNING`/`SUCCESS`/`FAILURE`), `topic`=/behavior_tree_log | BT のノードが指定の状態になった (例: リカバリーの `Spin` が始まった)。トリガーを作った時点 (タイムラインの開始) より後の状態だけを見る |
-| `all_of` | `triggers` (トリガーのリスト) | `triggers` のすべてが一度は成立した (順は問わない)。例: 自己位置の監督の準備ができ、かつ指定の場所に入ったら |
+| `all_of` | `triggers` (トリガーのリスト) | `triggers` のすべてが一度は成立した (順は問わない)。例: 自己位置監視の準備ができ、かつ指定の場所に入ったら |
 
 `robot_travelled` / `robot_near` は速度や RTF に左右されないので、`at_time` より再現性が高くなります。
 

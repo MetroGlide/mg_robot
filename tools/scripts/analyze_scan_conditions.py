@@ -11,7 +11,7 @@ analyze_scan_conditions.py
       [--start S --end E] [--lidar-pose X,Y,YAW] [-o scan_conditions.csv]
 
 - 姿勢は --pose-bag の /tf (map->odom と odom->base) から取る (例: ずれなかった再生評価の出力。
-  地図に合った姿勢で、地図との照合を見るため)。同じ bag に両方があれば、同じパスを渡す。
+  地図に合った姿勢で、地図照合を見るため)。同じ bag に両方があれば、同じパスを渡す。
   SLAM 地図と比べるときは --pose-graph にその SLAM 出力を渡す (キーフレームの姿勢は SLAM 地図の座標系)
 - --lidar-pose は base 座標系での LiDAR の姿勢 (x, y [m], yaw [rad])
 

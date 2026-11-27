@@ -1,4 +1,4 @@
-"""センサの組が変わったら、ほかのノードのパラメータを切り替える対処 (actuators/sensor_set.py) のテスト。"""
+"""センサ構成が変わったら、ほかのノードのパラメータを切り替える対処 (actuators/sensor_set.py) のテスト。"""
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 

@@ -471,7 +471,7 @@ class GNSSAMCLInitializer(Node):
     def _on_initialpose(self, msg: PoseWithCovarianceStamped) -> None:
         """外から与えられた初期姿勢に従い、GNSS による初期化をやめる。少し後に、その姿勢の周りを照合する。
 
-        起動してから external_accept_distance_m 動いた後に来る初期姿勢 (走行中の監督の復旧など) には関わらない。
+        起動してから external_accept_distance_m 動いた後に来る初期姿勢 (走行中の自己位置監視の復旧など) には関わらない。
         """
         if (msg.header.stamp.sec, msg.header.stamp.nanosec) in self._own_stamps:
             return
@@ -505,7 +505,7 @@ class GNSSAMCLInitializer(Node):
     def _check_external(self, scan: Optional[LaserScan]) -> None:
         """外から与えられた姿勢 (今の map -> base) の周りを狭く照合し、はっきり違えば合った姿勢へ直す。
 
-        合わない・決めきれないときは、与えられた姿勢のままにする (GNSS で上書きしない)。
+        合わない・判定保留ときは、与えられた姿勢のままにする (GNSS で上書きしない)。
         """
         center = self._map_pose(scan)
         if center is None:

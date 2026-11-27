@@ -1,9 +1,9 @@
 """AMCL watchdog node: AMCL の共分散を監視し、精度低下時に GNSS で再初期化する。
 
-監督ノード (localization_supervisor) と同じ形で、自己位置推定の状態を /localization/status と
+自己位置監視ノード (localization_supervisor) と同じ形で、自己位置推定の状態を /localization/status と
 診断 `amcl_watchdog_node: localization` に出す (NORMAL / SUSPECT / RECOVERING / DEGRADED)。
-判定は共分散の 1 つ (checks の amcl_covariance)。監督ノードを並行して動かすときは、状態の配信を
-監督ノードに任せる (publish_status: false)。状態の変化と再初期化を、イベントログ (localization.*) に出す。
+判定は共分散の 1 つ (checks の amcl_covariance)。自己位置監視ノードを並行して動かすときは、状態の配信を
+自己位置監視ノードに任せる (publish_status: false)。状態の変化と再初期化を、イベントログ (localization.*) に出す。
 """
 import time
 import threading
@@ -73,7 +73,7 @@ class AmclWatchdogNode(Node):
     # ------------------------------------------------------------------ #
 
     def _view(self) -> StatusView:
-        # 判定は共分散の指標だけ。監督ノードの判定 (GNSS・スキャンなど) は持たない
+        # 判定は共分散の指標だけ。自己位置監視ノードの判定 (GNSS・スキャンなど) は持たない
         value = self._last_value
         if value is None:
             check = CheckView('amcl_covariance', 'covariance', ['amcl'], Status.UNKNOWN)

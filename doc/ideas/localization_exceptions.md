@@ -22,13 +22,13 @@
 
 ## 入る場所
 
-- 状態のメッセージ (`localization_supervisor_msgs/LocalizationStatus`) と、走り方の対応表 (`core/conduct.py`)。対応表 → センサの組 → 例外の順で、後ろが上書きする。
+- 状態のメッセージ (`localization_supervisor_msgs/LocalizationStatus`) と、走行制約の対応表 (`core/conduct.py`)。対応表 → センサ構成 → 例外の順で、後ろが上書きする。
 - シナリオの判定 (`sim_scenario_test` の見張り) に、例外の区間を渡す口。
 
 ## 着手の前に確かめること
 
-- 例外を要する状況が 2 つ以上あるか。1 つだけなら、センサの組の設定に書けば足りる。
-- 今は、LiDAR がないときは精度を追わず走りを続ける判断で、センサの組の設定と `known_issue` で足りている。
+- 例外を要する状況が 2 つ以上あるか。1 つだけなら、センサ構成の設定に書けば足りる。
+- 今は、LiDAR がないときは精度を追わず走りを続ける判断で、センサ構成の設定と `known_issue` で足りている。
 
 ## やらないこと
 

@@ -1,11 +1,11 @@
-# 自己位置推定の監督 (localization_supervisor_node) が一定の周期で配信する状態
+# 自己位置監視 (localization_supervisor_node) が一定の周期で配信する状態
 
 std_msgs/Header header
 
 # 状態
 uint8 NORMAL=0       # 正常
-uint8 SUSPECT=1      # 異常の疑い (確認中)
-uint8 ISOLATED=2     # 疑わしい情報源を切り離した
+uint8 SUSPECT=1      # 異常の疑義 (確認中)
+uint8 ISOLATED=2     # 疑わしい情報源を除外した
 uint8 RECOVERING=3   # 推定器を初期化し直し、収束を確認中
 uint8 DEGRADED=4     # 異常を確認した (通知だけのとき)、または復旧できていない
 uint8 state
@@ -14,9 +14,9 @@ uint8 state
 string blame
 # 出力が汚れていると見なす、融合の結果の情報源 (例: EKF)
 string[] contaminated
-# 切り離している情報源
+# 除外している情報源
 string[] isolated_sources
-# 走行を止めてほしいか (切り離してから、戻すまで)
+# 走行を止めてほしいか (除外してから、戻すまで)
 bool hold_requested
 
 # 総合の強さ (総合の方式ごとの単位)
@@ -31,21 +31,21 @@ bool footprint_in_lethal
 # 致死セルへの食い込みの深さ [m] (かかっていなければ 0、計算できなければ -1)
 float32 lethal_depth_m
 
-# 走り方 (門と走り方の設定があるとき。なければ situation は空)
+# 走行制約 (AMCL 検証ゲートと走行制約の設定があるとき。なければ situation は空)
 # 状況: uninitialized / normal / suspect / undecided / unobserved / recovering
 string situation
-# 程度: 0 使わない (正常)、1 軽い、2 中、3 重い
+# 危険度: 0 使わない (正常)、1 軽い、2 中、3 重い
 uint8 degree
-# 起こりうる誤差 [m] と、footprint から計画用地図の通れない所までの距離 [m] (分からなければ -1)
+# 誤差見込み [m] と、footprint から計画用地図の通れない所までの距離 [m] (分からなければ -1)
 float32 possible_error_m
 float32 clearance_m
 # 速度の上限 [m/s] (0 は上限なし)
 float32 speed_limit
 
-# 今のセンサの組 (空は全部。例: no_lidar)
+# 今のセンサ構成 (空は全部。例: no_lidar)
 string sensor_set
 
-# 直近に決着した確かめの要求 (~/request_verify) の番号 (0 はまだない) と結果 (confirmed / relocated / undecided)
+# 直近に決着した検証要求 (~/request_verify) の番号 (0 はまだない) と結果 (confirmed / relocated / undecided)
 uint32 verify_id
 string verify_result
 

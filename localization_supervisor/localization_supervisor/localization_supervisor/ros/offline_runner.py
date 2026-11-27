@@ -300,8 +300,8 @@ def parse_bag(text: str) -> BagInput:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> None:
-    parser = argparse.ArgumentParser(description='自己位置の監督を rosbag でオフライン評価する')
-    parser.add_argument('--config', required=True, help='監督の設定ファイル')
+    parser = argparse.ArgumentParser(description='自己位置監視を rosbag でオフライン評価する')
+    parser.add_argument('--config', required=True, help='自己位置監視の設定ファイル')
     parser.add_argument('--profile', default='', help='重ねるプロファイル')
     parser.add_argument('--bag', action='append', required=True, type=parse_bag,
                         help='bag のパス。:トピック,... で読むトピックを限る (複数指定可。最初の bag が時刻の基準)')

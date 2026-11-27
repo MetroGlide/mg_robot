@@ -3,11 +3,11 @@ name: localization_drift_driving
 description: >
   棚の列に沿った通路をシーケンサで走っている間に、自己位置推定を横へ少しずつずらす (推定器が誤った姿勢へ
   引きずられる状況の再現。真の位置は動かさない)。AMCL と EKF がそろってずれ、正しい GNSS だけが食い違う。
-  ずれたまま長く走らず、自己位置の監督が AMCL を疑って戻し、ゴールへ着くことを確かめる。
-  到達の判定はシミュレータ上の真の位置で行う。ずらす注入は /initialpose を使うので、監督はプロファイル
+  ずれたまま長く走らず、自己位置監視が AMCL を疑って戻し、ゴールへ着くことを確かめる。
+  到達の判定はシミュレータ上の真の位置で行う。ずらす注入は /initialpose を使うので、自己位置監視はプロファイル
   fault_injection (localization_test_profile で、環境変数で選ぶプロファイルの後に重ねる) で /initialpose を外からの
   再初期化として扱わない。自己位置推定はプリセット robust。
-  通路に入る前に開けた場所を走り、監督の準備 (GNSS による初期化と猶予) ができて通路に入ってから注入する。
+  通路に入る前に開けた場所を走り、自己位置監視の準備 (GNSS による初期化と猶予) ができて通路に入ってから注入する。
 profile: mg01
 world: warehouse
 tags: [localization, drift, mg_sequencer, known_issue]

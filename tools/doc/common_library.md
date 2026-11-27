@@ -70,4 +70,4 @@ numpy と scipy のみに依存する。地図の占有と占有までの距離 
 故障の作用の判定と、スキャンの欠測・GNSS のバイアスなどの計算 (GNSS の雑音の過程は `GnssNoise`)。numpy のみに依存し、`fault_injector.py` が使う。
 
 ## `tools.common.offline_faults` (オフライン評価の故障への変換)
-故障定義を、自己位置の監督のオフライン評価 (`localization_supervisor.core.faults`) の定義に直す。情報源の名前は `mg_localization_supervisor/config/supervision.yaml` に合わせる。`eval_localization_offline.py` が使う。
+故障定義を、自己位置監視のオフライン評価 (`localization_supervisor.core.faults`) の定義に直す。情報源の名前は `mg_localization_supervisor/config/supervision.yaml` に合わせる。`eval_localization_offline.py` が使う。

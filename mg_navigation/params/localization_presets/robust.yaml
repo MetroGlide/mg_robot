@@ -1,6 +1,6 @@
 # 自己位置推定のプリセット robust: 角での AMCL の向きの取り違えと、外れた AMCL に EKF が付いていくことを減らす。
 # launch 引数 localization_preset:=robust (既定は環境変数 LOCALIZATION_PRESET) で、AMCL と EKF の params の後に重ねる。
-# 監督 (localization_monitor:=supervisor) と組で使う (EKF が AMCL を受け付けなくなったとき、監督が初期化し直して戻す)。
+# 自己位置監視 (localization_monitor:=supervisor) と組で使う (EKF が AMCL を受け付けなくなったとき、自己位置監視が初期化し直して戻す)。
 # 根拠は mg_navigation/doc/localization_robustness.md。
 amcl:
   ros__parameters:

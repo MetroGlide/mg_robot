@@ -35,7 +35,7 @@ def test_unknown_config_and_key_are_errors():
 
 
 def test_every_config_is_a_consistent_combination():
-    """プリセットは監督と組。門が置き直すのは監督の監視のときだけ。observe は watchdog と並走する監督で判定だけ。"""
+    """プリセットは自己位置監視と組。AMCL 検証ゲートが補正するのは自己位置監視の監視のときだけ。observe は watchdog と並走する自己位置監視で判定だけ。"""
     for name, values in CONFIGS.items():
         monitor = values['localization_monitor']
         if values['localization_preset']:

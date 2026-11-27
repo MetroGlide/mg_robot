@@ -1,4 +1,4 @@
-"""センサの組 (core/sensor_sets.py: 情報源の欠けから今の組を決める) と、その走り方への効き目のテスト。"""
+"""センサ構成 (core/sensor_sets.py: 情報源の欠けから今のセンサ構成を決める) と、その走行制約への効き目のテスト。"""
 import copy
 
 import pytest
@@ -36,7 +36,7 @@ def _run(store, tracker, start, end, scans):
 def test_a_source_missing_long_enough_switches_the_set_and_comes_back_after_it_returns():
     store, tracker = _tracker()
     assert _run(store, tracker, 0.0, 10.0, scans=True) == (ALL, [])
-    # 欠けて missing_after_sec を過ぎたら組を変える (起動し直しで戻る短い欠けでは変えない)
+    # 欠けて missing_after_sec を過ぎたら構成を変える (起動し直しで戻る短い欠けでは変えない)
     current, changes = _run(store, tracker, 10.0, 14.0, scans=False)
     assert current == ALL and not changes
     current, changes = _run(store, tracker, 14.0, 17.0, scans=False)
@@ -81,7 +81,7 @@ def test_config_rejects_bad_sensor_sets(sets):
 
 
 def test_config_rejects_a_scan_age_limit_not_shorter_than_the_set_switch():
-    """古いスキャンでの照合は、LiDAR なしの組に切り替える前にやめる (古さの上限 < 組に入るまでの時間)。"""
+    """古いスキャンでの照合は、LiDAR なしの構成に切り替える前にやめる (古さの上限 < 構成に入るまでの時間)。"""
     raw = _raw_with_sets([{'name': 'no_lidar', 'missing': ['map_scan'], 'missing_after_sec': 3.0}])
     raw['gate']['scan_buffer']['max_scan_age_sec'] = 2.0
     parse_config(raw)

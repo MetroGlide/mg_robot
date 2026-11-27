@@ -45,7 +45,7 @@ class SequencerProgressTracker:
         self._armed = False
 
     def update(self, state: str, index: int, now: float, paused: bool = False) -> None:
-        """paused は一時停止の要求が出ているか。要求で IDLE に留まる間は停滞に数えない。"""
+        """paused は停止要求が出ているか。要求で IDLE に留まる間は停滞に数えない。"""
         if state in ACTIVE_STATES:
             self._armed = True
         self._paused = paused

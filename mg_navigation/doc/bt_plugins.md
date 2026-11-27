@@ -67,28 +67,28 @@ RPP (Humble 1.1.20 の `RegulatedPurePursuitController`) の衝突判定と同�
 
 ## VerifyLocalization
 
-自己位置の監督 (`localization_supervisor_node`) に確かめの要求 (`~/request_verify`。地図との照合を 1 回) を出し、結果を状態 `/localization/status` の `verify_id`・`verify_result` で待つ (枠組みの [motion_gate.md](../../localization_supervisor/doc/motion_gate.md#確かめの要求))。
+自己位置監視 (`localization_supervisor_node`) に検証要求 (`~/request_verify`。地図照合を 1 回) を出し、結果を状態 `/localization/status` の `verify_id`・`verify_result` で待つ (枠組みの [motion_gate.md](../../localization_supervisor/doc/motion_gate.md#検証要求))。
 
 - SUCCESS は、今の推定 (AMCL) をそのまま確かめたとき。走行側は自己位置を頼りに動いてよい (障害物の領域からの脱出など)
-- FAILURE は、別の姿勢へ置き直した (次の段階で計画し直す)、決まらない (監督が門を閉じ、止めて照合する)、要求を受け付けられない (間隔の下限より早い・待っている要求がある)、`timeout` 秒以内に結果が来ないとき
-- 監督が確かめを扱えない (監督がいない、門のない構成) ときは、従来どおり、直近の状態が `NORMAL` なら SUCCESS (構成 `legacy` など)
+- FAILURE は、別の姿勢へ補正した (次の段階で計画し直す)、決まらない (自己位置監視が AMCL 検証ゲートを閉じ、止めて照合する)、要求を受け付けられない (間隔の下限より早い・待っている要求がある)、`timeout` 秒以内に結果が来ないとき
+- 自己位置監視が確かめを扱えない (自己位置監視がいない、AMCL 検証ゲートのない構成) ときは、従来どおり、直近の状態が `NORMAL` なら SUCCESS (構成 `legacy` など)
 - 結果を INFO で出す
 
 | ポート | 既定値 | 内容 |
 | :--- | :--- | :--- |
-| `service` | `/localization_supervisor_node/request_verify` | 確かめの要求のサービス |
+| `service` | `/localization_supervisor_node/request_verify` | 検証要求のサービス |
 | `topic` | `/localization/status` | 状態のトピック |
 | `timeout` | `15.0` | 結果を待つ時間の上限 [s] |
 | `requester` | `bt` | 要求元の名前 (記録用) |
 
 ## IsLocalizationHealthy
 
-自己位置の監督 (`localization_supervisor_node`) の状態 `/localization/status` (`localization_supervisor_msgs/LocalizationStatus`) が `NORMAL` なら SUCCESS。
+自己位置監視 (`localization_supervisor_node`) の状態 `/localization/status` (`localization_supervisor_msgs/LocalizationStatus`) が `NORMAL` なら SUCCESS。
 自己位置が疑わしいとき (`SUSPECT`・`ISOLATED`・`RECOVERING`・`DEGRADED`) は、復旧に任せて、走行側の対処 (障害物の領域からの脱出など) を止める。
 
-- 状態を受け取っていない、`max_age` 秒より古い (監督がいない、止まっている) ときは FAILURE。つまり、監視が `none` のときや、状態を配信するノードがないときは SUCCESS にならない
+- 状態を受け取っていない、`max_age` 秒より古い (自己位置監視がいない、止まっている) ときは FAILURE。つまり、監視が `none` のときや、状態を配信するノードがないときは SUCCESS にならない
 - 状態の変化 (信頼できる ↔ 信頼できない) のときに INFO を出す
-- GNSS だけを切り離している間 (`ISOLATED`) も FAILURE になる。将来の拡張: [doc/ideas](../../doc/ideas/localization_pose_trust.md)
+- GNSS だけを除外している間 (`ISOLATED`) も FAILURE になる。将来の拡張: [doc/ideas](../../doc/ideas/localization_pose_trust.md)
 
 | ポート | 既定値 | 内容 |
 | :--- | :--- | :--- |

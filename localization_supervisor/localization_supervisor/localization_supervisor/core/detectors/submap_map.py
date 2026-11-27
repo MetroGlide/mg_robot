@@ -19,7 +19,7 @@ class SubmapMap(Detector):
 
     1 枚のスキャンより広い範囲を見るので、似た場所の取り違え (推定器が自信を持って間違える状態) に強い。
     残したスキャンの走行距離が min_distance_m に届くまでと、照合しない周期は、判定できない。
-    動きの情報源の誤差 (すべり) も局所地図を崩すので、疑いは pose だけにかける。
+    動きの情報源の誤差 (すべり) も局所地図を崩すので、疑義は pose だけにかける。
     """
     SOURCES = {'pose': SourceKind.POSE, 'motion': SourceKind.MOTION, 'reference': SourceKind.REFERENCE}
     SUBJECTS = ('pose',)

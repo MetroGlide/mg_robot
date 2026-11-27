@@ -29,8 +29,8 @@ run:
 
 1. 開始時に `~/stop` → `set_next_waypoint_index(start_index)` (反映を確認) → `~/start`。
 2. waypoint を通過した後、sequencer が `wait_trigger` で IDLE になっていたら、`hooks.<n>.before` を実行してから `~/start` を呼ぶ。
-3. `~/start` を呼ぶ前に一時停止の要求 (`is_paused`。例: 自己位置の監督の止める要求) が出ていれば、解けるまで待つ (シーケンサは要求の間 start を受け付けない)。`waypoint_timeout_sec` 解けなければ失敗。
-4. sequencer が IDLE のまま `idle_stall_sec` 進まなければ ERROR (start 忘れの検出)。一時停止の要求で IDLE に留まる間は数えない。
+3. `~/start` を呼ぶ前に停止要求 (`is_paused`。例: 自己位置監視の止める要求) が出ていれば、解けるまで待つ (シーケンサは要求の間 start を受け付けない)。`waypoint_timeout_sec` 解けなければ失敗。
+4. sequencer が IDLE のまま `idle_stall_sec` 進まなければ ERROR (start 忘れの検出)。停止要求で IDLE に留まる間は数えない。
 
 `auto_start: false` にすると、start / index 設定はシナリオ側 (`sequencer_start` など) で行います。
 
@@ -52,17 +52,17 @@ sequencer が `ERROR` になったら FAILED です。
 | 型 | パラメータ | 成立条件 |
 |---|---|---|
 | `sequencer_state` | `state`, `index`=省略可, `namespace` | sequencer の状態が `state` (`IDLE` / `NAVIGATING` / `ON_ARRIVING` / `GOAL_REACHED` / `SUSPENDED` / `ERROR` 等) になった (`index` 指定時は current_index も一致) |
-| `localization_ready` | `for_sec`=5.0, `checks`=[] (判定のインスタンスの名前), `topic`=/localization/status | 自己位置の監督が `NORMAL` で猶予 (`in_grace`) の外である状態が `for_sec` 続き、`checks` の判定がどれも一度は `UNKNOWN` 以外になった。故障を注入する前に、監督の起動と GNSS による初期化が済むのを待つのに使う (GNSS は走り出すまで出ないので、`checks: [amcl_gnss]` は走行中に成立する) |
+| `localization_ready` | `for_sec`=5.0, `checks`=[] (判定のインスタンスの名前), `topic`=/localization/status | 自己位置監視が `NORMAL` で猶予 (`in_grace`) の外である状態が `for_sec` 続き、`checks` の判定がどれも一度は `UNKNOWN` 以外になった。故障を注入する前に、自己位置監視の起動と GNSS による初期化が済むのを待つのに使う (GNSS は走り出すまで出ないので、`checks: [amcl_gnss]` は走行中に成立する) |
 
 ## monitor
 
 | 型 | パラメータ | 判定 |
 |---|---|---|
 | `collision_monitor_action` | `action` (`STOP` / `SLOWDOWN` / `APPROACH`), `expect`=occurs (`occurs`/`never`), `topic`=/collision_monitor_state | `nav2_msgs/CollisionMonitorState` (`nav2_pkg/nav2_msgs` の型。新しい collision monitor と一緒に取り込んだもの) で、collision_monitor がその action を発動した回数から判定 |
-| `localization_state` | `state` (`NORMAL` / `SUSPECT` / `ISOLATED` / `RECOVERING` / `DEGRADED`), `expect`=occurs (`occurs`/`never`), `ends_in`=省略可 (走行後の最後の状態), `blame`=省略可 (疑わしい情報源の名前), `topic`=/localization/status | 自己位置の監督の状態 (`localization_supervisor_msgs/LocalizationStatus`) がその状態になった配信の回数から判定。`blame` を指定すると、疑わしい情報源がそれである配信だけを数える (正しい原因で復旧したか)。`ends_in` を指定すると、最後に受信した状態がそれであること (復旧して戻ったこと) も判定する。監督ノードを起動するシナリオ (`stack_args` の `localization_monitor: supervisor`) で使う |
+| `localization_state` | `state` (`NORMAL` / `SUSPECT` / `ISOLATED` / `RECOVERING` / `DEGRADED`), `expect`=occurs (`occurs`/`never`), `ends_in`=省略可 (走行後の最後の状態), `blame`=省略可 (疑わしい情報源の名前), `topic`=/localization/status | 自己位置監視の状態 (`localization_supervisor_msgs/LocalizationStatus`) がその状態になった配信の回数から判定。`blame` を指定すると、疑わしい情報源がそれである配信だけを数える (正しい原因で復旧したか)。`ends_in` を指定すると、最後に受信した状態がそれであること (復旧して戻ったこと) も判定する。自己位置監視ノードを起動するシナリオ (`stack_args` の `localization_monitor: supervisor`) で使う |
 | `navigation_activity` | `code` (`mg_msgs/NavigationActivity` の code。例 `paused` / `trigger_wait` / `action` / `recovery` / `obstacle_stop` / `detour_rejected`), `expect`=occurs (`occurs`/`never`), `topic`=/waypoint_sequencer_node/activity | シーケンサの「いまの活動」がその code になった回数から判定。シーケンサ経由の走行 (`mg_sequencer`) でだけ出る (`nav2_goals` は対象外) |
-| `localization_outcome` | `deviation_m`=1.0, `deviation_yaw`=0.35, `max_missed_distance_m`=省略, `max_missed_normal_speed_m`=省略, `max_false_hold_sec`=省略, `require_deviation`=false, `sample_sec`=0.2, `topic`=/odom, `status_topic`=/localization/status | 真のずれと監督の止める要求 (`hold_requested`) の組み合わせで走行を分ける。ずれているのに要求なしで走った距離 (見逃し)、ずれていて要求している時間 (復旧中)、ずれていないのに要求している時間 (誤停止) を出し、上限で判定する。見逃しのうち、減速 (状態の `speed_limit` が正) もなく走った距離と、減速していた時間 (そのうちずれていない時間) も出す。`require_deviation` なら、ずれが一度も起きない試行は ERROR |
-| `localization_hold` | `max_total_sec`=省略, `ends_released`=true, `topic`=/localization/status | 自己位置の監督が走行を止める要求 (`hold_requested`) を出していた回数と時間の合計を出す。合計が `max_total_sec` を超えたら FAILED。`ends_released` が true なら、走行の終わりに要求が解けていない (止まったまま) ときも FAILED |
+| `localization_outcome` | `deviation_m`=1.0, `deviation_yaw`=0.35, `max_missed_distance_m`=省略, `max_missed_normal_speed_m`=省略, `max_false_hold_sec`=省略, `require_deviation`=false, `sample_sec`=0.2, `topic`=/odom, `status_topic`=/localization/status | 真のずれと自己位置監視の止める要求 (`hold_requested`) の組み合わせで走行を分ける。ずれているのに要求なしで走った距離 (見逃し)、ずれていて要求している時間 (復旧中)、ずれていないのに要求している時間 (誤停止) を出し、上限で判定する。見逃しのうち、減速 (状態の `speed_limit` が正) もなく走った距離と、減速していた時間 (そのうちずれていない時間) も出す。`require_deviation` なら、ずれが一度も起きない試行は ERROR |
+| `localization_hold` | `max_total_sec`=省略, `ends_released`=true, `topic`=/localization/status | 自己位置監視が走行を止める要求 (`hold_requested`) を出していた回数と時間の合計を出す。合計が `max_total_sec` を超えたら FAILED。`ends_released` が true なら、走行の終わりに要求が解けていない (止まったまま) ときも FAILED |
 
 ## waypoint 形式 `mg`
 

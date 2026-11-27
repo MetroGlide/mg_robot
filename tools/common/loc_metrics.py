@@ -337,13 +337,13 @@ def gnss_weak_mask(times: np.ndarray, gps_times: np.ndarray, gps_sigma: np.ndarr
     return weak
 
 
-# 監督ノードの状態の記録 (行: [t, state, gnss_d2, jump_m, ekf_diff_m, scan_ratio, scan_gain]) の値の列
+# 自己位置監視ノードの状態の記録 (行: [t, state, gnss_d2, jump_m, ekf_diff_m, scan_ratio, scan_gain]) の値の列
 # localization_supervisor_msgs/LocalizationCheck.status の「判定できない」
 CHECK_UNKNOWN = 2
 
 
 def summarize_status_values(status: np.ndarray, check_scores: Dict[str, np.ndarray]) -> Dict[str, Any]:
-    """監督の総合の強さと、判定のインスタンスごとの score (判定できた周期だけ) の分布、状態ごとの時間の割合。
+    """自己位置監視の総合の強さと、判定のインスタンスごとの score (判定できた周期だけ) の分布、状態ごとの時間の割合。
 
     status は [t, state, fusion_level] の行。
     """

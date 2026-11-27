@@ -26,7 +26,7 @@ class BufferedScan:
 
 @dataclass
 class ScanBufferConfig:
-    """監督が復旧のために残すスキャンのバッファ (判定の submap_map のバッファとは別)。"""
+    """自己位置監視が復旧のために残すスキャンのバッファ (判定の submap_map のバッファとは別)。"""
     reference: str = ''
     motion: str = ''
     keyframe_distance_m: float = 0.5
@@ -35,7 +35,7 @@ class ScanBufferConfig:
     max_points_per_scan: int = 90
     max_range_m: float = 25.0
     # 最新のスキャンがこれより古い間 (LiDAR の途絶) は、溜めたスキャンを捨てて使わない [s]。溜めたスキャンを
-    # オドメトリで進めて照合すると、誤った姿勢へ置き直すため。0 なら見ない
+    # オドメトリで進めて照合すると、誤った姿勢へ補正するため。0 なら見ない
     max_scan_age_sec: float = 0.0
 
     def make(self) -> 'ScanBuffer':

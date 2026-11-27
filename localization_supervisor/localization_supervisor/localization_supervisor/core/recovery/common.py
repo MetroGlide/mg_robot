@@ -10,7 +10,7 @@ from ..interfaces import RecoveryContext
 
 
 def predict_from_anchor(context: RecoveryContext, motion: str) -> Optional[Tuple[Pose2, np.ndarray, float]]:
-    """疑いが始まる前の、最も新しいアンカーに、その後の動きを足した今の姿勢と共分散、動いた距離 [m]。
+    """疑義が始まる前の、最も新しいアンカーに、その後の動きを足した今の姿勢と共分散、動いた距離 [m]。
 
     共分散は、アンカーの時点のものだけ。動きの誤差の増え方は、呼び出し側が足す。アンカーがなければ None。
     """

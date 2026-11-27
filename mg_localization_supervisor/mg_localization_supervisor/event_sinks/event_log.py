@@ -1,4 +1,4 @@
-"""監督のイベントを、このプロジェクトのイベントログ (mg_utils.event_log、doc/monitoring.md の規約) で出す。
+"""自己位置監視のイベントを、このプロジェクトのイベントログ (mg_utils.event_log、doc/monitoring.md の規約) で出す。
 
 設定 (supervision.yaml) の events.sink に `mg_localization_supervisor.event_sinks.event_log:EventLogSink` と書く。
 """

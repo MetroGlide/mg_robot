@@ -1,9 +1,9 @@
-"""情報源の分散にかける倍率を出す対処。
+"""情報源の分散にかける倍率を出す出力部。
 
-監督が求めた倍率 (中核の StepResult.applied_scales) を、周期ごとに配信する。倍率は、設定の residuals の統計
-(a の実際の誤差が自己申告の何倍か) から求め、a の情報源を切り離しているあいだは上限になる。
+自己位置監視が求めた倍率 (中核の StepResult.applied_scales) を、周期ごとに配信する。倍率は、設定の residuals の統計
+(a の実際の誤差が自己申告の何倍か) から求め、a の情報源を除外しているあいだは上限になる。
 受け取る側 (例: GNSS のブリッジ) が、その情報源の分散にかけて、信頼度を下げる。
-受け取る側は、一定時間届かなければ倍率を 1 に戻す (監督が止まっても、弱いままにしない)。
+受け取る側は、一定時間届かなければ倍率を 1 に戻す (自己位置監視が止まっても、弱いままにしない)。
 """
 from typing import Any, Dict, Iterable, Mapping
 
@@ -34,7 +34,7 @@ class VarianceScale(Actuator):
 
 
 def delivered_scales(actuators: Iterable[Actuator], scales: Mapping[str, float]) -> Dict[str, float]:
-    """受け取る側に実際に届く倍率。対処 variance_scale が無ければ、倍率は届かない (1)。
+    """受け取る側に実際に届く倍率。出力部 variance_scale が無ければ、倍率は届かない (1)。
     割り戻しは、届いた倍率だけで行う。"""
     active = {a.params['residual'] for a in actuators if isinstance(a, VarianceScale)}
     return {name: (scale if name in active else 1.0) for name, scale in scales.items()}

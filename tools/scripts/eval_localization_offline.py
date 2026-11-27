@@ -2,7 +2,7 @@
 """
 eval_localization_offline.py
 
-自己位置の監督 (localization_supervisor) を、再生評価の記録 (run_localization_variant.sh の run_N/output) で
+自己位置監視 (localization_supervisor) を、再生評価の記録 (run_localization_variant.sh の run_N/output) で
 オフライン評価する。実時間を待たずに、判定・総合・状態遷移だけを回す。
 
 - 入力: 記録した推定器の出力 (AMCL・EKF・GNSS・オドメトリ、記録していれば AMCL の粒子) と、データセットの
@@ -52,7 +52,7 @@ from tools.common.pose_graph import interpolate_nodes, load_slam_output, shift_n
 from tools.scripts.loc_dataset import load_dataset, resolve_dataset_path  # noqa: E402
 
 DEFAULT_CONFIG = os.path.join(REPO_ROOT, "mg_localization_supervisor", "config", "supervision.yaml")
-# 記録した推定器の出力のうち、監督の入力にするトピック (supervision.yaml の sources と合わせる)
+# 記録した推定器の出力のうち、自己位置監視の入力にするトピック (supervision.yaml の sources と合わせる)
 OUTPUT_TOPICS = ["/amcl_pose_origin", "/ekf_global_odom", "/odom", "/odom/gps", "/particle_cloud"]
 # 評価 bag から読むトピック (スキャンと、センサの取り付け位置)
 SOURCE_TOPICS = ["/scan_top_lidar", "/tf_static"]
@@ -129,9 +129,9 @@ def summarize_truth(truths: Dict[str, List[List[Dict[str, Any]]]], ok_threshold_
 def summarize(results: Dict[str, List[OfflineResult]]) -> str:
     """プロファイルごとに、試行をまとめた表。"""
     lines = ["検知の対象は姿勢をずらす故障だけ。誤検知は、その区間の外 (標本が欠けるだけの故障の区間を含む) で確認に"
-             "移った回数。再初期化は、監督が指示した回数 (誤りは、候補が真の姿勢から ok_threshold を超えて離れたもの。"
+             "移った回数。再初期化は、自己位置監視が指示した回数 (誤りは、候補が真の姿勢から ok_threshold を超えて離れたもの。"
              "区間外は、故障の区間の外での指示)。復旧は、指示の後に NORMAL に戻るまでの中央値。", "",
-             "| プロファイル | 試行 | 確認した故障 | 疑いまで 中央値[s] | 確認まで 中央値[s] | blame の正解 | 誤検知[回] |"
+             "| プロファイル | 試行 | 確認した故障 | 疑義まで 中央値[s] | 確認まで 中央値[s] | blame の正解 | 誤検知[回] |"
              " 故障の外で NORMAL 以外の割合 | 再初期化[回] | 誤り | 区間外 | 見送り | 復旧 中央値[s] |",
              "|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for profile, runs in results.items():
@@ -158,10 +158,10 @@ def summarize(results: Dict[str, List[OfflineResult]]) -> str:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="自己位置の監督を再生評価の記録でオフライン評価する")
+    parser = argparse.ArgumentParser(description="自己位置監視を再生評価の記録でオフライン評価する")
     parser.add_argument("paths", nargs="+", help="変種ディレクトリ (run_N を含む) または run_N ディレクトリ")
     parser.add_argument("--dataset", default="map043837_eval051635_short", help="データセット (名前またはパス)")
-    parser.add_argument("--config", default=DEFAULT_CONFIG, help="監督の設定ファイル")
+    parser.add_argument("--config", default=DEFAULT_CONFIG, help="自己位置監視の設定ファイル")
     parser.add_argument("--profile", action="append", help="比べるプロファイル ('' は既定の設定)")
     parser.add_argument("--faults", help="記録した標本に注入する故障 (再生評価と同じ書式)")
     parser.add_argument("--labels", help="記録したときに注入されていた故障 (正解としてだけ使う)")

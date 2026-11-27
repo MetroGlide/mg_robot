@@ -96,22 +96,22 @@ def generate_launch_description():
     use_gnss_amcl_initializer_arg = launch_argument_creator.create(
         "use_gnss_amcl_initializer", default="true")
     # 自己位置推定の構成 (legacy | observe | supervised。mg_navigation/localization_config.py)。既定は環境変数
-    # LOCALIZATION_CONFIG。下の監視・監督の並走・門・プロファイル・プリセットは、空なら構成の値を使う
+    # LOCALIZATION_CONFIG。下の監視・自己位置監視の並走・ AMCL 検証ゲート・プロファイル・プリセットは、空なら構成の値を使う
     localization_config_arg = launch_argument_creator.create(
         "localization_config", default=EnvironmentVariable("LOCALIZATION_CONFIG", default_value=DEFAULT_CONFIG))
     # 自己位置の監視ノード (none | watchdog | supervisor)。既定は環境変数 LOCALIZATION_MONITOR
     localization_monitor_arg = launch_argument_creator.create(
         "localization_monitor", default=EnvironmentVariable("LOCALIZATION_MONITOR", default_value=""))
-    # 監視が watchdog のとき、監督ノードを並行して通知だけで動かすか (true | false)
+    # 監視が watchdog のとき、自己位置監視ノードを並行して通知だけで動かすか (true | false)
     localization_supervisor_arg = launch_argument_creator.create(
         "localization_supervisor", default="")
     supervisor_config_arg = launch_argument_creator.create(
         "supervisor_config", default=os.path.join(
             get_package_share_directory("mg_localization_supervisor"), "config", "supervision.yaml"))
-    # 監督ノードの中で門を使うか (true | false | observe)。既定は環境変数 LOCALIZATION_GATE
+    # 自己位置監視ノードの中で AMCL 検証ゲートを使うか (true | false | observe)。既定は環境変数 LOCALIZATION_GATE
     localization_gate_arg = launch_argument_creator.create(
         "localization_gate", default=EnvironmentVariable("LOCALIZATION_GATE", default_value=""))
-    # 監督の設定に重ねるプロファイル (mg_localization_supervisor/config/supervision.yaml の profiles。none は基本設定)
+    # 自己位置監視の設定に重ねるプロファイル (mg_localization_supervisor/config/supervision.yaml の profiles。none は基本設定)
     localization_profile_arg = launch_argument_creator.create(
         "localization_profile", default=EnvironmentVariable("LOCALIZATION_PROFILE", default_value=""))
     # localization_profile の後に重ねるプロファイル (シナリオ試験の故障の注入用。localization_profile は環境変数で

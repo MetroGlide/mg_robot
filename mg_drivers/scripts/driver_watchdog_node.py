@@ -64,7 +64,7 @@ class DriverWatchdogNode(Node):
         startup_grace = self.declare_parameter('startup_grace_sec', 30.0).value
         hz_warn_ratio = self.declare_parameter('hz_warn_ratio', 0.5).value
         self._pause_on_fault = self.declare_parameter('pause_on_fault', True).value
-        # 一時停止を出さないソース (走行中に変えられる)。自己位置の監督が、欠けたセンサなしの組で走らせるときに
+        # 一時停止を出さないソース (走行中に変えられる)。自己位置監視が、欠けたセンサなしの構成で走らせるときに
         # 外から足す (診断と起動し直しは続ける)
         self._pause_exempt = list(self.declare_parameter(
             'pause_exempt_sources', Parameter.Type.STRING_ARRAY).value or [])
@@ -105,7 +105,7 @@ class DriverWatchdogNode(Node):
         self._pause_pub = self.create_publisher(PauseRequest, pause_topic, 10)
         self._paused_by = []
         self.create_timer(check_period, self._check)
-        # 状態が変わったときだけでなく、毎秒送る。~/stop で一時停止の要求が消えたり、
+        # 状態が変わったときだけでなく、毎秒送る。~/stop で停止要求が消えたり、
         # シーケンサが再起動したりしても、異常のあいだは一時停止が戻るように
         self.create_timer(1.0, self._publish_pause)
         self._events.info(

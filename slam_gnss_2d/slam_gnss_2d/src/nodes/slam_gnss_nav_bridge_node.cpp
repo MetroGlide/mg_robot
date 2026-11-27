@@ -99,7 +99,7 @@ class SlamGnssNavBridgeNode : public rclcpp::Node {
     quality_.single_scale = get_parameter("single_scale").as_double();
     quality_.accept_single = get_parameter("accept_single").as_bool();
 
-    // 位置の分散にかける倍率を、外 (自己位置の監督) から受け取る。トピックが空なら受け取らない
+    // 位置の分散にかける倍率を、外 (自己位置監視) から受け取る。トピックが空なら受け取らない
     const std::string variance_scale_topic = declare_parameter("variance_scale_topic", std::string(""));
     variance_scale_ = gnss::VarianceScale(
         declare_parameter("variance_scale_timeout_sec", 10.0),

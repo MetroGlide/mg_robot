@@ -3,7 +3,7 @@
 ## 背景
 
 - EKF は AMCL と GNSS を融合するが、AMCL を無条件に受け入れるので、GNSS が弱い場所で AMCL がずれると、EKF には戻す手がかりがない ([localization.md](../../mg_navigation/doc/localization.md))。
-- AMCL の向きの取り違えの多くは `alpha` の調整と監督で減らせるが、GNSS の弱い区間の向きのずれは残る ([localization_robustness.md](../../mg_navigation/doc/localization_robustness.md))。
+- AMCL の向きの取り違えの多くは `alpha` の調整と自己位置監視で減らせるが、GNSS の弱い区間の向きのずれは残る ([localization_robustness.md](../../mg_navigation/doc/localization_robustness.md))。
 - AMCL の粒子は、ずれる前に複数の仮説に割れ、誤った方が勝った後も正しい仮説が残ることが多い。今の構成は、AMCL の最良の 1 つの姿勢しか使わない。
 
 ## 構想
@@ -20,14 +20,14 @@
 
 | 案 | 内容 | 長所 | 短所 |
 | :--- | :--- | :--- | :--- |
-| A. 監督の部品として (先に試す) | グラフの姿勢を、監督の情報源にし、AMCL との食い違いの判定と、復旧の候補に使う | 今の構成 (AMCL + EKF) を変えない。差し替え・無効化が設定だけでできる | ずれてから戻すので、止まる時間は残る |
-| B. EKF の置き換え (fuse) | グラフの姿勢を EKF に入れる、または直接 `map→odom` にする | ずれる前に防げる | 構成の変更が大きい。監督の EKF を基準にした判定の意味が変わる |
+| A. 自己位置監視の部品として (先に試す) | グラフの姿勢を、自己位置監視の情報源にし、AMCL との食い違いの判定と、復旧の候補に使う | 今の構成 (AMCL + EKF) を変えない。差し替え・無効化が設定だけでできる | ずれてから戻すので、止まる時間は残る |
+| B. EKF の置き換え (fuse) | グラフの姿勢を EKF に入れる、または直接 `map→odom` にする | ずれる前に防げる | 構成の変更が大きい。自己位置監視の EKF を基準にした判定の意味が変わる |
 
 ## 入る場所
 
 - 新しいパッケージ (ロボットに依存しない)。出力は `PoseWithCovarianceStamped` と診断。
-- 案 A は、監督の既存の部品で受けられる ([plugins.md](../../localization_supervisor/doc/plugins.md)): アダプタ `pose_with_covariance`、判定 `pose_consistency`、候補 `pose_source`。グラフは AMCL・GNSS・オドメトリから作るので、情報源には `derived_from` を付ける。
-- AMCL の仮説の分け方は、監督の「仮説の集合」の情報源と共有する。
+- 案 A は、自己位置監視の既存の部品で受けられる ([plugins.md](../../localization_supervisor/doc/plugins.md)): アダプタ `pose_with_covariance`、判定 `pose_consistency`、候補 `pose_source`。グラフは AMCL・GNSS・オドメトリから作るので、情報源には `derived_from` を付ける。
+- AMCL の仮説の分け方は、自己位置監視の「仮説の集合」の情報源と共有する。
 
 ## 着手の前に確かめること
 
@@ -41,4 +41,4 @@
 - グラフ自身の地図照合の因子: AMCL と同じ LiDAR と地図を使い、相関した二重の観測になる。
 - SLAM の地図作成時のポーズグラフを使うこと: 自己位置推定用の地図は切り貼りで、整合しない。
 - 床面のオプティカルフロー、カメラの場所認識、LiDAR オドメトリの単体の追加: センサや計算の追加が要る。
-- 本番の前に入れること: 見送った。再生の比較 (門と地図との照合を入れた EKF と、窓つきの推定器) では、AMCL の飛びはどちらも同じ程度に抑えられ、窓つきが勝ったのはゆっくりしたずれに早く気づく点だけだった。シミュレーションで残る失敗は、AMCL・EKF・前の続きがそろってずれる場面で、入力がそろって誤るので窓つきでも直らない。ずれた時だけ解く使い方では、ゆっくりしたずれに気づく役に立たず、候補を作る役は監督の部分地図の照合と重なる。再開の条件: 実機の記録で、通路などのゆっくりしたずれが、照合の拘束の強さ ([localization_directional_constraint.md](./localization_directional_constraint.md)) で防げないと分かったとき。
+- 本番の前に入れること: 見送った。再生の比較 (AMCL 検証ゲートと地図照合を入れた EKF と、窓つきの推定器) では、AMCL の飛びはどちらも同じ程度に抑えられ、窓つきが勝ったのはゆっくりしたずれに早く気づく点だけだった。シミュレーションで残る失敗は、AMCL・EKF・推測航法姿勢がそろってずれる場面で、入力がそろって誤るので窓つきでも直らない。ずれた時だけ解く使い方では、ゆっくりしたずれに気づく役に立たず、候補を作る役は自己位置監視の部分地図の照合と重なる。再開の条件: 実機の記録で、通路などのゆっくりしたずれが、照合の拘束の強さ ([localization_directional_constraint.md](./localization_directional_constraint.md)) で防げないと分かったとき。

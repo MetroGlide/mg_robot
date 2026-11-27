@@ -16,7 +16,7 @@
 | 使う | 入力 |
 | :--- | :--- |
 | コストマップ (`local_costmap`、`global_costmap`)、`collision_monitor` | 前処理後の `/scan_filtered/scan_top_lidar` |
-| AMCL、SLAM | 生の `/scan_top_lidar` (地図との照合に、自車の点は影響しないので、加工しない) |
+| AMCL、SLAM | 生の `/scan_top_lidar` (地図照合に、自車の点は影響しないので、加工しない) |
 
 rosbag の再生では、`mg_navigation` の `bag_play.launch.py` が、bag の生のスキャンからこの前処理を動かす。
 

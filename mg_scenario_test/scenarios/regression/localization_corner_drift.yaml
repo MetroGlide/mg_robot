@@ -3,7 +3,7 @@ name: localization_corner_drift
 description: >
   warehouse を 1 周する経路 (角が複数ある) をシーケンサで走り、後半の 3 つの角で、自己位置推定の向きを少しずつずらす
   (真の位置は動かさない)。角でずれても、ずれたまま走り続けず、止まったままにならず、人の操作なしで走りきることを確かめる。
-  注入は /initialpose を使う状態遷移と復旧の回帰で、AMCL が自分で誤る過程の再現ではない。監督はプロファイル
+  注入は /initialpose を使う状態遷移と復旧の回帰で、AMCL が自分で誤る過程の再現ではない。自己位置監視はプロファイル
   fault_injection、自己位置推定はプリセット robust。
 profile: mg01
 world: warehouse

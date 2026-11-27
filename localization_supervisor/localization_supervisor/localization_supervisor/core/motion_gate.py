@@ -1,13 +1,13 @@
-"""推定器の姿勢を融合に入れる前の門 (ROS に依存しない)。
+"""推定器の姿勢を融合に入れる前の AMCL 検証ゲート (ROS に依存しない)。
 
-閉じる理由の部品 (判定) のどれかが異常を出したら門を閉じ、候補を地図と照合して決めてから開ける。
-閉じる理由の部品は「何か変だ」を出すだけで、正しい姿勢は決めない。門を開けるのは照合が決めたときだけ。
+遮断条件 (判定) のどれかが異常を出したら AMCL 検証ゲートを閉じ、候補を地図と照合して決めてから開ける。
+遮断条件は「何か変だ」を出すだけで、正しい姿勢は決めない。AMCL 検証ゲートを開けるのは照合が決めたときだけ。
 
 周期ごとに step(snapshot, result) を呼ぶ。照合が要るときは GateStep.request を返すので、呼び出し側が
 MapMatcher.decide で照合して (重いので別のスレッドで)、次の周期の step に result として渡す。
 
-監督の部品として使うときは、監督が疑った情報源を step の distrust に渡し (GNSS を使う閉じる理由と候補を使わない)、
-監督が推定器の異常を確かめたら force_close で閉じさせる (候補を足せる。決まるまで止めて照合する)。
+自己位置監視の部品として使うときは、自己位置監視が疑った情報源を step の distrust に渡し (GNSS を使う遮断条件と候補を使わない)、
+自己位置監視が推定器の異常を確かめたら force_close で閉じさせる (候補を足せる。決まるまで止めて照合する)。
 """
 import enum
 import math
@@ -28,24 +28,24 @@ from .snapshot import DistanceFieldCache, Snapshot
 
 CONTINUATION = 'continuation'
 MANUAL = 'manual'
-# 走行側からの確かめの要求の照合
+# 走行側からの検証要求の照合
 VERIFY = 'verify'
 # 起動の直後と地図の切り替えの後に、GNSS の周りを向きの全周で照合して見つけた姿勢の候補
 INITIAL = 'initial_search'
-# 全周の照合に使う、1 回分のスキャンの点の数の上限
+# 初期全周探索に使う、1 回分のスキャンの点の数の上限
 INITIAL_MAX_POINTS = 360
 
 
 class GateState(enum.Enum):
-    UNCONFIRMED = 'unconfirmed'   # 確かめた姿勢がない (起動の直後、地図の切り替えの後)。門は開ける
+    UNCONFIRMED = 'unconfirmed'   # 未初期化 (起動の直後、地図の切り替えの後)。AMCL 検証ゲートは開ける
     OPEN = 'open'
     CLOSED = 'closed'             # 照合の決着を待つ
-    CORRECTING = 'correcting'     # 大きい補正。止まってから置き直す
+    CORRECTING = 'correcting'     # 大きい補正。止まってから補正する
 
 
 @dataclass
 class GateSettings:
-    # 情報源の名前 (門をかける推定器、融合の結果、動き、地図とスキャン、GNSS (空なら使わない))
+    # 情報源の名前 (AMCL 検証ゲートをかける推定器、融合の結果、動き、地図とスキャン、GNSS (空なら使わない))
     estimator: str = ''
     fused: str = ''
     motion: str = ''
@@ -57,7 +57,7 @@ class GateSettings:
     # GNSS の候補に使う申告の精度の上限と、探す範囲 (申告の標準偏差の倍)
     gnss_max_std_m: float = 1.0
     gnss_sigma_k: float = 3.0
-    # 前の続きの候補の探す範囲を、確かめてから走った道のり 1 m あたり広げる量
+    # 推測航法姿勢の候補の探す範囲を、確かめてから走った道のり 1 m あたり広げる量
     continuation_xy_per_m: float = 0.05
     continuation_yaw_per_m: float = 0.01
     # 手動の初期姿勢の候補の探す範囲 (人が与える姿勢のおおよその誤差より広く)
@@ -65,12 +65,12 @@ class GateSettings:
     manual_yaw_rad: float = 0.5
     # 決まらなかったときに照合し直す間隔
     retry_sec: float = 2.0
-    # 門が開いている間に、確かめた姿勢を更新する道のり
+    # AMCL 検証ゲートが開いている間に、検証済み姿勢を更新する道のり
     confirm_distance_m: float = 10.0
-    # 置き直し・推定器を採った後に、閉じる理由を使わない道のりと時間 (どちらも満たすまで)
+    # 姿勢補正・推定器を採った後に、遮断条件を使わない道のりと時間 (どちらも満たすまで)
     grace_after_reset_m: float = 1.0
     grace_after_reset_sec: float = 12.0
-    # その場で置き直す補正の大きさの上限 (融合の結果との差)。超えれば止まってから置き直す
+    # その場で補正する補正の大きさの上限 (融合の結果との差)。超えれば止まってから補正する
     small_correction_m: float = 0.3
     small_correction_rad: float = 0.1
     # 止まったとみなす速さと、その続く時間。止まるのを待つ時間の上限
@@ -78,40 +78,40 @@ class GateSettings:
     stopped_yaw_rate_rps: float = 0.05
     stopped_sec: float = 1.0
     correction_hold_max_sec: float = 10.0
-    # 門を閉じたまま決まらないときの上限 (時間か道のり)。超えたら undecided_hold_sec の間止まって照合し、
+    # AMCL 検証ゲートを閉じたまま決まらないときの上限 (時間か道のり)。超えたら undecided_hold_sec の間止まって照合し、
     # 決まらなければ解いて undecided_drive_m 走ってから、また止まる
     max_closed_sec: float = 30.0
     max_closed_m: float = 15.0
     undecided_hold_sec: float = 10.0
     undecided_drive_m: float = 5.0
-    # 置き直す姿勢の標準偏差
+    # 補正する姿勢の標準偏差
     reset_std_m: float = 0.1
     reset_std_yaw_rad: float = 0.05
-    # 全周の照合 (設定の initial_search があるとき) に使う GNSS の申告の精度の上限と、続けて満たす標本の数
+    # 初期全周探索 (設定の initial_search があるとき) に使う GNSS の申告の精度の上限と、続けて満たす標本の数
     initial_gnss_max_std_m: float = 5.0
     initial_gnss_consecutive: int = 2
-    # GNSS の見習い期間: 申告の精度が、直近 gnss_probation_window_sec の最も悪い値から gnss_probation_ratio 倍以上
+    # GNSS の再採用待機: 申告の精度が、直近 gnss_probation_window_sec の最も悪い値から gnss_probation_ratio 倍以上
     # 良くなり、その最も悪い値が gnss_max_std_m より悪かったら、gnss_probation_sec の間 GNSS を使わない
     # (屋根を抜けた直後などに、位置はずれたまま申告だけが良くなるため)。0 なら使わない
     gnss_probation_sec: float = 0.0
     gnss_probation_ratio: float = 3.0
     gnss_probation_window_sec: float = 10.0
-    # 監督が切り離した GNSS を、切り離しを解いた後も、門が確かめた姿勢と合うまで門と復旧に使わせない (監督が読む。
-    # 疑う相手が推定器に移るだけで切り離しが解けることがあり、GNSS が正しいとは確かめていないため)。確かめた姿勢と
+    # 自己位置監視が除外した GNSS を、除外を解いた後も、AMCL 検証ゲートが検証済み姿勢と合うまで AMCL 検証ゲートと復旧に使わせない (自己位置監視が読む。
+    # 疑う相手が推定器に移るだけで除外が解けることがあり、GNSS が正しいとは確かめていないため)。検証済み姿勢と
     # GNSS の位置の差が申告の標準偏差の gnss_sigma_k 倍以内で、申告の精度が gnss_max_std_m 以下なら、また使わせる
     gnss_hold_after_distrust: bool = False
-    # 確かめの要求 (走行側から) を受け付ける間隔の下限 [s]
+    # 検証要求 (走行側から) を受け付ける間隔の下限 [s]
     verify_min_interval_sec: float = 5.0
-    # 広い照合: 決まらずに止めた回数がこれに達した後の停止の間は、確かめた姿勢の続き (なければ融合の結果) の周りを、
-    # 全周の照合 (設定の initial_search) で探して候補に足す。0 なら使わない
+    # 拡大探索: 決まらずに止めた回数がこれに達した後の停止の間は、推測航法姿勢 (なければ融合の結果) の周りを、
+    # 初期全周探索 (設定の initial_search) で探して候補に足す。0 なら使わない
     wide_search_after_holds: int = 0
 
 
 @dataclass
 class CloserConfig:
-    """閉じる理由の部品。異常が close_after_sec 続いたら門を閉じる。
+    """遮断条件。異常が close_after_sec 続いたら AMCL 検証ゲートを閉じる。
 
-    active_in_grace が偽の部品は、置き直しの後の猶予の間は門を閉じない (置き直しの前の標本と比べる部品など)。
+    active_in_grace が偽の部品は、姿勢補正の後の猶予の間は AMCL 検証ゲートを閉じない (姿勢補正の前の標本と比べる部品など)。
     """
     name: str
     detector: Detector
@@ -128,15 +128,15 @@ class MotionGateConfig:
     map_match: MapMatchConfig
     scan_buffer: ScanBufferConfig
     kinds: Dict[str, SourceKind] = field(default_factory=dict)
-    # 確かめた姿勢がない間 (起動の直後、地図の切り替えの後) に、GNSS の周りを向きの全周で照合する (None ならしない)
+    # 未初期化間 (起動の直後、地図の切り替えの後) に、GNSS の周りを向きの全周で照合する (None ならしない)
     initial_search: Optional[InitialSearchConfig] = None
-    # 判定と照合だけをし、何もしない (門を開けたまま、置き直さず、止める要求を出さない)。イベントは出す
+    # 判定と照合だけをし、何もしない (AMCL 検証ゲートを開けたまま、補正せず、止める要求を出さない)。イベントは出す
     observe_only: bool = False
 
 
 @dataclass
 class InitialSearch:
-    """全周の照合の依頼。center (GNSS の位置) と points (1 回分のスキャン、base の座標) は、動きが motion の時刻のもの。"""
+    """初期全周探索の依頼。center (GNSS の位置) と points (1 回分のスキャン、base の座標) は、動きが motion の時刻のもの。"""
     center: Pose2
     points: np.ndarray
     motion: Pose2
@@ -156,7 +156,7 @@ class MatchRequest:
     occupancy: OccupancyMap
     fields: DistanceFieldCache
     initial: Optional[InitialSearch] = None
-    # 全周の照合の結果 (run_match が入れる)
+    # 初期全周探索の結果 (run_match が入れる)
     initial_result: Optional[InitialSearchResult] = None
 
     def field_for(self, x: float, y: float, radius: float):
@@ -166,7 +166,7 @@ class MatchRequest:
 def run_match(matcher: MapMatcher, request: MatchRequest) -> MatchDecision:
     """照合の依頼を処理する (重いので、周期の処理と別のスレッドで呼ぶ)。
 
-    全周の照合の依頼があれば先に行い、はっきり合った姿勢を候補 INITIAL として足してから、ほかの候補と同じ規則で決める。
+    初期全周探索の依頼があれば先に行い、はっきり合った姿勢を候補 INITIAL として足してから、ほかの候補と同じ規則で決める。
     """
     candidates = dict(request.candidates)
     initial = request.initial
@@ -181,7 +181,7 @@ def run_match(matcher: MapMatcher, request: MatchRequest) -> MatchDecision:
 
 @dataclass
 class ResetCommand:
-    """置き直し。targets は 'all' (推定器と融合) か 'fused' (融合だけ)。"""
+    """姿勢補正。targets は 'all' (推定器と融合) か 'fused' (融合だけ)。"""
     pose: Pose2
     cov: np.ndarray
     targets: str
@@ -206,13 +206,13 @@ class GateStep:
     evidences: Dict[str, Evidence] = field(default_factory=dict)
     closing: List[str] = field(default_factory=list)
     in_grace: bool = False
-    # この周期に決着した確かめの要求 (番号, 結果)。結果は VERIFY_RESULTS のどれか
+    # この周期に決着した検証要求 (番号, 結果)。結果は VERIFY_RESULTS のどれか
     verified: Optional[Tuple[int, str]] = None
-    # 直近に決着した確かめの要求 (状態に出し続ける)
+    # 直近に決着した検証要求 (状態に出し続ける)
     last_verify: Optional[Tuple[int, str]] = None
 
 
-# 確かめの要求の結果: 推定器のまま確かめた / 別の姿勢へ置き直す / 決まらない (門を閉じ、止めて照合する)
+# 検証要求の結果: 推定器のまま確かめた / 別の姿勢へ補正する / 決まらない (AMCL 検証ゲートを閉じ、止めて照合する)
 VERIFY_CONFIRMED = 'confirmed'
 VERIFY_RELOCATED = 'relocated'
 VERIFY_UNDECIDED = 'undecided'
@@ -221,7 +221,7 @@ VERIFY_RESULTS = (VERIFY_CONFIRMED, VERIFY_RELOCATED, VERIFY_UNDECIDED)
 
 @dataclass
 class _Anchor:
-    """確かめた姿勢と、その時刻の動きと道のり。"""
+    """検証済み姿勢と、その時刻の動きと道のり。"""
     pose: Pose2
     motion: Pose2
     odometer: float
@@ -261,7 +261,7 @@ class MotionGate:
         self._correction: Optional[Tuple[Pose2, Pose2, str]] = None
         self._correction_since = 0.0
         self._manual: Optional[Pose2] = None
-        # 確かめの要求: 番号の続き、待っている番号、受け付けた時刻、直近の決着 (番号, 結果)
+        # 検証要求: 番号の続き、待っている番号、受け付けた時刻、直近の決着 (番号, 結果)
         self._verify_seq = 0
         self._verify_pending: Optional[int] = None
         self._verify_at = -math.inf
@@ -273,7 +273,7 @@ class MotionGate:
         self._last_scan_stamp: Optional[float] = None
         self._distrust: frozenset = frozenset()
         self._supervisor_distrust: frozenset = frozenset()
-        # GNSS の申告の精度の履歴 (時刻, 標準偏差) と、見習い期間の終わり
+        # GNSS の申告の精度の履歴 (時刻, 標準偏差) と、再採用待機の終わり
         self._gnss_std: Deque[Tuple[float, float]] = deque()
         self._probation_until = -math.inf
         # 外から足された候補 (force_close。次に閉じたまま照合するときに一度だけ使う) と、出していないイベント
@@ -281,7 +281,7 @@ class MotionGate:
         self._pending: List[GateEvent] = []
         # 外から閉じさせた (融合の結果も汚れているおそれがある) ので、決まるまで止めて照合する
         self._escalated = False
-        # 全周の照合に使える GNSS の標本が続いた数と、最後に数えた標本の時刻。GNSS の位置を広い共分散で出したか
+        # 初期全周探索に使える GNSS の標本が続いた数と、最後に数えた標本の時刻。GNSS の位置を広い共分散で出したか
         # (最初に確かめるまでに 1 回だけ。推定器に広く探させる)
         self._gnss_good = 0
         self._gnss_stamp: Optional[float] = None
@@ -292,14 +292,14 @@ class MotionGate:
     # ------------------------------------------------------------------ 外から
 
     def manual_pose(self, pose: Pose2) -> None:
-        """手動の初期姿勢を受けた。次の周期で、その周りを照合してから置き直す (照合中の結果は捨てる)。"""
+        """手動の初期姿勢を受けた。次の周期で、その周りを照合してから補正する (照合中の結果は捨てる)。"""
         self._manual = pose
         self._generation += 1
 
     def request_verify(self, t: float) -> Optional[int]:
-        """走行側からの確かめの要求。受け付ければ番号を返す (間隔の下限より早い・待っている要求があれば None)。
+        """走行側からの検証要求。受け付ければ番号を返す (間隔の下限より早い・待っている要求があれば None)。
 
-        門が開いていれば、次の周期に、閉じたときと同じ候補で照合する。開いていなければ (確かめた姿勢がない、閉じて照合・
+        AMCL 検証ゲートが開いていれば、次の周期に、閉じたときと同じ候補で照合する。開いていなければ (未初期化、閉じて照合・
         停止の最中)、次の周期に「決まらない」として返す。
         """
         if self._verify_pending is not None or t - self._verify_at < self.settings.verify_min_interval_sec:
@@ -313,11 +313,11 @@ class MotionGate:
         return self._verify_seq
 
     def force_close(self, t: float, reason: str, extra: Optional[Mapping[str, CandidatePose]] = None) -> None:
-        """外 (監督) が推定器の異常を確かめた。門を閉じ、extra を候補に足して照合し直す。
+        """外 (自己位置監視) が推定器の異常を確かめた。AMCL 検証ゲートを閉じ、extra を候補に足して照合し直す。
 
         閉じた理由の部品より遅く気づくので、融合の結果も推定器に引かれているおそれがある。そのため、決まらない間は
         閉じたまま決まらないときの上限を超えたものとして扱い、止めて照合する (止める時間と、解いて走る道のりは同じ上限)。
-        確かめる前 (起動の直後など) と、止めてから置き直す途中は、そのまま続ける。
+        確かめる前 (起動の直後など) と、止めてから補正する途中は、そのまま続ける。
         """
         self._extra = dict(extra or {})
         if self.state in (GateState.UNCONFIRMED, GateState.CORRECTING):
@@ -334,7 +334,7 @@ class MotionGate:
     # ------------------------------------------------------------------ 周期
 
     def since_confirmed_m(self) -> Optional[float]:
-        """最後に確かめてから走った道のり [m]。確かめた姿勢がなければ None。"""
+        """最後に確かめてから走った道のり [m]。検証済み姿勢がなければ None。"""
         return None if self._anchor is None else self._odometer - self._anchor.odometer
 
     def closed_for_sec(self, t: float) -> float:
@@ -345,14 +345,14 @@ class MotionGate:
 
     def step(self, snapshot: Snapshot, result: Optional[Tuple[MatchRequest, MatchDecision]] = None,
              distrust: frozenset = frozenset()) -> GateStep:
-        """distrust の情報源を使う閉じる理由の部品は閉じず、その情報源の候補は使わない。"""
+        """distrust の情報源を使う遮断条件は閉じず、その情報源の候補は使わない。"""
         out = self._step(snapshot, result, distrust)
         if self._verify_undecided is not None:
             self._finish_verify(self._verify_undecided, VERIFY_UNDECIDED, out)
             self._verify_undecided = None
         out.last_verify = self.last_verify
         if self.config.observe_only:
-            # 門の中では置き直したものとして続ける (決めた姿勢を確かめた姿勢にする)。外へは何も出さない
+            # AMCL 検証ゲートの中では補正したものとして続ける (決めた姿勢を検証済み姿勢にする)。外へは何も出さない
             out.reset = None
             out.gate_open = True
             out.hold, out.hold_reason = False, ''
@@ -367,8 +367,8 @@ class MotionGate:
         t = snapshot.stamp
         out = GateStep(self.state, self.state != GateState.CLOSED and self.state != GateState.CORRECTING)
         out.events, self._pending = self._pending, []
-        # 監督が疑う GNSS (全周の照合にも使わない) と、見習い期間 (閉じる理由と候補にだけ使わない。全周の照合は
-        # GNSS を探す範囲の中心にだけ使い、地図との照合で確かめるので止めない)
+        # 自己位置監視が疑う GNSS (初期全周探索にも使わない) と、再採用待機 (遮断条件と候補にだけ使わない。初期全周探索は
+        # GNSS を探す範囲の中心にだけ使い、地図照合で確かめるので止めない)
         self._supervisor_distrust = frozenset(distrust)
         self._distrust = self._supervisor_distrust | self._probation(snapshot, t, out)
         if result is not None:
@@ -407,7 +407,7 @@ class MotionGate:
         return self._finish(out)
 
     def _finish(self, out: GateStep) -> GateStep:
-        """周期の終わりの状態と、一時停止の要求を出す。"""
+        """周期の終わりの状態と、停止要求を出す。"""
         out.state = self.state
         out.gate_open = self.state in (GateState.UNCONFIRMED, GateState.OPEN)
         if self.state == GateState.CORRECTING:
@@ -475,7 +475,7 @@ class MotionGate:
         return stale
 
     def _probation(self, snapshot: Snapshot, t: float, out: GateStep) -> frozenset:
-        """GNSS の見習い期間なら {GNSS}。申告の精度が急に良くなったら始める。"""
+        """GNSS の再採用待機なら {GNSS}。申告の精度が急に良くなったら始める。"""
         s = self.settings
         if not s.gnss or s.gnss_probation_sec <= 0.0:
             return frozenset()
@@ -493,9 +493,9 @@ class MotionGate:
         return frozenset({s.gnss}) if t < self._probation_until else frozenset()
 
     def _count_initial_gnss(self, t: float, snapshot: Snapshot) -> None:
-        """全周の照合に使える (申告の精度が上限以下の) GNSS の標本が、続けていくつ届いたか。
+        """初期全周探索に使える (申告の精度が上限以下の) GNSS の標本が、続けていくつ届いたか。
 
-        確かめた姿勢がない間に数が足りたら、やり直しの間隔を待たずに照合する (起動で走りながら待つ距離を減らす)。
+        未初期化間に数が足りたら、やり直しの間隔を待たずに照合する (起動で走りながら待つ距離を減らす)。
         """
         s = self.settings
         if self.config.initial_search is None or not s.gnss:
@@ -510,7 +510,7 @@ class MotionGate:
             self._next_match = min(self._next_match, t)
 
     def _initial_search(self, snapshot: Snapshot) -> Optional[InitialSearch]:
-        """全周の照合の依頼 (GNSS の精度が続けて足り、GNSS を疑っておらず、スキャンがあるとき)。"""
+        """初期全周探索の依頼 (GNSS の精度が続けて足り、GNSS を疑っておらず、スキャンがあるとき)。"""
         s = self.settings
         cfg = self.config.initial_search
         if cfg is None or s.gnss in self._supervisor_distrust or self._gnss_good < s.initial_gnss_consecutive:
@@ -531,13 +531,13 @@ class MotionGate:
         return InitialSearch(center, points, motion, cfg)
 
     def _wide_search_due(self) -> bool:
-        """広い照合をする停止の間か。"""
+        """拡大探索をする停止の間か。"""
         n = self.settings.wide_search_after_holds
         return (self.config.initial_search is not None and n > 0 and self._undecided_hold_since is not None
                 and self._undecided_holds >= n)
 
     def _wide_search(self, snapshot: Snapshot, motion: Pose2) -> Optional[InitialSearch]:
-        """広い照合の依頼。中心は確かめた姿勢の続き (なければ融合の結果)。向きは全周を探す。"""
+        """拡大探索の依頼。中心は推測航法姿勢 (なければ融合の結果)。向きは全周を探す。"""
         s = self.settings
         scan = snapshot.reference(s.reference).scan
         if scan is None:
@@ -558,7 +558,7 @@ class MotionGate:
         return InitialSearch(center, points, scan_motion, self.config.initial_search)
 
     def _closing(self, t: float, evidences: Mapping[str, Evidence]) -> List[str]:
-        """異常が close_after_sec 続いた閉じる理由の部品。"""
+        """異常が close_after_sec 続いた遮断条件。"""
         closing = []
         for closer in self.config.closers:
             if evidences[closer.name].status != Status.ANOMALY or self._distrust & set(closer.sources.values()):
@@ -711,8 +711,8 @@ class MotionGate:
             if pose is not None:
                 candidates[name] = CandidatePose(pose, *narrow)
         if reason == 'startup':
-            # 推定器が出す前に決めると、収束する前の推定器を、融合の結果を照合した姿勢へ置き直してしまう
-            # (全周の照合があるときは、その結果だけで決められる)
+            # 推定器が出す前に決めると、収束する前の推定器を、融合の結果を照合した姿勢へ補正してしまう
+            # (初期全周探索があるときは、その結果だけで決められる)
             if s.estimator not in candidates:
                 return {}
             # 推定器と融合の結果がともにずれた起動 (動きながらの起動など) でも、健全な GNSS の周りで正しい姿勢を探す
@@ -807,15 +807,15 @@ class MotionGate:
         if self.state not in (GateState.UNCONFIRMED, GateState.CLOSED):
             return
         if request.reason == 'startup' and estimator in decision.same:
-            # 推定器と同じ仮説なら、収束の途中を邪魔しないよう置き直さない
+            # 推定器と同じ仮説なら、収束の途中を邪魔しないよう補正しない
             self._open(t, 'startup', out, target, motion)
             return
         self._correct(t, target, 'none' if adopted else 'all', out, motion, fused)
 
     def _apply_verify(self, request: MatchRequest, decision: MatchDecision, t: float, motion: Pose2,
                       fused: Optional[Pose2], out: GateStep) -> None:
-        """確かめの要求の照合の結果。推定器と同じ仮説なら確かめた姿勢を更新し、別の仮説なら閉じて置き直し、
-        決まらなければ閉じて止めて照合する (監督が閉じさせたときと同じ)。"""
+        """検証要求の照合の結果。推定器と同じ仮説なら検証済み姿勢を更新し、別の仮説なら閉じて姿勢補正、
+        決まらなければ閉じて止めて照合する (自己位置監視が閉じさせたときと同じ)。"""
         number = self._verify_pending
         self._verify_pending = None
         if number is None or self.state != GateState.OPEN:
@@ -829,7 +829,7 @@ class MotionGate:
             return
         adopted = estimator in decision.agree
         target = _propagate(request.candidates[estimator].pose if adopted else decision.pose, request.motion, motion)
-        # 確かめたのは、推定器をそのまま採れるときだけ (近くても採れなければ、決めた姿勢へ置き直す)
+        # 確かめたのは、推定器をそのまま採れるときだけ (近くても採れなければ、決めた姿勢へ補正する)
         if adopted:
             self._anchor = _Anchor(request.candidates[estimator].pose, request.motion, request.odometer)
             self._last_confirm_odometer = self._odometer
@@ -848,13 +848,13 @@ class MotionGate:
 
     def _apply_startup(self, request: MatchRequest, decision: MatchDecision, t: float, motion: Pose2,
                        fused: Optional[Pose2], out: GateStep) -> None:
-        """全周の照合があるときの、確かめた姿勢がない間の決め方。
+        """初期全周探索があるときの、未初期化間の決め方。
 
-        - 推定器と同じ仮説に決まれば、置き直さずに開ける (収束の途中を邪魔しない)
-        - 別の仮説に置き直すのは、全周の照合の姿勢と同じ仮説に決まったときだけ (狭い候補だけで、低い一致率の
-          別の仮説を選ばない)。まだ走行に使う姿勢が定まっていないので、止まるのを待たずにその場で置き直す
-        - 全周の照合が合わず、まだ一度も確かめていなければ、GNSS の位置を広い共分散で 1 回だけ出す
-          (推定器に広く探させる。確かめていないので、確かめた姿勢がない状態のまま)
+        - 推定器と同じ仮説に決まれば、補正せずに開ける (収束の途中を邪魔しない)
+        - 別の仮説に補正するのは、初期全周探索の姿勢と同じ仮説に決まったときだけ (狭い候補だけで、低い一致率の
+          別の仮説を選ばない)。まだ走行に使う姿勢が定まっていないので、止まるのを待たずにその場で補正する
+        - 初期全周探索が合わず、まだ一度も確かめていなければ、GNSS の位置を広い共分散で 1 回だけ出す
+          (推定器に広く探させる。確かめていないので、未初期化状態のまま)
         """
         s = self.settings
         result = request.initial_result

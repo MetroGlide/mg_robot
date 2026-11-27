@@ -73,7 +73,7 @@ TEST(NavBridgeCoreTest, VarianceScaleIsOneUntilReceivedAndAfterTimeout) {
   EXPECT_DOUBLE_EQ(scale.Current(0.0), 1.0);
   scale.Update(4.0, 100.0);
   EXPECT_DOUBLE_EQ(scale.Current(105.0), 4.0);
-  // 監督が止まって届かなくなったら、GNSS を弱いままにしない
+  // 自己位置監視が止まって届かなくなったら、GNSS を弱いままにしない
   EXPECT_DOUBLE_EQ(scale.Current(111.0), 1.0);
 }
 

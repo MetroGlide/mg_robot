@@ -1,4 +1,4 @@
-"""再初期化の送り先・対処・自分のメッセージの目印のテスト (rclpy は偽物)。"""
+"""再初期化の送り先・出力部・自分のメッセージの目印のテスト (rclpy は偽物)。"""
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 

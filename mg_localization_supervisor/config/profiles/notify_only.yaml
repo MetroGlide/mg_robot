@@ -1,4 +1,4 @@
 # 検知と通知だけにする (supervision.yaml に重ねる)。判定は基本設定のまま。
-# 切り離しも再初期化も一時停止もしない。
+# 除外も再初期化も一時停止もしない。
 state_machine:
   recovery_enabled: false

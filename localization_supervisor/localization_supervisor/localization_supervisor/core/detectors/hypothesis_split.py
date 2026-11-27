@@ -7,7 +7,7 @@ class HypothesisSplit(Detector):
     """最も重い仮説から離れた仮説のうち、最も重いものの重みを threshold と比べる。
 
     推定器 (AMCL など) の粒子が、離れた姿勢の 2 つ以上の仮説に割れているときに反応する。割れていても、
-    推定器が正しい方を選んでいることは多いので、異常の証拠としては弱い。疑いは推定器の姿勢 (pose) にかける。
+    推定器が正しい方を選んでいることは多いので、異常の証拠としては弱い。疑義は推定器の姿勢 (pose) にかける。
     """
     SOURCES = {'pose': SourceKind.POSE, 'hypotheses': SourceKind.HYPOTHESES}
     SUBJECTS = ('pose',)

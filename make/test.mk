@@ -37,9 +37,9 @@ _scenario_domain_id := $(call env_value,SCENARIO_ROS_DOMAIN_ID)
 _remote_env = $(if $(ROBOT),-e ROS_DOMAIN_ID=$(or $(_scenario_domain_id),42) -e CYCLONEDDS_URI=file:///app/docker/cyclonedds/remote.xml -e MG_REMOTE_PEER=$(ROBOT),)
 _remote_arg = $(if $(ROBOT),--remote-stack http://$(ROBOT):8001)
 # LOCALIZATION_PRESET=<名前> / LOCALIZATION_PROFILE=<名前> を指定すると、.env の値に代えて、自己位置推定のプリセットを
-# 重ねた / 監督のプロファイルを重ねたスタックで実行する (ROBOT 指定時は実機PCの .env が使われる)
-# LOCALIZATION_GATE=<true|false|observe> は、監督ノードの中で門を使うか
-# LOCALIZATION_CONFIG=<名前> は、自己位置推定の構成 (監視・監督の並走・門・プリセット・プロファイルの組) を選ぶ。
+# 重ねた / 自己位置監視のプロファイルを重ねたスタックで実行する (ROBOT 指定時は実機PCの .env が使われる)
+# LOCALIZATION_GATE=<true|false|observe> は、自己位置監視ノードの中で AMCL 検証ゲートを使うか
+# LOCALIZATION_CONFIG=<名前> は、自己位置推定の構成 (監視・自己位置監視の並走・ AMCL 検証ゲート・プリセット・プロファイルの組) を選ぶ。
 # 中身は mg_navigation/mg_navigation/localization_config.py (launch の既定は supervised)。個別の変数を書けば、そちらが
 # 優先する (プリセット・プロファイルを外すときは none)。比べるのは legacy (v2.1) と supervised (最新)
 #   (mg_navigation/doc/localization_failure_ledger.md の「比べる構成」)

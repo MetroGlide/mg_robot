@@ -10,7 +10,7 @@ from typing import List
 PRESET_SUBDIR = os.path.join('params', 'localization_presets')
 
 # プリセットは、外れた AMCL を EKF が受け付けない設定を含む。受け付けなくなったまま戻れなくならないよう、
-# 監督が初期化し直す構成と組で使う
+# 自己位置監視が初期化し直す構成と組で使う
 REQUIRED_MONITOR = 'supervisor'
 
 

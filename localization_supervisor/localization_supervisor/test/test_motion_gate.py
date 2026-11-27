@@ -1,7 +1,7 @@
-"""門 (core/motion_gate.py) と、地図との照合で決める規則 (core/map_match.py) のテスト。
+"""AMCL 検証ゲート (core/motion_gate.py) と、地図照合で決める規則 (core/map_match.py) のテスト。
 
-部屋の中を円を描いて走るロボットで、推定器 (AMCL)・融合の結果 (EKF)・GNSS の姿勢を作り、門を回す。
-照合の依頼は、次の周期の結果として同じスレッドで返す。置き直しは、推定器と融合の結果をその姿勢に移す。
+部屋の中を円を描いて走るロボットで、推定器 (AMCL)・融合の結果 (EKF)・GNSS の姿勢を作り、AMCL 検証ゲートを回す。
+照合の依頼は、次の周期の結果として同じスレッドで返す。姿勢補正は、推定器と融合の結果をその姿勢に移す。
 """
 import math
 
@@ -30,7 +30,7 @@ SPEED = 0.5
 
 
 class _GateOnly:
-    """門の設定だけ (監督の設定の gate 節と同じ部品で読む)。"""
+    """AMCL 検証ゲートの設定だけ (自己位置監視の設定の gate 節と同じ部品で読む)。"""
 
     def __init__(self, gate):
         self.gate = gate
@@ -88,7 +88,7 @@ class Sim:
         self.true = truth(0.0)
         self.amcl_offset = (0.0, 0.0, 0.0)
         self.ekf_offset = (0.0, 0.0, 0.0)
-        # 推定器を置き直したときの、真の姿勢からのずれ (置き直すまでは None)
+        # 推定器を補正したときの、真の姿勢からのずれ (補正するまでは None)
         self.amcl_reset = None
         self.gnss = True
         self.gnss_offset = (0.0, 0.0)
@@ -178,7 +178,7 @@ def test_startup_confirms_the_estimator_without_reset():
 
 
 def test_startup_waits_for_the_estimator():
-    """推定器がまだ出していない間は、融合の結果だけで決めて置き直さない。"""
+    """推定器がまだ出していない間は、融合の結果だけで決めて補正しない。"""
     sim = Sim()
     sim.ekf_offset = (0.4, 0.2, 0.05)
     sim.store = SampleStore(sim.config.gate.kinds, horizon_sec=60.0)
@@ -205,13 +205,13 @@ def test_startup_keeps_the_estimator_when_fused_is_off():
 
 
 def test_startup_finds_the_pose_around_gnss_when_estimator_and_fused_are_off():
-    """推定器と融合の結果がともにずれた起動では、健全な GNSS の周りで照合した姿勢へ置き直す。"""
+    """推定器と融合の結果がともにずれた起動では、健全な GNSS の周りで照合した姿勢へ補正する。"""
     sim = Sim()
     sim.amcl_offset = (1.5, 0.8, 0.1)
     sim.ekf_offset = (1.5, 0.8, 0.1)
     sim.run(4.0)
     assert sim.events('map_match')[0].fields['result'] == 'gnss'
-    # 大きい補正なので、止まってから置き直す
+    # 大きい補正なので、止まってから補正する
     assert sim.gate.state == GateState.CORRECTING
     sim.moving = False
     sim.run(3.0)
@@ -221,14 +221,14 @@ def test_startup_finds_the_pose_around_gnss_when_estimator_and_fused_are_off():
 
 
 def _searching(**gate):
-    """全周の照合 (initial_search) を使う門。"""
+    """初期全周探索 (initial_search) を使う AMCL 検証ゲート。"""
     sim = Sim(**gate)
     sim.gate = MotionGate(dataclasses.replace(sim.config.gate, initial_search=InitialSearchConfig()))
     return sim
 
 
 def test_startup_search_resets_at_once_when_estimator_and_fused_are_off():
-    """推定器と融合の結果がともにずれた起動では、全周の照合と同じ仮説に決まり、止まるのを待たずに置き直す。"""
+    """推定器と融合の結果がともにずれた起動では、初期全周探索と同じ仮説に決まり、止まるのを待たずに補正する。"""
     sim = _searching()
     sim.amcl_offset = (3.0, 0.0, 1.0)
     sim.ekf_offset = (3.0, 0.0, 1.0)
@@ -243,7 +243,7 @@ def test_startup_search_resets_at_once_when_estimator_and_fused_are_off():
 
 
 def test_startup_search_runs_as_soon_as_gnss_is_good():
-    """GNSS が届く前の照合が決まらなくても、GNSS がそろったら、やり直しの間隔を待たずに全周の照合をする。"""
+    """GNSS が届く前の照合が決まらなくても、GNSS がそろったら、やり直しの間隔を待たずに初期全周探索をする。"""
     sim = _searching()
     sim.amcl_offset = (3.0, 0.0, 1.0)
     sim.ekf_offset = (3.0, 0.0, 1.0)
@@ -264,8 +264,8 @@ def test_startup_search_keeps_a_correct_estimator():
 
 
 def test_startup_search_decides_without_the_estimator():
-    """推定器がまだ出していなくても、全周の照合で決めて置き直す (初期化ノードの代わり)。最初の照合が決まらなければ
-    (重ねたスキャンが少ない起動の直後など)、GNSS の位置を広い共分散で出してから、決まったときに置き直す。"""
+    """推定器がまだ出していなくても、初期全周探索で決めて補正する (初期化ノードの代わり)。最初の照合が決まらなければ
+    (重ねたスキャンが少ない起動の直後など)、GNSS の位置を広い共分散で出してから、決まったときに補正する。"""
     sim = _searching()
     sim.store.add_pose = _skip_amcl(sim.store.add_pose)
     sim.ekf_offset = (3.0, 0.0, 1.0)
@@ -278,7 +278,7 @@ def test_startup_search_decides_without_the_estimator():
 
 
 def test_startup_search_falls_back_to_gnss_once_when_it_cannot_match():
-    """全周の照合が合わなければ、GNSS の位置を広い共分散で 1 回だけ出し、確かめた姿勢がないまま照合を続ける。"""
+    """初期全周探索が合わなければ、GNSS の位置を広い共分散で 1 回だけ出し、未初期化まま照合を続ける。"""
     sim = _searching()
     sim.store.add_pose = _skip_amcl(sim.store.add_pose)
     sim.gnss_offset = (6.0, 0.0)
@@ -291,11 +291,11 @@ def test_startup_search_falls_back_to_gnss_once_when_it_cannot_match():
 
 
 def test_startup_does_not_reset_to_a_hypothesis_away_from_the_search():
-    """全周の照合がある起動では、狭い候補だけで決まった別の仮説 (GNSS の候補など) には置き直さない。"""
+    """初期全周探索がある起動では、狭い候補だけで決まった別の仮説 (GNSS の候補など) には補正しない。"""
     sim = _searching()
     sim.amcl_offset = (1.5, 0.8, 0.1)
     sim.ekf_offset = (1.5, 0.8, 0.1)
-    # 全周の照合は、GNSS の精度が続けて足りないと行わない
+    # 初期全周探索は、GNSS の精度が続けて足りないと行わない
     sim.gate.settings = dataclasses.replace(sim.gate.settings, initial_gnss_max_std_m=0.01)
     sim.run(4.0)
     assert not sim.events('initial_search')
@@ -322,7 +322,7 @@ def test_jump_closes_the_gate_and_resets_to_the_continuation():
 
 
 def test_observe_only_judges_and_matches_but_does_nothing():
-    """判定だけの門は、閉じて照合し、置き直したものとして続けるが、門を開けたまま、置き直しも止める要求も出さない。"""
+    """判定だけの AMCL 検証ゲートは、閉じて照合し、補正したものとして続けるが、AMCL 検証ゲートを開けたまま、姿勢補正も止める要求も出さない。"""
     sim = _confirmed()
     sim.gate.config.observe_only = True
     sim.amcl_offset = (1.5, 0.0, 0.0)
@@ -364,11 +364,11 @@ def test_correction_does_not_wait_forever_for_a_stop():
 
 
 def test_correct_recovery_of_the_estimator_is_adopted():
-    """推定器が誤りから正しい姿勢へ動いたら (正しい直り)、推定器を置き直さず、融合の結果だけを戻す。"""
+    """推定器が誤りから正しい姿勢へ動いたら (正しい直り)、推定器を補正せず、融合の結果だけを戻す。"""
     sim = _confirmed()
     sim.ekf_offset = (0.8, 0.0, 0.0)
     sim.amcl_offset = (0.8, 0.0, 0.0)
-    # 門が閉じないうちに、推定器と融合の結果がそろってずれた (誤った推定器を融合が取り込んだ) 状態を作る
+    # AMCL 検証ゲートが閉じないうちに、推定器と融合の結果がそろってずれた (誤った推定器を融合が取り込んだ) 状態を作る
     sim.gate._grace_until = (math.inf, math.inf)
     sim.run(1.0)
     sim.gate._grace_until = (-math.inf, -math.inf)
@@ -384,7 +384,7 @@ def test_correct_recovery_of_the_estimator_is_adopted():
 
 
 def test_false_alarm_reopens_after_one_match_without_reset():
-    """閉じる理由の部品の誤報 (ずれたのは GNSS) は、照合で推定器を確かめて、置き直さずに開ける。"""
+    """遮断条件の誤報 (ずれたのは GNSS) は、照合で推定器を確かめて、補正せずに開ける。"""
     sim = _confirmed(confirm_distance_m=1000.0)
     sim.ekf_offset = (0.1, 0.0, 0.0)
     sim.gnss_offset = (1.5, 0.0)
@@ -406,7 +406,7 @@ def test_closers_are_ignored_while_in_grace_after_a_reset():
 
 
 def test_closer_active_in_grace_closes_while_in_grace():
-    """猶予の間も使う部品 (今の推定器と GNSS を比べる部品) は、猶予の間でも門を閉じる。"""
+    """猶予の間も使う部品 (今の推定器と GNSS を比べる部品) は、猶予の間でも AMCL 検証ゲートを閉じる。"""
     sim = _confirmed(confirm_distance_m=1000.0)
     next(c for c in sim.gate.config.closers if c.name == 'amcl_gnss').active_in_grace = True
     sim.gate._grace_until = (math.inf, math.inf)
@@ -481,7 +481,7 @@ def test_gnss_disagreement_closes_the_gate_for_slow_drift():
 
 
 def test_distrusted_gnss_neither_closes_the_gate_nor_becomes_a_candidate():
-    """監督が GNSS を疑っている間は、GNSS との食い違いでは閉じず、閉じても GNSS を候補にしない。"""
+    """自己位置監視が GNSS を疑っている間は、GNSS との食い違いでは閉じず、閉じても GNSS を候補にしない。"""
     sim = _confirmed(confirm_distance_m=1000.0)
     sim.distrust = frozenset({'gnss'})
     sim.gnss_offset = (0.0, 2.5)
@@ -521,7 +521,7 @@ def test_stale_scans_are_matched_when_the_age_limit_is_off():
 
 
 def test_gnss_whose_report_suddenly_improves_is_on_probation():
-    """申告の精度が急に良くなった GNSS (屋根を抜けた直後など) は、見習い期間の間、閉じる理由にも候補にも使わない。"""
+    """申告の精度が急に良くなった GNSS (屋根を抜けた直後など) は、再採用待機の間、遮断条件にも候補にも使わない。"""
     sim = _confirmed(confirm_distance_m=1000.0, gnss_probation_sec=8.0)
     sim.gnss_std = 3.0
     sim.run(3.0)
@@ -538,7 +538,7 @@ def test_gnss_whose_report_suddenly_improves_is_on_probation():
 
 
 def test_gnss_probation_does_not_stop_the_startup_search():
-    """起動の直後に申告の精度が良くなっても、見習い期間で全周の照合を止めない (地図との照合で確かめるため)。"""
+    """起動の直後に申告の精度が良くなっても、再採用待機で初期全周探索を止めない (地図照合で確かめるため)。"""
     sim = _searching(gnss_probation_sec=8.0)
     sim.amcl_offset = (3.0, 0.0, 1.0)
     sim.ekf_offset = (3.0, 0.0, 1.0)
@@ -575,7 +575,7 @@ def test_verify_request_confirms_a_correct_estimator():
 
 def test_verify_request_relocates_an_estimator_on_another_hypothesis():
     sim = _confirmed(confirm_distance_m=1000.0)
-    # 閉じる理由の部品で先に閉じないようにして、確かめの要求の照合だけで見つける
+    # 遮断条件で先に閉じないようにして、検証要求の照合だけで見つける
     sim.gate.config.closers = []
     sim.amcl_offset = (1.5, 0.0, 0.0)
     sim.ekf_offset = (0.2, 0.0, 0.0)
@@ -622,7 +622,7 @@ def test_verify_requests_are_rate_limited():
 
 
 def test_wide_search_is_added_after_undecided_holds():
-    """決まらずに止めた回数が達した後の停止では、確かめた姿勢の続きの周りを全周で照合し、決まれば置き直す。"""
+    """決まらずに止めた回数が達した後の停止では、推測航法姿勢の周りを全周で照合し、決まれば補正する。"""
     sim = _searching(confirm_distance_m=1000.0, wide_search_after_holds=1)
     sim.run(4.0)
     assert sim.gate.state == GateState.OPEN
@@ -639,7 +639,7 @@ def test_wide_search_is_added_after_undecided_holds():
     sim.run(8.0)
     wide = sim.events('wide_search')
     assert wide and wide[0].fields['result'] == 'matched'
-    # 補正が大きいので、止まるのを待つ上限の後に置き直す (この試験のロボットは止まらない)
+    # 補正が大きいので、止まるのを待つ上限の後に補正する (この試験のロボットは止まらない)
     sim.run(12.0)
     assert sim.events('pose_reset')
     assert sim.gate.state == GateState.OPEN
@@ -655,7 +655,7 @@ def test_wide_search_is_off_by_default():
 
 
 def test_force_close_holds_at_once_and_matches_the_extra_candidates():
-    """監督が推定器の異常を確かめて閉じさせたら、すぐ止めて照合し、足した候補も照合する。"""
+    """自己位置監視が推定器の異常を確かめて閉じさせたら、すぐ止めて照合し、足した候補も照合する。"""
     sim = _confirmed(confirm_distance_m=1000.0)
     sim.amcl_offset = (0.0, 1.2, 0.0)
     sim.ekf_offset = (0.0, 1.2, 0.0)

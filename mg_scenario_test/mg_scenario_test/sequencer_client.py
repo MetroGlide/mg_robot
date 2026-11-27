@@ -153,7 +153,7 @@ class SequencerClient:
         abort_event: threading.Event,
         clock_now: Callable[[], float],
     ) -> bool:
-        """一時停止の要求が解けるまで待つ。timeout_sec は clock_now (sim 時間) で測る。
+        """停止要求が解けるまで待つ。timeout_sec は clock_now (sim 時間) で測る。
 
         解けたら True、タイムアウトか abort_event による中断なら False を返す。
         """

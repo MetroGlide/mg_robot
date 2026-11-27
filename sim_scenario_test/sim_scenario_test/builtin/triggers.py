@@ -158,7 +158,7 @@ class AllOfSpec:
 class AllOf:
     """triggers のすべてが一度は成立したら成立する (成立した順は問わない)。
 
-    例: 監督の準備ができ (localization_ready)、かつ通路に入った (robot_near) ら故障を注入する。
+    例: 自己位置監視の準備ができ (localization_ready)、かつ通路に入った (robot_near) ら故障を注入する。
     """
 
     def __init__(self, ctx: "ScenarioContext", spec: AllOfSpec):

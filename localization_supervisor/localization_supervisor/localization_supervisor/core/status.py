@@ -1,6 +1,6 @@
 """状態のメッセージ (LocalizationStatus) と診断の中身を、周期の結果から作る (ROS に依存しない)。
 
-ノードは StatusView をメッセージに写すだけにする。監督以外の監視 (watchdog など) も、StatusView を作れば
+ノードは StatusView をメッセージに写すだけにする。自己位置監視以外の監視 (watchdog など) も、StatusView を作れば
 同じ形のメッセージと診断を出せる。
 """
 from dataclasses import dataclass, field
@@ -58,8 +58,8 @@ class StatusView:
 
 
 def status_view(result: StepResult, config: SupervisorConfig, profile: str) -> StatusView:
-    """監督の周期の結果の状態。門があるときは、監督の状態と門の状態 (gate_state) の重い方を出し、
-    門の閉じる理由の部品も判定の並びに足す (門が閉じている間に、走行側が正常と見て動かないため)。"""
+    """自己位置監視の周期の結果の状態。AMCL 検証ゲートがあるときは、自己位置監視の状態と AMCL 検証ゲートの状態 (gate_state) の重い方を出し、
+    AMCL 検証ゲートの遮断条件も判定の並びに足す (AMCL 検証ゲートが閉じている間に、走行側が正常と見て動かないため)。"""
     checks = []
     for name, evidence in result.evidences.items():
         detector = config.detectors[name]
@@ -117,7 +117,7 @@ GATE_STATES = {
 
 
 def gate_state(step: GateStep) -> State:
-    """門の状態を監督の状態に写す。確かめる前と開いている間は NORMAL、閉じている間は ISOLATED、止めて戻す間は
+    """AMCL 検証ゲートの状態を自己位置監視の状態に写す。確かめる前と開いている間は NORMAL、閉じている間は ISOLATED、止めて戻す間は
     RECOVERING、閉じたまま決まらず止めている間は DEGRADED。"""
     if step.state == GateState.CLOSED and step.hold:
         return State.DEGRADED
@@ -137,9 +137,9 @@ def _closer_checks(step: GateStep, config: MotionGateConfig) -> List[CheckView]:
 
 
 def gate_status_view(step: GateStep, config: MotionGateConfig, last_event: str) -> StatusView:
-    """門のノードの周期の結果を、監督と同じ形の状態にする。
+    """AMCL 検証ゲートのノードの周期の結果を、自己位置監視と同じ形の状態にする。
 
-    確かめる前と門が開いている間は NORMAL、閉じている間は ISOLATED、止めて戻す間は RECOVERING、
+    確かめる前と AMCL 検証ゲートが開いている間は NORMAL、閉じている間は ISOLATED、止めて戻す間は RECOVERING、
     閉じたまま決まらず止めている間は DEGRADED。安全の信号は出さない (lethal_depth_m は -1)。
     """
     state = gate_state(step)

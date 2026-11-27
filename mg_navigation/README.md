@@ -1,7 +1,7 @@
 # mg_navigation
 
 Nav2 の起動と設定、自己位置推定の launch と、AMCL の監視 (watchdog)。
-AMCL の初期化・入/切の調停・監督ノードは [mg_localization_supervisor](../mg_localization_supervisor/README.md) にあり、`localization_launch.py` から起動する。
+AMCL の初期化・入/切の調停・自己位置監視ノードは [mg_localization_supervisor](../mg_localization_supervisor/README.md) にあり、`localization_launch.py` から起動する。
 `mg_bringup` の `bringup_navigation.launch.py` から `bringup.launch.py` が起動される ([mg_bringup](../mg_bringup/README.md))。
 
 - Nav2 の構成 (ノード、速度指令の経路、コントローラ): [doc/architecture.md](./doc/architecture.md)
@@ -34,7 +34,7 @@ AMCL の初期化・入/切の調停・監督ノードは [mg_localization_super
 | `IsPathBlocked` (Condition) | `mg_is_path_blocked_condition_bt_node` | 走行中に、経路の近くが塞がっているかを判定する。塞がっていると確定したときだけ SUCCESS。定期的な再計画を止めるゲートに使う |
 | `CommitPath` (Action) | `mg_commit_path_action_bt_node` | 計画の結果 (`candidate`) が今のゴールへの経路なら `path` に反映する。計画が失敗しても、今のゴールへの経路があれば保つ。なければ `path` を空にして FAILURE。直線距離に対して長すぎる候補 (極端な逆走・大回り) は、計画の失敗と同じに扱って乗らない |
 | `FindFreeStart` (Action) | `mg_find_free_start_action_bt_node` | ロボットが計画用地図の障害物 (進入禁止の領域) にめり込んでいるとき、その領域の外の最も近い位置を `free_start` に出す。めり込んでいない、出られない、判定できないときは FAILURE |
-| `IsLocalizationHealthy` (Condition) | `mg_is_localization_healthy_condition_bt_node` | 自己位置の監督の状態 (`/localization/status`) が `NORMAL` で新しければ SUCCESS。疑わしいときの走行側の対処を止めるために使う |
+| `IsLocalizationHealthy` (Condition) | `mg_is_localization_healthy_condition_bt_node` | 自己位置監視の状態 (`/localization/status`) が `NORMAL` で新しければ SUCCESS。疑わしいときの走行側の対処を止めるために使う |
 
 判定の仕様、ポート、ログは [doc/bt_plugins.md](./doc/bt_plugins.md)。
 
@@ -43,7 +43,7 @@ AMCL の初期化・入/切の調停・監督ノードは [mg_localization_super
 | ファイル | 内容 |
 | :--- | :--- |
 | `bringup.launch.py` | 下の 3 つを束ねる。RViz2 と rosbag の収録も起動できる |
-| `localization_launch.py` | `map_server`、`amcl`、`amcl_publish_controller_node`、`amcl_watchdog_node` (遅れて起動)。調停・初期化・監督ノードは `mg_localization_supervisor` の `supervisor.launch.py` を include して起動する |
+| `localization_launch.py` | `map_server`、`amcl`、`amcl_publish_controller_node`、`amcl_watchdog_node` (遅れて起動)。調停・初期化・自己位置監視ノードは `mg_localization_supervisor` の `supervisor.launch.py` を include して起動する |
 | `navigation_launch.py` | Nav2 のノード ([doc/architecture.md](./doc/architecture.md)) |
 | (他パッケージの launch) | `mg_waypoint_navigation/waypoint_sequencer.launch.py` (ウェイポイントシーケンサ) |
 | `bag_play.launch.py` | rosbag の再生中に、コストマップを動かして確認する (`costmap_for_bag_play`。引数: `simulation`、`rviz`、`map`、`planning_map`) |
@@ -66,10 +66,10 @@ AMCL の初期化・入/切の調停・監督ノードは [mg_localization_super
 | `waypoints_load_path` | ウェイポイントのファイル |
 | `use_gnss_amcl_initializer` | GNSS から AMCL の初期姿勢を与えるノード |
 | `localization_monitor` | 自己位置の監視ノード: `none` / `watchdog` / `supervisor` (検知して自動で復旧する) |
-| `localization_supervisor` | `true` で、監視が `watchdog` のまま、監督ノードを並行して通知だけで動かす |
-| `localization_gate` | `true` で、監督ノードの中で門を使う (監視が `supervisor` のとき。置き直し・起動の直後の姿勢も監督ノードが決め、GNSS による初期化ノードは起動しない)。`observe` は判定と照合だけ (何もしない) |
-| `supervisor_config` | 監督の設定ファイル (既定は `mg_localization_supervisor` の `config/supervision.yaml`) |
-| `localization_profile` | 監督の設定に重ねるプロファイル (空は基本設定。監視が `watchdog` のときは `notify_only`) |
+| `localization_supervisor` | `true` で、監視が `watchdog` のまま、自己位置監視ノードを並行して通知だけで動かす |
+| `localization_gate` | `true` で、自己位置監視ノードの中で AMCL 検証ゲートを使う (監視が `supervisor` のとき。姿勢補正・起動の直後の姿勢も自己位置監視ノードが決め、GNSS による初期化ノードは起動しない)。`observe` は判定と照合だけ (何もしない) |
+| `supervisor_config` | 自己位置監視の設定ファイル (既定は `mg_localization_supervisor` の `config/supervision.yaml`) |
+| `localization_profile` | 自己位置監視の設定に重ねるプロファイル (空は基本設定。監視が `watchdog` のときは `notify_only`) |
 | `rviz` | RViz2 の起動 |
 | `record_bag` | rosbag の収録 |
 | `namespace`、`use_namespace` | 名前空間 |
@@ -130,7 +130,7 @@ colcon test --packages-select mg_navigation --ctest-args -R test_ && colcon test
 | ファイル | 内容 |
 | :--- | :--- |
 | [doc/localization.md](./doc/localization.md) | 自己位置推定の構成、watchdog による監視 |
-| [doc/localization_target.md](./doc/localization_target.md) | 自己位置推定の最終形 (一部未実装): ノードの役割、機能 × センサ、起動、BT との受け渡し、センサの組、例外、構成と戻すルート |
+| [doc/localization_target.md](./doc/localization_target.md) | 自己位置推定の最終形 (一部未実装): ノードの役割、機能 × センサ、起動、BT との受け渡し、センサ構成、例外、構成と戻すルート |
 | [doc/architecture.md](./doc/architecture.md) | Nav2 のノード、速度指令の経路、コントローラ、BT、アンカーの規則 |
 | [doc/costmap_and_collision.md](./doc/costmap_and_collision.md) | コストマップ、グローバルプランナ、衝突の防止 (`collision_monitor`) |
 | [doc/bt_plugins.md](./doc/bt_plugins.md) | `IsPathClear`・`IsPathBlocked`・`CommitPath`・`FindFreeStart`・`IsLocalizationHealthy` の判定とポート |

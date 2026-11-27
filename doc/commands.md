@@ -86,7 +86,7 @@ Gazebo とナビゲーションを起動して合否を判定する。詳細は 
 | `make scenario-env [GUI=1] [PROFILE=] [WORLD=]` | attach 用にシミュレータとナビゲーションを起動したままにする (compose サービス `scenario-env`) |
 | `make scenario-test-attach SCENARIO=<名前>` | `scenario-env` に接続して 1 本実行する |
 | `make scenario-env-stop` | `scenario-env` を止める |
-| `make scenario-plot RESULT=<dir>` | 記録つきの結果を図にする (地図の上の軌跡と、真値との差・監督の状態などの時系列)。`COMPARE="<dir>=<名前> ..."` で構成どうしをシナリオごとに並べる |
+| `make scenario-plot RESULT=<dir>` | 記録つきの結果を図にする (地図の上の軌跡と、真値との差・自己位置監視の状態などの時系列)。`COMPARE="<dir>=<名前> ..."` で構成どうしをシナリオごとに並べる |
 | (make ターゲットなし) | compose サービス `scenario-remote-stack`: 実機 PC 側のナビゲーションスタック。`system-manager` の API から起動される |
 
 ## 開発とテスト

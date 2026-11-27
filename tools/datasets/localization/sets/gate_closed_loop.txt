@@ -1,5 +1,5 @@
-# 監督のノードの中の門 (--monitor supervisor --gate true) を閉ループの再生で確かめる組。門なし (--monitor none) の
-# 記録と比べる。再生ではロボットが止まらないので、sup.gate.settings.small_correction_m を広げてその場で置き直させる。
+# 自己位置監視のノードの中の AMCL 検証ゲート (--monitor supervisor --gate true) を閉ループの再生で確かめる組。AMCL 検証ゲートなし (--monitor none) の
+# 記録と比べる。再生ではロボットが止まらないので、sup.gate.settings.small_correction_m を広げてその場で補正させる。
 # 故障なし・動きながらの起動 (誤報と正しい直りの締め出し)、飛びとずれ、模擬で悪化した 2 条件 (h2_kidnap_yaw・
 # h3_kidnap_then_drift)、調整に使わない故障の組 heldout3、手動の初期姿勢。
 # 1 行に 1 条件: <ラベル> <データセット> [run_localization_variant.sh の引数 ...]

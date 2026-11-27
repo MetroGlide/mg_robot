@@ -1,4 +1,4 @@
-"""疑わしい情報源の切り分け (正しいと示す判定 vouch) と、切り離すだけの blame (isolate_only) のテスト。"""
+"""疑わしい情報源の切り分け (正しいと示す判定 vouch) と、除外するだけの blame (isolate_only) のテスト。"""
 import numpy as np
 import pytest
 
@@ -100,7 +100,7 @@ def test_an_isolate_only_blame_is_isolated_without_holding_or_reinitializing():
     d = machine.step(1.0, _fr(confirmed=True, suspect=True, anomaly=True, blame='gnss'))
     assert d.state == State.ISOLATED and d.actions == [Action.ISOLATE]
     assert machine.isolating and not machine.hold_requested
-    # 切り離してから待っても、再初期化に進まない
+    # 除外してから待っても、再初期化に進まない
     for t in (2.0, 3.0, 10.0):
         d = machine.step(t, _fr(suspect=True, anomaly=True, blame='gnss'))
         assert d.state == State.ISOLATED and not d.actions
@@ -295,14 +295,14 @@ def test_without_a_vouch_the_same_bias_is_not_attributed_and_stops_the_robot():
 
 
 def test_the_scale_applied_while_isolated_does_not_hide_the_bias_from_the_detector():
-    # 切り離してスケールを上限にしても、判定は倍率をかける前の分散で行うので、ずれが続くかぎり異常のまま
+    # 除外してスケールを上限にしても、判定は倍率をかける前の分散で行うので、ずれが続くかぎり異常のまま
     results = _run(_supervisor_config(['amcl'], ['gnss']), bias_until=40, seconds=40)
     assert results[-1].state == State.ISOLATED
     assert results[-1].evidences['amcl_gnss'].status == Status.ANOMALY
 
 
 def test_stopping_while_gnss_is_isolated_does_not_stop_the_robot_or_reinitialize():
-    # 走行中に GNSS がずれて切り離した後、止まって正しいと示す判定が判定できなくなる (vouch が外れ、blame が unknown に戻る)
+    # 走行中に GNSS がずれて除外した後、止まって正しいと示す判定が判定できなくなる (vouch が外れ、blame が unknown に戻る)
     infos = _infos(('amcl_gnss', ['amcl', 'gnss'], {'allowance': 0.6, 'max_score': 2.0}),
                    ('scan', ['amcl'], {'allowance': 0.8, 'vouches': ['amcl']}))
     fusion = CusumFusion('cusum', {'suspect_level': 1.0, 'confirm_level': 4.0, 'blame_margin': 1.0,

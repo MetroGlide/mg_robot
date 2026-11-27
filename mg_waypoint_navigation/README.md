@@ -50,12 +50,12 @@ GUI の [waypoint-tool](https://github.com/Chu-son/waypoint-tool) でも作れ�
 | 種別 | 名前 | 型 | 内容 |
 | :--- | :--- | :--- | :--- |
 | Service | `~/start` | `mg_msgs/StartSequence` | 走行を開始する |
-| Service | `~/stop` | `std_srvs/Trigger` | 止める (一時停止の要求も解除する) |
+| Service | `~/stop` | `std_srvs/Trigger` | 止める (停止要求も解除する) |
 | Service | `~/reload_waypoints` | `std_srvs/Trigger` | ウェイポイントを読み込み直す |
 | Service | `~/navigate_to_pose` | `mg_msgs/SendGoal` | BT を指定して、手動でゴールを 1 つ送る |
 | Service | `~/load_map` | `mg_msgs/LoadMaps` | 測位用・計画用の地図を読み込ませる |
 | Subscriber | `~/set_next_waypoint_index` | `std_msgs/Int16` | 次に向かうウェイポイントを指定する |
-| Subscriber | `~/pause_request` | `mg_msgs/PauseRequest` | 一時停止の要求 |
+| Subscriber | `~/pause_request` | `mg_msgs/PauseRequest` | 停止要求 |
 | Publisher | `~/status` | `mg_msgs/SequencerStatus` | 状態 |
 | Publisher | `~/activity` | `mg_msgs/NavigationActivity` | 走行の「いまの活動」の要約 (transient_local)。表示用。詳細は [doc/architecture.md](./doc/architecture.md#いまの活動-activity) |
 | Publisher | `~/waypoints` | `mg_msgs/WaypointList` | 読み込んだウェイポイント |
@@ -92,7 +92,7 @@ YAML (v2.0)。各ウェイポイントの位置と、到達時のアクション
 1. **待つ**: 前方に障害物があると、RPP (`FollowPath`) の衝突判定で止まり、`controller_server` の `failure_tolerance` まで待つ。経路の近くが塞がっている間は、定期的な再計画を止める (`IsPathBlocked`)。急に現れた障害物は、迂回路が引けても乗らずに待ち、消えればそのまま走り出す。居座ればリカバリーで迂回する。遠くの障害物は、定期的な再計画で滑らかに避ける。XML の定期的な再計画の `Inverter` と `IsPathBlocked` の行を外すと、待たずに迂回路へすぐ乗る動きになる (リカバリーはそのまま使える)
 2. **計画が失敗しても止めない**: 定期的な計画は `{candidate_path}` に書き、`CommitPath` が今のゴールへの経路のときだけ `{path}` に反映する。計画が失敗しても直前の経路で追従を続け、止まるかどうかは RPP の判定に任せる。ゴールが変わって新しいゴールへの経路がないときだけ、経路を捨ててリカバリーに入る (古いゴールで到着と報告しないため)
 3. **回避行動** (normal のみ): `failure_tolerance` の間待っても空かなければ `FollowPath` が失敗し、リカバリーに入る。1 回のリカバリーの中で次の段階を順に試し、どこかで引き直した経路が通れた時点で走行に戻る (角度・時間・距離・速度は BT の XML と `behavior_server` の設定)
-   0. ロボットが計画用地図の障害物 (進入禁止の領域) にめり込んでいれば (`FindFreeStart`)、監督に確かめの要求を出し、今の自己位置を確かめられたとき (`VerifyLocalization`) だけ、領域の外の最も近い位置を始点にして計画し、領域から出る。めり込んでいなければ、この段階は飛ばす。確かめられなければ自己位置の復旧に任せる。この段階を XML から外すと脱出しない
+   0. ロボットが計画用地図の障害物 (進入禁止の領域) にめり込んでいれば (`FindFreeStart`)、自己位置監視に検証要求を出し、今の自己位置を確かめられたとき (`VerifyLocalization`) だけ、領域の外の最も近い位置を始点にして計画し、領域から出る。めり込んでいなければ、この段階は飛ばす。確かめられなければ自己位置の復旧に任せる。この段階を XML から外すと脱出しない
    1. 今のコストマップで引き直す
    2. コストマップをクリアし、作り直されるまで待ってから引き直す
    3. 近くの実在の障害物で今の経路が塞がっているときだけ、ゆっくり短く後退して引き直す
