@@ -646,28 +646,21 @@ def test_pose_error_monitor_limits_deviated_time_while_stationary():
     assert "travelled 0.00 m while deviated" in result.message
 
 
-def test_pose_error_monitor_limits_error_at_the_end():
-    from sim_scenario_test.builtin.monitors import PoseErrorMonitor, PoseErrorSpec
+def test_reached_all_fails_when_the_robot_is_far_from_the_estimate_at_the_end():
+    from sim_scenario_test.builtin.expectations import ReachedAllSpec, reached_all
+    from sim_scenario_test.engine.result import Outcome
     backend = FakeBackend()
-    robot = FakeRobot(Pose(0.0, 0.0))
+    robot = FakeRobot(Pose(5.0, 0.0))
     ctx = _scenario_ctx(backend, robot)
-    clock = {"t": 0.0}
-    ctx.clock.now = lambda: clock["t"]
+    # 推定の上では着いたが、真の姿勢は止まったまま (障害物に当たって車輪だけ回る)
     backend.true_poses["robot"] = Pose(0.0, 0.0)
-    monitor = PoseErrorMonitor(ctx, PoseErrorSpec(deviation_m=1.0, max_end_error_m=3.0))
-    # 真の姿勢は止まったまま、推定だけ x に進む (障害物に当たって車輪だけ回る)
-    for t in range(6):
-        clock["t"] = float(t)
-        robot.pose = Pose(float(t), 0.0)
-        monitor._callback(None)
-    result = monitor.result()
-    assert result.status == ResultStatus.FAILED
-    assert "last error 5.00 m / 0 deg (limit 3.0)" in result.message
-    # 終わりで戻っていれば、途中のずれでは落とさない
-    robot.pose = Pose(0.5, 0.0)
-    clock["t"] = 6.0
-    monitor._callback(None)
-    assert monitor.result().status == ResultStatus.PASSED
+    result = reached_all(ctx, ReachedAllSpec(), Outcome(9, 9))
+    assert result.status == ResultStatus.FAILED and "5.00 m away" in result.message
+    backend.true_poses["robot"] = Pose(4.5, 0.0)
+    assert reached_all(ctx, ReachedAllSpec(), Outcome(9, 9)).status == ResultStatus.PASSED
+    backend.true_poses["robot"] = Pose(0.0, 0.0)
+    assert reached_all(ctx, ReachedAllSpec(max_end_error_m=None), Outcome(9, 9)).status == ResultStatus.PASSED
+    assert reached_all(ctx, ReachedAllSpec(), Outcome(9, 8)).status == ResultStatus.FAILED
 
 
 def test_pose_error_monitor_skips_samples_within_interval():
