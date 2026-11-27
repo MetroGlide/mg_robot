@@ -291,7 +291,7 @@ sensor_sets:
     present_after_sec: 5.0
     speed_limit_mps: 0.3
 
-# 走行制約: 自己位置状況 (未初期化 / 疑義 / 判定保留 / 見えない / 復旧中) と危険度 (誤差見込み ÷ 余裕距離) から
+# 走行制約: 自己位置状況 (未初期化 / 疑義 / 判定保留 / 未観測 / 復旧中) と危険度 (誤差見込み ÷ 余裕距離) から
 # 減速を決める (localization_supervisor/doc/architecture_target.md の「状態 × 危険度 → 対処」)。AMCL 検証ゲートがあるときだけ使う。
 # 余裕距離は safety の footprint と計画用地図から求める。止める対処は持たない (止めるのは AMCL 検証ゲートと自己位置監視の上限つきの仕組み)
 conduct:

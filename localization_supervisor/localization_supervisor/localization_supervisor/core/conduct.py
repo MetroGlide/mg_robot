@@ -124,7 +124,7 @@ class ConductPlanner:
         return Conduct(situation, degree, error, inputs.clearance_m, action, speed)
 
     def _next_situation(self, inputs: ConductInputs) -> Situation:
-        """重い自己位置状況へはすぐに移る。疑義・見えないから正常へは、確かめ、その後の判定に異常がないときだけ戻る。"""
+        """重い自己位置状況へはすぐに移る。疑義・未観測から正常へは、確かめ、その後の判定に異常がないときだけ戻る。"""
         wanted = inputs.situation
         current = self._situation
         if wanted != Situation.NORMAL and wanted != current:

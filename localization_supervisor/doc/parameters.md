@@ -240,7 +240,7 @@ AMCL 検証ゲート ([motion_gate.md](./motion_gate.md)、自己位置監視と
 
 ## conduct
 
-走行制約。自己位置状況 (未初期化・疑義・判定保留・見えない・復旧中) と危険度 (誤差見込み ÷ 余裕距離) から、対応表で対処 (`normal` / `slow`) を選び、速度の上限を `StepResult.conduct` に出す (考え方は [architecture_target.md](./architecture_target.md#状態--危険度--対処-未実装))。余裕距離は `safety` の footprint から計画用地図の致死セルまでの距離で、`safety` がなければ分からないものとして重いにする。止める対処は持たない。自己位置監視の復旧が無効 (`recovery_enabled: false`) なら速度の上限は出さない。値は各ロボットの設定ファイルが正。
+走行制約。自己位置状況 (未初期化・疑義・判定保留・未観測・復旧中) と危険度 (誤差見込み ÷ 余裕距離) から、対応表で対処 (`normal` / `slow`) を選び、速度の上限を `StepResult.conduct` に出す (考え方は [architecture_target.md](./architecture_target.md#状態--危険度--対処-未実装))。余裕距離は `safety` の footprint から計画用地図の致死セルまでの距離で、`safety` がなければ分からないものとして重いにする。止める対処は持たない。自己位置監視の復旧が無効 (`recovery_enabled: false`) なら速度の上限は出さない。値は各ロボットの設定ファイルが正。
 
 | キー | 内容 |
 | :--- | :--- |

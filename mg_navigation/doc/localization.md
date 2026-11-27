@@ -128,7 +128,7 @@ AMCL の位置の共分散を監視し、大きい状態が続いたら、`gnss_
   | 走行制約 (誤差見込みと余裕距離から、狭い所で減速) | 狭くない所で減速が続かないか (`/localization/status` の `situation`・`speed_limit`) | 出力部 `speed_limit` を外す |
   | 検証要求 (計画用地図の障害物から抜けた後に、AMCL 検証ゲートの照合で確かめる) | 脱出の後に止まる時間 | AMCL 検証ゲートの `verify_min_interval_sec` を大きくする、または構成 `legacy` |
   | 拡大探索 (決まらずに止めた後に、続きの周りを全周で探す) | `localization.wide_search` の後の姿勢補正が正しいか | AMCL 検証ゲートの `wide_search_after_holds` を 0 |
-  | GNSS の再採用待機・GNSS の再採用待機 | GNSS が良いのに候補に入らない時間 (`localization.gnss_probation`・`gnss_released`) | AMCL 検証ゲートの `gnss_probation_sec` を 0、`gnss_hold_after_distrust` を偽 |
+  | GNSS の再採用待機 (精度が急に良くなった直後と、除外を解いた後) | GNSS が良いのに候補に入らない時間 (`localization.gnss_probation`・`gnss_released`) | AMCL 検証ゲートの `gnss_probation_sec` を 0、`gnss_hold_after_distrust` を偽 |
   | スキャン途絶の間は照合しない | LiDAR が止まった後に止まらず走るか (`localization.gate_scan_stale`) | AMCL 検証ゲートと復旧の `scan_buffer` の `max_scan_age_sec` を 0 |
   | センサ構成 (LiDAR なしで速度を下げて走る) | LiDAR が止まってから切り替わるまでの停止 (`localization.sensor_set_changed`) | `sensor_sets` を空にする |
 
