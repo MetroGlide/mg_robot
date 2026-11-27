@@ -41,7 +41,6 @@ def generate_launch_description():
         ],
         remappings=[
             ("points", "/camera/camera/depth/color/points"),
-            # ("points", "/rs_d435i/depth/color/points"),
             # Outputs: ~/points_obstacle, ~/cluster_markers
         ],
     )

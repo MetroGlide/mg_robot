@@ -167,7 +167,7 @@ MMI は Maker Nano RP2040 のマイコンで、USB CDC の固定長のバイナ�
 ## 注意
 
 - `bringup.launch.py` の `bringup_hardware` の条件式は、Python の `and` で書かれていて、`drive` が効かない。実機 (`simulation:=false`) では、`drive` によらず `motor_driver_node` が起動する。
-- `obstacle_detection_3d.launch.py` は、入力 `points` を `/rs_d435i/depth/color/points` に remap している。実機の RealSense が点群を出すトピックは `/camera/camera/depth/color/points` (`depth_postprocess_node` の入力と同じ)。シミュレータのブリッジと、`depth_to_pointcloud` の復元点群は、`/rs_d435i/depth/color/points`。
+- 点群のトピックは、実機の RealSense、シミュレータのブリッジ、`depth_to_pointcloud` の復元点群で同じ `/camera/camera/depth/color/points` にそろえている (`obstacle_detection_3d_node` と `depth_postprocess_node` の入力)。
 - `scripts/generate_static_transforms.py` は、インストールされない。`tools/scripts/generate_static_transforms.py` と内容が異なる別のファイル。
 
 ## テスト

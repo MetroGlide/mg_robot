@@ -115,9 +115,60 @@ TEST(ObstacleDetector, PillarIsDetectedWithBoundingBox)
   EXPECT_NEAR(c.max_x, 1.60f, 0.05f);
   EXPECT_NEAR(c.min_y, 0.00f, 0.05f);
   EXPECT_NEAR(c.max_y, 0.10f, 0.05f);
-  EXPECT_NEAR(c.min_z, 0.0f, 1e-4f);
-  EXPECT_NEAR(c.max_z, 0.5f, 0.05f);
+  // ROI の下限より下の点 (地面と柱の根元) は集計しない
+  EXPECT_NEAR(c.min_z, defaultParams().cropbox_z_min, 0.05f);
+  // ROI の上限より上の点も集計しない
+  EXPECT_NEAR(c.max_z, defaultParams().cropbox_z_max, 0.05f);
   EXPECT_EQ(static_cast<size_t>(c.num_points), detector.obstacle_points().size());
+}
+
+TEST(ObstacleDetector, LowObstacleOf200mmIsDetected)
+{
+  ObstacleDetector detector(defaultParams());
+  CloudBuilder cloud;
+  cloud.addPlane(0.2f, 2.8f, -1.4f, 1.4f, 0.0f, 0.02f);
+  // 地面に置いた高さ 0.2m の箱
+  cloud.addPillar(2.0f, 2.3f, -0.15f, 0.15f, 0.0f, 0.2f, 0.02f);
+  detector.process(cloud.view(), kIdentity);
+
+  ASSERT_EQ(detector.clusters().size(), 1u);
+  EXPECT_NEAR(detector.clusters()[0].min_x, 2.0f, 0.05f);
+  EXPECT_NEAR(detector.clusters()[0].max_z, 0.2f, 0.03f);
+}
+
+TEST(ObstacleDetector, ObstacleLowerThanDetectableHeightIsNotDetected)
+{
+  const auto params = defaultParams();
+  ObstacleDetector detector(params);
+  CloudBuilder cloud;
+  cloud.addPlane(0.2f, 2.8f, -1.4f, 1.4f, 0.0f, 0.02f);
+  // 検出できる最小の高さ (z_min + delta_z_threshold) より低い段差
+  const float height = static_cast<float>(params.cropbox_z_min + params.delta_z_threshold) - 0.03f;
+  for (float x = 1.5f; x < 1.8f; x += 0.02f) {
+    for (float y = -1.0f; y < 1.0f; y += 0.02f) {
+      for (float z = 0.0f; z <= height; z += 0.01f) {
+        cloud.add(x, y, z);
+      }
+    }
+  }
+  detector.process(cloud.view(), kIdentity);
+  EXPECT_TRUE(detector.obstacle_points().empty());
+}
+
+TEST(ObstacleDetector, NoisyGroundIsNotObstacle)
+{
+  ObstacleDetector detector(defaultParams());
+  CloudBuilder cloud;
+  // 遠方の深度ノイズ相当の、高さ ±0.07m の凹凸 (決まった並び)。一部の点は ROI の下限を越える
+  int i = 0;
+  for (float x = 0.2f; x < 2.8f; x += 0.01f) {
+    for (float y = -1.4f; y < 1.4f; y += 0.01f) {
+      cloud.add(x, y, 0.07f * static_cast<float>((i * 7919) % 201 - 100) / 100.0f);
+      ++i;
+    }
+  }
+  detector.process(cloud.view(), kIdentity);
+  EXPECT_TRUE(detector.obstacle_points().empty());
 }
 
 TEST(ObstacleDetector, LargeObstacleIsNotDroppedBySize)
@@ -154,7 +205,7 @@ TEST(ObstacleDetector, SensorTransformIsApplied)
 {
   ObstacleDetector detector(defaultParams());
   CloudBuilder cloud;
-  // センサ座標では z 軸が前方。光学座標系 (x 右, y 下, z 前) -> base_link (x 前, y 左, z 上)
+  // センサ座標では z 軸が前方。光学座標系 (x 右, y 下, z 前) -> 処理の座標系 (x 前, y 左, z 上)
   Eigen::Matrix3f r;
   r << 0, 0, 1,
       -1, 0, 0,
@@ -163,7 +214,7 @@ TEST(ObstacleDetector, SensorTransformIsApplied)
   tf.linear() = r;
   tf.translation() = Eigen::Vector3f(0.0f, 0.0f, 0.3f);  // センサは地上 0.3m
 
-  // base_link で x=1.5, y=0.0〜0.1, z=0.0〜0.5 の柱に対応するセンサ座標の点群
+  // 処理の座標系で x=1.5, y=0.0〜0.1, z=0.0〜0.5 の柱に対応するセンサ座標の点群
   for (int k = 0; k <= 10; ++k) {
     const float z = 0.05f * k;
     for (float x = 1.5f; x < 1.6f; x += 0.02f) {
@@ -178,7 +229,7 @@ TEST(ObstacleDetector, SensorTransformIsApplied)
 
   ASSERT_EQ(detector.clusters().size(), 1u);
   EXPECT_NEAR(detector.clusters()[0].min_x, 1.5f, 0.03f);
-  EXPECT_NEAR(detector.clusters()[0].max_z, 0.5f, 0.03f);
+  EXPECT_NEAR(detector.clusters()[0].max_z, defaultParams().cropbox_z_max, 0.05f);
 }
 
 TEST(ObstacleDetector, IsolatedSingleCellNoiseIsRemoved)
@@ -231,7 +282,8 @@ TEST(ObstacleDetector, StrideReducesProcessedPoints)
   params.stride = 4;
   ObstacleDetector detector(params);
   CloudBuilder cloud;
-  cloud.addPlane(0.2f, 2.8f, -0.7f, 0.7f, 0.0f, 0.02f);
+  // ROI 内の高さの面 (間引いた残りがすべて ROI に入る)
+  cloud.addPlane(0.2f, 2.8f, -0.7f, 0.7f, 0.1f, 0.02f);
   detector.process(cloud.view(), kIdentity);
   EXPECT_NEAR(
     static_cast<double>(detector.stats().cropped_points),
@@ -242,9 +294,9 @@ TEST(ObstacleDetector, StrideReducesProcessedPoints)
 TEST(ObstacleDetector, OutlierTrimIgnoresSingleFlyingPixel)
 {
   CloudBuilder cloud;
-  // 平地に 1 点だけ高い点（フライングピクセル）
-  cloud.addPlane(1.00f, 1.05f, 0.0f, 0.05f, 0.0f, 0.01f);
-  cloud.add(1.02f, 0.02f, 0.6f);
+  // ROI 内の平らな面 (台の上面) に 1 点だけ高い点（フライングピクセル）
+  cloud.addPlane(1.00f, 1.05f, 0.0f, 0.05f, 0.1f, 0.01f);
+  cloud.add(1.02f, 0.02f, 0.3f);
 
   auto base_params = defaultParams();
   base_params.min_cluster_cells = 1;

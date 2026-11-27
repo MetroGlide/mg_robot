@@ -64,7 +64,7 @@ Gazebo のトピックと ROS のトピックの対応。
 | `/gps/fix` | `/navsat` | Gazebo → ROS |
 | `/rs_d435i/depth/image_raw`、`/rs_d435i/color/image_raw` | `/rgbd_camera/depth_image`、`/rgbd_camera/image` | Gazebo → ROS |
 | `/rs_d435i/depth/camera_info`、`/rs_d435i/color/camera_info` | `/rgbd_camera/camera_info` | Gazebo → ROS |
-| `/rs_d435i/depth/color/points` | `/rgbd_camera/points` | Gazebo → ROS |
+| `/camera/camera/depth/color/points` (実機の RealSense と同じ名前) | `/rgbd_camera/points` | Gazebo → ROS |
 
 - 車体の動き (差動駆動と車輪のスリップ) は、URDF の Gazebo プラグインで定義している。
 
