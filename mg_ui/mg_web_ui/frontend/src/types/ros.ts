@@ -195,6 +195,8 @@ export interface SequencerStatus {
   current_action: string
   /** wait_trigger で IDLE に止まっているか */
   waiting_trigger: boolean
+  /** いま ~/trigger (MMI のボタンなど) で走行を始められるか */
+  trigger_acceptable: boolean
 }
 
 /** Waypoint 走行の「いまの活動」の要約 (mg_msgs/NavigationActivity)。判定はロボット側で行う */
@@ -204,7 +206,6 @@ export interface NavigationActivity {
   /** 固定の短い説明。変わる数値は下のフィールドで渡される */
   text: string
   detail: string
-  emphasis: number
   elapsed_sec: number
   /** 該当しなければ -1 */
   index: number
@@ -212,13 +213,6 @@ export interface NavigationActivity {
   /** 走行中は残り距離 [m]、出発待ちは残り秒数。該当しなければ -1 */
   remaining: number
 }
-
-/** NavigationActivity.emphasis。値は mg_msgs/msg/NavigationActivity.msg に合わせる */
-export const ACTIVITY_EMPHASIS = {
-  NORMAL: 0,
-  NOTICE: 1,
-  ALERT: 2,
-} as const
 
 /** NavigationActivity.code。値は mg_msgs/msg/NavigationActivity.msg に合わせる */
 export const ACTIVITY_CODE = {
@@ -235,7 +229,14 @@ export const ACTIVITY_CODE = {
   NO_PROGRESS: 'no_progress',
   ACTION: 'action',
   TRIGGER_WAIT: 'trigger_wait',
+  READY_TO_START: 'ready_to_start',
   PAUSED: 'paused',
+  LOCALIZATION_HOLD: 'localization_hold',
+  WATCHDOG_PAUSE: 'watchdog_pause',
+  LOCALIZATION_RECOVERING_DRIVE: 'localization_recovering_drive',
+  LOCALIZATION_SLOWDOWN: 'localization_slowdown',
+  NO_LIDAR_DRIVE: 'no_lidar_drive',
+  LOCALIZATION_UNKNOWN: 'localization_unknown',
   GOAL_REACHED: 'goal_reached',
   ERROR: 'error',
 } as const
@@ -278,6 +279,19 @@ export interface LocalizationStatus {
   in_grace: boolean
   footprint_in_lethal: boolean
   lethal_depth_m: number
+  /** 自己位置状況 (AMCL 検証ゲートと走行制約の設定があるとき。なければ空) */
+  situation: string
+  /** 危険度: 0 使わない (正常)、1 軽い、2 中、3 重い */
+  degree: number
+  /** 誤差見込み [m] と余裕距離 [m]。分からなければ -1 */
+  possible_error_m: number
+  clearance_m: number
+  /** 速度の上限 [m/s]。0 は上限なし */
+  speed_limit: number
+  /** センサ構成 (空は全部。例: no_lidar) */
+  sensor_set: string
+  verify_id: number
+  verify_result: string
   profile: string
   last_event: string
   checks: LocalizationCheck[]

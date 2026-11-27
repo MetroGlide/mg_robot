@@ -10,6 +10,7 @@ import { CloseIcon } from "../ui/icons";
 import OpsButton from "../ui/OpsButton";
 import Stepper from "../ui/Stepper";
 import ActivityLine from "./ActivityLine";
+import RecentActivity from "./RecentActivity";
 import { SEQUENCER_STEPS, sequencerStep } from "./displayState";
 
 interface Props {
@@ -50,7 +51,8 @@ export default function WaypointProgress({
         <IconButton icon={<CloseIcon />} title="閉じる" onClick={onClose} />
       </div>
       <Stepper steps={SEQUENCER_STEPS} currentId={currentId} tone={tone} />
-      <ActivityLine activity={activity} className="mt-2 text-xs" />
+      <ActivityLine activity={activity} className="mt-3 text-sm" />
+      <RecentActivity activity={activity} />
       <div className="mt-4 flex flex-wrap items-center justify-center gap-4">
         <OpsButton tone="primary" disabled={busy} onClick={control.start}>
           START

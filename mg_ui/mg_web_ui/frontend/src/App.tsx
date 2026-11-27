@@ -16,6 +16,7 @@ import { USE_CASES, USE_CASE_LINKS } from "./pages/ops/useCases";
 // three.js や地図ライブラリを使うページは、開いたときに読み込む
 const SensorsPage = lazy(() => import("./pages/ops/SensorsPage"));
 const SystemOpsPage = lazy(() => import("./pages/ops/SystemOpsPage"));
+const ActivityLogPage = lazy(() => import("./pages/ops/ActivityLogPage"));
 const TopPage = lazy(() => import("./pages/TopPage"));
 const WaypointNavPage = lazy(() => import("./pages/WaypointNavPage"));
 const SlamPage = lazy(() => import("./pages/SlamPage"));
@@ -54,6 +55,11 @@ export default function App() {
                   element={
                     <SystemOpsPage client={client} sysManager={sysManager} />
                   }
+                />
+                {/* 走行の状態の履歴の全件。:useCase より前に置く */}
+                <Route
+                  path="activity-log"
+                  element={<ActivityLogPage client={client} />}
                 />
                 <Route
                   path=":useCase"

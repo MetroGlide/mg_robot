@@ -9,7 +9,7 @@ export interface OperateProps {
 }
 
 export interface UseCase {
-  /** URL の /ops/:id。センサビューの "sensors"、システムビューの "system" とは重ねない */
+  /** URL の /ops/:id。センサビューの "sensors"、システムビューの "system"、状態の履歴の "activity-log" とは重ねない */
   id: string;
   label: string;
   /** 運用ビュー。開いたときに読み込む(three.js などを使うため) */

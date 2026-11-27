@@ -1,9 +1,13 @@
-import { ACTIVITY_CODE, ACTIVITY_EMPHASIS, NavigationActivity } from "../../types";
-import { Tone } from "../ui/Pill";
+import { ACTIVITY_CODE, NavigationActivity } from "../../types";
 
 // 補足 (detail) を並べる活動。ほかの活動では detail が内部の値 (アクションの type など) なので出さない
 const SHOW_DETAIL = new Set<string>([
   ACTIVITY_CODE.PAUSED,
+  ACTIVITY_CODE.LOCALIZATION_HOLD,
+  ACTIVITY_CODE.WATCHDOG_PAUSE,
+  ACTIVITY_CODE.LOCALIZATION_RECOVERING_DRIVE,
+  ACTIVITY_CODE.LOCALIZATION_SLOWDOWN,
+  ACTIVITY_CODE.NO_LIDAR_DRIVE,
   ACTIVITY_CODE.OBSTACLE_STOP,
   ACTIVITY_CODE.OBSTACLE_SLOWDOWN,
   ACTIVITY_CODE.SENSOR_TIMEOUT_STOP,
@@ -13,6 +17,9 @@ const SHOW_DETAIL = new Set<string>([
 // 続いている秒数を並べる活動
 const SHOW_ELAPSED = new Set<string>([
   ACTIVITY_CODE.PAUSED,
+  ACTIVITY_CODE.LOCALIZATION_HOLD,
+  ACTIVITY_CODE.WATCHDOG_PAUSE,
+  ACTIVITY_CODE.LOCALIZATION_RECOVERING_DRIVE,
   ACTIVITY_CODE.OBSTACLE_STOP,
   ACTIVITY_CODE.SENSOR_TIMEOUT_STOP,
   ACTIVITY_CODE.NO_PROGRESS,
@@ -41,11 +48,4 @@ export function formatActivity(activity: NavigationActivity): string {
     parts.push(`${Math.floor(activity.elapsed_sec)} 秒`);
   }
   return parts.join(" ・ ");
-}
-
-/** 表示の強調を色に対応させる。健全性の色 (診断のレベル) とは別 */
-export function activityTone(activity: NavigationActivity): Tone {
-  if (activity.emphasis === ACTIVITY_EMPHASIS.ALERT) return "error";
-  if (activity.emphasis === ACTIVITY_EMPHASIS.NOTICE) return "warn";
-  return "neutral";
 }

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Outlet } from "react-router-dom";
+import { ActivityHistoryProvider } from "../../contexts/ActivityHistoryContext";
 import { EventStreamProvider } from "../../contexts/EventStreamContext";
 import { FoxgloveClientHandle } from "../../hooks/useFoxgloveClient";
 import SettingModal from "../SettingModal";
@@ -17,6 +18,7 @@ export default function AppShell({ client, links }: Props) {
 
   return (
     <EventStreamProvider client={client}>
+    <ActivityHistoryProvider client={client}>
     <div className="flex h-screen flex-col bg-surface text-content">
       <TopBar
         client={client}
@@ -29,6 +31,7 @@ export default function AppShell({ client, links }: Props) {
       </main>
       <SettingModal open={settingOpen} onClose={() => setSettingOpen(false)} />
     </div>
+    </ActivityHistoryProvider>
     </EventStreamProvider>
   );
 }
