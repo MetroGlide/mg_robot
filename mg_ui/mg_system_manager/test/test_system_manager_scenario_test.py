@@ -175,6 +175,41 @@ def test_runs_are_listed_newest_first_with_counts(client, settings):
         "finished", 1, 2)
 
 
+def _write_shard(settings, run_id, shard, entries, started_at, finished, exit_code):
+    run = settings.scenario_results_dir / run_id
+    run.mkdir(parents=True, exist_ok=True)
+    (run / f"progress_{shard}.json").write_text(json.dumps({
+        "started_at": started_at,
+        "options": {"shard": shard},
+        "entries": entries,
+        "finished": finished,
+        "exit_code": exit_code,
+    }))
+
+
+def test_shard_progress_files_are_merged(client, settings):
+    _write_progress(settings, "20260925_090000", [_entry("a", "PASSED")],
+                    finished=True, exit_code=0)
+    _write_shard(settings, "20260925_100000", "1of2", [_entry("a", "PASSED")],
+                 "2026-09-25T10:00:05", finished=True, exit_code=0)
+    _write_shard(settings, "20260925_100000", "2of2", [_entry("b", "RUNNING")],
+                 "2026-09-25T10:00:01", finished=False, exit_code=None)
+
+    runs = client.get("/scenario/runs").json()["runs"]
+    assert runs[0]["run_id"] == "20260925_100000"
+    assert runs[0]["scenarios"] == ["a", "b"]
+    assert runs[0]["started_at"] == "2026-09-25T10:00:01"
+    assert runs[0]["state"] == "aborted"
+    assert runs[0]["exit_code"] is None
+
+    _write_shard(settings, "20260925_100000", "2of2", [_entry("b", "FAILED")],
+                 "2026-09-25T10:00:01", finished=True, exit_code=1)
+    body = client.get("/scenario/status").json()
+    assert body["run"]["state"] == "finished"
+    assert body["run"]["exit_code"] == 1
+    assert [e["status"] for e in body["run"]["entries"]] == ["PASSED", "FAILED"]
+
+
 def test_result_and_log_of_an_entry(client, settings):
     run = _write_progress(settings, "20260925_100000", [_entry("a", "FAILED")],
                           finished=True, exit_code=1)

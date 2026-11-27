@@ -3,11 +3,15 @@ import { ConnectionStatus, FoxgloveClientHandle } from "../../hooks/useFoxgloveC
 import { useTopicSubscriber } from "../../hooks/useTopicSubscriber";
 import { useDiagnosticsAgg } from "../../hooks/useDiagnosticsAgg";
 import { useFreshness } from "../../hooks/useFreshness";
+import { useNavigationActivity } from "../../hooks/useNavigationActivity";
 import { useEventStream } from "../../contexts/EventStreamContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useRobotProfile } from "../../contexts/RobotProfileContext";
 import { BoolMsg, DIAG_LEVEL } from "../../types";
 import { TOPICS } from "../../ros/interfaces";
+import { ACTIVITY_LOG_PATH } from "../operate/RecentActivity";
+import StatusLamp from "../operate/StatusLamp";
+import { lampFor } from "../operate/statusLamp";
 import IconButton from "../ui/IconButton";
 import Pill, { Tone, toneFromDiagLevel } from "../ui/Pill";
 import { MoonIcon, SunIcon } from "../ui/icons";
@@ -56,6 +60,8 @@ export default function TopBar({ client, links, onSettingClick }: Props) {
     diagnostics === null || diagFreshness.stale
       ? { label: "診断なし", tone: "neutral" as Tone }
       : { label: `診断 ${DIAG_LEVEL[diagnostics.level]}`, tone: toneFromDiagLevel(diagnostics.level) };
+  // 走行の状態ランプ (Waypoint 走行のカードと同じ表)。どのビューでも見えるよう小さく出す
+  const activity = useNavigationActivity(client);
   const connection = CONNECTION[client.status];
   const { name: robotName } = useRobotProfile();
 
@@ -77,6 +83,14 @@ export default function TopBar({ client, links, onSettingClick }: Props) {
         </NavLink>
       </nav>
       <div className="ml-auto flex items-center gap-2">
+        <NavLink
+          to={ACTIVITY_LOG_PATH}
+          title="走行の状態の履歴を開く"
+          className="flex max-w-[16rem] items-center gap-1.5 rounded-lg px-2 py-1 text-xs hover:bg-surface-sunken"
+        >
+          <StatusLamp lamp={lampFor(activity?.code ?? null)} size={12} />
+          <span className="truncate">{activity ? activity.text : "活動なし"}</span>
+        </NavLink>
         <Pill tone={estop?.data ? "error" : "neutral"}>
           E-Stop {estop?.data ? "作動中" : "OFF"}
         </Pill>

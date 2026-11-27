@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { NavigationActivity } from "../../types";
-import { activityTone, formatActivity } from "./activityText";
+import { formatActivity } from "./activityText";
 
 function activity(overrides: Partial<NavigationActivity>): NavigationActivity {
   return {
@@ -8,7 +8,6 @@ function activity(overrides: Partial<NavigationActivity>): NavigationActivity {
     code: "idle",
     text: "Waypoint 走行なし",
     detail: "",
-    emphasis: 0,
     elapsed_sec: 0,
     index: -1,
     total: -1,
@@ -101,12 +100,16 @@ describe("formatActivity", () => {
       ),
     ).toBe("一時停止中 ・ web");
   });
-});
 
-describe("activityTone", () => {
-  it("強調を色に対応させる", () => {
-    expect(activityTone(activity({ emphasis: 0 }))).toBe("neutral");
-    expect(activityTone(activity({ emphasis: 1 }))).toBe("warn");
-    expect(activityTone(activity({ emphasis: 2 }))).toBe("error");
+  it("自己位置の活動は補足 (状態・速度の上限) を並べる", () => {
+    expect(
+      formatActivity(
+        activity({
+          code: "localization_slowdown",
+          text: "自己位置の不確かさで減速中",
+          detail: "SUSPECT, suspect, 上限 0.40 m/s",
+        }),
+      ),
+    ).toBe("自己位置の不確かさで減速中 ・ SUSPECT, suspect, 上限 0.40 m/s");
   });
 });

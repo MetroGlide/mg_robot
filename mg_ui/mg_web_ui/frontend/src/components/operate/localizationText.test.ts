@@ -18,6 +18,14 @@ function status(overrides: Partial<LocalizationStatus>): LocalizationStatus {
     in_grace: false,
     footprint_in_lethal: false,
     lethal_depth_m: 0,
+    situation: "",
+    degree: 0,
+    possible_error_m: -1,
+    clearance_m: -1,
+    speed_limit: 0,
+    sensor_set: "",
+    verify_id: 0,
+    verify_result: "",
     profile: "",
     last_event: "",
     checks: [],
@@ -43,5 +51,12 @@ describe("localizationDetail", () => {
       "障害物内 0.12 m",
     );
     expect(localizationDetail(status({ footprint_in_lethal: true, lethal_depth_m: -1 }))).toBe("障害物内");
+  });
+
+  it("自己位置状況・速度の上限・センサ構成を並べる (正常の状況は並べない)", () => {
+    expect(localizationDetail(status({ situation: "normal" }))).toBe("");
+    expect(
+      localizationDetail(status({ situation: "suspect", speed_limit: 0.4, sensor_set: "no_lidar" })),
+    ).toBe("状況: suspect · 上限 0.40 m/s · センサ: no_lidar");
   });
 });

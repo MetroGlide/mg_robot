@@ -186,3 +186,41 @@ class TestSubscriptions:
         _, node = make_sources(
             collision_topic='', bt_log_topic='', nav_status_topic='', path_check_topic='')
         node.create_subscription.assert_not_called()
+
+
+def localization_sources(topic='/localization/status', timeout_sec=3.0):
+    node = MagicMock()
+    sources = ActivitySources(
+        node, MagicMock(), '', '', '', '', localization_status_topic=topic,
+        localization_timeout_sec=timeout_sec)
+    return sources, node
+
+
+def receive_status(sources, node, at_sec, **fields):
+    node.get_clock.return_value.now.return_value.nanoseconds = int(at_sec * 1e9)
+    msg = dict(state=0, situation='', speed_limit=0.0, sensor_set='', blame='')
+    msg.update(fields)
+    sources.on_localization_status(SimpleNamespace(**msg))
+
+
+class TestLocalizationStatus:
+    def test_not_expected_without_topic(self):
+        sources, node = localization_sources(topic='')
+        assert not sources.localization_expected
+        node.create_subscription.assert_not_called()
+
+    def test_unknown_until_first_message(self):
+        sources, _ = localization_sources()
+        assert sources.localization_expected
+        assert sources.localization(100.0) is None
+
+    def test_keeps_latest_while_fresh(self):
+        sources, node = localization_sources()
+        receive_status(sources, node, 100.0, state=1, speed_limit=0.4, situation='suspect')
+        loc = sources.localization(103.0)
+        assert (loc.state, loc.speed_limit, loc.situation) == (1, 0.4, 'suspect')
+
+    def test_stale_after_timeout(self):
+        sources, node = localization_sources()
+        receive_status(sources, node, 100.0)
+        assert sources.localization(103.1) is None

@@ -2,6 +2,7 @@
 
 結果ディレクトリは sim_scenario_test の CLI が書く。
   <results_root>/<run_id>/progress.json      進み具合 (エントリごとの状態)
+  <results_root>/<run_id>/progress_<I>of<N>.json  分けて並列に実行したときの、分け札ごとの進み具合
   <results_root>/<run_id>/<entry>/result.json シナリオ 1 本の結果 (checks・events)
   <results_root>/<run_id>/<entry>/launch.log  ログ (リモート実行時は stack.log も)
 """
@@ -15,6 +16,8 @@ import yaml
 from mg_system_manager.config import SCENARIO_NAME_RE
 
 PROGRESS_FILE = "progress.json"
+# 分けて並列に実行したとき (make scenario-test-all SHARDS=N) の、分け札ごとの進み具合
+SHARD_PROGRESS_GLOB = "progress_*of*.json"
 RESULT_FILE = "result.json"
 LOG_FILES = {"launch": "launch.log", "stack": "stack.log"}
 
@@ -72,11 +75,38 @@ def entry_file(root: Path, run_id: str, entry: str, filename: str) -> Path | Non
     return path
 
 
+def _progress_files(run: Path) -> list[Path]:
+    """run の進み具合のファイル。progress.json と、分け札ごとのもの (名前の順)。"""
+    files = [run / PROGRESS_FILE] if (run / PROGRESS_FILE).is_file() else []
+    return files + sorted(run.glob(SHARD_PROGRESS_GLOB))
+
+
+def merge_progress(parts: list[dict[str, Any]]) -> dict[str, Any]:
+    """分け札ごとの進み具合を 1 つにまとめる。
+
+    エントリは分け札の順につなぐ。始めた時刻は最も早いもの。全ての分け札が終わったときだけ終わりとし、
+    終了コードは 0 でない最初のもの (全て 0 なら 0)。
+    """
+    if len(parts) == 1:
+        return parts[0]
+    finished = all(part.get("finished") for part in parts)
+    exit_codes = [part.get("exit_code") for part in parts]
+    started = [str(part["started_at"]) for part in parts if part.get("started_at")]
+    return {
+        "started_at": min(started) if started else None,
+        "options": parts[0].get("options") or {},
+        "entries": [entry for part in parts for entry in (part.get("entries") or [])],
+        "finished": finished,
+        "exit_code": (next((c for c in exit_codes if c), 0) if finished else None),
+    }
+
+
 def read_progress(root: Path, run_id: str) -> dict[str, Any] | None:
     run = run_path(root, run_id)
     if run is None:
         return None
-    return _read_json(run / PROGRESS_FILE)
+    parts = [data for data in map(_read_json, _progress_files(run)) if data is not None]
+    return merge_progress(parts) if parts else None
 
 
 def _read_json(path: Path) -> dict[str, Any] | None:
@@ -88,10 +118,10 @@ def _read_json(path: Path) -> dict[str, Any] | None:
 
 
 def run_ids(root: Path) -> list[str]:
-    """progress.json がある run の id を新しい順に返す。
+    """進み具合のファイル (progress.json か分け札ごとのもの) がある run の id を新しい順に返す。
 
     手で付けた名前のディレクトリが混ざっても最新を取り違えないよう、名前ではなく
-    progress.json の更新時刻で並べる(更新時刻が同じなら名前の降順)。
+    進み具合のファイルの更新時刻 (分け札ごとなら最も新しいもの) で並べる (更新時刻が同じなら名前の降順)。
     """
     try:
         names = os.listdir(root)
@@ -102,7 +132,9 @@ def run_ids(root: Path) -> list[str]:
         if not SCENARIO_NAME_RE.match(n):
             continue
         try:
-            mtimes[n] = (root / n / PROGRESS_FILE).stat().st_mtime
+            files = _progress_files(root / n)
+            if files:
+                mtimes[n] = max(f.stat().st_mtime for f in files)
         except OSError:
             continue
     return sorted(mtimes, key=lambda n: (mtimes[n], n), reverse=True)

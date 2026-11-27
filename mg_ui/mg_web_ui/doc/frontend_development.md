@@ -199,6 +199,7 @@ client.publish(TOPICS.MY_TOPIC, 'pkg/msg/MyMessage', { value: 1, label: 'hello' 
 
 - **UI は判定しない**。色は、`/diagnostics_agg` の診断のレベルと、system_manager `GET /status/detail` の `level` で決める。しきい値を UI に書かない。UI が自分で判定してよいのは、通信路が新しいかどうか (`useFreshness`、`useDiagnosticsAgg` の鮮度) だけ。
 - 診断は `hooks/useDiagnosticsAgg.ts` で `/diagnostics_agg` を受け、`utils/diagnosticsTree.ts` で木にする。個別に参照するパスは `ros/diagnosticPaths.ts` だけに書く (aggregator との公開契約)。区分・グループごとの表示内容 (表示名、メッセージの省略、簡易表示の畳み込み) は `hooks/healthSummary.ts` (React に依存しない)。Hz を数えるためにトピックを購読しない。
+- 走行の状態ランプの色は、活動の code から `components/operate/statusLamp.ts` の表で引く (色の源はこの表だけ。code を足すと型の検査で書き忘れが分かる)。活動の履歴は `contexts/ActivityHistoryContext.tsx` が `/events` のうち `sequencer.activity_changed` だけを、イベント一覧とは別の上限で溜める。
 - イベントは `contexts/EventStreamContext.tsx` が `/events` (`rcl_interfaces/Log`、transient_local) を 1 か所で購読し、上限つきのバッファに持つ。トップバーの未読バッジと `EventLogPanel` が同じ状態を読む。本文は `utils/logfmt.ts` で解析する。接続し直したときに履歴を受けるため、`foxglove-bridge` は `max_qos_depth:=500` で起動する。
 - 旧 UI (`LegacyLayout`) は、生の `/diagnostics` (`useDiagnosticsMap`) のままにする。`SystemPage` の `diagnosticsSlot` / `eventsSlot` を渡す新 UI だけが、診断の木とイベント一覧を出す。
 - 人が読むだけの値 (速度、GNSS など) は `useThrottledTopic(client, topic, schema, maxHz)` で、再描画を間引く。間引いても最後の値は必ず反映される。**E-Stop や FSM の状態のように、変化を見逃せない値は間引かず `useTopicSubscriber` を使う**。

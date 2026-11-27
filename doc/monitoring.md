@@ -108,7 +108,7 @@ evt=<domain>.<event> key=value key="空白を含む値" ...
 
 | ドメイン | イベント名 |
 | :--- | :--- |
-| `sequencer` | `state_changed`、`run_started`、`run_finished`、`paused`、`resumed`、`waypoint_reached`、`manual_goal_finished`、`trigger_accepted`、`trigger_rejected` |
+| `sequencer` | `state_changed`、`run_started`、`run_finished`、`paused`、`resumed`、`waypoint_reached`、`manual_goal_finished`、`trigger_accepted`、`trigger_rejected`、`activity_changed` (「いまの活動」の code の変化。Web UI の活動の履歴の源。[mg_waypoint_navigation/doc/architecture.md](../mg_waypoint_navigation/doc/architecture.md#いまの活動-activity)) |
 | `mmi` | `switch_pressed`、`switch_ignored` (ポートを開いた直後なので捨てた)、`trigger_result`、`trigger_failed` (サービスに届かない) |
 | `action` | `started`、`succeeded`、`failed` |
 | `nav` | `goal_sent`、`goal_result` |

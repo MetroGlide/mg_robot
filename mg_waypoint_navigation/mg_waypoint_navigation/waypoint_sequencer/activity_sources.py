@@ -1,4 +1,4 @@
-"""「いまの活動」の合成に使う Nav2 側の入力 (collision_monitor の状態・BT のリカバリー・遠回りの棄却) を保持する。
+"""「いまの活動」の合成に使う入力 (collision_monitor の状態・BT のリカバリー・遠回りの棄却・自己位置監視の状態) を保持する。
 
 購読して最新の値を保存するだけで、判定は activity.py が行う。
 """
@@ -9,6 +9,7 @@ from typing import FrozenSet, Optional, Set
 
 import rclpy.node
 from action_msgs.msg import GoalStatus, GoalStatusArray
+from localization_supervisor_msgs.msg import LocalizationStatus
 from mg_msgs.msg import PathCandidateCheck
 from nav2_msgs.msg import BehaviorTreeLog, CollisionMonitorState
 from rclpy.callback_groups import CallbackGroup
@@ -18,6 +19,7 @@ from rclpy.qos import (
 from mg_waypoint_navigation.waypoint_sequencer.activity import (
     CollisionInput,
     DetourInput,
+    LocalizationInput,
     RECOVERY_NODE_NAMES,
 )
 
@@ -45,6 +47,9 @@ class ActivitySources:
     Nav2 のアクションの状態は、シーケンサが送っていないゴール (RViz の 2D Goal Pose など)
     の有無を知るために使う。状態は変化したときしか届かないので、発行側が居なくなったときは
     最後の値を捨てる。
+
+    自己位置監視の状態は一定の周期で届く。受け取ってから localization_timeout_sec を過ぎたら
+    「届いていない」として扱う (古さの判定はここだけ)。
     """
 
     def __init__(
@@ -55,6 +60,8 @@ class ActivitySources:
         bt_log_topic: str,
         nav_status_topic: str,
         path_check_topic: str,
+        localization_status_topic: str = '',
+        localization_timeout_sec: float = 0.0,
     ):
         self._node = node
         self._nav_status_topic = nav_status_topic
@@ -64,6 +71,10 @@ class ActivitySources:
         self._rejected_detour: Optional[DetourInput] = None
         self._nav_goal_live = False
         self._external_since: Optional[float] = None
+        self._localization_topic = localization_status_topic
+        self._localization_timeout_sec = localization_timeout_sec
+        self._localization: Optional[LocalizationInput] = None
+        self._localization_received_at: Optional[float] = None
 
         if collision_state_topic:
             node.create_subscription(
@@ -88,6 +99,32 @@ class ActivitySources:
                     depth=1, reliability=ReliabilityPolicy.RELIABLE,
                     durability=QoSDurabilityPolicy.TRANSIENT_LOCAL),
                 callback_group=callback_group)
+
+        if localization_status_topic:
+            node.create_subscription(
+                LocalizationStatus, localization_status_topic, self.on_localization_status, 10,
+                callback_group=callback_group)
+
+    def on_localization_status(self, msg: LocalizationStatus) -> None:
+        received_at = self._node.get_clock().now().nanoseconds / 1e9
+        with self._lock:
+            self._localization = LocalizationInput(
+                state=msg.state, situation=msg.situation, speed_limit=msg.speed_limit,
+                sensor_set=msg.sensor_set, blame=msg.blame)
+            self._localization_received_at = received_at
+
+    @property
+    def localization_expected(self) -> bool:
+        """自己位置監視の状態を入力に使う設定か。"""
+        return bool(self._localization_topic)
+
+    def localization(self, now: float) -> Optional[LocalizationInput]:
+        """新しい自己位置監視の状態。届いていない・古いときは None。"""
+        with self._lock:
+            received_at = self._localization_received_at
+            if received_at is None or now - received_at > self._localization_timeout_sec:
+                return None
+            return self._localization
 
     def on_nav_status(self, msg: GoalStatusArray) -> None:
         live = any(s.status in _LIVE_GOAL_STATUSES for s in msg.status_list)

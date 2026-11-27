@@ -1,4 +1,5 @@
 import { normalizeType, parse } from "@foxglove/rosmsg";
+import { SERVICES } from "../ros/services";
 import type { GateState } from "../types";
 
 type MessageDefinition = ReturnType<typeof parse>[number];
@@ -123,6 +124,32 @@ export function describeServiceResponse(response: unknown): ActionResult {
     }
   }
   return { ok: true, text: JSON.stringify(response) ?? "ok" };
+}
+
+/** 自己位置監視の ~/request_verify の応答を、結果の表示にする */
+export function describeVerifyResponse(response: unknown): ActionResult {
+  const { supported, accepted, id, message } = (response ?? {}) as Record<
+    string,
+    unknown
+  >;
+  const detail =
+    typeof message === "string" && message !== "" ? `: ${message}` : "";
+  if (supported === false) return { ok: false, text: `not supported${detail}` };
+  if (accepted !== true) return { ok: false, text: `not accepted${detail}` };
+  return { ok: true, text: `verify requested (id ${String(id)})${detail}` };
+}
+
+/**
+ * 自己位置の取り直しに使うサービス。GNSS による初期化ノード (AMCL 検証ゲートのない構成) があればそれを、
+ * なければ AMCL 検証ゲートの地図照合を使う。どちらも公開されていなければ null。
+ */
+export function relocalizeService(available: readonly string[]): string | null {
+  if (available.includes(SERVICES.GNSS_AMCL_REINIT))
+    return SERVICES.GNSS_AMCL_REINIT;
+  if (available.includes(SERVICES.LOCALIZATION_REQUEST_VERIFY)) {
+    return SERVICES.LOCALIZATION_REQUEST_VERIFY;
+  }
+  return null;
 }
 
 export type GateLabel = "ON" | "OFF" | "PENDING" | "UNKNOWN";

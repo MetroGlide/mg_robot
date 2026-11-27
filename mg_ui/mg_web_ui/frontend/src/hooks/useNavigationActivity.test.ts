@@ -8,7 +8,6 @@ const MESSAGE = {
   code: "obstacle_stop",
   text: "障害物で停止中",
   detail: "stop_front",
-  emphasis: 1,
   elapsed_sec: 2,
   index: 3,
   total: 10,

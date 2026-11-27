@@ -21,8 +21,9 @@ from mg_msgs.srv import LoadMaps, SendGoal, StartSequence, TriggerSequence
 from mg_utils.event_log import EventLog
 from mg_waypoint_navigation.waypoint import WaypointList, WaypointsLoader
 from mg_waypoint_navigation.waypoint_sequencer.activity import (
+    ActivityDebouncer,
     ActivityInputs,
-    ActivityTracker,
+    ActivitySettings,
     compose_activity,
 )
 from mg_waypoint_navigation.waypoint_sequencer.activity_sources import ActivitySources
@@ -111,6 +112,22 @@ class WaypointSequencerNode(Node):
             "activity_nav_status_topic", "/navigate_to_pose/_action/status").value
         self._activity_path_check_topic: str = self.declare_parameter(
             "activity_path_check_topic", "/navigation/path_candidate_check").value
+        self._activity_localization_topic: str = self.declare_parameter(
+            "activity_localization_status_topic", "/localization/status").value
+        # 自己位置監視の状態がこれより古ければ「届いていない」とする [s]
+        self._activity_localization_timeout_sec: float = self.declare_parameter(
+            "activity_localization_timeout_sec", 3.0).value
+        # 新しい活動がこの秒数続いたときだけ採る。0 なら全ての変化を出す [s]
+        self._activity_min_duration_sec: float = self.declare_parameter(
+            "activity_min_duration_sec", 1.0).value
+        # 一時停止の要求元のうち、自己位置監視とセンサの見張りのもの (送る側の requester_id と合わせる)
+        self._activity_settings = ActivitySettings(
+            stall_warn_sec=self._stall_warn_sec,
+            localization_requesters=frozenset(self.declare_parameter(
+                "activity_localization_requesters", ["localization"]).value),
+            watchdog_requesters=frozenset(self.declare_parameter(
+                "activity_watchdog_requesters", ["driver_watchdog"]).value),
+        )
 
     # ------------------------------------------------------------------
     # ROS 通信初期化
@@ -163,8 +180,9 @@ class WaypointSequencerNode(Node):
             self._activity_sources = ActivitySources(
                 self, activity_group,
                 self._activity_collision_topic, self._activity_bt_log_topic,
-                self._activity_nav_status_topic, self._activity_path_check_topic)
-            self._activity_tracker = ActivityTracker()
+                self._activity_nav_status_topic, self._activity_path_check_topic,
+                self._activity_localization_topic, self._activity_localization_timeout_sec)
+            self._activity_debouncer = ActivityDebouncer(self._activity_min_duration_sec)
             self._activity_pub = self.create_publisher(
                 NavigationActivity, "~/activity", latched_qos)
             self._activity_timer = self.create_timer(
@@ -323,12 +341,13 @@ class WaypointSequencerNode(Node):
     def _publish_activity_cb(self):
         fsm = self._fsm
         state = fsm.state
-        external_goal_active = self._activity_sources.external_goal_active(
-            fsm.has_live_nav_goal, self.get_clock().now().nanoseconds / 1e9)
+        now_sec = self.get_clock().now().nanoseconds / 1e9
+        sources = self._activity_sources
+        external_goal_active = sources.external_goal_active(fsm.has_live_nav_goal, now_sec)
         driving = (state == SequencerState.NAVIGATING or fsm.manual_goal_active
                    or external_goal_active)
         if not driving:
-            self._activity_sources.clear_navigation_state()
+            sources.clear_navigation_state()
         progress = fsm.navigation_progress()
         inputs = ActivityInputs(
             state=state,
@@ -341,22 +360,31 @@ class WaypointSequencerNode(Node):
             waiting_trigger=fsm.waiting_trigger,
             manual_goal_active=fsm.manual_goal_active,
             external_goal_active=external_goal_active,
-            collision=self._activity_sources.collision,
-            running_recovery_nodes=self._activity_sources.recovery_nodes,
+            collision=sources.collision,
+            running_recovery_nodes=sources.recovery_nodes,
             stalled_sec=0.0 if progress is None else progress.stalled_sec,
-            rejected_detour=self._activity_sources.rejected_detour,
+            rejected_detour=sources.rejected_detour,
+            trigger_acceptable=fsm.trigger_acceptable,
+            localization=sources.localization(now_sec),
+            localization_expected=sources.localization_expected,
         )
-        activity = compose_activity(inputs, self._stall_warn_sec)
-        now = self.get_clock().now()
+        activity, elapsed_sec, change = self._activity_debouncer.update(
+            compose_activity(inputs, self._activity_settings), now_sec)
+        if change is not None:
+            changed = change.activity
+            self._events.info(
+                'sequencer.activity_changed', from_=change.from_code, to=changed.code,
+                text=changed.text, detail=changed.detail or None,
+                index=changed.index if changed.index >= 0 else None,
+                total=changed.total if changed.total > 0 else None,
+                from_sec=round(change.from_sec, 1), since_sec=round(change.since_sec, 1))
 
         msg = NavigationActivity()
-        msg.stamp = now.to_msg()
+        msg.stamp = self.get_clock().now().to_msg()
         msg.code = activity.code
         msg.text = activity.text
         msg.detail = activity.detail
-        msg.emphasis = activity.emphasis
-        msg.elapsed_sec = self._activity_tracker.elapsed_sec(
-            activity.code, now.nanoseconds / 1e9)
+        msg.elapsed_sec = elapsed_sec
         msg.index = activity.index
         msg.total = activity.total
         msg.remaining = activity.remaining
@@ -371,6 +399,7 @@ class WaypointSequencerNode(Node):
             info.pose = wp.pose
             info.reach_tolerance = wp.navigation.reach_tolerance
             info.is_through_point = wp.navigation.is_through_point
+            info.through_tolerance = wp.navigation.through_tolerance
             info.on_reached_action_types = [
                 a.type for a in wp.on_reached_actions
             ]

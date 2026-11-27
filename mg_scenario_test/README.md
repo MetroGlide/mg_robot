@@ -83,7 +83,7 @@ make web-ui-dev                  # または make web-ui
 - **実機PCのアドレス**を入力すると、`ROBOT=` と同じくナビゲーションを実機PCで動かす (下の「開発PC + 実機PCでの実行」の準備が済んでいること)。attach とは併用できない。
 - **ライブ表示**をオンにすると、接続中の foxglove_bridge から運用ビューと同じ地図・ロボット・経路と地図ツールバー (センサ表示の切り替えを含む) だけを表示する (シミュレータと同じ PC の bridge に接続しているとき。状態や診断は Waypoint などのタブで確認)。
 - 同時に動くと干渉するため、実行中の二重起動、`gazebo-simulation`・`scenario-env`・`navigation`/`slam` の動作中の通常実行は拒否される。
-- 結果は `make` と同じ `${ROS2_DATA_PATH}/scenario_results/<日時>/` に保存され、`progress.json` がある実行が履歴に表示される。
+- 結果は `make` と同じ `${ROS2_DATA_PATH}/scenario_results/<日時>/` に保存され、`progress.json` がある実行が履歴に表示される。分けて並列に実行した結果 (`progress_<I>of<N>.json`) は、分け札ごとの進み具合を 1 つの実行にまとめて表示する (全ての分け札が終わったら終わり)。
 
 ## 開発PC + 実機PCでの実行
 
@@ -124,7 +124,7 @@ make scenario-test-all TIER=smoke ROBOT=<実機PCのIP>
 ```
 <日時>/
   junit.xml                    # スイート全体の JUnit
-  progress.json                # 実行中の進み具合 (Web UI が読む)
+  progress.json                # 実行中の進み具合 (Web UI が読む。SHARDS=N では progress_<I>of<N>.json を分け札ごとに書く)
   <シナリオ名>[_runN]/
     result.json                # チェックごとの結果、走行中のイベント (goal_reached など) と時刻
     launch.log                 # シミュレータ・Nav2・runner の全ログ

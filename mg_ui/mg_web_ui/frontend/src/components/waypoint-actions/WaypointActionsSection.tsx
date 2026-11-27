@@ -8,6 +8,8 @@ import {
   describeAmclGate,
   describeGnssGate,
   describeServiceResponse,
+  describeVerifyResponse,
+  relocalizeService,
 } from "../../utils/waypointActions";
 import SectionCard from "../layout/SectionCard";
 import ActionButton from "../ui/ActionButton";
@@ -27,6 +29,22 @@ export function LocalizationActions({ client }: ActionsProps) {
   const amclRunner = useActionRunner();
   const gnssRunner = useActionRunner();
   const resetRunner = useActionRunner();
+
+  const relocalize = async () => {
+    const service = relocalizeService(client.listServices());
+    if (service === null) {
+      return {
+        ok: false,
+        text: `${SERVICES.GNSS_AMCL_REINIT} and ${SERVICES.LOCALIZATION_REQUEST_VERIFY} are not available`,
+      };
+    }
+    if (service === SERVICES.LOCALIZATION_REQUEST_VERIFY) {
+      return describeVerifyResponse(
+        await client.callService(service, { requester: "web_ui" }),
+      );
+    }
+    return describeServiceResponse(await client.callService(service, {}));
+  };
 
   const setGate = (service: string, enable: boolean) => async () =>
     describeServiceResponse(
@@ -76,18 +94,17 @@ export function LocalizationActions({ client }: ActionsProps) {
           }
         />
         <ActionButton
-          label="Re-init AMCL from GNSS"
+          label="Re-localize (GNSS / map matching)"
           variant="yellow"
           disabled={resetRunner.busy}
-          onClick={() =>
-            void resetRunner.run(async () =>
-              describeServiceResponse(
-                await client.callService(SERVICES.GNSS_AMCL_REINIT, {}),
-              ),
-            )
-          }
+          onClick={() => void resetRunner.run(relocalize)}
         />
       </div>
+      <p className="text-xs text-muted">
+        Re-localize calls the GNSS initializer when it runs; with the AMCL
+        verification gate (localization_gate:=true) it asks the gate to verify
+        by map matching instead.
+      </p>
       <ActionResultText result={resetRunner.result} />
     </div>
   );

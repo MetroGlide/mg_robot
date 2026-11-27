@@ -3,6 +3,8 @@ import { NODE_NS, nodeNs } from './namespaces'
 export const TOPICS = {
   WAYPOINT_STATUS: nodeNs(NODE_NS.WAYPOINT_SEQUENCER, '/status'),
   WAYPOINT_ACTIVITY: nodeNs(NODE_NS.WAYPOINT_SEQUENCER, '/activity'),
+  // 読み込んだウェイポイントの一覧 (transient_local。読み込み・reload のときだけ届く)
+  WAYPOINT_LIST: nodeNs(NODE_NS.WAYPOINT_SEQUENCER, '/waypoints'),
   WAYPOINT_PAUSE_REQUEST: nodeNs(NODE_NS.WAYPOINT_SEQUENCER, '/pause_request'),
   WAYPOINT_SET_NEXT_INDEX: nodeNs(NODE_NS.WAYPOINT_SEQUENCER, '/set_next_waypoint_index'),
   WAYPOINT_LOADED_MAPS: nodeNs(NODE_NS.WAYPOINT_SEQUENCER, '/loaded_maps'),

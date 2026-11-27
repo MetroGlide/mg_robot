@@ -11,6 +11,8 @@ export const SERVICES = {
   GNSS_CHANGE_PUBLISH_STATE: '/slam_gnss_nav_bridge/change_publish_state',
   AMCL_REINITIALIZE_GLOBAL: '/reinitialize_global_localization',
   GNSS_AMCL_REINIT: '/gnss_amcl_initializer_node/request_reinit',
+  // AMCL 検証ゲートに地図照合を 1 回求める (gate=true の構成。GNSS による初期化ノードは起動しない)
+  LOCALIZATION_REQUEST_VERIFY: '/localization_supervisor_node/request_verify',
   LIFECYCLE_NAV_IS_ACTIVE: '/lifecycle_manager_navigation/is_active',
   LIFECYCLE_LOC_IS_ACTIVE: '/lifecycle_manager_localization/is_active',
   ROSBAG_PAUSE: '/rosbag2_player/pause',
