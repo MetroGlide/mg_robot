@@ -8,8 +8,6 @@ string code
 string text
 # 補足 (要求元、アクションの種類、collision_monitor のポリゴン名など)
 string detail
-# 表示の強調。健全性ではない (健全性は /diagnostics_agg が表す)
-uint8 emphasis
 # 同じ code が続いている秒数
 float32 elapsed_sec
 # 対象のウェイポイントの番号 (0 始まり)。該当しなければ -1
@@ -18,10 +16,7 @@ int32 total
 # code ごとの残り。走行中は残り距離 [m]、出発待ちと待機は残り秒数。該当しなければ -1
 float32 remaining
 
-uint8 NORMAL=0
-uint8 NOTICE=1
-uint8 ALERT=2
-
+# 表示の色 (ランプ) は code から UI が引く (mg_ui の statusLamp.ts)。健全性は /diagnostics_agg が表す
 string IDLE="idle"
 string DEPARTURE_WAIT="departure_wait"
 string NAVIGATING="navigating"
@@ -35,6 +30,13 @@ string DETOUR_REJECTED="detour_rejected"
 string NO_PROGRESS="no_progress"
 string ACTION="action"
 string TRIGGER_WAIT="trigger_wait"
+string READY_TO_START="ready_to_start"
 string PAUSED="paused"
+string LOCALIZATION_HOLD="localization_hold"
+string WATCHDOG_PAUSE="watchdog_pause"
+string LOCALIZATION_RECOVERING_DRIVE="localization_recovering_drive"
+string LOCALIZATION_SLOWDOWN="localization_slowdown"
+string NO_LIDAR_DRIVE="no_lidar_drive"
+string LOCALIZATION_UNKNOWN="localization_unknown"
 string GOAL_REACHED="goal_reached"
 string ERROR="error"

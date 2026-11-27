@@ -35,6 +35,8 @@ _ROS2_MODULES = [
     "mg_msgs",
     "mg_msgs.msg",
     "mg_msgs.srv",
+    "localization_supervisor_msgs",
+    "localization_supervisor_msgs.msg",
     "builtin_interfaces",
     "builtin_interfaces.msg",
 ]

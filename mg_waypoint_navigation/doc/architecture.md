@@ -194,6 +194,11 @@ stateDiagram-v2
 | `activity_bt_log_topic` | string | リカバリーの入力。空にするとこの入力は使わない |
 | `activity_nav_status_topic` | string | シーケンサを通らないゴール (RViz の 2D Goal Pose など) の検出に使う入力。空にすると、その検出だけ止まる |
 | `activity_path_check_topic` | string | 遠回りの棄却の入力 (`mg_msgs/PathCandidateCheck`)。空にするとこの入力は使わない |
+| `activity_localization_status_topic` | string | 自己位置監視の状態の入力 (`localization_supervisor_msgs/LocalizationStatus`)。空にするとこの入力は使わない (自己位置の活動を出さない) |
+| `activity_localization_timeout_sec` | double | 自己位置監視の状態がこれより古ければ「届いていない」とする [s]。発行側の周期より長くする |
+| `activity_min_duration_sec` | double | 新しい活動がこの秒数続いたときだけ採る [s]。`0` なら判定せず全ての変化を出す (調べるとき用) |
+| `activity_localization_requesters` | string[] | 一時停止の要求元のうち、自己位置監視のもの (`localization_hold` にする)。送る側の `requester_id` と合わせる |
+| `activity_watchdog_requesters` | string[] | 一時停止の要求元のうち、センサの見張りのもの (`watchdog_pause` にする)。送る側の `requester_id` と合わせる |
 
 > 読み込み済みの地図の記録は、`load_map` アクションと `~/load_map` を通した読み込みだけが更新する。
 > `/map_server/load_map` などを直接呼んだ場合は記録とずれる。
@@ -202,31 +207,45 @@ stateDiagram-v2
 
 `~/activity` (`mg_msgs/NavigationActivity`) は、走行が「いま何をしているか」の要約。シーケンサ経由の走行に加えて、シーケンサを通らないゴール (RViz の 2D Goal Pose など) の走行も `external_goal` として出す。表示用で、制御の入力にはしない。判定はここ (`waypoint_sequencer/activity.py` の `compose_activity`、ROS に依存しない純関数) だけで行い、UI は表示するだけにする ([doc/monitoring.md](../../doc/monitoring.md))。
 
-- **入力**: `SequencerStatus` と同じシーケンサの状態 (`current_action`、`waiting_trigger`、手動ゴールの有無を含む)、`activity_collision_state_topic` (`nav2_msgs/CollisionMonitorState`)、`activity_bt_log_topic` (`nav2_msgs/BehaviorTreeLog`)、`activity_nav_status_topic` (`action_msgs/GoalStatusArray`、Nav2 のアクションの状態)、`activity_path_check_topic` (`mg_msgs/PathCandidateCheck`、`CommitPath` の遠回りの判定)、位置が進まない時間 (`ProgressMonitor`)。
+- **入力**: `SequencerStatus` と同じシーケンサの状態 (`current_action`、`waiting_trigger`、`trigger_acceptable`、一時停止の要求元、手動ゴールの有無を含む)、`activity_collision_state_topic` (`nav2_msgs/CollisionMonitorState`)、`activity_bt_log_topic` (`nav2_msgs/BehaviorTreeLog`)、`activity_nav_status_topic` (`action_msgs/GoalStatusArray`、Nav2 のアクションの状態)、`activity_path_check_topic` (`mg_msgs/PathCandidateCheck`、`CommitPath` の遠回りの判定)、`activity_localization_status_topic` (自己位置監視の状態)、位置が進まない時間 (`ProgressMonitor`)。
+- **合成の 3 段**: (1) 事実 `derive_facts` が入力から判定に使う事実 (走行中か、一時停止の要求元の種類など) を 1 回だけ作る。(2) 規則 `RULES` が code ごとに当たる条件と活動の作り方を持つ。(3) 順位表 `PRIORITY` の上から、最初に当たった規則を採る。順位を変えるときは `PRIORITY` を並べ替えるだけにする。`PRIORITY` と `RULES` の code が食い違うと、読み込みのときに落ちる。
+- **色は効果で決める**: 自己位置の活動は、監督の状態の名前ではなく、実際の効果 (一時停止の要求元、`speed_limit > 0`、センサ構成) から決める。構成 (`legacy` / `observe` / `supervised`) で状態の名前の意味が違うため。自己位置の活動は走行中だけ出し、止まり続ける活動にはしない。
 - **遠回りの棄却**: 判定は `CommitPath` が行い、シーケンサは最新の判定を保持する (採用の判定が届く、または走行中でなくなると消える)。最新の判定が棄却で、かつリカバリー中のときだけ、リカバリーの表示に代えて `detour_rejected` を出す。棄却しても今の経路で走れているときは出さず、停止・進めないの表示も隠さない。棄却している間、定期の再計画は経路の近くが塞がっていると止まるので、判定が届くのはリカバリーの引き直しのときが中心。
 - **外部のゴールの判定**: Nav2 のアクションに生きたゴール (ACCEPTED / EXECUTING) があり、シーケンサ自身が送ったゴールが結果の返るまでの間に無く (`WaypointNavigator.has_live_goal`)、その状態が `EXTERNAL_GOAL_HOLD_SEC` 続いたとき。この時間は、シーケンサのゴールの結果とアクションの状態の到着順の差を吸収するためのもの。アクションの状態は変化したときしか届かないので、発行側が居なくなったら最後の値を捨てる。
-- **配信**: `activity_freq_hz` のタイマーからだけ合成する (専用の callback group)。状態が変わってから、最大でタイマーの周期だけ遅れる。`elapsed_sec` は同じ `code` が続いている秒数。
-- **`text` は固定の短い説明**で、変わる数値は `index` / `total` / `remaining` で渡す。`emphasis` は表示の強調で、健全性ではない (健全性は `/diagnostics_agg`)。
+- **変化の判定**: 合成した code が `activity_min_duration_sec` 続いたときだけ採る (`ActivityDebouncer`)。採るまでは前の活動を出し続けるので、ランプと履歴は同じ活動を指す。短い揺れ (遷移の途中の一瞬の状態など) は消え、その秒数だけ表示が遅れる。採った code の開始は、新しい code が出始めた時刻にさかのぼる。
+- **配信**: `activity_freq_hz` のタイマーからだけ合成する (専用の callback group)。状態が変わってから、最大でタイマーの周期 (と変化の判定の秒数) だけ遅れる。`elapsed_sec` は同じ `code` が続いている秒数。
+- **記録**: 採った code が変わるたびに、イベント `sequencer.activity_changed` を出す (`from`・`to`・`text`・`detail`・`index`・`total`、前の code が続いた秒数 `from_sec`、新しい code がすでに続いている秒数 `since_sec`)。Web UI の活動の履歴は、このイベントから作る。`detail` や残り距離の変化だけでは出さない。`activity_min_duration_sec` を `0` にして活動が細かく揺れると、イベントの中継が保つ直近の履歴 (全種類で共有) を、このイベントが占める。
+- **`text` は固定の短い説明**で、変わる数値は `index` / `total` / `remaining` で渡す (自己位置の活動の速度の上限などは `detail` に入れる)。表示の色 (ランプ) は UI が `code` から引く (`mg_ui` の `statusLamp.ts`)。健全性は `/diagnostics_agg`。
 
-優先順位 (上から。最初に当たったもの):
+優先順位 (`PRIORITY`。上から。最初に当たったもの)。「走行中」は、`NAVIGATING`、手動ゴール中、外部のゴールの走行のこと。外部のゴールは、シーケンサが `SUSPENDED`・`ON_STARTING`・`ON_ARRIVING`・`ERROR` のときは走行に数えない (手動ゴールは `ERROR` でも走行に数える)。
 
 | 条件 | `code` |
 | :--- | :--- |
-| `SUSPENDED` | `paused` (`detail` は要求元) |
+| `SUSPENDED` で、要求元に自己位置監視 (`activity_localization_requesters`) がある | `localization_hold` (`detail` は全部の要求元) |
+| `SUSPENDED` で、要求元にセンサの見張り (`activity_watchdog_requesters`) がある | `watchdog_pause` (同上) |
+| `SUSPENDED` | `paused` (同上) |
 | `ON_STARTING` | `departure_wait` (`remaining` は残り秒数) |
 | `ON_ARRIVING` | `action` (`detail` はアクションの type) |
-| `NAVIGATING`、手動ゴール中、外部のゴール (下の `ERROR` の次): リカバリー中で、直近の経路の候補を遠回りが長すぎるとして棄却中 | `detour_rejected` (`detail` は経路の長さと上限) |
-| 同上: リカバリー中 | `recovery` |
-| 同上: collision_monitor が停止、`source_timeout:` | `sensor_timeout_stop` |
-| 同上: collision_monitor が停止 | `obstacle_stop` (`detail` はポリゴン名) |
-| 同上: 位置が `stall_warn_sec` 以上進まない | `no_progress` |
-| 同上: collision_monitor が減速 (`slowdown` と `approach`) | `obstacle_slowdown` |
-| 同上: 上のどれでもない | `navigating` (手動ゴールなら `manual_goal`) |
-| `ERROR` | `error` |
-| 外部のゴールを走行中 (上の停止・減速・リカバリーに当たらなかったとき) | `external_goal` |
-| `IDLE` でトリガー待ち | `trigger_wait` |
-| `GOAL_REACHED` | `goal_reached` |
+| `ERROR` で走行中でない | `error` |
+| 走行中: リカバリー中で、直近の経路の候補を遠回りが長すぎるとして棄却中 | `detour_rejected` (`detail` は経路の長さと上限) |
+| 走行中: リカバリー中 | `recovery` |
+| 走行中: collision_monitor が停止、`source_timeout:` | `sensor_timeout_stop` |
+| 走行中: collision_monitor が停止 | `obstacle_stop` (`detail` はポリゴン名) |
+| 走行中: 位置が `stall_warn_sec` 以上進まない (シーケンサのゴールだけ) | `no_progress` |
+| 走行中: 自己位置監視の state が `ISOLATED`・`RECOVERING`・`DEGRADED` | `localization_recovering_drive` (`detail` は状態・状況・速度の上限・疑わしい情報源) |
+| 走行中: 自己位置監視の `speed_limit > 0` | `localization_slowdown` (同上) |
+| 走行中: 自己位置監視の `sensor_set` が `no_lidar` | `no_lidar_drive` (同上) |
+| 走行中: 自己位置監視の状態が届かない・古い (入力を使う設定のとき) | `localization_unknown` |
+| 走行中: collision_monitor が減速 (`slowdown` と `approach`) | `obstacle_slowdown` |
+| 外部のゴールを走行中 | `external_goal` |
+| 手動ゴールを走行中 | `manual_goal` |
+| シーケンサのゴールを走行中 | `navigating` |
+| `IDLE` で、走行中でなく、`wait_trigger` で止まっている | `trigger_wait` |
+| `IDLE` で、走行中でなく、`~/trigger` で走行を始められる (`trigger_acceptable`) | `ready_to_start` |
+| `GOAL_REACHED` で走行中でない | `goal_reached` |
 | 上のどれでもない | `idle` |
+
+活動を足すときは、`activity.py` の code の定数・`RULES`・`PRIORITY`、`mg_msgs/msg/NavigationActivity.msg` の定数、Web UI の `ACTIVITY_CODE` (`types/ros.ts`)・ランプの表 (`statusLamp.ts`)・文言の補足の表 (`activityText.ts` の `SHOW_DETAIL`・`SHOW_ELAPSED`)、この表を合わせて変える (UI のランプの表は、code の書き忘れが型の検査で落ちる)。
 
 リカバリーは、BT のログで実行中の BT ノード名から決める。名前と文言の表は `activity.py` の `RECOVERY_TEXTS` で、自作の BT の名前 (`SpinLeftAndReplan` など) を先に、Nav2 既定の BT 用の汎用の名前 (`Spin`、`BackUp`、`Wait`) を後に置く。BT の XML を変えたら、この表も合わせる (`test_bt_recovery_names.py` が照合する)。`FollowPath` が動き出したとき、走行中でなくなったときは、リカバリーの記録を消す。
 
@@ -235,7 +254,8 @@ stateDiagram-v2
 - シーケンサの再起動直後は、collision_monitor の状態が次に変わるまで「障害物なし」として扱う (変化したときしか配信されない)。
 - シーケンサを通らないゴールは `navigate_to_pose` のものだけ (`navigate_through_poses` は対象外)。ゴールを送ってから表示に出るまで少し遅れる。外部のゴールでは、残り距離と `no_progress` は出さない (`ProgressMonitor` はシーケンサのゴール専用)。
 - シーケンス走行中に RViz からゴールを送ると、Nav2 がシーケンサのゴールを置き換えるため、シーケンスが失敗しうる (この機能の前からの挙動で、表示は変えていない)。外部のゴールの判定は、シーケンサ自身のゴールが結果を返すまで有効にならない。
-- 非常停止 (E-Stop) は入力にしない (Web UI の上部バーが常に表示する)。
+- 非常停止 (E-Stop) は入力にしない (Web UI の上部バーが常に表示する。モータードライバへの指令のトピックには、リポジトリの中に発行元がない)。
+- 自己位置監視の状態は、構成 `legacy` では `amcl_watchdog_node` が出す (状況・速度の上限は空)。監視のノードが止まると、走行中は `localization_unknown` になる。
 - collision_monitor の範囲の外で障害物の手前で待っている間 (コントローラーの待ち) は、`stall_warn_sec` に達するまで `navigating` と表示される。
 - `SequencerStatus` にフィールドを足したので、古い rosbag を `ros2 bag play` で再生すると、新しい型の購読側が読めない。
 - 合成を別のノードへ移すときは、`SequencerStatus` に `stalled_sec` と `manual_goal_active` を足す (今は出していない)。

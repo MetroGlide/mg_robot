@@ -57,8 +57,9 @@ GUI の [waypoint-tool](https://github.com/Chu-son/waypoint-tool) でも作れ�
 | Service | `~/load_map` | `mg_msgs/LoadMaps` | 測位用・計画用の地図を読み込ませる |
 | Subscriber | `~/set_next_waypoint_index` | `std_msgs/Int16` | 次に向かうウェイポイントを指定する |
 | Subscriber | `~/pause_request` | `mg_msgs/PauseRequest` | 停止要求 |
+| Subscriber | `/localization/status` | `localization_supervisor_msgs/LocalizationStatus` | 自己位置監視の状態。`~/activity` の自己位置の活動 (減速・復旧しながらの走行など) の入力 |
 | Publisher | `~/status` | `mg_msgs/SequencerStatus` | 状態 |
-| Publisher | `~/activity` | `mg_msgs/NavigationActivity` | 走行の「いまの活動」の要約 (transient_local)。表示用。詳細は [doc/architecture.md](./doc/architecture.md#いまの活動-activity) |
+| Publisher | `~/activity` | `mg_msgs/NavigationActivity` | 走行の「いまの活動」の要約 (transient_local)。表示用。code が変わるとイベント `sequencer.activity_changed` も出す。詳細は [doc/architecture.md](./doc/architecture.md#いまの活動-activity) |
 | Publisher | `~/waypoints` | `mg_msgs/WaypointList` | 読み込んだウェイポイント |
 | Publisher | `~/waypoints_markers` | `visualization_msgs/MarkerArray` | RViz2 用のマーカー |
 | Publisher | `~/loaded_maps` | `mg_msgs/LoadedMaps` | 読み込み済みの地図 |
