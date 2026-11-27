@@ -136,6 +136,7 @@ AMCL の位置の共分散を監視し、大きい状態が続いたら、`gnss_
 - 実機で最初に確かめること:
   - 門の誤報: 故障のない区間で門が閉じる頻度と、そのうち照合が AMCL をそのまま確かめた割合 (`localization.gate_closed`・`localization.map_match`)。確かめる回が多ければ、閉じる理由の部品の閾値か比べる時間を広げる。
   - 照合の決着: 閉じるたびに決まらない (`why=ambiguous`) 回の割合と、照合の所要時間 (`duration_ms`)。
+  - GNSS との食い違いの判定: GNSS と整合させた地図で、正常な区間でも `amcl_gnss`・`ekf_gnss`・門の `gate_amcl_gnss` が異常を出さないか。これらの閾値は、ずれの残る前の地図の正常な記録から決めたもので、誤報がなければ締められる。逆に、整合の悪い場所で「疑い」による減速 (走り方の表の `suspect` の `heavy`) が開けた所まで続くなら、その升目を `normal` にする。
   - ホイールの速度: `/odom` の速度が 0 のまま姿勢だけ進む不具合が出ていないか (`tools/scripts/rosbag_summary.py`)。出ていれば、オドメトリの補正の `twist_source` を確かめる ([mg_drivers](../../mg_drivers/doc/wheel_odom_corrector.md))。
 - LiDAR を失ったときは、精度を追わず、走りを続けることを優先する (センサの組 LiDAR なし)。自己位置はオドメトリと GNSS だけになり、GNSS が弱い区間や、精度を過大に申告したままずれる区間では数 m ずれうる。オペレータがずれを見て止める。
 
