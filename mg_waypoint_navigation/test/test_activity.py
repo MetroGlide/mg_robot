@@ -48,7 +48,7 @@ class TestSequencerStates:
         assert result.code == act.IDLE
 
     def test_trigger_wait(self):
-        result = compose(state=SequencerState.IDLE, waiting_trigger=True)
+        result = compose(state=SequencerState.IDLE, waiting_trigger=True, trigger_acceptable=True)
         assert result.code == act.TRIGGER_WAIT
         assert (result.index, result.total) == (3, 10)
 
@@ -290,6 +290,24 @@ class TestWaitingToStart:
         result = compose(state=SequencerState.IDLE, waiting_trigger=True, trigger_acceptable=True)
         assert result.code == act.TRIGGER_WAIT
 
+    def test_waiting_but_not_acceptable_is_not_trigger_wait(self):
+        # MMI の LED1 (trigger_acceptable) と同じく、始められないときは開始待ちにしない
+        result = compose(state=SequencerState.IDLE, waiting_trigger=True, trigger_acceptable=False)
+        assert result.code == act.IDLE
+
+    def test_pause_request_in_idle_is_paused(self):
+        for requesters, code in ((('web_ui',), act.PAUSED),
+                                 (('localization',), act.LOCALIZATION_HOLD),
+                                 (('driver_watchdog',), act.WATCHDOG_PAUSE)):
+            result = compose(state=SequencerState.IDLE, waiting_trigger=True,
+                             trigger_acceptable=False, pause_requesters=requesters)
+            assert result.code == code
+
+    def test_pause_request_in_idle_does_not_hide_driving(self):
+        result = compose(state=SequencerState.IDLE, manual_goal_active=True,
+                         pause_requesters=('web_ui',))
+        assert result.code == act.MANUAL_GOAL
+
     def test_not_acceptable_idle_is_idle(self):
         assert compose(state=SequencerState.IDLE, trigger_acceptable=False).code == act.IDLE
 
@@ -424,7 +442,8 @@ class TestPriorityTable:
             act.EXTERNAL_GOAL: dict(state=SequencerState.IDLE, external_goal_active=True),
             act.MANUAL_GOAL: dict(state=SequencerState.IDLE, manual_goal_active=True),
             act.NAVIGATING: dict(),
-            act.TRIGGER_WAIT: dict(state=SequencerState.IDLE, waiting_trigger=True),
+            act.TRIGGER_WAIT: dict(state=SequencerState.IDLE, waiting_trigger=True,
+                                   trigger_acceptable=True),
             act.READY_TO_START: dict(state=SequencerState.IDLE, trigger_acceptable=True),
             act.GOAL_REACHED: dict(state=SequencerState.GOAL_REACHED),
             act.IDLE: dict(state=SequencerState.IDLE),

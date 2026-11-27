@@ -156,6 +156,7 @@ class Activity:
 class Facts:
     """判定に使う事実。入力から 1 回だけ作り、規則はこれだけを見る。"""
     inputs: ActivityInputs
+    # 一時停止の要求で止まっている (SUSPENDED、または IDLE で要求が出ていて走り出せない)
     suspended: bool
     # シーケンサのゴール (地点・手動) の走行と、シーケンサを通らないゴールの走行
     own_drive: bool
@@ -192,7 +193,8 @@ def derive_facts(inputs: ActivityInputs, settings: ActivitySettings) -> Facts:
     no_waypoint = inputs.manual_goal_active or external_drive
     return Facts(
         inputs=inputs,
-        suspended=state == SequencerState.SUSPENDED,
+        suspended=(state == SequencerState.SUSPENDED or (
+            state == SequencerState.IDLE and bool(requesters) and not (own_drive or external_drive))),
         own_drive=own_drive,
         external_drive=external_drive,
         driving=own_drive or external_drive,
@@ -339,9 +341,10 @@ RULES: Dict[str, Rule] = {
         lambda f: Activity(MANUAL_GOAL, '指定地点へ走行中', remaining=f.inputs.distance_remaining)),
     NAVIGATING: Rule(lambda f: f.own_drive, _build_navigating),
     # 待機
+    # 開始待ちは、MMI の LED1 と同じく ~/trigger で始められる (trigger_acceptable) ときだけ
     TRIGGER_WAIT: Rule(
         lambda f: (not f.driving and f.inputs.state == SequencerState.IDLE
-                   and f.inputs.waiting_trigger),
+                   and f.inputs.waiting_trigger and f.inputs.trigger_acceptable),
         lambda f: Activity(TRIGGER_WAIT, 'トリガー待ち', **_sequence_position(f))),
     READY_TO_START: Rule(
         lambda f: (not f.driving and f.inputs.state == SequencerState.IDLE

@@ -221,9 +221,9 @@ stateDiagram-v2
 
 | 条件 | `code` |
 | :--- | :--- |
-| `SUSPENDED` で、要求元に自己位置監視 (`activity_localization_requesters`) がある | `localization_hold` (`detail` は全部の要求元) |
-| `SUSPENDED` で、要求元にセンサの見張り (`activity_watchdog_requesters`) がある | `watchdog_pause` (同上) |
-| `SUSPENDED` | `paused` (同上) |
+| 一時停止の要求で止まっている (`SUSPENDED`、または `IDLE` で走行中でなく要求が出ている) で、要求元に自己位置監視 (`activity_localization_requesters`) がある | `localization_hold` (`detail` は全部の要求元) |
+| 同上で、要求元にセンサの見張り (`activity_watchdog_requesters`) がある | `watchdog_pause` (同上) |
+| 同上 | `paused` (同上) |
 | `ON_STARTING` | `departure_wait` (`remaining` は残り秒数) |
 | `ON_ARRIVING` | `action` (`detail` はアクションの type) |
 | `ERROR` で走行中でない | `error` |
@@ -240,10 +240,12 @@ stateDiagram-v2
 | 外部のゴールを走行中 | `external_goal` |
 | 手動ゴールを走行中 | `manual_goal` |
 | シーケンサのゴールを走行中 | `navigating` |
-| `IDLE` で、走行中でなく、`wait_trigger` で止まっている | `trigger_wait` |
+| `IDLE` で、走行中でなく、`wait_trigger` で止まっていて、`~/trigger` で走行を始められる (`trigger_acceptable`) | `trigger_wait` |
 | `IDLE` で、走行中でなく、`~/trigger` で走行を始められる (`trigger_acceptable`) | `ready_to_start` |
 | `GOAL_REACHED` で走行中でない | `goal_reached` |
 | 上のどれでもない | `idle` |
+
+開始待ち (`trigger_wait`・`ready_to_start`) は、MMI の LED1 の橙の点滅と同じ `trigger_acceptable` を条件にする。`wait_trigger` で待っていても始められないとき (一時停止の要求があるとき) は、一時停止の活動になる。
 
 活動を足すときは、`activity.py` の code の定数・`RULES`・`PRIORITY`、`mg_msgs/msg/NavigationActivity.msg` の定数、Web UI の `ACTIVITY_CODE` (`types/ros.ts`)・ランプの表 (`statusLamp.ts`)・文言の補足の表 (`activityText.ts` の `SHOW_DETAIL`・`SHOW_ELAPSED`)、この表を合わせて変える (UI のランプの表は、code の書き忘れが型の検査で落ちる)。
 
