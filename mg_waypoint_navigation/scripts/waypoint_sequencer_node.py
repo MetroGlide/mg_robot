@@ -399,6 +399,7 @@ class WaypointSequencerNode(Node):
             info.pose = wp.pose
             info.reach_tolerance = wp.navigation.reach_tolerance
             info.is_through_point = wp.navigation.is_through_point
+            info.through_tolerance = wp.navigation.through_tolerance
             info.on_reached_action_types = [
                 a.type for a in wp.on_reached_actions
             ]
