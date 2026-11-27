@@ -24,6 +24,7 @@ scenarios/
 | `nav_basic_goal` | 障害物なしの単一ゴールに時間内に到達し、停止位置の誤差が 0.5m 以内、速度が 1.2m/s 以下 |
 | `nav_unreachable_goal` | 地図の外のゴールへの走行が失敗として扱われる (異常系) |
 | `static_avoid_cones` | 通れない隙間 (間隔 0.8m) のコーン列を避けて回り込み、到達する |
+| `static_avoid_low_box` | 上 LiDAR の面より低い箱 (高さ 0.2m の低床障害物) を、深度カメラの 3D 障害物検出と STVL の層だけで避け、接触せずに到達する |
 | `static_avoid_replan` | 走行中に進路の正面へ壁が出現しても、まず `failure_tolerance` の間待ち、リカバリーの最初の引き直しで迂回して (首振り・後退をせずに) 到達する |
 | `dynamic_stop_and_resume` | 目の前に人が飛び出しても、迂回せずに人が立ち去る (3 秒) まで止まって待ち、リカバリー (Spin / BackUp) に入らず再開して到達する (`failure_tolerance` の回帰) |
 | `through_point_continuity` | 通過点 3 つを減速・停止せず (停止 3 秒以内) 走り抜け、停止点で止まる (通過点判定・ゴール上書きの回帰) |
@@ -55,6 +56,7 @@ scenarios/
 | `localization_drift_stuck` | 棚の手前でシーケンサが止まっている間に、自己位置推定を棚の中へ少しずつずらしても、止まったままにならず、次のゴールへ到達する。止まっていると AMCL も GNSS も更新されず、推定の footprint が地図の棚にかかって経路を作れなくなる状況。自己位置監視の準備は走行中に待つ (`wait_for`)。自己位置監視・プリセットは `localization_drift_driving` と同じ。`known_issue` (下記) |
 | `gate_drift_driving`、`gate_jump_driving` | 自己位置監視ノードの中の AMCL 検証ゲート (`localization_gate: "true"`、自己位置監視のプロファイル `notify_only`) の戻し方を、走りへの影響で確かめる。`localization_drift_driving` と同じ通路を走る間に、AMCL を少しずつずらす (`_drift`。AMCL 検証ゲートが閉じる前に EKF がずれを取り込み、戻すのは大きい補正になる) か、1 回だけ飛ばす (`_jump`。`localization_spread` の広がりを小さくしたもの。AMCL 検証ゲートがすぐ閉じ、戻すのは小さい補正になる)。合否は、ずれたまま止める要求なしで走った距離 (`localization_outcome`)・止まったままの時間・到達。戻し方 (その場で補正する / 止まってから補正する / 大きさで分ける) は、自己位置監視の設定の `gate.settings` (`small_correction_m`・`small_correction_rad`) を変えた設定ファイルを `supervisor_config` で渡して比べ、`make scenario-plot` で、姿勢補正の直後の速度の指令の回転の急な変化を見る |
 | `keepout_escape` | 計画用地図にだけある進入禁止の領域 (`data/keepout/planning.yaml`。ウェアハウスの計画用地図の原点の周りの 2m 四方を進入禁止にしたもので、`tools/scripts/add_keepout_to_map.py` で作る。実際の世界には何もない) の中でスタートしても、自己位置が信頼できる (自己位置監視の状態が `NORMAL`) ので、BT のリカバリーの `EscapeKeepout` が領域の外の最も近い位置を始点に計画して領域から出て (`FindFreeStart` が SUCCESS)、ゴールへ到達する。自己位置監視が起動して状態を配信するまでは待つ。この段階が無いと、プランナが「始点が致死」で計画できず動けない |
+| `static_low_box_appears` | 走行中に正面へ低い箱 (高さ 0.2m) が出現しても、接触せずに止まるか避け、居座る箱を迂回して到達する |
 | `narrow_corridor_blocked` | 通れない幅 (0.5m) の狭い回廊へ経路を引かず、壁の外側を迂回して到達する。壁に接触しない (`obstacle_clearance`) |
 | `long_detour_rejected` | 計画用地図にだけある南北の長い壁 (`data/detour_wall/planning.yaml`。ウェアハウスの計画用地図の x=2〜3 を南端から北の棚の帯まで進入禁止にし、y=-1.25〜1.25 だけ通路として開けたもので、`tools/scripts/add_keepout_to_map.py` で作る) の通路を箱で塞ぐと、建物の反対側を回る約 50m の迂回路を `CommitPath` の遠回りの上限で棄却し、乗らずに待つ (「いまの活動」に `detour_rejected` が出る)。最初の引き直しで迂回路に乗らなかったあと、リカバリーを首振りまで何周かくり返すのを待ってから箱を除くと、通路を通って到達する。棄却した迂回路も planner_server が `/plan` に配信する (RViz の `Plan Candidate` で見える。Web UI と RViz の `Path` は採用した経路 `/navigation/committed_path` を出すので、迂回路は出ない)。計画用地図を `stack_args` で差し替えるので attach では使えない。物理的な壁だけではセンサで見えた範囲しか地図に載らず、経路が少しずつ延びるだけで棄却まで至らないため、壁は計画用地図に置く |
 | `dynamic_avoid` | 横切る歩行者 (0.6m/s) に、ロボット自身の動きで接触せず (`obstacle_clearance`) 到達する |
@@ -103,6 +105,15 @@ scenarios/
   人を出してから止まるまでに進む距離 (teleport の反映の遅れ、制動距離、scan と制御の遅れ) が巡航速度で決まり、反映の遅れが回ごとにばらつく。
   巡航速度 (`nav2_params.yaml` のアンカー `&v_max`) を下げれば余裕が増える。実機で止まる余裕を確かめてから決める
   ([costmap_and_collision.md](../../mg_navigation/doc/costmap_and_collision.md))。出す距離を延ばすことは、判定を緩めることになるのでしない。
+- **カメラの層 (STVL) が効くと、`dynamic_recovery_resume` の `IsPathClear` が成功しないことがある**: 2026-11 にシミュレータでカメラの点群が
+  検出ノードに届くようになってから (それまではトピック名の食い違いで届いていなかった)、壁を除いたあとの再開が、`IsPathClear` の中断ではなく、
+  `ClearAndReplan` の待機 (2 秒) のあとの引き直しで起きることがある (2.2 秒程度で再開はする)。local の `voxel_decay` を 5・8・15 秒に
+  変えても、成功と失敗に分かれる (各 2 回中 0・0・1 回成功)。カメラの跡は、見えている範囲を錐台で消すまでと「空いた」の確認に時間がかかり、
+  LiDAR だけのときより遅いので、待機の 2 秒と競り合うと考えられる (切り分けは未実施)。判定は緩めず、タグ `known_issue` も付けない。
+- **`dynamic_avoid` で、横切る歩行者に接触することがある (カメラの層の有無によらない)**: 2026-11 に記録つきで切り分けた。STVL の層の有効で 7 回中 3 回、
+  無効で 3 回中 2 回接触した。どちらも、右から歩行者が来て右側のコストマップが塞がったあとも、RPP が 0.4〜0.5 m/s で左へ曲がりながら進み、
+  止めるまでの間 (と、速度の平滑化の減速の間) に、右前の角が歩行者に当たる。`collision_monitor` はこの間に作動していない。
+  「飛び出した人の前で止まる余裕が小さい」と同じ種類の問題で、原因 (RPP が止めるのが遅れる理由) の切り分けは未実施。判定は緩めず、タグ `known_issue` も付けない。
 
 ## 解決済みの問題 (参考)
 

@@ -1,0 +1,30 @@
+version: "2.0"
+name: static_avoid_low_box
+description: >
+  進路上に、上 LiDAR の面より低い箱 (高さ 0.2m の低床障害物) を置く。上 LiDAR と collision_monitor には見えないので、
+  深度カメラの 3D 障害物検出 (obstacle_detection_3d_node) と STVL の層 (obstacle_stvl_layer) だけで箱を避けて
+  ゴールへ到達し、箱に接触しないことを確認する。
+profile: mg01
+world: warehouse
+tags: [smoke, static_obstacle, obstacle_detection, nav2_goals]
+
+obstacles:
+  low_box:
+    model: { type: primitive, shape: box, size: { x: 0.4, y: 0.8, z: 0.2 }, static: true }
+
+setup:
+  - respawn: { pose: { x: 0.0, y: 0.0, yaw: 0.0 }, settle_sec: 3.0 }
+  - spawn: { obstacle: low_box, pose: { frame: world, x: 2.5, y: 0.0, z: 0.1 } }
+
+run:
+  nav2_goals:
+    goals:
+      - pose: { x: 5.0, y: 0.0, yaw: 0.0 }
+
+monitors:
+  # 箱の近くを通ったうえで (require_within)、接触しない
+  - obstacle_clearance: { obstacles: [low_box], min_clearance: 0.0, require_within: 1.5, pose_source: sim }
+
+expect:
+  - reached_all
+  - time_limit: { sec: 120 }

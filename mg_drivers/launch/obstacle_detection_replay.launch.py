@@ -50,7 +50,7 @@ def generate_launch_description():
         launch_arguments={
             "simulation": "true",
             "use_color": use_color_arg.launch_config,
-            "points_topic": "/rs_d435i/depth/color/points",
+            "points_topic": "/camera/camera/depth/color/points",
         }.items(),
     )
 
