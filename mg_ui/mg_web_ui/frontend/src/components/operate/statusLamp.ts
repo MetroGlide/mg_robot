@@ -25,10 +25,7 @@ export const LAMP_COLORS = {
 
 export type LampColor = keyof typeof LAMP_COLORS;
 
-/**
- * 点滅の周期 [ms] (点いている時間と消えている時間の合計)。
- * MMI の LED の点滅の周期はマイコン側で決まる。実機で測り、橙の点滅 (遅い点滅) をそれに合わせる。
- */
+/** 点滅の周期 [ms] (点いている時間と消えている時間の合計) */
 export const BLINK_PERIOD_MS = {
   fast: 500,
   slow: 1200,
