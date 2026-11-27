@@ -6,8 +6,18 @@ import { leftColumnShift } from "./leftColumnShift";
 const LEFT_COLUMN_GAP = 8;
 
 /**
- * 左上と左下の列が縦に重なるとき、左下の列を左上の列の右へずらす量 (px) を返す。
- * パネルの開閉 (列の大きさ) と画面の大きさの変化で測り直す。
+ * 列を縦に積んだ部品 (KPI の行・操作パネルなど) を返す。
+ * 子が 1 つだけの包み (flex の列など) は降りて、縦に並んだ子を部品とみなす。
+ */
+function columnItems(column: HTMLElement): Element[] {
+  let el: Element = column;
+  while (el.children.length === 1) el = el.children[0];
+  return el.children.length > 0 ? Array.from(el.children) : [el];
+}
+
+/**
+ * 左上と左下の列が縦に重なるとき、左下の列を、重なる部品 (操作パネル) のすぐ右へずらす量 (px) を返す。
+ * パネルの開閉 (部品の大きさ) と画面の大きさの変化で測り直す。
  */
 function useLeftColumnShift() {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -20,19 +30,24 @@ function useLeftColumnShift() {
     const top = topLeftRef.current;
     const bottom = bottomLeftRef.current;
     if (!root || !top || !bottom) return;
-    const measure = () =>
+    const observer = new ResizeObserver(() => measure());
+    function measure() {
+      const items = columnItems(top!);
+      // 開閉で入れ替わった部品も、幅の変化を拾えるよう監視に足す (監視済みなら何もしない)
+      items.forEach((item) => observer.observe(item));
       setShift(
         leftColumnShift(
-          top.getBoundingClientRect(),
-          bottom.getBoundingClientRect(),
+          items.map((item) => item.getBoundingClientRect()),
+          top!.getBoundingClientRect().left,
+          bottom!.getBoundingClientRect(),
           LEFT_COLUMN_GAP,
         ),
       );
-    measure();
-    const observer = new ResizeObserver(measure);
+    }
     observer.observe(root);
     observer.observe(top);
     observer.observe(bottom);
+    measure();
     return () => observer.disconnect();
   }, []);
 
