@@ -8,7 +8,7 @@ MG-01 の独自メッセージ・サービスの定義。ノードは持たな�
 | :--- | :--- | :--- | :--- |
 | `LoadedMaps` | `waypoint_sequencer` が `map_server` に読み込ませた地図 (測位用・計画用の YAML パス) | `mg_waypoint_navigation` の `map_loader` | Web UI |
 | `PauseRequest` | ウェイポイントシーケンサへの停止要求 (要求元・有効か・理由) | Web UI、`mg_scenario_test` | `waypoint_sequencer_node` |
-| `SequencerStatus` | シーケンサの状態 (FSM の状態、現在のウェイポイント、一時停止中か、残りの距離、実行中のアクション、トリガー待ちか) | `waypoint_sequencer_node` (トピック `~/status`) | Web UI、`mg_diagnostics`、`mg_scenario_test` |
+| `SequencerStatus` | シーケンサの状態 (FSM の状態、現在のウェイポイント、一時停止中か、残りの距離、実行中のアクション、トリガー待ちか、`~/trigger` を受け付けられるか) | `waypoint_sequencer_node` (トピック `~/status`) | Web UI、`mg_diagnostics`、`mg_scenario_test`、`mmi_switch_node` |
 | `NavigationActivity` | 走行の「いまの活動」の要約 (障害物での停止、リカバリー、トリガー待ち、RViz などシーケンサを通らないゴールの走行など)。表示用で、制御の入力にはしない | `waypoint_sequencer_node` (トピック `~/activity`、transient_local) | Web UI、`mg_scenario_test` |
 | `WaypointInfo` | ウェイポイント 1 点の情報 (位置、到達許容、通過点か、到達時のアクション) | `waypoint_sequencer_node` | `WaypointList` の要素 |
 | `WaypointList` | 読み込んだウェイポイントの一覧 | `waypoint_sequencer_node` (トピック `~/waypoints`、transient_local) | Web UI、`mg_scenario_test`、`waypoint_editor_node` |
@@ -19,6 +19,7 @@ MG-01 の独自メッセージ・サービスの定義。ノードは持たな�
 | 型 | 内容 | サーバ | クライアント |
 | :--- | :--- | :--- | :--- |
 | `StartSequence` | ウェイポイントの走行を開始する (`countdown_ms` 後) | `waypoint_sequencer_node` (`~/start`) | Web UI、`mg_scenario_test` |
+| `TriggerSequence` | 物理ボタンなどからの走行開始の要求。IDLE のときだけ受け付け、断ったら理由を返す (要求元を渡す) | `waypoint_sequencer_node` (`~/trigger`) | `mmi_switch_node` |
 | `SendGoal` | BT を指定して、手動でゴールを 1 つ送る (走行中でないときだけ受け付ける) | `waypoint_sequencer_node` (`~/navigate_to_pose`) | Web UI |
 | `LoadMaps` | 測位用・計画用の地図を `map_server` に読み込ませる (空文字の側は変更しない) | `waypoint_sequencer_node` (`~/load_map`) | Web UI |
 | `GetPoseGraph` | ポーズグラフ全体を取得する | `mg_slam` の旧 Python 版 | `mg_slam` のプレビュー |

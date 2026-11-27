@@ -22,6 +22,9 @@ MG-01 のノードとデータの流れ、座標系 (TF)、センサの取り付
                                       ▲                                              ─ /cmd_vel_collision ─► velocity_smoother ─ /cmd_vel
                                       │ NavigateToPose / FollowWaypoints 等
                        waypoint_sequencer (mg_waypoint_navigation) ◄── Web UI (foxglove_bridge, system_manager)
+                                      ▲
+                                      │ ~/trigger (開始の要求)、~/status (表示)
+                       mmi_switch_node ◄── MMI (操作盤のスイッチ・LED・ブザー)
 ```
 
 - 自己位置推定の詳細 (AMCL・GNSS・EKF の融合、AMCL の入/切の調停、自己位置監視ノード) は [mg_navigation の README](../mg_navigation/README.md) を参照。
@@ -43,6 +46,7 @@ mg_bringup/navigation/bringup_navigation.launch.py   (make navigation)
 │   └─ mg_description/bringup.launch.py              robot_state_publisher
 ├─ ekf_global_node                                   robot_localization
 ├─ slam_gnss_nav_bridge                              slam_gnss_2d (GNSS → /odom/gps)
+├─ mmi_switch_node                                   mg_drivers (実機のみ。操作盤のスイッチで走行を始める)
 └─ mg_navigation/bringup.launch.py
     ├─ localization_launch.py                        map_server / AMCL / 初期化 / 監視 / 調停
     ├─ navigation_launch.py                          Nav2 本体
@@ -87,6 +91,7 @@ base_link ─► left_wheel_link
 | 上 LiDAR RPLiDAR S2 | `rplidar_ros` | `/scan_top_lidar` | `/dev/ttyRobot-toplidar` |
 | GNSS u-blox | `ublox_gps_node` (UBX) または `nmea_navsat_driver` (NMEA) | `/gps/fix`、`/navpvt` | `/dev/ttyRobot-gps` |
 | RealSense D435i | `realsense2_camera` | `/camera/camera/depth/color/points` ほか | USB |
+| MMI (操作盤のスイッチ・LED・ブザー) | 自作 `mmi_switch_node` | `/waypoint_sequencer_node/trigger` (サービス) | `/dev/ttyRobot-mmi` |
 
 - udev ルールは `mg_drivers/config/usb-serial-devices.rules`。
 - 起動引数 (ポート、使うセンサの切り替え) は [mg_drivers の README](../mg_drivers/README.md) を参照。

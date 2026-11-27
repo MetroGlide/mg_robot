@@ -11,3 +11,5 @@ float32 distance_remaining
 string current_action
 # wait_trigger で IDLE に止まっている (未開始の IDLE と区別する)
 bool waiting_trigger
+# いま ~/trigger を呼べば走行を始めるか (物理ボタンの表示に使う。判定はシーケンサが行う)
+bool trigger_acceptable

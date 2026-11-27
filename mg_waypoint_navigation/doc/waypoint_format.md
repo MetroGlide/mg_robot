@@ -135,6 +135,8 @@ waypoints:
 
 到達時アクションをすべて実行した後、FSM を IDLE 状態に移行させ外部からの `~/start` サービス呼び出しを待つ。
 `~/start` リクエストの `countdown_ms` でカウントダウン後に次のウェイポイントへ進む。
+MMI の物理スイッチ (`mmi_switch_node`、[mg_drivers](../../mg_drivers/README.md)) からも `~/trigger` で再開できる。
+このときのカウントダウンはシーケンサのパラメータ `trigger_countdown_ms`。
 
 フィールドなし。
 

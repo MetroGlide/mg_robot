@@ -59,6 +59,7 @@ compose のサービス (`make slam`、`make navigation` など) は、ここの
 | `localization_test_profile` | `localization_profile` の後に重ねるプロファイル (シナリオ試験の故障の注入用。`localization_profile` は環境変数で比べる構成を選ぶのに残す) |
 | `nav2_params_file` | Nav2 のパラメータ |
 | `use_slam_gnss_bridge` | GNSS ブリッジ (`/odom/gps`) を起動するか |
+| `use_mmi` | MMI (操作盤) の物理スイッチで走行を始める `mmi_switch_node` を起動するか (実機のみ。[mg_drivers](../mg_drivers/README.md#mmi-の物理スイッチ-mmi_switch_nodepy)) |
 | `bridge_params_file` | GNSS ブリッジのパラメータ |
 | `gnss_transform_file` | GNSS を地図の座標に変換するファイル |
 

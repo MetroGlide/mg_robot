@@ -26,6 +26,7 @@
 | 構想 | 内容 |
 | :--- | :--- |
 | [gnss_map_distortion.md](./gnss_map_distortion.md) | 地図の歪みによる GNSS の場所ごとのずれを、信頼度 (分散) に反映する |
+| [plateau_map_reference.md](./plateau_map_reference.md) | PLATEAU の建物の形を基準にして、地図と GNSS のずれを RTK に依らずに測る |
 | [localization_gate_awareness.md](./localization_gate_awareness.md) | AMCL を意図して止めている区間で、自己位置監視が AMCL の判定を自動で外す |
 | [localization_single_scan_checks.md](./localization_single_scan_checks.md) | 1 枚のスキャンを使う自己位置の判定 (光線の突き抜けと、少しずつのずれ) を、室内の地図などで試す |
 | [localization_graph_aggregator.md](./localization_graph_aggregator.md) | 窓つきの因子グラフで、オドメトリ・GNSS・AMCL の仮説をまとめ、自己位置監視の判定の基準と復旧の候補に使う |

@@ -20,6 +20,13 @@ make build-robot                # 実機向けにイメージをビルド
 ```
 
 - センサは `/dev/ttyRobot-*` の名前で接続する (udev ルール: `mg_drivers/config/usb-serial-devices.rules`。デバイスの一覧は [system_architecture.md](./system_architecture.md#センサとデバイス))。
+- udev ルールは、ホスト (ロボットの PC) に 1 回だけ入れる。入れた後、USB を挿し直すと `/dev/ttyRobot-*` ができる。
+
+  ```bash
+  sudo cp mg_drivers/config/usb-serial-devices.rules /etc/udev/rules.d/
+  sudo udevadm control --reload-rules && sudo udevadm trigger
+  ls -l /dev/ttyRobot-*           # MMI なら /dev/ttyRobot-mmi
+  ```
 - 実機では `.env` の `SIMULATION=false` にする。
 - GUI (RViz2) を使う PC では、先に `make xhost` を実行する。
 
@@ -85,6 +92,7 @@ make ui-all                     # Web UI (foxglove-bridge・system-manager・web
 - ブラウザで `http://<ロボットの IP>:8080` を開く。操作は [mg_ui の README](../mg_ui/README.md)。
 - 起動時は、GNSS の測位が良くなるのを待って、AMCL と EKF の初期姿勢を決める。自己位置推定の仕組みと、ずれたときの動作は [mg_navigation の README](../mg_navigation/README.md)。
 - ウェイポイントの走行、一時停止、地図の切り替えは Web UI から行う。
+- MMI (操作盤) の LED1 が橙で点滅している間は、SW1 を押すと走行を始める (`wait_trigger` の待ちと、IDLE からの開始)。緑の点灯は、押しても始まらない状態。LED2 が赤なら、シーケンサか `mmi_switch_node` と通信できていない ([mg_drivers の README](../mg_drivers/README.md#mmi-の物理スイッチ-mmi_switch_nodepy))。
 
 ## 6. 走行ログの収録と解析
 

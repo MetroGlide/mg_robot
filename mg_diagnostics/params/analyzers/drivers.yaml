@@ -32,3 +32,9 @@ analyzers:
           # 照合の順序には頼らない
           regex: ['^ublox_gps_node: fix$', '^gnss_diagnostics_node: .*']
           timeout: 5.0
+        # 操作盤 (use_mmi で起動しないこともあるので expected にしない)
+        mmi:
+          type: diagnostic_aggregator/GenericAnalyzer
+          path: MMI
+          startswith: ['mmi_switch_node: ']
+          timeout: 5.0

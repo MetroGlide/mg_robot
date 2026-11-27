@@ -136,6 +136,8 @@ Gazebo とナビゲーションを起動して合否を判定する。詳細は 
 | `make bag-plot-gnss-map` | `MAP_PATH/map_list.txt` の地図群に、`gnss_transform.yaml` で変換した GNSS を重ねる (`MAP_LIST=`、`GNSS_TRANSFORM=` で変更できる) |
 | `make bag-plot-scans [NODES=1:20]` | LiDAR スキャンの点群を 2D 画像にする |
 | `make bag-eval-slam SLAM_DIR=<dir>` | SLAM の出力を GNSS (RTK) と比較して評価する |
+| `make bag-gnss-map-offset MAPS="<yaml> ..." [SLAM_DIR=]` | 走行のスキャンを地図に照合して、地図と GNSS の場所ごとのずれを測る |
+| `make gnss-map-offset-analyze INPUTS="<json> ..." [WPTROJ=]` | 上の結果を、全体と waypoint-tool のグループごとの剛体に分けて当てはめる |
 | `make bag-eval-localization [GT_DIR=] [MAP_GT_DIR=] [FAULTS=]` | 自己位置推定 (EKF 融合) を評価する |
 
 ## コンテナ内で ROS 2 のコマンドを使うとき

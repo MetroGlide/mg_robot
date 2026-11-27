@@ -184,6 +184,8 @@ make test pkg=mg_waypoint_navigation
 | `tools/scripts/rosbag_modify_base.py` | rosbag内の特定トピック修正・書き換え |
 | `tools/scripts/bag_to_json.py` | rosbagの指定トピック/全メッセージのJSONダンプ |
 | `tools/scripts/eval_slam.py`<br>(`make bag-eval-slam`) | SLAM出力をRTK(GNSS)と比較して評価 |
+| `tools/scripts/measure_gnss_map_offset.py`<br>(`make bag-gnss-map-offset`) | 走行のスキャンを地図に照合し、地図とGNSSの場所ごとのずれを測る・全体とグループごとの剛体に分けて当てはめる |
+| `tools/scripts/move_wptroj_groups.py` | waypoint-toolのプロジェクトのグループを剛体で動かし、別名で保存する（ずれの計測の「直す動き」を当てる） |
 | `tools/scripts/run_slam_variant.sh` | SLAMのパラメータ変種をオフライン実行して評価まで一括実行 |
 | `tools/scripts/make_sim_gnss_transform.py` | シミュレータのワールドSDFからGNSSブリッジ用の`gnss_transform.yaml`を生成 |
 | `tools/scripts/eval_localization.py`<br>(`make bag-eval-localization`) | 自己位置推定の評価（滑らかさ・真値との誤差・NEES・AMCL遅延・故障からの復旧） |

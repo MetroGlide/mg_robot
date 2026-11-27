@@ -211,6 +211,12 @@ install(PROGRAMS
   DESTINATION lib/${PROJECT_NAME}
 )
 install(PROGRAMS
+  scripts/mmi_switch_node.py
+  scripts/mmi_protocol.py
+  scripts/mmi_serial.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+install(PROGRAMS
   scripts/pose_with_cov_publish_controller_node.py
   DESTINATION lib/${PROJECT_NAME}
 )
