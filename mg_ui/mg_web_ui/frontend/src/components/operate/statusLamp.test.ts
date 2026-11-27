@@ -17,6 +17,12 @@ describe("ACTIVITY_LAMPS", () => {
     );
   });
 
+  it("全ての活動に、ランプの見方のページの説明がある", () => {
+    for (const [code, m] of Object.entries(ACTIVITY_MEANINGS)) {
+      expect(m.description, code).not.toBe("");
+    }
+  });
+
   it("赤は止まり自動では戻れない活動だけ", () => {
     const red = Object.entries(ACTIVITY_LAMPS)
       .filter(([, lamp]) => lamp.color === "red")

@@ -74,6 +74,23 @@ export const RESPONSE_COLORS: Record<LampResponse, LampColor> = {
   none: "off",
 };
 
+/** 色の軸の表示名 (ランプの見方のページ) */
+export const RESPONSE_LABELS: Record<LampResponse, string> = {
+  normal: "何もしなくてよい (正常)",
+  watch: "見守る (いつもと違うが、自動で対処・制限している)",
+  act: "人が対応する (自動では戻らない)",
+  operator: "人が止めている (人が解除する)",
+  start: "ボタンで走行を始められる (MMI の LED1 と同じ)",
+  none: "走行していない",
+};
+
+/** 動きの軸の表示名 (ランプの見方のページ) */
+export const MOTION_LABELS: Record<LampMotion, string> = {
+  moving: "点灯: 走っている",
+  waiting: "遅い点滅: 止まって待っている",
+  handling: "速い点滅: 異常で止まっている",
+};
+
 /** 動きの表 (点滅の周期。null は点灯) */
 export const MOTION_BLINK_MS: Record<LampMotion, number | null> = {
   moving: null,
@@ -84,44 +101,67 @@ export const MOTION_BLINK_MS: Record<LampMotion, number | null> = {
 export interface ActivityLampMeaning {
   response: LampResponse;
   motion: LampMotion;
+  /** ランプの見方のページに出す短い説明 (画面の文言はロボット側の text を使う) */
+  description: string;
 }
 
 function meaning(
   response: LampResponse,
   motion: LampMotion,
+  description: string,
 ): ActivityLampMeaning {
-  return { response, motion };
+  return { response, motion, description };
 }
 
 /** 活動の code ごとの意味。code を足したら、ここに書かないと型の検査で落ちる */
 export const ACTIVITY_MEANINGS: Record<ActivityCode, ActivityLampMeaning> = {
   // 走っている
-  navigating: meaning("normal", "moving"),
-  manual_goal: meaning("normal", "moving"),
-  external_goal: meaning("normal", "moving"),
-  obstacle_slowdown: meaning("normal", "moving"),
-  localization_recovering_drive: meaning("watch", "moving"),
-  localization_slowdown: meaning("watch", "moving"),
-  no_lidar_drive: meaning("watch", "moving"),
-  localization_unknown: meaning("watch", "moving"),
+  navigating: meaning("normal", "moving", "地点へ走行中"),
+  manual_goal: meaning("normal", "moving", "指定した地点へ走行中"),
+  external_goal: meaning(
+    "normal",
+    "moving",
+    "外部指定のゴール (RViz など) へ走行中",
+  ),
+  obstacle_slowdown: meaning("normal", "moving", "障害物で減速して走行中"),
+  localization_recovering_drive: meaning(
+    "watch",
+    "moving",
+    "自己位置を復旧しながら走行中",
+  ),
+  localization_slowdown: meaning(
+    "watch",
+    "moving",
+    "自己位置の不確かさで減速して走行中",
+  ),
+  no_lidar_drive: meaning("watch", "moving", "LiDAR なしで走行中"),
+  localization_unknown: meaning(
+    "watch",
+    "moving",
+    "自己位置の状態が届かないまま走行中",
+  ),
   // 止まって待っている
-  departure_wait: meaning("normal", "waiting"),
-  action: meaning("normal", "waiting"),
-  goal_reached: meaning("normal", "waiting"),
-  obstacle_stop: meaning("watch", "waiting"),
-  paused: meaning("operator", "waiting"),
-  trigger_wait: meaning("start", "waiting"),
-  ready_to_start: meaning("start", "waiting"),
+  departure_wait: meaning("normal", "waiting", "出発までのカウントダウン"),
+  action: meaning("normal", "waiting", "到着後のアクションを実行中"),
+  goal_reached: meaning("normal", "waiting", "全地点に到着"),
+  obstacle_stop: meaning("watch", "waiting", "障害物で停止して待っている"),
+  paused: meaning("operator", "waiting", "人などの要求で一時停止中"),
+  trigger_wait: meaning(
+    "start",
+    "waiting",
+    "wait_trigger で、ボタンでの開始を待っている",
+  ),
+  ready_to_start: meaning("start", "waiting", "ボタンで走行を始められる"),
   // 異常で止まっている
-  localization_hold: meaning("watch", "handling"),
-  watchdog_pause: meaning("watch", "handling"),
-  recovery: meaning("watch", "handling"),
-  detour_rejected: meaning("watch", "handling"),
-  error: meaning("act", "handling"),
-  sensor_timeout_stop: meaning("act", "handling"),
-  no_progress: meaning("act", "handling"),
+  localization_hold: meaning("watch", "handling", "自己位置の確認のため停止中"),
+  watchdog_pause: meaning("watch", "handling", "センサ監視による一時停止中"),
+  recovery: meaning("watch", "handling", "リカバリー動作中"),
+  detour_rejected: meaning("watch", "handling", "遠回りの経路を棄却して待機中"),
+  error: meaning("act", "handling", "エラーで停止中"),
+  sensor_timeout_stop: meaning("act", "handling", "センサ途絶で停止中"),
+  no_progress: meaning("act", "handling", "進めていない"),
   // 走行していない
-  idle: meaning("none", "moving"),
+  idle: meaning("none", "moving", "Waypoint 走行なし"),
 };
 
 /** 意味からランプを決める (消灯なら点滅しない) */

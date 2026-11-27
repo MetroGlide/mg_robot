@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   MAX_ACTIVITY_ENTRIES,
   useActivityHistory,
@@ -6,6 +7,7 @@ import {
 import { FoxgloveClientHandle } from "../../hooks/useFoxgloveClient";
 import { useNavigationActivity } from "../../hooks/useNavigationActivity";
 import ActivityLine from "../../components/operate/ActivityLine";
+import { STATUS_LAMP_GUIDE_PATH } from "../../components/operate/RecentActivity";
 import StatusLamp from "../../components/operate/StatusLamp";
 import {
   LAMP_COLOR_LABELS,
@@ -86,12 +88,20 @@ export default function ActivityLogPage({
     <WorkLayout
       title="走行の状態の履歴"
       headerRight={
-        <ActionButton
-          label={`表示中の ${shown.length} 件を書き出す`}
-          variant="blue"
-          disabled={shown.length === 0}
-          onClick={exportShown}
-        />
+        <>
+          <Link
+            to={STATUS_LAMP_GUIDE_PATH}
+            className="text-xs text-muted underline hover:text-content"
+          >
+            ランプの見方
+          </Link>
+          <ActionButton
+            label={`表示中の ${shown.length} 件を書き出す`}
+            variant="blue"
+            disabled={shown.length === 0}
+            onClick={exportShown}
+          />
+        </>
       }
     >
       <ActivityLine activity={activity} className="text-sm" />

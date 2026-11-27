@@ -17,6 +17,7 @@ import { USE_CASES, USE_CASE_LINKS } from "./pages/ops/useCases";
 const SensorsPage = lazy(() => import("./pages/ops/SensorsPage"));
 const SystemOpsPage = lazy(() => import("./pages/ops/SystemOpsPage"));
 const ActivityLogPage = lazy(() => import("./pages/ops/ActivityLogPage"));
+const StatusLampGuidePage = lazy(() => import("./pages/ops/StatusLampGuidePage"));
 const TopPage = lazy(() => import("./pages/TopPage"));
 const WaypointNavPage = lazy(() => import("./pages/WaypointNavPage"));
 const SlamPage = lazy(() => import("./pages/SlamPage"));
@@ -56,7 +57,8 @@ export default function App() {
                     <SystemOpsPage client={client} sysManager={sysManager} />
                   }
                 />
-                {/* 走行の状態の履歴の全件。:useCase より前に置く */}
+                {/* 状態ランプの見方と、走行の状態の履歴の全件。:useCase より前に置く */}
+                <Route path="status-lamps" element={<StatusLampGuidePage />} />
                 <Route
                   path="activity-log"
                   element={<ActivityLogPage client={client} />}

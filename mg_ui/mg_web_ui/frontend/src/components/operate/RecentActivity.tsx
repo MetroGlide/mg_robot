@@ -15,6 +15,8 @@ import { lampFor } from "./statusLamp";
 export const RECENT_ACTIVITY_COUNT = 5;
 /** 全件の一覧のページ */
 export const ACTIVITY_LOG_PATH = "/ops/activity-log";
+/** 状態ランプの見方のページ */
+export const STATUS_LAMP_GUIDE_PATH = "/ops/status-lamps";
 
 /**
  * 直近の活動の変化を新しい順に count 件並べる。続いている最新の件は、いまの活動の経過秒を出す。
@@ -40,8 +42,14 @@ export default function RecentActivity({
       <div className="mb-1 flex items-center text-xs text-muted">
         <span>直近の状態</span>
         <Link
-          to={ACTIVITY_LOG_PATH}
+          to={STATUS_LAMP_GUIDE_PATH}
           className="ml-auto underline hover:text-content"
+        >
+          ランプの見方
+        </Link>
+        <Link
+          to={ACTIVITY_LOG_PATH}
+          className="ml-3 underline hover:text-content"
         >
           すべて表示
         </Link>
