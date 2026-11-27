@@ -14,7 +14,7 @@ mg_system_manager/
   docker_ops.py      ComposeRunner: docker compose の実行、コンテナの検索、サービスごとの排他
   log_hub.py         コンテナのログの配信 (サービスごとに docker logs を 1 本、接続ごとに上限付きのバッファ)
   settings_store.py  UI 設定の保存 (キー単位のマージ)
-  scenario_results.py  シナリオの一覧と、シナリオテストの結果 (progress.json・result.json・ログ) の読み出し
+  scenario_results.py  シナリオの一覧と、シナリオテストの結果 (progress.json と分け札ごとの progress_<I>of<N>.json・result.json・ログ) の読み出し
   ros_cmd.py         コンテナ内で ROS 2 のコマンドを実行する
   responses.py       操作の結果を {success, message} にして、ログに残す
   routers/           エンドポイント
