@@ -209,6 +209,40 @@ def test_gnss_isolated_by_the_supervisor_is_not_used_by_the_gate():
     assert not sim.events('gate_closed')
 
 
+def _held_sim(hold):
+    raw = copy.deepcopy(RAW)
+    raw['gate']['settings'].update(confirm_distance_m=3.0, gnss_hold_after_distrust=hold)
+    sim = Sim(raw)
+    sim.run(18.0)
+    return sim
+
+
+def test_gnss_stays_distrusted_after_the_blame_moves_until_a_confirmed_pose_agrees():
+    """疑う相手が GNSS から推定器に移って切り離しが解けても、門と復旧に GNSS を使わせず、確かめた姿勢と合えば戻す。"""
+    sim = _held_sim(True)
+    machine = sim.supervisor.machine
+    machine.state, machine.blame, machine._soft = State.ISOLATED, 'gnss', True
+    sim.gnss_offset = (0.0, 2.5)
+    sim.run(1.0)
+    machine.state, machine.blame, machine._soft = State.ISOLATED, 'amcl', False
+    assert sim.supervisor._gate_distrust() == {'gnss'}
+    machine.state, machine.blame = State.NORMAL, ''
+    assert sim.supervisor._gate_distrust() == {'gnss'}
+    sim.gnss_offset = (0.0, 0.0)
+    sim.run(10.0)
+    assert sim.events('pose_confirmed') and sim.events('gnss_released')
+    assert sim.supervisor._gate_distrust() == frozenset()
+
+
+def test_gnss_is_trusted_right_after_the_isolation_ends_when_the_hold_is_off():
+    sim = _held_sim(False)
+    machine = sim.supervisor.machine
+    machine.state, machine.blame, machine._soft = State.ISOLATED, 'gnss', True
+    sim.run(1.0)
+    machine.state, machine.blame = State.NORMAL, ''
+    assert sim.supervisor._gate_distrust() == frozenset()
+
+
 def test_external_reinit_is_ignored_with_the_gate():
     sim = _opened()
     sim.supervisor.machine.state = State.RECOVERING

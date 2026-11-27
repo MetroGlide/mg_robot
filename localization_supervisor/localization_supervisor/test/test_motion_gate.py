@@ -47,7 +47,7 @@ def truth(t):
     return (RADIUS * math.cos(angle), RADIUS * math.sin(angle), angle + math.pi / 2.0)
 
 
-def config(**gate):
+def config(scan_buffer=None, **gate):
     raw = {
         'version': 1,
         'sources': {
@@ -68,7 +68,7 @@ def config(**gate):
                           'params': {'metric': 'distance', 'threshold': 1.0, 'b_max_std_m': 0.5},
                           'close_after_sec': 2.0},
         },
-        'scan_buffer': {'keyframe_distance_m': 0.3, 'window_distance_m': 3.0},
+        'scan_buffer': {'keyframe_distance_m': 0.3, 'window_distance_m': 3.0, **(scan_buffer or {})},
     }
     return parse_gate_config(raw)
 
@@ -495,41 +495,9 @@ def test_distrusted_gnss_neither_closes_the_gate_nor_becomes_a_candidate():
     assert all('ratio_gnss' not in e.fields for e in matches)
 
 
-def test_gnss_stays_out_after_the_supervisor_stops_distrusting_it_until_a_confirmed_pose_agrees():
-    """監督の疑いが AMCL に移って GNSS の疑いが解けても、ずれた GNSS を候補にせず、確かめた姿勢と合えばまた使う。"""
-    sim = _confirmed(confirm_distance_m=5.0, gnss_hold_after_distrust=True)
-    sim.distrust = frozenset({'gnss'})
-    sim.gnss_offset = (0.0, 2.5)
-    sim.run(2.0)
-    sim.distrust = frozenset()
-    sim.run(0.4)
-    assert sim.events('gnss_held')
-    before = len(sim.events('map_match'))
-    sim.amcl_offset = (1.5, 0.0, 0.0)
-    sim.run(2.0)
-    matches = sim.events('map_match')[before:]
-    assert sim.events('gate_closed') and matches
-    assert all('ratio_gnss' not in e.fields for e in matches)
-    # GNSS が戻り、確かめた姿勢と合えば、また使う
-    sim.amcl_offset = (0.0, 0.0, 0.0)
-    sim.gnss_offset = (0.0, 0.0)
-    sim.run(20.0)
-    assert sim.events('pose_confirmed') and sim.events('gnss_released')
-    assert not sim.gate._gnss_held
-
-
-def test_gnss_is_used_right_after_the_distrust_ends_when_the_hold_is_off():
-    sim = _confirmed(confirm_distance_m=1000.0)
-    sim.distrust = frozenset({'gnss'})
-    sim.run(2.0)
-    sim.distrust = frozenset()
-    sim.run(2.0)
-    assert not sim.events('gnss_held')
-
-
 def test_stale_scans_are_never_matched_and_never_hold_the_robot():
     """LiDAR が止まったら、溜めたスキャンで照合も停止もせず、戻ったら溜め直して照合する。"""
-    sim = _confirmed(scan_max_age_sec=2.0, max_closed_sec=3.0)
+    sim = _confirmed(scan_buffer={'max_scan_age_sec': 2.0}, max_closed_sec=3.0)
     sim.halted = True
     sim.run(3.0)
     assert sim.events('gate_scan_stale')

@@ -128,8 +128,8 @@ AMCL の位置の共分散を監視し、大きい状態が続いたら、`gnss_
   | 走り方 (起こりうる誤差と余裕から、狭い所で減速) | 狭くない所で減速が続かないか (`/localization/status` の `situation`・`speed_limit`) | 対処 `speed_limit` を外す |
   | 確かめの要求 (計画用地図の障害物から抜けた後に、門の照合で確かめる) | 脱出の後に止まる時間 | 門の `verify_min_interval_sec` を大きくする、または構成 `legacy` |
   | 広い照合 (決まらずに止めた後に、続きの周りを全周で探す) | `localization.wide_search` の後の置き直しが正しいか | 門の `wide_search_after_holds` を 0 |
-  | GNSS の見習い期間・疑いの解けた GNSS の保留 | GNSS が良いのに候補に入らない時間 (`localization.gnss_probation`・`gnss_held`・`gnss_released`) | 門の `gnss_probation_sec` を 0、`gnss_hold_after_distrust` を偽 |
-  | スキャンの途絶の間は照合しない | LiDAR が止まった後に止まらず走るか (`localization.gate_scan_stale`) | 門の `scan_max_age_sec` を 0 |
+  | GNSS の見習い期間・疑いの解けた GNSS の保留 | GNSS が良いのに候補に入らない時間 (`localization.gnss_probation`・`gnss_released`) | 門の `gnss_probation_sec` を 0、`gnss_hold_after_distrust` を偽 |
+  | スキャンの途絶の間は照合しない | LiDAR が止まった後に止まらず走るか (`localization.gate_scan_stale`) | 門と復旧の `scan_buffer` の `max_scan_age_sec` を 0 |
   | センサの組 (LiDAR なしで速度を下げて走る) | LiDAR が止まってから切り替わるまでの停止 (`localization.sensor_set_changed`) | `sensor_sets` を空にする |
 
 - 調整は、まず構成 `observe` で走らせた記録で、門の閉鎖・照合の結果・減速の回数を数えてから行う。パラメータごとの意味と調整の方針は、監督の [parameters.md](../../localization_supervisor/doc/parameters.md) (門は `gate.settings`、走り方は `conduct`、センサの組は `sensor_sets`)。値は `mg_localization_supervisor/config/supervision.yaml` が正。

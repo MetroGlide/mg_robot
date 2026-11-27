@@ -80,6 +80,16 @@ def test_config_rejects_bad_sensor_sets(sets):
         parse_config(_raw_with_sets(sets))
 
 
+def test_config_rejects_a_scan_age_limit_not_shorter_than_the_set_switch():
+    """古いスキャンでの照合は、LiDAR なしの組に切り替える前にやめる (古さの上限 < 組に入るまでの時間)。"""
+    raw = _raw_with_sets([{'name': 'no_lidar', 'missing': ['map_scan'], 'missing_after_sec': 3.0}])
+    raw['gate']['scan_buffer']['max_scan_age_sec'] = 2.0
+    parse_config(raw)
+    raw['gate']['scan_buffer']['max_scan_age_sec'] = 3.0
+    with pytest.raises(ConfigError):
+        parse_config(raw)
+
+
 def test_the_set_caps_the_speed_while_the_lidar_is_missing():
     sim = Sim(_raw_with_sets([{'name': 'no_lidar', 'missing': ['map_scan'], 'missing_after_sec': 3.0,
                                'speed_limit_mps': 0.2}]))

@@ -31,6 +31,7 @@ import numpy as np
 from .anchors import Anchor, AnchorStore
 from .conduct import Action as ConductAction, Conduct, ConductInputs, ConductPlanner, Situation
 from .config import SupervisorConfig
+from .detectors.common import position_std
 from .geometry import Pose2
 from .interfaces import (
     Candidate, Detector, Evidence, FusionResult, FusionStrategy, InstanceInfo, PoseSample, RecoveryContext,
@@ -176,6 +177,8 @@ class Supervisor:
         self.scans: Optional[ScanBuffer] = config.scan_buffer.make() if config.scan_buffer is not None else None
         self.residuals = {name: ResidualTracker(cfg) for name, cfg in config.residuals.items()}
         self._residual_high: Dict[str, bool] = {name: False for name in config.residuals}
+        # 切り離した GNSS を、門が確かめた姿勢と合うまで門と復旧に使わせない (門の設定 gnss_hold_after_distrust)
+        self._gnss_held = False
         self.planner = self._make_planner(config)
         self._references = sorted({
             source for d in enabled.values() for source in d.sources.values()
@@ -274,6 +277,7 @@ class Supervisor:
             result = dataclasses.replace(self._last, stamp=now, events=[], directives=[], plan=None)
         gate_step = self.gate.step(snapshot, match, self._gate_distrust())
         self._apply_gate(now, result, gate_step)
+        self._release_held_gnss(snapshot, gate_step, result)
         if self.conduct is not None:
             result.conduct = self._update_conduct(now, gate_step, result, fresh)
         return result
@@ -329,10 +333,32 @@ class Supervisor:
         if not gnss:
             return frozenset()
         if self.machine.isolating and self.machine.blame == gnss:
+            self._gnss_held = self.gate.settings.gnss_hold_after_distrust
+            return frozenset({gnss})
+        if self._gnss_held:
             return frozenset({gnss})
         if any(high and self.config.residuals[name].a == gnss for name, high in self._residual_high.items()):
             return frozenset({gnss})
         return frozenset()
+
+    def _release_held_gnss(self, snapshot: Snapshot, gate_step: GateStep, result: StepResult) -> None:
+        """切り離しを解いた GNSS を、門が確かめた姿勢と申告の精度の範囲で合ったら、また使わせる。
+
+        疑う相手が GNSS から推定器に移るだけで切り離しが解けることがあり、GNSS が正しいとは確かめていないため。
+        """
+        s = self.gate.settings
+        if not self._gnss_held or (self.machine.isolating and self.machine.blame == s.gnss):
+            return
+        confirmed = next((e for e in gate_step.events if e.name == 'pose_confirmed'), None)
+        sample = snapshot.pose(s.gnss, s.gnss_max_age_sec)
+        if confirmed is None or sample is None:
+            return
+        sigma = position_std(sample.cov)
+        distance = math.hypot(sample.pose[0] - confirmed.fields['x'], sample.pose[1] - confirmed.fields['y'])
+        if sigma <= s.gnss_max_std_m and distance <= s.gnss_sigma_k * sigma:
+            self._gnss_held = False
+            result.events.append(Event(f'{self.config.event_prefix}.gnss_released', 'info', {
+                'distance_m': round(distance, 3), 'std_m': round(sigma, 3)}))
 
     def _apply_gate(self, now: float, result: StepResult, gate_step: GateStep) -> None:
         """門の結果を、周期の結果 (イベント・置き直しの指示・一時停止) に入れ、置き直したら累積と判定を捨てる。"""
@@ -488,6 +514,9 @@ class Supervisor:
         if self.scans is None or cfg is None:
             return
         scan = snapshot.reference(cfg.reference).scan
+        if self.scans.too_old(snapshot.stamp, scan):
+            self.scans.clear()
+            return
         if scan is None or scan.stamp == self._last_scan:
             return
         self._last_scan = scan.stamp

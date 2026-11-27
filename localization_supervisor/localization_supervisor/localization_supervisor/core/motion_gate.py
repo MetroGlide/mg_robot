@@ -17,6 +17,7 @@ from typing import Any, Deque, Dict, List, Mapping, Optional, Tuple
 
 import numpy as np
 
+from .detectors.common import position_std
 from .geometry import Pose2, compose, inverse, separated, wrap_angle
 from .grid import OccupancyMap, scan_points_in_map
 from .initial_search import InitialSearchConfig, InitialSearchResult, search_initial_pose
@@ -95,19 +96,15 @@ class GateSettings:
     gnss_probation_sec: float = 0.0
     gnss_probation_ratio: float = 3.0
     gnss_probation_window_sec: float = 10.0
-    # 監督が疑った GNSS を、疑いが解けた後も、確かめた姿勢と合うまで使わない (疑いは「AMCL の方が悪い」に移るだけで
-    # 解けることがあり、GNSS が正しいとは確かめていないため)。確かめた姿勢 (推定器を採ったもの) と GNSS の位置の差が、
-    # 申告の標準偏差の gnss_sigma_k 倍以内で、申告の精度が gnss_max_std_m 以下なら、また使う
+    # 監督が切り離した GNSS を、切り離しを解いた後も、門が確かめた姿勢と合うまで門と復旧に使わせない (監督が読む。
+    # 疑う相手が推定器に移るだけで切り離しが解けることがあり、GNSS が正しいとは確かめていないため)。確かめた姿勢と
+    # GNSS の位置の差が申告の標準偏差の gnss_sigma_k 倍以内で、申告の精度が gnss_max_std_m 以下なら、また使わせる
     gnss_hold_after_distrust: bool = False
     # 確かめの要求 (走行側から) を受け付ける間隔の下限 [s]
     verify_min_interval_sec: float = 5.0
     # 広い照合: 決まらずに止めた回数がこれに達した後の停止の間は、確かめた姿勢の続き (なければ融合の結果) の周りを、
     # 全周の照合 (設定の initial_search) で探して候補に足す。0 なら使わない
     wide_search_after_holds: int = 0
-    # 地図と照合するスキャンの古さの上限 [s]。最新のスキャンがこれより古い間 (LiDAR が止まったなど) は、照合も、照合を
-    # 待つ停止もしない (溜めたスキャンをオドメトリで進めて照合すると、誤った姿勢へ置き直す)。溜めたスキャンは捨て、
-    # スキャンが戻ってから溜め直す。0 なら見ない
-    scan_max_age_sec: float = 0.0
 
 
 @dataclass
@@ -279,8 +276,6 @@ class MotionGate:
         # GNSS の申告の精度の履歴 (時刻, 標準偏差) と、見習い期間の終わり
         self._gnss_std: Deque[Tuple[float, float]] = deque()
         self._probation_until = -math.inf
-        # 監督の疑いが解けた後、確かめた姿勢と合うのを待っている GNSS
-        self._gnss_held = False
         # 外から足された候補 (force_close。次に閉じたまま照合するときに一度だけ使う) と、出していないイベント
         self._extra: Dict[str, CandidatePose] = {}
         self._pending: List[GateEvent] = []
@@ -374,11 +369,8 @@ class MotionGate:
         out.events, self._pending = self._pending, []
         # 監督が疑う GNSS (全周の照合にも使わない) と、見習い期間 (閉じる理由と候補にだけ使わない。全周の照合は
         # GNSS を探す範囲の中心にだけ使い、地図との照合で確かめるので止めない)
-        distrust = frozenset(distrust)
-        self._hold_released_gnss(distrust, out)
-        self._supervisor_distrust = distrust
-        held = frozenset({s.gnss}) if self._gnss_held else frozenset()
-        self._distrust = self._supervisor_distrust | self._probation(snapshot, t, out) | held
+        self._supervisor_distrust = frozenset(distrust)
+        self._distrust = self._supervisor_distrust | self._probation(snapshot, t, out)
         if result is not None:
             self._busy = False
         motion = snapshot.motion_at(s.motion, t)
@@ -392,12 +384,10 @@ class MotionGate:
         out.evidences = {c.name: c.detector.evaluate(snapshot) for c in self.config.closers}
         closing = self._closing(t, out.evidences)
         out.closing = closing
-        if result is not None and result[0].generation == self._generation and not stale:
-            self._apply(result[0], result[1], snapshot, motion, out)
         if stale:
-            out.state = self.state
-            out.gate_open = self.state in (GateState.UNCONFIRMED, GateState.OPEN)
-            return out
+            return self._finish(out)
+        if result is not None and result[0].generation == self._generation:
+            self._apply(result[0], result[1], snapshot, motion, out)
 
         in_grace = t < self._grace_until[0] or self._odometer < self._grace_until[1]
         out.in_grace = in_grace
@@ -414,6 +404,10 @@ class MotionGate:
             out.request = self._next_request(snapshot, motion)
             if out.request is not None:
                 self._busy = True
+        return self._finish(out)
+
+    def _finish(self, out: GateStep) -> GateStep:
+        """周期の終わりの状態と、一時停止の要求を出す。"""
         out.state = self.state
         out.gate_open = self.state in (GateState.UNCONFIRMED, GateState.OPEN)
         if self.state == GateState.CORRECTING:
@@ -461,13 +455,11 @@ class MotionGate:
             self._buffer.add(scan, motion)
 
     def _watch_scan_age(self, snapshot: Snapshot, out: GateStep) -> bool:
-        """最新のスキャンが古ければ真 (scan_max_age_sec)。古くなったら、溜めたスキャン・待っている照合・停止を捨てる。"""
-        s = self.settings
-        if s.scan_max_age_sec <= 0.0:
-            return False
+        """最新のスキャンが古ければ真 (scan_buffer の max_scan_age_sec)。古くなったら、溜めたスキャン・待っている照合・
+        停止を捨てる。古い間は照合も停止もしない。"""
         t = snapshot.stamp
-        scan = snapshot.reference(s.reference).scan
-        stale = scan is not None and t - scan.stamp > s.scan_max_age_sec
+        scan = snapshot.reference(self.settings.reference).scan
+        stale = self._buffer.too_old(t, scan)
         if stale and not self._scan_stale:
             self._buffer.clear()
             self._generation += 1
@@ -482,32 +474,6 @@ class MotionGate:
         self._scan_stale = stale
         return stale
 
-    def _hold_released_gnss(self, distrust: frozenset, out: GateStep) -> None:
-        """監督の疑いが解けた GNSS を、確かめた姿勢と合うまで使わない (gnss_hold_after_distrust)。"""
-        s = self.settings
-        if not s.gnss or not s.gnss_hold_after_distrust:
-            return
-        if s.gnss in distrust:
-            self._gnss_held = False
-        elif s.gnss in self._supervisor_distrust and not self._gnss_held:
-            self._gnss_held = True
-            out.events.append(GateEvent('gnss_held', 'info', {}))
-
-    def _release_held_gnss(self, snapshot: Snapshot, confirmed: Pose2, out: GateStep) -> None:
-        """確かめた姿勢と GNSS の位置が、申告の精度の範囲で合えば、GNSS をまた使う。"""
-        s = self.settings
-        if not self._gnss_held:
-            return
-        sample = snapshot.pose(s.gnss, s.gnss_max_age_sec)
-        if sample is None:
-            return
-        sigma = math.sqrt(max(float(sample.cov[0][0]), float(sample.cov[1][1]), 0.0))
-        distance = math.hypot(sample.pose[0] - confirmed[0], sample.pose[1] - confirmed[1])
-        if sigma <= s.gnss_max_std_m and distance <= s.gnss_sigma_k * sigma:
-            self._gnss_held = False
-            out.events.append(GateEvent('gnss_released', 'info', {
-                'distance_m': round(distance, 3), 'std_m': round(sigma, 3)}))
-
     def _probation(self, snapshot: Snapshot, t: float, out: GateStep) -> frozenset:
         """GNSS の見習い期間なら {GNSS}。申告の精度が急に良くなったら始める。"""
         s = self.settings
@@ -515,7 +481,7 @@ class MotionGate:
             return frozenset()
         sample = snapshot.pose(s.gnss, s.gnss_max_age_sec)
         if sample is not None and (not self._gnss_std or sample.stamp > self._gnss_std[-1][0]):
-            std = math.sqrt(max(float(sample.cov[0][0]), float(sample.cov[1][1]), 0.0))
+            std = position_std(sample.cov)
             while self._gnss_std and self._gnss_std[0][0] < sample.stamp - s.gnss_probation_window_sec:
                 self._gnss_std.popleft()
             worst = max((v for _, v in self._gnss_std), default=0.0)
@@ -538,7 +504,7 @@ class MotionGate:
         if sample is None or sample.stamp == self._gnss_stamp:
             return
         self._gnss_stamp = sample.stamp
-        sigma = math.sqrt(max(float(sample.cov[0][0]), float(sample.cov[1][1]), 0.0))
+        sigma = position_std(sample.cov)
         self._gnss_good = self._gnss_good + 1 if sigma <= s.initial_gnss_max_std_m else 0
         if self._gnss_good == s.initial_gnss_consecutive and self.state == GateState.UNCONFIRMED:
             self._next_match = min(self._next_match, t)
@@ -782,7 +748,7 @@ class MotionGate:
         if gnss is None:
             return
         sample = gnss[0]
-        sigma = math.sqrt(max(float(sample.cov[0][0]), float(sample.cov[1][1]), 0.0))
+        sigma = position_std(sample.cov)
         if sigma <= s.gnss_max_std_m:
             candidates[s.gnss] = CandidatePose(
                 (sample.pose[0], sample.pose[1], yaw_from.pose[2]), s.gnss_sigma_k * sigma, yaw_range)
@@ -834,7 +800,6 @@ class MotionGate:
             if adopted:
                 self._anchor = _Anchor(request.candidates[estimator].pose, request.motion, request.odometer)
                 out.events.append(GateEvent('pose_confirmed', 'info', _pose_fields(target)))
-                self._release_held_gnss(snapshot, target, out)
             elif estimator not in decision.same:
                 self._close(t, 'confirm', out, result=decision.best)
                 self._correct(t, target, 'all', out, motion, fused)

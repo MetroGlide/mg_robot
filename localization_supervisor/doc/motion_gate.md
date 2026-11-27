@@ -112,9 +112,9 @@
 
 広い照合: 決まらずに止めた回数が `wide_search_after_holds` に達した後の停止の間は、確かめた姿勢の続き (なければ融合の結果) の周りを、全周の照合 (`initial_search`) で向きの全周まで探し、はっきり合った姿勢を候補に足す (イベント `localization.wide_search`)。合えばほかの候補と同じ規則で比べる。
 
-スキャンの途絶: 最新のスキャンが `scan_max_age_sec` より古い間 (LiDAR が止まったなど) は、照合も、照合を待つ停止もしない (イベント `localization.gate_scan_stale`)。溜めたスキャンをオドメトリで進めて照合すると、誤った姿勢へ置き直すため。溜めたスキャンと、待っている照合・置き直しは捨て、スキャンが戻ったら溜め直してから照合する (`localization.gate_scan_fresh`)。
+スキャンの途絶: 最新のスキャンが `scan_buffer` の `max_scan_age_sec` より古い間 (LiDAR が止まったなど) は、照合も、照合を待つ停止もしない (イベント `localization.gate_scan_stale`)。溜めたスキャンをオドメトリで進めて照合すると、誤った姿勢へ置き直すため。溜めたスキャンと、待っている照合・置き直しは捨て、スキャンが戻ったら溜め直してから照合する (`localization.gate_scan_fresh`)。
 
-監督の部品として使うとき、監督が推定器の異常を確かめて閉じさせたら (`force_close`)、最初から上限を超えたものとして扱い、すぐ止めて照合する (監督は閉じる理由の部品より遅く気づくので、融合の結果も推定器に引かれているおそれがある)。監督が足した候補 (候補を作るものの候補) も照合する。監督が GNSS を疑っている間は、GNSS を使う閉じる理由の部品と GNSS の候補を使わない。GNSS の申告の精度が急に良くなったとき (直近の窓の最も悪い値から一定の倍率以上。`gnss_probation_*`) も、見習い期間の間は同じく使わない (屋根を抜けた直後など、位置はずれたまま申告だけが良くなるため。イベント `localization.gnss_probation`)。監督の GNSS の疑いが解けた後も、`gnss_hold_after_distrust` なら、確かめた姿勢 (推定器を採ったもの) と GNSS の位置が申告の精度の範囲で合うまで同じく使わない (疑いが「AMCL の方が悪い」に移るだけで解けることがあり、GNSS が正しいとは確かめていないため。イベント `localization.gnss_held`・`localization.gnss_released`)。
+監督の部品として使うとき、監督が推定器の異常を確かめて閉じさせたら (`force_close`)、最初から上限を超えたものとして扱い、すぐ止めて照合する (監督は閉じる理由の部品より遅く気づくので、融合の結果も推定器に引かれているおそれがある)。監督が足した候補 (候補を作るものの候補) も照合する。監督が GNSS を疑っている間は、GNSS を使う閉じる理由の部品と GNSS の候補を使わない。GNSS の申告の精度が急に良くなったとき (直近の窓の最も悪い値から一定の倍率以上。`gnss_probation_*`) も、見習い期間の間は同じく使わない (屋根を抜けた直後など、位置はずれたまま申告だけが良くなるため。イベント `localization.gnss_probation`)。監督は、切り離した GNSS を、切り離しを解いた後も、`gnss_hold_after_distrust` なら門が確かめた姿勢 (推定器を採ったもの) と GNSS の位置が申告の精度の範囲で合うまで疑い続け、門と復旧の候補に使わせない (疑う相手が推定器に移るだけで切り離しが解けることがあり、GNSS が正しいとは確かめていないため。合ったらイベント `localization.gnss_released`)。
 
 ## 手動の初期姿勢
 
@@ -155,7 +155,6 @@
   - `localization.wide_search`: 広い照合の結果 (合った / 決まらなかったわけ、一致率、次点との差、見つけた姿勢、探した中心)。
   - `localization.verify_requested`・`localization.verify_result`: 走行側の確かめの要求の受け付けと結果 (確かめた / 置き直した / 決まらない)。
   - `localization.gnss_probation`: GNSS の見習い期間の始まり (申告の精度と、窓の中の最も悪い値)。
-  - `localization.gnss_held`・`localization.gnss_released`: 疑いの解けた GNSS を保留にした・確かめた姿勢と合ったのでまた使う (差と申告の精度)。
   - `localization.gate_scan_stale`・`localization.gate_scan_fresh`: スキャンが途絶えたので照合をやめた・戻った。
 
 ## 評価

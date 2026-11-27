@@ -34,22 +34,26 @@ class ScanBufferConfig:
     window_distance_m: float = 20.0
     max_points_per_scan: int = 90
     max_range_m: float = 25.0
+    # 最新のスキャンがこれより古い間 (LiDAR の途絶) は、溜めたスキャンを捨てて使わない [s]。溜めたスキャンを
+    # オドメトリで進めて照合すると、誤った姿勢へ置き直すため。0 なら見ない
+    max_scan_age_sec: float = 0.0
 
     def make(self) -> 'ScanBuffer':
         return ScanBuffer(self.keyframe_distance_m, self.keyframe_angle_rad, self.window_distance_m,
-                          self.max_points_per_scan, self.max_range_m)
+                          self.max_points_per_scan, self.max_range_m, self.max_scan_age_sec)
 
 
 class ScanBuffer:
     def __init__(
         self, keyframe_distance_m: float, keyframe_angle_rad: float, window_distance_m: float,
-        max_points_per_scan: int, max_range_m: float,
+        max_points_per_scan: int, max_range_m: float, max_scan_age_sec: float = 0.0,
     ) -> None:
         self.keyframe_distance_m = keyframe_distance_m
         self.keyframe_angle_rad = keyframe_angle_rad
         self.window_distance_m = window_distance_m
         self.max_points_per_scan = max_points_per_scan
         self.max_range_m = max_range_m
+        self.max_scan_age_sec = max_scan_age_sec
         self._scans: Deque[BufferedScan] = deque()
 
     def __len__(self) -> int:
@@ -57,6 +61,10 @@ class ScanBuffer:
 
     def clear(self) -> None:
         self._scans.clear()
+
+    def too_old(self, now: float, scan: Optional[ScanSample]) -> bool:
+        """最新のスキャンが max_scan_age_sec より古いか (届いていない、または 0 なら偽)。"""
+        return self.max_scan_age_sec > 0.0 and scan is not None and now - scan.stamp > self.max_scan_age_sec
 
     def latest(self) -> Optional[BufferedScan]:
         return self._scans[-1] if self._scans else None

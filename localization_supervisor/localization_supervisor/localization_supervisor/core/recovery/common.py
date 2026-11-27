@@ -60,7 +60,7 @@ def base_points(
         if now is not None:
             return thin(scans.points_in((0.0, 0.0, 0.0), now), max_points)
     scan = reference.scan
-    if scan is None or scan.sensor_pose is None:
+    if scan is None or scan.sensor_pose is None or (scans is not None and scans.too_old(snapshot.stamp, scan)):
         return None
     return scan_points_in_map(
         scan.ranges, scan.angle_min, scan.angle_increment, scan.range_min, scan.range_max,

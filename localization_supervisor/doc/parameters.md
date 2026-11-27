@@ -209,7 +209,7 @@ residuals:
 | `settings` | 下の表 (`core/motion_gate.py` の `GateSettings`) |
 | `closers` | 閉じる理由の部品 (判定の書き方に、異常が続く時間 `close_after_sec` と、置き直しの後の猶予の間も使うか `active_in_grace` を足したもの)。名前は `detectors` のインスタンスと分ける (状態のメッセージに両方を並べる) |
 | `map_match` | 照合で決める規則 (`core/map_match.py` の `MapMatchConfig`) |
-| `scan_buffer` | 照合に使う、直近のスキャンの重ね方 |
+| `scan_buffer` | 照合に使う、直近のスキャンの重ね方 (`core/scan_buffer.py` の `ScanBufferConfig`)。`max_scan_age_sec` は、最新のスキャンがこれより古い間は照合も停止もせず、溜めたスキャンを捨てる時間 (0 なら見ない)。スキャンの周期の乱れより長く、そのスキャンが欠けて入るセンサの組の `missing_after_sec` より短くする (読み込みで確かめる)。`recovery.scan_buffer` も同じキーを持つ |
 | `initial_search` | 確かめた姿勢がない間に、GNSS の周りを向きの全周で照合する設定 (`core/initial_search.py` の `InitialSearchConfig`)。書かなければしない。`settings.gnss` が要る |
 | `manual_pose_topic` | 手動の初期姿勢のトピック (空なら受けない) |
 
@@ -234,10 +234,9 @@ residuals:
 | `reset_std_m`・`reset_std_yaw_rad` | 置き直す姿勢の標準偏差 | 置き直しの後に AMCL が広がりすぎるなら小さくする |
 | `initial_gnss_max_std_m`・`initial_gnss_consecutive` | 全周の照合に使う GNSS の申告の精度の上限と、続けて満たす標本の数 | 起動の照合が始まらないなら緩める。誤った位置で始まるなら締める |
 | `gnss_probation_sec`・`gnss_probation_ratio`・`gnss_probation_window_sec` | 申告の精度が急に良くなった GNSS を、閉じる理由と候補に使わない見習い期間。0 なら使わない | 屋根を抜けた直後の誤った決着が残るなら延ばす。GNSS が良いのに候補に入らない時間が長ければ縮める |
-| `gnss_hold_after_distrust` | 監督の疑いが解けた GNSS を、確かめた姿勢と合うまで使わない | GNSS が戻らない時間 (`gnss_held` から `gnss_released` まで) が長すぎるなら偽 |
+| `gnss_hold_after_distrust` | 監督が切り離した GNSS を、切り離しを解いた後も、門が確かめた姿勢と合うまで門と復旧に使わせない (監督が読む) | 切り離しが解けてから `localization.gnss_released` までが長すぎるなら偽 |
 | `verify_min_interval_sec` | 走行側の確かめの要求を受け付ける間隔の下限 [s] | 要求が多すぎて止まる時間が増えるなら長くする |
 | `wide_search_after_holds` | 決まらずに止めた回数がこれに達した後の停止で、続きの周りを全周で照合する。0 なら使わない | 広い照合の後の置き直しが誤っていれば 0 |
-| `scan_max_age_sec` | 最新のスキャンがこれより古い間は照合も停止もしない。0 なら見ない | スキャンの周期の乱れより長く、センサの組の `missing_after_sec` より短く |
 
 ## conduct
 

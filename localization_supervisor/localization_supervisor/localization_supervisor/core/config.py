@@ -715,6 +715,11 @@ def parse_config(
         # 判定だけのときは、監督も何もしない (プロファイルが復旧を有効にしても、通知だけにする)
         machine.recovery_enabled = False
 
+    sensor_sets = _parse_sensor_sets(merged.get('sensor_sets'), sources)
+    buffers = [('gate.scan_buffer', gate.scan_buffer if gate is not None else None),
+               ('recovery.scan_buffer', recovery_parts.get('scan_buffer'))]
+    _check_scan_ages(buffers, sensor_sets)
+
     return SupervisorConfig(
         sources=sources, detectors=detectors, fusion_type=fusion_type, fusion_cls=fusion_cls,
         fusion_params=fusion_params, motion_priority=motion_priority,
@@ -732,7 +737,7 @@ def parse_config(
         anchors=anchors, safety=safety, period_sec=period_sec, **recovery_parts,
         gate=gate, gate_period_sec=gate_period_sec, manual_pose_topic=manual_pose_topic,
         conduct=_parse_conduct(_mapping(merged['conduct'], 'conduct')) if 'conduct' in merged else None,
-        sensor_sets=_parse_sensor_sets(merged.get('sensor_sets'), sources),
+        sensor_sets=sensor_sets,
         residuals=_parse_residuals(_mapping(merged.get('residuals'), 'residuals'), sources),
         startup_grace_sec=_number(grace, 'startup_sec', 0.0, 'grace'),
         grace_after_recovery_sec=_number(grace, 'after_recovery_sec', 0.0, 'grace'),
@@ -742,6 +747,18 @@ def parse_config(
         output=_dataclass_from(OutputConfig, _mapping(merged.get('output'), 'output'), 'output'),
         profile=profile, profiles=profiles,
         raw={k: v for k, v in raw.items() if k != 'profiles'})
+
+
+def _check_scan_ages(buffers, sensor_sets: List[SensorSetConfig]) -> None:
+    """スキャンの溜め方の古さの上限は、そのスキャンが欠けて入るセンサの組の missing_after_sec より短くする
+    (組を切り替える前に、古いスキャンでの照合をやめる)。"""
+    for where, buffer in buffers:
+        if buffer is None or buffer.max_scan_age_sec <= 0.0:
+            continue
+        for sensor_set in sensor_sets:
+            if buffer.reference in sensor_set.missing and buffer.max_scan_age_sec >= sensor_set.missing_after_sec:
+                raise ConfigError(
+                    f'{where}.max_scan_age_sec: must be shorter than sensor_sets {sensor_set.name}.missing_after_sec')
 
 
 def load_profiles(raw: Mapping[str, Any], base_dir: str) -> Dict[str, Dict[str, Any]]:

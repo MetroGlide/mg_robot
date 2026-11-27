@@ -148,8 +148,9 @@ recovery:
   # 再初期化の後に収束したかを見る判定 (すべて正常な周期が recover_ok_ticks 回続けば戻す)
   convergence: [amcl_ekf]
 
-  # 復旧のために残すスキャン (動きでまとめた局所地図。判定の submap_map のバッファとは別)
-  scan_buffer: {reference: map_scan, motion: odom}
+  # 復旧のために残すスキャン (動きでまとめた局所地図。判定の submap_map のバッファとは別)。最新のスキャンが
+  # max_scan_age_sec より古い間 (LiDAR の途絶) は捨てて使わない (門の scan_buffer と同じ値にする)
+  scan_buffer: {reference: map_scan, motion: odom, max_scan_age_sec: 3.0}
 
   # 復旧の候補を作るもの。再初期化が要るあいだ、2 秒ごとに計画する
   generators:
@@ -371,9 +372,6 @@ gate:
     gnss_hold_after_distrust: true
     # 決まらずに止めた回数がこれに達した後の停止では、確かめた姿勢の続きの周りを全周の照合 (initial_search) で探す
     wide_search_after_holds: 2
-    # 最新のスキャンがこれより古い間 (LiDAR が止まったなど) は照合も停止もしない (溜めたスキャンで誤って置き直さない)。
-    # センサの組の missing_after_sec より短く、スキャンの周期の乱れより長く
-    scan_max_age_sec: 3.0
 
   # 閉じる理由の部品 (判定の書き方)。どれかの異常が close_after_sec 続いたら閉じる。誤って閉じても照合 1 回で戻る。
   # 名前は判定のインスタンスと分ける (状態のメッセージに両方を並べる)
@@ -424,6 +422,9 @@ gate:
     window_distance_m: 3.0
     max_points_per_scan: 90
     max_range_m: 25.0
+    # 最新のスキャンがこれより古い間 (LiDAR が止まったなど) は照合も停止もしない (溜めたスキャンで誤って置き直さない)。
+    # センサの組の missing_after_sec より短く (読み込みで確かめる)、スキャンの周期の乱れより長く
+    max_scan_age_sec: 3.0
 
   # 確かめた姿勢がない間 (起動の直後、地図の切り替えの後) に、GNSS の周りを向きの全周で照合した姿勢を候補に足す。
   # 推定器と別の仮説に置き直すのは、この姿勢と同じ仮説に決まったときだけ。合わなければ、最初の 1 回だけ GNSS の
