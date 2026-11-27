@@ -80,7 +80,7 @@ AMCL の復帰処理の確認に使える。
   手動で制御したいときは `auto_start: false` にして `sequencer_start` を使う。
   自動で再開すると IDLE はすぐ終わり、`~/activity` (定期の配信) に `trigger_wait` が出る前に抜ける。
   `navigation_activity: { code: trigger_wait }` で判定するときは、次の waypoint の `hooks.<n>.before` に `delay` を入れて待ちを長くする。
-  `~/activity` は新しい活動が `activity_min_duration_sec` 続いたときだけ変わるので、待ちはその秒数と配信周期の和より長くする (`navigation_activity` で判定する他の活動も同じ)。
+  走行中の活動 (`recovery`・`detour_rejected` など) は、`activity_min_duration_sec` 続いたときだけ `~/activity` に出るので、それより短いものは数えられない (止まっている活動はすぐに出る。[いまの活動](../../mg_waypoint_navigation/doc/architecture.md#いまの活動-activity))。
 - **動く障害物との接触判定**: `move_obstacle` で動かす障害物は `set_pose` で移動するので、物理的に押し返されず、停止中のロボットを通り抜ける。
   `min_scan_range` はこの通り抜けも検出してしまうので、歩行者には `obstacle_clearance` (ロボット自身の動きで、フットプリントが障害物へ近づいた場合だけを判定) を使う。
 - **前方 LiDAR**: シミュレーションでは前方 LiDAR は何も配信せず、データが出るのは `/scan_top_lidar` のみ。

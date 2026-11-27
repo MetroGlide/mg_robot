@@ -421,8 +421,17 @@ class ActivityChange:
     since_sec: float
 
 
+# 変化の判定にかけず、すぐに採る活動 (止まっていることを示す活動)。短くても止まった事実は出す。
+# 判定にかけるのは走行中の活動の揺れ (障害物・自己位置での細かな切り替わり) だけにする
+IMMEDIATE_CODES: FrozenSet[str] = frozenset((
+    LOCALIZATION_HOLD, WATCHDOG_PAUSE, PAUSED, DEPARTURE_WAIT, ACTION, ERROR,
+    TRIGGER_WAIT, READY_TO_START,
+))
+
+
 class ActivityDebouncer:
     """新しい code が min_duration_sec 続いたときだけ採る。0 なら全ての変化をすぐに採る。
+    IMMEDIATE_CODES の活動は、続いた秒数によらずすぐに採る。
 
     採るまでの間は、前に採った活動をそのまま出す。採った code の開始は、新しい code が
     出始めた時刻にさかのぼる (elapsed_sec と前の code の続いた秒数をそれで数える)。
@@ -451,7 +460,7 @@ class ActivityDebouncer:
             self._candidate_code = activity.code
             self._candidate_since = now
         since = now - self._candidate_since
-        if since < self._min_duration_sec:
+        if since < self._min_duration_sec and activity.code not in IMMEDIATE_CODES:
             return accepted, now - self._accepted_since, None
         change = ActivityChange(
             accepted.code, activity, self._candidate_since - self._accepted_since, since)

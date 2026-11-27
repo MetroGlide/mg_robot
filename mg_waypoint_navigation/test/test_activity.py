@@ -497,3 +497,18 @@ class TestActivityDebouncer:
         assert (published.code, elapsed) == ('b', 0.0)
         assert (change.from_code, change.from_sec) == ('a', pytest.approx(0.5))
         assert debouncer.update(activity('a'), 11.0)[2].from_code == 'b'
+
+    def test_stopped_activities_are_taken_at_once(self):
+        debouncer = ActivityDebouncer(1.0)
+        debouncer.update(activity(act.NAVIGATING), 10.0)
+        published, _, change = debouncer.update(activity(act.ACTION), 10.5)
+        assert (published.code, change.from_code) == (act.ACTION, act.NAVIGATING)
+        # 走行に戻るときは判定にかける
+        assert debouncer.update(activity(act.NAVIGATING), 11.0)[0].code == act.ACTION
+        assert debouncer.update(activity(act.NAVIGATING), 12.0)[0].code == act.NAVIGATING
+
+    def test_immediate_codes_are_stopped_states(self):
+        assert act.IMMEDIATE_CODES <= set(act.PRIORITY)
+        assert act.NAVIGATING not in act.IMMEDIATE_CODES
+        assert act.OBSTACLE_SLOWDOWN not in act.IMMEDIATE_CODES
+
