@@ -1,0 +1,38 @@
+version: "2.0"
+name: localization_map_shift
+description: >
+  測位用の地図だけ、東側の棚の列と壁を西へずらす (計画用の地図と世界は元のまま。tools/scripts/degrade_localization_map.py
+  で作った)。AMCL がこれに合うと、推定の footprint が計画用地図の棚にかかり、実際には接触していないのに経路を作れなくなる。
+  この見かけの食い込みから、人の操作なしで戻って走りきることを確かめる。
+profile: mg01
+world: warehouse
+tags: [localization, weak, corner, mg_sequencer, known_issue]
+timeout: 500
+
+stack_args:
+  localization_monitor: supervisor
+  localization_gate: "false"
+  localization_profile: none
+  localization_preset: robust
+  map_path: "pkg://mg_scenario_test/scenarios/data/map_shift_east/localization.yaml"
+
+setup:
+  - respawn: { pose: { x: 0.0, y: 0.0, yaw: 0.0 }, settle_sec: 3.0 }
+
+monitors:
+  # 暫定の基準: ずれたまま止める要求なしで走る距離、止まったままの時間、見かけの食い込み
+  - localization_outcome: { max_missed_distance_m: 3.0, max_false_hold_sec: 30.0, require_deviation: true }
+  - max_stop_duration: { max_stop_sec: 60.0, from_goal_started: 2, until_goal_reached: 8 }
+  - map_overlap: { require_overlap: true, max_overlap_sec: 60.0 }
+  # 以下は診断の記録 (合否に使わない)
+  - pose_error: { deviation_m: 1.0 }
+  - localization_hold: { ends_released: false }
+
+run:
+  mg_sequencer:
+    waypoints_file: "{world.waypoints}"
+    waypoint_timeout_sec: 200.0
+
+expect:
+  - reached_all
+  - time_limit: { sec: 500 }

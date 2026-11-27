@@ -35,7 +35,7 @@ describe("localizationDetail", () => {
       localizationDetail(
         status({ state: 4, blame: "amcl", checks: [check("amcl_gnss", 1), check("amcl_jump", 1), check("x", 0)] }),
       ),
-    ).toBe("疑い: amcl · amcl_gnss, amcl_jump");
+    ).toBe("疑義: amcl · amcl_gnss, amcl_jump");
   });
 
   it("障害物の中にいれば深さを添える", () => {

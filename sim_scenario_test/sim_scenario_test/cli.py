@@ -5,7 +5,7 @@
 
 シミュレータを起動して実行する (終了コード: 0=PASSED, 1=FAILED, 2=ERROR):
   scenario_cli.py run <scenario.yaml> [--profile NAME] [--gui] [--attach] [--results-dir DIR]
-  scenario_cli.py run-all <scenario.yaml|dir>... [--tags a,b] [--repeat N] [--results-dir DIR]
+  scenario_cli.py run-all <scenario.yaml|dir>... [--tags a,b] [--repeat N] [--results-dir DIR] [--shard I/N]
   (run / run-all は --remote-stack URL で別のマシンにスタックを起動させられる)
 """
 from __future__ import annotations
@@ -13,7 +13,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 from sim_scenario_test.errors import ScenarioValidationError
 from sim_scenario_test.execution import (
@@ -87,6 +87,15 @@ def _run(args: argparse.Namespace) -> int:
             suffix = f"_run{repeat + 1}" if args.repeat > 1 else ""
             planned.append((repeat, PlannedRun(
                 name, path, os.path.join(results_dir, name + suffix))))
+    shard = parse_shard(args.shard)
+    if shard is not None:
+        # 並列に回す 1 本: 計画した実行を N 本に分けた I 本目。結果の置き場は共有し、進み具合と junit を分ける
+        index, count = shard
+        planned = [item for k, item in enumerate(planned) if k % count == index - 1]
+        if not planned:
+            print(f"no scenarios for shard {args.shard}")
+            return 0
+    tag = "" if shard is None else f"_{shard[0]}of{shard[1]}"
     progress = ProgressWriter(results_dir, [run for _, run in planned], {
         "command": args.command,
         "attach": args.attach,
@@ -95,7 +104,8 @@ def _run(args: argparse.Namespace) -> int:
         "repeat": args.repeat,
         "tags": args.tags,
         "exclude_tags": args.exclude_tags,
-    })
+        "shard": args.shard,
+    }, file_name=f"progress{tag}.json")
     records: List[RunRecord] = []
     for index, (repeat, run) in enumerate(planned):
         record = None
@@ -113,12 +123,25 @@ def _run(args: argparse.Namespace) -> int:
                   f"attempt {attempt + 1}/{args.infra_retries + 1}\n")
         progress.finish(index, record)
         records.append(record)
-    write_junit(records, os.path.join(results_dir, "junit.xml"))
+    write_junit(records, os.path.join(results_dir, f"junit{tag}.xml"))
     print(format_summary(records))
     print(f"\nresults: {results_dir}")
     code = exit_code(records)
     progress.close(code)
     return code
+
+
+def parse_shard(text: str) -> Optional[Tuple[int, int]]:
+    """'I/N' (1 <= I <= N) を (I, N) にする。空なら None。"""
+    if not text:
+        return None
+    try:
+        index, count = (int(v) for v in text.split("/"))
+    except ValueError:
+        raise SystemExit(f"--shard: expected I/N, got {text!r}")
+    if not 1 <= index <= count:
+        raise SystemExit(f"--shard: expected 1 <= I <= N, got {text!r}")
+    return index, count
 
 
 def main(argv: List[str] = None) -> int:
@@ -153,6 +176,8 @@ def main(argv: List[str] = None) -> int:
         p_run.add_argument("--infra-retries", type=int, default=1,
                            help="re-run a scenario this many times when it failed for "
                                 "infrastructure reasons (simulator did not start etc.)")
+        p_run.add_argument("--shard", default="", metavar="I/N",
+                           help="run only the I-th of N interleaved parts (1-based), for running in parallel")
         p_run.add_argument("--seed", type=int, default=None,
                            help="override scenario seed (incremented per repeat)")
     args = parser.parse_args(argv)

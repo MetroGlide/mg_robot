@@ -58,9 +58,9 @@ waypoints:
 
 応答に `success` があって false のとき (サービスが拒否したとき) は、失敗として `action.failed` に残る。応答が無いときも失敗になる。どちらも走行は止まらず、次のアクションへ進む。`success` を持たないサービス (`Empty` など) は、呼べれば成功。
 
-#### 例: 自己位置の監督のプロファイルを切り替える
+#### 例: 自己位置監視のプロファイルを切り替える
 
-区間によって、自己位置の監督の判定の組み合わせや自動復旧の有無を変えたいときは、監督のサービス `set_profile` を `service` で呼ぶ。`profile` が空なら基本設定に戻る。
+区間によって、自己位置監視の判定の組み合わせや自動復旧の有無を変えたいときは、自己位置監視のサービス `set_profile` を `service` で呼ぶ。`profile` が空なら基本設定に戻る。
 
 ```yaml
 - type: service
@@ -71,11 +71,11 @@ waypoints:
     profile: notify_only
 ```
 
-- プロファイルの名前は、監督の設定 ([mg_localization_supervisor](../../mg_localization_supervisor/README.md)) で決まる。存在しない名前は拒否され、`action.failed` に残る。
-- 切り替えると、監督は作り直される。状態は NORMAL に戻り、復旧の起点 (アンカー) とスキャンの一致率の基準は捨てられる。止まっているウェイポイントで切り替え、自己位置の復旧中は避ける。
+- プロファイルの名前は、自己位置監視の設定 ([mg_localization_supervisor](../../mg_localization_supervisor/README.md)) で決まる。存在しない名前は拒否され、`action.failed` に残る。
+- 切り替えると、自己位置監視は作り直される。状態は NORMAL に戻り、復旧の起点 (アンカー) とスキャンの一致率の基準は捨てられる。止まっているウェイポイントで切り替え、自己位置の復旧中は避ける。
 - プロファイルは、走行が終わっても残る。区間の終わりで、空の `profile` に戻す。`amcl_on` と `amcl_off` のように、切り替えた側が戻す責任を持つ。
-- 監督が起動していない (`localization_monitor:=watchdog` など) ときは、サービスがなく、失敗になる。
-- 将来の拡張: `amcl_off` の区間で、監督が自動で AMCL の判定を外す案が [doc/ideas](../../doc/ideas/localization_gate_awareness.md) にある。
+- 自己位置監視が起動していない (`localization_monitor:=watchdog` など) ときは、サービスがなく、失敗になる。
+- 将来の拡張: `amcl_off` の区間で、自己位置監視が自動で AMCL の判定を外す案が [doc/ideas](../../doc/ideas/localization_gate_awareness.md) にある。
 
 ### type: publish — トピックパブリッシュ
 

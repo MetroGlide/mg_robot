@@ -18,8 +18,8 @@
 
 | ディレクトリ | 内容 |
 | :--- | :--- |
-| `localization_supervisor/core/` | ROS に依存しない中核 (標本の履歴と時刻のそろえ方、判定、総合、状態遷移、アンカー、復旧の候補と選び方、照合、安全の信号、状態と診断の中身、設定の検証、故障注入、評価の集計、ゲートの調停) |
-| `localization_supervisor/ros/` | ROS に依存する部品 (入力のアダプタ、再初期化の送り先、対処、イベントの出力、オフライン評価の実行部、ノード、状態のメッセージ、診断) |
+| `localization_supervisor/core/` | ROS に依存しない中核 (標本の履歴と時刻のそろえ方、判定、総合、状態遷移、アンカー、復旧の候補と選び方、照合、安全の信号、状態と診断の中身、設定の検証、故障注入、評価の集計、ゲートの調停、動きの合意による AMCL 検証ゲート) |
+| `localization_supervisor/ros/` | ROS に依存する部品 (入力のアダプタ、再初期化の送り先、出力部、イベントの出力、オフライン評価の実行部、ノード、状態のメッセージ、診断) |
 | `config/examples/` | 特定のロボットではない、最小の設定の例 |
 | `scripts/` | ノードとオフライン評価を起動するラッパー |
 
@@ -29,8 +29,9 @@
 
 | 実行ファイル | 内容 |
 | :--- | :--- |
-| `localization_supervisor_node.py` | 設定ファイル (パラメータ `config_file`) の組み合わせで中核を周期ごとに回し、状態 (`LocalizationStatus`)・診断・イベントを出し、異常を確認したら切り離し・再初期化して復旧する ([doc/supervisor_node.md](./doc/supervisor_node.md)) |
+| `localization_supervisor_node.py` | 設定ファイル (パラメータ `config_file`) の組み合わせで中核を周期ごとに回し、状態 (`LocalizationStatus`)・診断・イベントを出し、異常を確認したら除外・再初期化して復旧する ([doc/supervisor_node.md](./doc/supervisor_node.md)) |
 | `gate_arbiter_node.py` | `SetBool` で開閉するゲートを、要求元ごとに調停する ([doc/gate_arbiter.md](./doc/gate_arbiter.md)) |
+| `manual_pose_relay_node.py` | 手動の初期姿勢の専用トピックを、そのまま推定器の初期姿勢のトピックへ送る (自己位置監視ノードの中の AMCL 検証ゲートがないときの、従来の動作) ([doc/motion_gate.md](./doc/motion_gate.md#手動の初期姿勢)) |
 | `offline_runner.py` | rosbag を読み、中核を実時間を待たずに回して、故障注入の検知率・誤検知を出す ([doc/design.md](./doc/design.md#オフライン評価)) |
 
 launch は持たない。使う側のパッケージが、自分の設定で起動する。
@@ -51,12 +52,13 @@ make test pkg=localization_supervisor/localization_supervisor
 - `test_supervisor_safety.py`: 安全の信号、外からの再初期化・地図の切り替え・走行中の変更への対処
 - `test_recovery_matcher.py`: 総当たりの照合 (既知のずれを求められる、似た場所の候補を離して返す)
 - `test_recovery.py`: 復旧の選び方 (決めきれなければ再初期化しない)、設定の検証、Supervisor が再初期化を指示するまで (GNSS・推測航法・照合の候補)
-- `test_recovery_ros.py`: 再初期化の送り先、対処、自分のメッセージの目印 (rclpy は偽物)
-- `test_residuals.py`: 残差から求める分散の倍率 (受け取る側がかけたときに落ち着く、信頼できる周期だけ、イベント)、標本からの倍率の割り戻し、倍率を出す対処
-- `test_isolate_only.py`: 正しいと示す判定 (`vouch`) による切り分け、切り離すだけの blame (`isolate_only`) の状態遷移と、GNSS だけがずれたときの Supervisor 全体、復旧の候補から疑わしい情報源を外すこと、対処の無効化
+- `test_recovery_ros.py`: 再初期化の送り先、出力部、自分のメッセージの目印 (rclpy は偽物)
+- `test_residuals.py`: 残差から求める分散の倍率 (受け取る側がかけたときに落ち着く、信頼できる周期だけ、イベント)、標本からの倍率の割り戻し、倍率を出す出力部
+- `test_isolate_only.py`: 正しいと示す判定 (`vouch`) による切り分け、除外するだけの blame (`isolate_only`) の状態遷移と、GNSS だけがずれたときの Supervisor 全体、復旧の候補から疑わしい情報源を外すこと、対処の無効化
 - `test_supervisor_status.py`: 状態と診断の中身、イベントの出力、ノードが動かせる設定かの検証
 - `test_supervisor_config.py`: 設定の検証 (誤りは読み込みで落ちる)、外部のプラグインの読み込み、プロファイル、`config/examples/` が読める
 - `test_supervisor_faults.py`: 故障注入と評価の集計
+- `test_motion_gate.py`: AMCL 検証ゲート (起動の直後の確かめ、飛びで閉じて推測航法姿勢へ補正する、大きい補正は止まってから、正しい直りは推定器を採る、誤報は補正せずに開ける、姿勢補正の後の猶予、手動の初期姿勢、GNSS との食い違い、一定の道のりごとの確かめ、決まらないときの上限、地図の切り替え) と、照合で決める規則、設定の検証
 - `test_offline_runner.py`: 人工のメッセージの列と地図で、`config/examples/` の設定をオフライン評価に通す
 
 ROS のモジュールは `test/conftest.py` でモックする (入力のアダプタは、メッセージの属性だけを読む)。rosbag の読み込みは、実データでのオフライン評価で確かめる。
@@ -65,9 +67,11 @@ ROS のモジュールは `test/conftest.py` でモックする (入力のアダ
 
 | ファイル | 内容 |
 | :--- | :--- |
-| [doc/glossary.md](./doc/glossary.md) | 用語集 (情報源、判定、累積、blame、vouch、状態、切り離し、復旧、倍率など) |
+| [doc/glossary.md](./doc/glossary.md) | 用語集 (情報源、判定、累積、blame、vouch、状態、除外、復旧、倍率など) |
 | [doc/design.md](./doc/design.md) | 層、1 周期の流れ、時刻のそろえ方、判定、総合と情報源の切り分け、状態遷移、アンカー、復旧、安全の信号、想定外への対処、プロファイル、オフライン評価 |
-| [doc/plugins.md](./doc/plugins.md) | プラグインの約束 (判定・総合・復旧の候補と評価・照合・再初期化の送り先・対処・入力のアダプタ・イベントの出力)、標準のプラグイン、追加の手順 |
+| [doc/plugins.md](./doc/plugins.md) | プラグインの約束 (判定・総合・復旧の候補と評価・照合・再初期化の送り先・出力部・入力のアダプタ・イベントの出力)、標準のプラグイン、追加の手順 |
 | [doc/parameters.md](./doc/parameters.md) | 設定ファイルの書き方 |
-| [doc/supervisor_node.md](./doc/supervisor_node.md) | 監督ノードのパラメータ・入出力・状態のメッセージ・診断とイベント |
+| [doc/supervisor_node.md](./doc/supervisor_node.md) | 自己位置監視ノードのパラメータ・入出力・状態のメッセージ・診断とイベント |
 | [doc/gate_arbiter.md](./doc/gate_arbiter.md) | ゲートの調停の規則・出力・パラメータ |
+| [doc/motion_gate.md](./doc/motion_gate.md) | AMCL 検証ゲート (自己位置監視ノードの中) の役割の分担、状態、遮断条件、照合で決める規則、戻し方、手動の初期姿勢、入出力 |
+| [doc/architecture_target.md](./doc/architecture_target.md) | 最終形の構成 (一部未実装): AMCL 検証ゲートの自己位置監視への統合、状態・危険度・対処の対応表、復旧の段、検証要求、例外、未確定の項目 |

@@ -1,0 +1,5 @@
+# 旋回中だけオドメトリの回転を大きく出し、スキャンの点数と届く距離も減らす (角で観測が弱い状況)
+faults:
+  - {type: odom_scale, start: 0.0, end: 100000.0, v: 1.0, w: 1.2, min_abs_w: 0.15}
+  - {type: scan_thin, start: 0.0, end: 100000.0, keep_every: 6, min_abs_w: 0.15}
+  - {type: scan_range, start: 0.0, end: 100000.0, max_range: 6.0, min_abs_w: 0.15}

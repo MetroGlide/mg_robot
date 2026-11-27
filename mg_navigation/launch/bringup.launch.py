@@ -41,15 +41,21 @@ def generate_launch_description():
     # 自己位置の監視ノード (none | watchdog | supervisor)
     localization_monitor_arg = launch_argument_creator.create(
         'localization_monitor', default="supervisor")
-    # 監視が watchdog のとき、監督ノードを並行して通知だけで動かすか
+    # 監視が watchdog のとき、自己位置監視ノードを並行して通知だけで動かすか
     localization_supervisor_arg = launch_argument_creator.create(
         'localization_supervisor', default="false")
     supervisor_config_arg = launch_argument_creator.create(
         'supervisor_config',
         default=os.path.join(
             get_package_share_directory('mg_localization_supervisor'), 'config', 'supervision.yaml'))
+    # 自己位置監視ノードの中で AMCL 検証ゲートを使うか (localization_monitor:=supervisor のとき)
+    localization_gate_arg = launch_argument_creator.create(
+        'localization_gate', default="false")
     localization_profile_arg = launch_argument_creator.create(
         'localization_profile', default="")
+    # AMCL の params に重ねる自己位置推定のプリセット (params/localization_presets/<名前>.yaml。空は重ねない)
+    localization_preset_arg = launch_argument_creator.create(
+        'localization_preset', default="")
     use_waypoints_follower_arg = launch_argument_creator.create(
         'use_waypoints_follower', default="true")
     waypoints_load_path_arg = launch_argument_creator.create(
@@ -158,7 +164,9 @@ def generate_launch_description():
                               'localization_monitor': localization_monitor_arg.launch_config,
                               'localization_supervisor': localization_supervisor_arg.launch_config,
                               'supervisor_config': supervisor_config_arg.launch_config,
+                              'localization_gate': localization_gate_arg.launch_config,
                               'localization_profile': localization_profile_arg.launch_config,
+                              'localization_preset': localization_preset_arg.launch_config,
                               'container_name': 'nav2_container'}.items()
         ),
 

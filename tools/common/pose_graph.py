@@ -92,7 +92,7 @@ def interpolate_nodes(
     nodes: np.ndarray,
     times: np.ndarray,
     stationary_dist: Optional[float] = None,
-    stationary_yaw: float = 0.6,
+    stationary_yaw: float = 0.2,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """SLAM ノード列を times で線形補間する (yaw は単位ベクトル補間)。
 
@@ -100,6 +100,8 @@ def interpolate_nodes(
       stationary_dist: 指定すると、隣接ノード間の移動が この距離 [m] と stationary_yaw [rad] 未満
         (ほぼ止まっている) なら、時間の間隔が NODE_MAX_GAP_SEC を超えても補間を許す。
         ノードは一定量動くごとに作られるため、停止中は長時間ノードが空く。
+        その場で回ったときは、回った時刻が分からず yaw が最大で回った量だけ遅れるので、
+        stationary_yaw は評価で見る yaw の誤差より十分小さくする。
 
     Returns:
       poses: shape (M, 3) -> [x, y, yaw]

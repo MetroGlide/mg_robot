@@ -1,4 +1,4 @@
-"""残差から求める分散の倍率 (信頼できる周期に、2 つの情報源の位置の差を共分散で正規化して残す) と、倍率を出す対処のテスト。"""
+"""残差から求める分散の倍率 (信頼できる周期に、2 つの情報源の位置の差を共分散で正規化して残す) と、倍率を出す出力部のテスト。"""
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -188,7 +188,7 @@ def test_variance_scale_actuator_publishes_the_applied_scale(monkeypatch):
 
 
 def test_the_applied_scale_is_the_maximum_while_the_source_is_isolated():
-    # a (gnss) を切り離しているあいだは、残差の倍率に関わらず上限にする
+    # a (gnss) を除外しているあいだは、残差の倍率に関わらず上限にする
     supervisor = Supervisor(_config(max_scale=50.0))
     machine = supervisor.machine
     machine.config.recovery_enabled = True

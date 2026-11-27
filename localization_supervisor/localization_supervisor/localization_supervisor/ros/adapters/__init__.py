@@ -1,7 +1,7 @@
 """入力のアダプタの組み立て: 設定の sources.<名前>.input からアダプタを作る。"""
-from typing import Dict
+from typing import Dict, Mapping
 
-from ...core.config import SupervisorConfig
+from ...core.config import SourceConfig
 from ...core.plugins import ConfigError, build
 from ...core.snapshot import SampleStore
 from .base import AdapterContext, SourceAdapter, Subscription
@@ -11,11 +11,11 @@ __all__ = ['AdapterContext', 'SourceAdapter', 'Subscription', 'STANDARD_ADAPTERS
 
 
 def build_adapters(
-    config: SupervisorConfig, store: SampleStore, context: AdapterContext,
+    sources: Mapping[str, SourceConfig], store: SampleStore, context: AdapterContext,
 ) -> Dict[str, SourceAdapter]:
     """情報源ごとのアダプタ。input.type が合わない、種類を作れない、パラメータが合わなければ ConfigError。"""
     adapters: Dict[str, SourceAdapter] = {}
-    for name, source in config.sources.items():
+    for name, source in sources.items():
         where = f'sources.{name}.input'
         raw = dict(source.input)
         type_name = raw.pop('type', None)

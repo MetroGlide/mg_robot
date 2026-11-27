@@ -11,7 +11,17 @@
   7. イベントを作る
 
 外からの再初期化 (人による上書き) は external_reinit で知らせる。プロファイルは、走行中に set_profile で変えられる。
+
+AMCL 検証ゲート (設定の gate、core/motion_gate.py) があるときは、step を AMCL 検証ゲートの周期で呼ぶ。判定・総合・状態遷移 (上の 1〜7) は
+period_sec ごとに回し、AMCL 検証ゲートは毎回回す。AMCL 検証ゲートとの分担:
+  - 姿勢補正と、推定器を融合に入れるかの AMCL 検証ゲート、一時停止は、AMCL 検証ゲートが決める。自己位置監視の復旧は、再初期化の指示で AMCL 検証ゲートを閉じさせ
+    (force_close)、候補を作るものの候補を足して、AMCL 検証ゲートの照合の規則で決める (自己位置監視の候補の評価と選び方は使わない)
+  - AMCL 検証ゲートが補正したら、自己位置監視は累積・判定の内部状態を捨てて猶予を置く (姿勢補正による飛びを異常と見ない)
+  - 自己位置監視が GNSS を疑っている間は、AMCL 検証ゲートは GNSS を使う遮断条件と GNSS の候補を使わない
+  - 外からの再初期化 (/initialpose など) は見ない。外からの推定器の飛びは、AMCL 検証ゲートが遮断条件で判定する
+  - 観測を増やす指示 (observe) は出さない。決まらないときは、AMCL 検証ゲートが止めて照合し、解いて少し走らせる
 """
+import dataclasses
 import math
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
@@ -19,15 +29,20 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 
 from .anchors import Anchor, AnchorStore
+from .conduct import Action as ConductAction, Conduct, ConductInputs, ConductPlanner, Situation
 from .config import SupervisorConfig
+from .detectors.common import position_std
 from .geometry import Pose2
 from .interfaces import (
     Candidate, Detector, Evidence, FusionResult, FusionStrategy, InstanceInfo, PoseSample, RecoveryContext,
     SourceKind, Status)
+from .map_match import CandidatePose, MatchDecision
+from .motion_gate import GateState, GateStep, MatchRequest, MotionGate
 from .recovery.planner import RecoveryPlan, RecoveryPlanner
 from .residuals import ResidualStats, ResidualTracker
 from .safety import FootprintChecker, SafetyResult
 from .scan_buffer import ScanBuffer
+from .sensor_sets import ALL as ALL_SENSORS, SensorSetTracker
 from .snapshot import SampleStore, Snapshot
 from .state_machine import Action, Decision, State, StateMachine
 
@@ -44,13 +59,17 @@ class Event:
 class Directive:
     """推定器や周りへの働きかけの指示 (ROS 側の対処と送り先が実行する)。
 
-      isolate : blame の情報源を切り離す
+      isolate : blame の情報源を除外する
       reinit  : candidate の姿勢で推定器を初期化し直す
-      restore : 切り離したものを戻す
+      restore : 除外したものを戻す
+      observe : 止まったままでは決められないので、観測を増やす動作 (その場の首振りなど) をしてほしい
+
+    targets は reinit の送り先: all (推定器と融合)、fused (融合だけ。AMCL 検証ゲートが推定器を採って、融合だけを直すとき)。
     """
     kind: str
     blame: str = ''
     candidate: Optional[Candidate] = None
+    targets: str = 'all'
 
 
 @dataclass
@@ -69,12 +88,20 @@ class StepResult:
     events: List[Event] = field(default_factory=list)
     directives: List[Directive] = field(default_factory=list)
     plan: Optional[RecoveryPlan] = None
-    # 異常を確認してから戻るまで保持する blame (切り離す対象を決める)
+    # 異常を確認してから戻るまで保持する blame (除外する対象を決める)
     blame: str = ''
     # 残差の統計 (設定の residuals ごと)
     residuals: Dict[str, ResidualStats] = field(default_factory=dict)
     # 受け取る側に出す、分散の倍率 (設定の residuals ごと。残差の a の分散にかける。1 以上、max_scale 以下)
     applied_scales: Dict[str, float] = field(default_factory=dict)
+    # 一時停止の理由 (AMCL 検証ゲートがあるときの AMCL 検証ゲートの理由。correction / undecided)
+    hold_reason: str = ''
+    # AMCL 検証ゲートの周期の結果 (AMCL 検証ゲートがなければ None)
+    gate: Optional[GateStep] = None
+    # 走行制約 (自己位置状況・危険度・速度の上限。設定の conduct と AMCL 検証ゲートがなければ None)
+    conduct: Optional[Conduct] = None
+    # 今のセンサ構成 (空は全部。設定の sensor_sets がなければ空)
+    sensor_set: str = ''
 
 
 def make_store(config: SupervisorConfig, track_scales: bool = True) -> SampleStore:
@@ -83,7 +110,7 @@ def make_store(config: SupervisorConfig, track_scales: bool = True) -> SampleSto
     False)。倍率の記録は note_scale で行う。"""
     store = SampleStore(
         config.kinds(), tuple(config.motion_priority), config.horizon_sec,
-        config.max_extrapolation_sec, config.alignment)
+        config.max_extrapolation_sec, config.alignment, config.holds())
     if track_scales:
         for residual in config.residuals.values():
             store.track_scale(residual.a, residual.scale_delay_sec)
@@ -108,6 +135,26 @@ class Supervisor:
         self._plan_attempts = 0
         self._isolated_blame = ''
         self._check_status: Dict[str, Status] = {}
+        # 観測を増やす求め (recovery.observe): 最後に進んだ (再初期化した・収束を確認した) 時刻、最後に求めた時刻、
+        # 最後の再初期化からの動き (走行距離 [m]、回転 [rad]。NORMAL に戻るまで残す)
+        self._progress_at = 0.0
+        self._observe_at: Optional[float] = None
+        self._since_reinit: Optional[List[float]] = None
+        self._observe_motion: Optional[Pose2] = None
+        # AMCL 検証ゲート (プロファイルで変えない。状態を保つため、プロファイルを変えても作り直さない)
+        self.gate: Optional[MotionGate] = MotionGate(config.gate) if config.gate is not None else None
+        # 走行制約は、検証済み姿勢を AMCL 検証ゲートが持つので、AMCL 検証ゲートがあるときだけ
+        self.conduct: Optional[ConductPlanner] = (
+            ConductPlanner(config.conduct) if config.conduct is not None and self.gate is not None else None)
+        self._clearance: Optional[float] = None
+        self.sensor_sets: Optional[SensorSetTracker] = (
+            SensorSetTracker(config.sensor_sets, {n: c.kind for n, c in config.sources.items()})
+            if config.sensor_sets else None)
+        self._last: Optional[StepResult] = None
+        self._next_supervise = 0.0
+        # 自己位置監視の復旧を AMCL 検証ゲートに任せて、AMCL 検証ゲートが決めるのを待っている。除外の間 (再初期化を求める前) に AMCL 検証ゲートが決めた
+        self._awaiting_gate = False
+        self._gate_decided = False
         self._build(config)
 
     def _build(self, config: SupervisorConfig) -> None:
@@ -130,6 +177,8 @@ class Supervisor:
         self.scans: Optional[ScanBuffer] = config.scan_buffer.make() if config.scan_buffer is not None else None
         self.residuals = {name: ResidualTracker(cfg) for name, cfg in config.residuals.items()}
         self._residual_high: Dict[str, bool] = {name: False for name in config.residuals}
+        # 除外した GNSS を、AMCL 検証ゲートが検証済み姿勢と合うまで AMCL 検証ゲートと復旧に使わせない (AMCL 検証ゲートの設定 gnss_hold_after_distrust)
+        self._gnss_held = False
         self.planner = self._make_planner(config)
         self._references = sorted({
             source for d in enabled.values() for source in d.sources.values()
@@ -185,12 +234,18 @@ class Supervisor:
         if self.planner is not None:
             self.planner.reset()
         self._reinit_pending = False
+        self._since_reinit = None
 
     def start_grace(self, now: float, duration: float) -> None:
         self._grace_until = max(self._grace_until or now, now + duration)
 
     def external_reinit(self, now: float, topic: str) -> None:
-        """外から推定器が初期化し直された (人による上書き)。復旧をやめて、状態を NORMAL に戻し、捨てて猶予を置く。"""
+        """外から推定器が初期化し直された (人による上書き)。復旧をやめて、状態を NORMAL に戻し、捨てて猶予を置く。
+
+        今のプロファイルの external_reinit.topics にないトピックからのものと、AMCL 検証ゲートがあるときは無視する。
+        """
+        if self.gate is not None or topic not in self.config.external_reinit_topics:
+            return
         before = self.machine.state
         self.machine = StateMachine(self.config.machine)
         self._suspect_since = None
@@ -198,7 +253,142 @@ class Supervisor:
         self.start_grace(now, self.config.grace_after_reset_sec)
         self._emit('external_reinit', 'warn', {'topic': topic, 'state': before.name})
 
-    def step(self, snapshot: Snapshot) -> StepResult:
+    def request_verify(self, now: float) -> Optional[int]:
+        """走行側からの検証要求 (AMCL 検証ゲートがあるときだけ)。受け付ければ番号を返す。"""
+        return None if self.gate is None else self.gate.request_verify(now)
+
+    def manual_pose(self, pose: Pose2) -> None:
+        """手動の初期姿勢 (AMCL 検証ゲートがあるときだけ。AMCL 検証ゲートがその周りを照合してから補正する)。"""
+        if self.gate is not None:
+            self.gate.manual_pose(pose)
+
+    def step(self, snapshot: Snapshot, match: Optional[Tuple[MatchRequest, MatchDecision]] = None) -> StepResult:
+        """周期の処理。AMCL 検証ゲートがあるときは、AMCL 検証ゲートの照合の結果 (前の周期の request を照合したもの) を match に渡す。"""
+        if self.gate is None:
+            return self._supervise(snapshot)
+        now = snapshot.stamp
+        fresh = self._last is None or now >= self._next_supervise
+        if fresh:
+            result = self._supervise(snapshot)
+            # AMCL 検証ゲートの周期の揺らぎで 1 周期遅れないよう、AMCL 検証ゲートの周期の半分だけ早めに許す
+            self._next_supervise = now + self.config.period_sec - 0.5 * self.config.gate_period_sec
+            self._last = result
+        else:
+            result = dataclasses.replace(self._last, stamp=now, events=[], directives=[], plan=None)
+        gate_step = self.gate.step(snapshot, match, self._gate_distrust())
+        self._apply_gate(now, result, gate_step)
+        self._release_held_gnss(snapshot, gate_step, result)
+        if self.conduct is not None:
+            result.conduct = self._update_conduct(now, gate_step, result, fresh)
+        return result
+
+    def _update_sensor_set(self, snapshot: Snapshot) -> str:
+        """情報源の欠けから今のセンサ構成を決め、変わればイベントを出す。"""
+        if self.sensor_sets is None:
+            return ALL_SENSORS
+        current, changed = self.sensor_sets.update(snapshot)
+        if changed is not None:
+            before, after = changed
+            self._emit('sensor_set_changed', 'warn' if after else 'info',
+                       {'from': before or 'all', 'to': after or 'all'})
+        return current
+
+    def _update_conduct(self, now: float, gate_step: GateStep, result: StepResult, fresh: bool) -> Conduct:
+        """自己位置監視と AMCL 検証ゲートの状態から状況を決め、走行制約を決める。復旧が無効 (通知だけ・判定だけ) なら、減速は出さない。
+
+        正常に戻すのは、AMCL 検証ゲートが地図照合で確かめ、その後の自己位置監視の新しい判定がどれも異常でないとき (地図が現場と食い違うと、
+        照合は誤った姿勢も確かめるので、GNSS などとの食い違いが残る間は戻さない)。
+        """
+        cfg = self.conduct.config
+        state = self.machine.state
+        since = self.gate.since_confirmed_m()
+        if gate_step.state == GateState.UNCONFIRMED:
+            situation = Situation.UNINITIALIZED
+        elif state in (State.ISOLATED, State.RECOVERING) and self.machine.hold_requested:
+            situation = Situation.RECOVERING
+        elif state == State.DEGRADED or self.gate.closed_for_sec(now) >= cfg.undecided_after_sec:
+            situation = Situation.UNDECIDED
+        elif state != State.NORMAL or gate_step.state != GateState.OPEN:
+            situation = Situation.SUSPECT
+        elif since is not None and since >= cfg.unobserved_after_m:
+            situation = Situation.UNOBSERVED
+        else:
+            situation = Situation.NORMAL
+        confirmed = any(event.name in ('pose_confirmed', 'gate_opened') for event in gate_step.events)
+        contradicted = any(e.status == Status.ANOMALY for e in result.evidences.values()) if fresh else None
+        conduct = self.conduct.update(ConductInputs(now, situation, since, self._clearance, confirmed, contradicted))
+        cap = self.sensor_sets.config(result.sensor_set) if self.sensor_sets is not None else None
+        if cap is not None and cap.speed_limit_mps > 0.0:
+            # センサ構成の上限と、走行制約の上限の小さい方
+            limit = cap.speed_limit_mps if conduct.speed_limit_mps <= 0.0 else min(cap.speed_limit_mps,
+                                                                                   conduct.speed_limit_mps)
+            conduct = dataclasses.replace(conduct, action=ConductAction.SLOW, speed_limit_mps=limit)
+        if not self.config.machine.recovery_enabled:
+            conduct = dataclasses.replace(conduct, speed_limit_mps=0.0)
+        return conduct
+
+    def _gate_distrust(self) -> frozenset:
+        """AMCL 検証ゲートに使わせない情報源: 自己位置監視が除外している GNSS と、残差の倍率が大きい GNSS。"""
+        gnss = self.gate.settings.gnss
+        if not gnss:
+            return frozenset()
+        if self.machine.isolating and self.machine.blame == gnss:
+            self._gnss_held = self.gate.settings.gnss_hold_after_distrust
+            return frozenset({gnss})
+        if self._gnss_held:
+            return frozenset({gnss})
+        if any(high and self.config.residuals[name].a == gnss for name, high in self._residual_high.items()):
+            return frozenset({gnss})
+        return frozenset()
+
+    def _release_held_gnss(self, snapshot: Snapshot, gate_step: GateStep, result: StepResult) -> None:
+        """除外を解いた GNSS を、AMCL 検証ゲートが検証済み姿勢と申告の精度の範囲で合ったら、また使わせる。
+
+        疑う相手が GNSS から推定器に移るだけで除外が解けることがあり、GNSS が正しいとは確かめていないため。
+        """
+        s = self.gate.settings
+        if not self._gnss_held or (self.machine.isolating and self.machine.blame == s.gnss):
+            return
+        confirmed = next((e for e in gate_step.events if e.name == 'pose_confirmed'), None)
+        sample = snapshot.pose(s.gnss, s.gnss_max_age_sec)
+        if confirmed is None or sample is None:
+            return
+        sigma = position_std(sample.cov)
+        distance = math.hypot(sample.pose[0] - confirmed.fields['x'], sample.pose[1] - confirmed.fields['y'])
+        if sigma <= s.gnss_max_std_m and distance <= s.gnss_sigma_k * sigma:
+            self._gnss_held = False
+            result.events.append(Event(f'{self.config.event_prefix}.gnss_released', 'info', {
+                'distance_m': round(distance, 3), 'std_m': round(sigma, 3)}))
+
+    def _apply_gate(self, now: float, result: StepResult, gate_step: GateStep) -> None:
+        """AMCL 検証ゲートの結果を、周期の結果 (イベント・姿勢補正の指示・一時停止) に入れ、補正したら累積と判定を捨てる。"""
+        for event in gate_step.events:
+            result.events.append(Event(f'{self.config.event_prefix}.{event.name}', event.level, event.fields))
+            self._last_event = result.last_event = event.name
+        reset = gate_step.reset
+        if reset is not None:
+            result.directives.append(Directive(
+                'reinit', self.machine.blame, Candidate(reset.pose, reset.cov, 'gate'),
+                'fused' if reset.targets == 'fused' else 'all'))
+        decided = reset is not None or any(event.name == 'gate_opened' for event in gate_step.events)
+        if decided and self._awaiting_gate and self.machine.state in (State.RECOVERING, State.DEGRADED):
+            self._awaiting_gate = False
+            self._after_reinit(now)
+        else:
+            if decided and self._awaiting_gate:
+                # 除外の間 (再初期化を求める前) に決まった。再初期化を求めたときに、決まったものとして数える
+                self._awaiting_gate = False
+                self._gate_decided = True
+            if reset is not None:
+                self.fusion.reset()
+                for detector in self.detectors.values():
+                    detector.reset()
+                self.start_grace(now, self.config.grace_after_reset_sec)
+        result.hold_requested = gate_step.hold
+        result.hold_reason = gate_step.hold_reason
+        result.gate = gate_step
+
+    def _supervise(self, snapshot: Snapshot) -> StepResult:
         now = snapshot.stamp
         if self._grace_until is None:
             self._grace_until = now + self.config.startup_grace_sec
@@ -206,17 +396,23 @@ class Supervisor:
         self._update_scans(snapshot)
         in_grace = now < self._grace_until
 
+        self._track_motion(snapshot)
+
         evidences = {name: detector.evaluate(snapshot) for name, detector in self.detectors.items()}
         self._check_events(evidences)
         fusion = self.fusion.update(evidences, active=not in_grace)
         state_before = self.machine.state
-        decision = self.machine.step(now, fusion, self._converged(evidences))
+        converged = self._converged(evidences)
+        decision = self.machine.step(now, fusion, converged)
         state = decision.state
 
         if state_before == State.NORMAL and state == State.SUSPECT:
             self._suspect_since = now
         if state == State.NORMAL and state_before != State.NORMAL:
             self._suspect_since = None
+            self._since_reinit = None
+            self._awaiting_gate = False
+            self._gate_decided = False
             self.fusion.reset()
         if Action.REINIT in decision.actions:
             self.fusion.reset()
@@ -225,23 +421,30 @@ class Supervisor:
             self._plan_attempts = 0
         if Action.RESTORE in decision.actions and self.config.grace_after_recovery_sec > 0.0:
             self.start_grace(now, self.config.grace_after_recovery_sec)
+        if self.gate is not None and Action.ISOLATE in decision.actions and self.machine.hold_requested:
+            # 除外した時点で AMCL 検証ゲートを閉じさせる (再初期化を求めるまでの間も、疑わしい推定器を融合に入れない)
+            self.gate.force_close(now, 'supervisor')
+            self._awaiting_gate = True
         if decision.event:
             self._last_event = decision.event
         directives = self._directives(decision)
         plan = self._recover(snapshot, state, directives)
+        self._request_observation(now, state_before, state, converged, directives)
 
         normal = state == State.NORMAL
         for name, detector in self.detectors.items():
             detector.after_step(evidences[name], normal)
 
-        trusted = normal and not in_grace and self._trusted(evidences, fusion)
+        gate_open = self.gate is None or self.gate.state == GateState.OPEN
+        trusted = normal and not in_grace and gate_open and self._trusted(evidences, fusion)
         self._update_anchors(snapshot, trusted)
         safety = self._check_safety(snapshot)
         residuals = self._update_residuals(snapshot, trusted)
 
         self._state_events(state_before, decision, fusion)
+        sensor_set = self._update_sensor_set(snapshot)
         events, self._pending = self._pending, []
-        return StepResult(
+        return StepResult(sensor_set=sensor_set, 
             stamp=now, state=state, decision=decision, fusion=fusion, evidences=evidences,
             trusted=trusted, in_grace=in_grace, hold_requested=self.machine.hold_requested, safety=safety,
             isolated_sources=self._isolated(), last_event=self._last_event, events=events,
@@ -249,7 +452,7 @@ class Supervisor:
             applied_scales=self._applied_scales(residuals))
 
     def _applied_scales(self, residuals: Dict[str, ResidualStats]) -> Dict[str, float]:
-        """残差ごとに、残差の a の分散にかける倍率。a の情報源を切り離しているあいだは、上限にして、ほぼ使わないようにする。"""
+        """残差ごとに、残差の a の分散にかける倍率。a の情報源を除外しているあいだは、上限にして、ほぼ使わないようにする。"""
         blame = self.machine.blame
         scales = {}
         for name, stats in residuals.items():
@@ -311,6 +514,9 @@ class Supervisor:
         if self.scans is None or cfg is None:
             return
         scan = snapshot.reference(cfg.reference).scan
+        if self.scans.too_old(snapshot.stamp, scan):
+            self.scans.clear()
+            return
         if scan is None or scan.stamp == self._last_scan:
             return
         self._last_scan = scan.stamp
@@ -325,12 +531,21 @@ class Supervisor:
             self._reinit_pending = False
         if not self._reinit_pending or now < self._next_plan:
             return None
+        if self.gate is not None:
+            self._recover_by_gate(snapshot)
+            return None
         if self.planner is None:
             self._reinit_pending = False
             self._emit('reinit_skipped', 'error', {'reason': 'no_generators'})
             return None
         self._plan_attempts += 1
         self._next_plan = now + self.config.selection.retry_sec
+        if self._needs_new_observation():
+            distance, rotation = self._since_reinit
+            self._emit('reinit_skipped', 'warn', {
+                'reason': 'no_new_observation', 'attempt': self._plan_attempts,
+                'distance_m': round(distance, 3), 'rotation_rad': round(rotation, 3)})
+            return None
         context = RecoveryContext(
             snapshot=snapshot, anchors=self.anchors, suspect_since=self._suspect_since, scans=self.scans,
             safety=self.config.safety)
@@ -340,6 +555,37 @@ class Supervisor:
             directives.append(Directive('reinit', self.machine.blame, plan.chosen))
             self._after_reinit(now)
         return plan
+
+    def _recover_by_gate(self, snapshot: Snapshot) -> None:
+        """AMCL 検証ゲートを閉じさせ、候補を作るものの候補を足して、AMCL 検証ゲートの照合の規則で決めさせる。決まったら _apply_gate が受ける。"""
+        now = snapshot.stamp
+        self._reinit_pending = False
+        self._plan_attempts += 1
+        if self._gate_decided:
+            # 除外の間に AMCL 検証ゲートが決めた (補正した、または推定器を採った)
+            self._gate_decided = False
+            self._after_reinit(now)
+            self._emit('reinit_requested', 'warn', {
+                'via': 'gate', 'blame': self.machine.blame, 'attempt': self._plan_attempts, 'decided': True})
+            return
+        extra: Dict[str, CandidatePose] = {}
+        notes: Dict[str, str] = {}
+        if self.planner is not None:
+            context = RecoveryContext(
+                snapshot=snapshot, anchors=self.anchors, suspect_since=self._suspect_since, scans=self.scans,
+                safety=self.config.safety)
+            exclude = {self.machine.blame} | set(self._gate_distrust())
+            candidates, notes = self.planner.generate(context, exclude)
+            for candidate in candidates:
+                name = f'recovery_{candidate.origin}'
+                if name in extra:
+                    name = f'{name}_{len(extra)}'
+                extra[name] = _candidate_pose(candidate)
+        self.gate.force_close(now, 'supervisor', extra)
+        self._awaiting_gate = True
+        self._emit('reinit_requested', 'warn', {
+            'via': 'gate', 'blame': self.machine.blame, 'attempt': self._plan_attempts,
+            'candidates': ','.join(extra), 'generators': ','.join(f'{n}:{s}' for n, s in notes.items())})
 
     def _plan_events(self, plan: RecoveryPlan) -> None:
         for candidate in plan.candidates:
@@ -368,6 +614,53 @@ class Supervisor:
         for detector in self.detectors.values():
             detector.reset()
         self.start_grace(now, self.config.grace_after_reset_sec)
+        self._since_reinit = [0.0, 0.0]
+        self._progress_at = now
+
+    def _track_motion(self, snapshot: Snapshot) -> None:
+        """recovery.observe の motion で、最後の再初期化からの走行距離と回転を足していく。"""
+        cfg = self.config.observe
+        if cfg is None:
+            return
+        motion = snapshot.motion_at(cfg.motion, snapshot.stamp)
+        if motion is None:
+            return
+        last, self._observe_motion = self._observe_motion, motion
+        if last is None or self._since_reinit is None:
+            return
+        self._since_reinit[0] += math.hypot(motion[0] - last[0], motion[1] - last[1])
+        self._since_reinit[1] += abs(math.remainder(motion[2] - last[2], 2.0 * math.pi))
+
+    def _needs_new_observation(self) -> bool:
+        """再初期化した後、観測が増える (reseed_min_* だけ動く) まで撒き直さないか。"""
+        cfg = self.config.observe
+        if cfg is None or self._since_reinit is None:
+            return False
+        if cfg.reseed_min_distance_m <= 0.0 and cfg.reseed_min_rotation_rad <= 0.0:
+            return False
+        distance, rotation = self._since_reinit
+        return not (cfg.reseed_min_distance_m > 0.0 and distance >= cfg.reseed_min_distance_m
+                    or cfg.reseed_min_rotation_rad > 0.0 and rotation >= cfg.reseed_min_rotation_rad)
+
+    def _request_observation(
+        self, now: float, before: State, state: State, converged: Optional[bool], directives: List[Directive],
+    ) -> None:
+        """RECOVERING で、再初期化も収束の確認もできない時間が続いたら、観測を増やす動作を求める (指示 observe)。"""
+        cfg = self.config.observe
+        if self.gate is not None or cfg is None or cfg.request_after_sec <= 0.0 or state != State.RECOVERING:
+            return
+        if before != State.RECOVERING:
+            self._progress_at = now
+        if converged is True and self.machine.reinit_done:
+            self._progress_at = now
+        waited = now - self._progress_at
+        if waited < cfg.request_after_sec:
+            return
+        if self._observe_at is not None and now - self._observe_at < cfg.request_interval_sec:
+            return
+        self._observe_at = now
+        directives.append(Directive('observe', self.machine.blame))
+        self._emit('observe_requested', 'warn', {'waited_sec': round(waited, 1), 'blame': self.machine.blame})
 
     def _emit(self, event: str, level: str, fields: Dict[str, Any]) -> None:
         self._pending.append(Event(f'{self.config.event_prefix}.{event}', level, fields))
@@ -388,8 +681,11 @@ class Supervisor:
             self._emit('map_changed', 'info', {'sources': ','.join(changed)})
 
     def _converged(self, evidences: Dict[str, Evidence]) -> Optional[bool]:
-        """recovery.convergence のインスタンスが、すべて正常なら True、どれかが異常なら False。"""
+        """recovery.convergence のインスタンスが、すべて正常なら True、どれかが異常なら False。
+        convergence_mode が any なら、どれか 1 つが正常なら True、正常がなくどれかが異常なら False。"""
         statuses = [evidences[name].status for name in self.config.convergence if name in evidences]
+        if self.config.convergence_mode == 'any' and any(s == Status.NORMAL for s in statuses):
+            return True
         if any(s == Status.ANOMALY for s in statuses):
             return False
         if statuses and all(s == Status.NORMAL for s in statuses):
@@ -432,8 +728,11 @@ class Supervisor:
         occupancy = snapshot.reference(cfg.map).occupancy
         aligned = snapshot.pose_aligned(cfg.pose, cfg.max_age_sec)
         if occupancy is None or aligned is None:
+            self._clearance = None
             return None
         result = self.safety.check(occupancy, aligned[0].pose)
+        if self.conduct is not None:
+            self._clearance = 0.0 if result.in_lethal else self.safety.clearance(occupancy, aligned[0].pose)
         if result.in_lethal != self._in_lethal:
             self._in_lethal = result.in_lethal
             self._emit('lethal', 'warn' if result.in_lethal else 'info', {
@@ -457,6 +756,14 @@ def _residual_terms(a: PoseSample, b: PoseSample, extra_std_m: float) -> Tuple[f
     var_a = float(np.mean(np.diag(np.asarray(a.cov, dtype=float))[:2]))
     var_b = float(np.mean(np.diag(np.asarray(b.cov, dtype=float))[:2]))
     return delta2, var_a, var_b + extra_std_m ** 2
+
+
+def _candidate_pose(candidate: Candidate, sigma_k: float = 3.0) -> CandidatePose:
+    """復旧の候補を、AMCL 検証ゲートの照合の候補にする。探す範囲は共分散の標準偏差の sigma_k 倍 (照合が狭い範囲と上限で挟む)。"""
+    cov = np.asarray(candidate.cov, dtype=float)
+    std_xy = math.sqrt(max(cov[0][0], cov[1][1], 0.0))
+    std_yaw = math.sqrt(max(cov[2][2], 0.0))
+    return CandidatePose(candidate.pose, sigma_k * std_xy, sigma_k * std_yaw)
 
 
 def _pose_fields(pose: Pose2) -> Dict[str, float]:

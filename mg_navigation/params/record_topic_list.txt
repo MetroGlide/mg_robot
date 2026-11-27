@@ -18,7 +18,9 @@
 /downsampled_costmap_updates
 /ekf_global_odom
 /evaluation
+/events
 
+/gnss_variance_scale
 /goal_pose
 /gps/fix
 /heading
@@ -44,6 +46,7 @@
 /rosout
 
 /scan_top_lidar
+/set_pose
 /speed_limit
 /tf
 /tf_static

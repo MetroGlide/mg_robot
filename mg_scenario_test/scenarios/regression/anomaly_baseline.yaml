@@ -1,0 +1,39 @@
+version: "2.0"
+name: anomaly_baseline
+description: >
+  異常パターンの試験の対照。warehouse を 1 周する経路を、基準の GNSS (偏りが続く雑音と、申告の精度) だけで走る。
+  ほかの anomaly のシナリオの結果は、これと比べて読む (異常パターンは mg_navigation/doc/localization_failure_ledger.md)。
+  構成は LOCALIZATION_CONFIG で選ぶので、監視・プリセット・プロファイルを stack_args に書かない。
+profile: mg01
+world: warehouse
+tags: [localization, anomaly, mg_sequencer, known_issue]
+timeout: 600
+
+record_topics: [/sim_scenario_test/entity_poses, /amcl_pose_origin, /odom/gps, /ekf_global_odom, /odom, /localization/status, /cmd_vel, /initialpose, /rosout]
+
+sim_args:
+  sensor_fault_file: "pkg://mg_scenario_test/scenarios/data/faults/anomaly_baseline.yaml"
+
+stack_args:
+  map_path: "pkg://mg_scenario_test/scenarios/data/map_realistic/localization.yaml"
+
+setup:
+  - respawn: { pose: { x: 0.0, y: 0.0, yaw: 0.0 }, settle_sec: 3.0 }
+
+monitors:
+  # 合否の上限は置かず、構成どうしの比較のために値を残す
+  - pose_error: { deviation_m: 1.0 }
+  # 合否に使わない記録: ずれたまま止める要求も減速もなく走った距離、減速した時間
+  - localization_outcome: {}
+  - max_stop_duration: { max_stop_sec: 60.0, from_goal_started: 2, until_goal_reached: 8 }
+  - map_overlap: { max_overlap_sec: 60.0 }
+  - localization_hold: { ends_released: false }
+
+run:
+  mg_sequencer:
+    waypoints_file: "{world.waypoints}"
+    waypoint_timeout_sec: 200.0
+
+expect:
+  - reached_all
+  - time_limit: { sec: 600 }

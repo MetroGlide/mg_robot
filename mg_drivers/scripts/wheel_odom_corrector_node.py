@@ -26,6 +26,7 @@ class WheelOdomCorrectorNode(Node):
         k_w = self.declare_parameter('k_w', 1.0).value
         yaw_bias = self.declare_parameter('yaw_bias_per_meter', 0.0).value
         reset_jump = self.declare_parameter('reset_jump_m', 2.0).value
+        max_speed = self.declare_parameter('max_speed_mps', 0.0).value
         self._time_offset = self.declare_parameter('time_offset', 0.0).value
         # 速度の出どころ。raw: ドライバの速度をスケール補正して使う / pose_diff: 補正した姿勢の差分から求める
         self._twist_source = self.declare_parameter('twist_source', 'raw').value
@@ -43,9 +44,9 @@ class WheelOdomCorrectorNode(Node):
             self.declare_parameter('covariance_vyaw', 0.02).value,
         ]
         if self._enabled:
-            self._corrector = OdomCorrector(k_v, k_w, yaw_bias, reset_jump)
+            self._corrector = OdomCorrector(k_v, k_w, yaw_bias, reset_jump, max_speed)
         else:
-            self._corrector = OdomCorrector(1.0, 1.0, 0.0, reset_jump)
+            self._corrector = OdomCorrector(1.0, 1.0, 0.0, reset_jump, max_speed)
             self._time_offset = 0.0
 
         self._pub = self.create_publisher(Odometry, 'odom', 10)
@@ -57,13 +58,13 @@ class WheelOdomCorrectorNode(Node):
 
     def _on_odom(self, msg: Odometry) -> None:
         q = msg.pose.pose.orientation
+        stamp = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
         x, y, yaw = self._corrector.update(
-            msg.pose.pose.position.x, msg.pose.pose.position.y, yaw_from_quaternion(q.z, q.w))
+            msg.pose.pose.position.x, msg.pose.pose.position.y, yaw_from_quaternion(q.z, q.w), stamp)
         vx, wz = self._corrector.correct_twist(msg.twist.twist.linear.x, msg.twist.twist.angular.z)
         if self._twist_source == 'pose_diff':
             if self._corrector.was_reset:
                 self._twist_estimator.reset()
-            stamp = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
             estimated = self._twist_estimator.update(stamp, x, y, yaw)
             # 窓がそろうまでの最初の数メッセージは、ドライバの速度を補正したものを使う
             if estimated is not None:

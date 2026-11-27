@@ -106,6 +106,41 @@ def nees(errors: np.ndarray, cov6: np.ndarray) -> np.ndarray:
     return result
 
 
+def local_offset(
+    times: np.ndarray,
+    errors: np.ndarray,
+    window_sec: float,
+    excluded: np.ndarray,
+    grid_sec: float = 5.0,
+) -> np.ndarray:
+    """誤差の時系列から、ゆっくり変わる偏り (地図と真値の局所的なずれ) を求める。
+
+    Args:
+      times: (N,) 昇順の時刻 [s]
+      errors: (N, K) 誤差
+      window_sec: 偏りとみなす中央値の窓幅 [s]
+      excluded: (N,) 真の標本は偏りの計算に使わない (ずれの事象を偏りに吸収させないため)
+      grid_sec: 偏りを計算する間隔 [s]。その間は線形補間する
+    Returns:
+      (N, K) の偏り。使える標本がなければ nan
+    """
+    offsets = np.full(errors.shape, np.nan)
+    kept_times = times[~excluded]
+    kept = errors[~excluded]
+    if kept_times.size == 0:
+        return offsets
+    grid = np.arange(times[0], times[-1] + grid_sec, grid_sec)
+    lo = np.searchsorted(kept_times, grid - window_sec / 2.0, side="left")
+    hi = np.searchsorted(kept_times, grid + window_sec / 2.0, side="right")
+    filled = hi > lo
+    if not np.any(filled):
+        return offsets
+    medians = np.array([np.median(kept[i:j], axis=0) for i, j in zip(lo[filled], hi[filled])])
+    for k in range(errors.shape[1]):
+        offsets[:, k] = np.interp(times, grid[filled], medians[:, k])
+    return offsets
+
+
 def best_lag(
     ref_times: np.ndarray,
     ref_values: np.ndarray,
@@ -179,13 +214,136 @@ def recovery_metrics(
     return result
 
 
-# 監督ノードの状態の記録 (行: [t, state, gnss_d2, jump_m, ekf_diff_m, scan_ratio, scan_gain]) の値の列
+def detect_turns(nodes: np.ndarray, min_turn_rad: float, window_sec: float) -> List[Tuple[float, float, float]]:
+    """真値のノード列から、window_sec 以内に向きが min_turn_rad 以上変わる区間 (角) を見つける。
+
+    Args:
+      nodes: shape (N, 4) -> [t, x, y, yaw] (t 昇順)
+    Returns:
+      角ごとの (開始時刻, 終了時刻, 向きの変化 [rad]。左回りが正)。重なる区間はまとめる
+    """
+    if nodes.shape[0] < 2:
+        return []
+    t = nodes[:, 0]
+    yaw = np.unwrap(nodes[:, 3])
+    intervals: List[List[float]] = []
+    j = 0
+    for i in range(t.size):
+        j = max(j, i)
+        while j + 1 < t.size and t[j + 1] - t[i] <= window_sec:
+            j += 1
+        if j == i or abs(yaw[j] - yaw[i]) < min_turn_rad:
+            continue
+        if intervals and t[i] <= intervals[-1][1]:
+            intervals[-1][1] = max(intervals[-1][1], t[j])
+        else:
+            intervals.append([t[i], t[j]])
+    turns = []
+    for start, end in intervals:
+        i0, i1 = np.searchsorted(t, start), np.searchsorted(t, end)
+        turns.append((float(start), float(end), float(yaw[i1] - yaw[i0])))
+    return turns
+
+
+def deviation_episodes(
+    times: np.ndarray,
+    pos_err: np.ndarray,
+    yaw_err: np.ndarray,
+    pos_threshold: float,
+    yaw_threshold: float,
+    bin_sec: float = 1.0,
+    merge_sec: float = 10.0,
+) -> List[Dict[str, Any]]:
+    """推定が真値から大きくずれた区間 (事象) を、時刻に沿って見つける。
+
+    bin_sec ごとの誤差の中央値が、位置 pos_threshold [m] か yaw yaw_threshold [rad] を超えた区間を
+    ずれとし、間が merge_sec 以下の区間はつなぐ。中央値にするのは、一瞬の飛びを数えないため。
+    真値の無い時間は判定しない (前後のずれた区間は、間が merge_sec 以下ならつながる)。
+
+    Returns:
+      事象ごとの start_s, end_s, max_position_m, max_yaw_rad (区間の中の中央値の最大)、
+      until_end (真値と比べられた最後の時刻までずれたまま)
+    """
+    if times.size == 0:
+        return []
+    bins = np.floor((times - times[0]) / bin_sec).astype(int)
+    keys, inverse = np.unique(bins, return_inverse=True)
+    bin_t = times[0] + keys * bin_sec
+    bin_pos = np.array([np.median(pos_err[inverse == i]) for i in range(keys.size)])
+    bin_yaw = np.array([np.median(np.abs(yaw_err[inverse == i])) for i in range(keys.size)])
+    bad = np.flatnonzero((bin_pos > pos_threshold) | (bin_yaw > yaw_threshold))
+    episodes: List[Dict[str, Any]] = []
+    if bad.size == 0:
+        return episodes
+    groups = np.split(bad, np.flatnonzero(np.diff(bin_t[bad]) > merge_sec + bin_sec) + 1)
+    for group in groups:
+        episodes.append({
+            "start_s": float(bin_t[group[0]]),
+            "end_s": float(bin_t[group[-1]] + bin_sec),
+            "max_position_m": float(bin_pos[group].max()),
+            "max_yaw_rad": float(bin_yaw[group].max()),
+            "until_end": bool(group[-1] == keys.size - 1),
+        })
+    return episodes
+
+
+def turn_errors(
+    times: np.ndarray,
+    pos_err: np.ndarray,
+    yaw_err: np.ndarray,
+    turns: List[Tuple[float, float, float]],
+    after_sec: float,
+    episodes: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """角ごとに、角の中と抜けた後の誤差と、ずれたか、取り違えたまま残ったかを返す。
+
+    判定は deviation_episodes の事象に従う (角は事象が起きた場所を示すだけ)。
+    deviated: 角の始まりから抜けた後 after_sec までに、事象が重なった (後で戻ったものも含む)
+    mispicked: その事象が、抜けた後 after_sec を過ぎても続いた (または最後までずれたまま)
+    抜けた後 after_sec の間に真値が無ければ、判定できない (None)。
+    """
+    results = []
+    for start, end, dyaw in turns:
+        entry: Dict[str, Any] = {"start_s": start, "end_s": end, "turn_rad": dyaw}
+        during = (times >= start) & (times < end + after_sec)
+        after = (times >= end) & (times < end + after_sec)
+        if not np.any(after):
+            entry["deviated"] = None
+            entry["mispicked"] = None
+            results.append(entry)
+            continue
+        overlapping = [e for e in episodes if e["start_s"] < end + after_sec and e["end_s"] > start]
+        entry.update({
+            "max_position_m": float(np.max(pos_err[during])),
+            "max_yaw_rad": float(np.max(np.abs(yaw_err[during]))),
+            "after_position_m": float(np.median(pos_err[after])),
+            "after_yaw_rad": float(np.median(np.abs(yaw_err[after]))),
+            "deviated": bool(overlapping),
+            "mispicked": any(e["until_end"] or e["end_s"] > end + after_sec for e in overlapping),
+        })
+        results.append(entry)
+    return results
+
+
+def gnss_weak_mask(times: np.ndarray, gps_times: np.ndarray, gps_sigma: np.ndarray,
+                   sigma_threshold: float, stale_sec: float) -> np.ndarray:
+    """times の各時点で GNSS が弱いか。直前の測位の σ が sigma_threshold を超えるか、stale_sec より古い
+    (または 1 つも無い) とき弱いとする。"""
+    idx = hold_index(gps_times, times)
+    weak = np.ones(times.shape, dtype=bool)
+    has = idx >= 0
+    fresh = times[has] - gps_times[idx[has]] <= stale_sec
+    weak[has] = ~fresh | (gps_sigma[idx[has]] > sigma_threshold)
+    return weak
+
+
+# 自己位置監視ノードの状態の記録 (行: [t, state, gnss_d2, jump_m, ekf_diff_m, scan_ratio, scan_gain]) の値の列
 # localization_supervisor_msgs/LocalizationCheck.status の「判定できない」
 CHECK_UNKNOWN = 2
 
 
 def summarize_status_values(status: np.ndarray, check_scores: Dict[str, np.ndarray]) -> Dict[str, Any]:
-    """監督の総合の強さと、判定のインスタンスごとの score (判定できた周期だけ) の分布、状態ごとの時間の割合。
+    """自己位置監視の総合の強さと、判定のインスタンスごとの score (判定できた周期だけ) の分布、状態ごとの時間の割合。
 
     status は [t, state, fusion_level] の行。
     """

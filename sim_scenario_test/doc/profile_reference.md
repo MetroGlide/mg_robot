@@ -55,6 +55,10 @@ readiness:                        # 走行開始前に待つもの
   lifecycle_managers: [lifecycle_manager_localization, lifecycle_manager_navigation]
   services: []                    # 利用可能になるまで待つサービス名
 
+record_parameters:                # 準備完了の後に取得して result.json の parameters に残すパラメータ (省略可)
+  amcl: [alpha1, max_particles]   # ノード名 -> パラメータ名の並び。どの構成で走ったかの記録で、合否には使わない
+                                  # (取得できないノードは status: unavailable と理由を残す)
+
 worlds:                           # ワールドごとの変数 (シナリオの world: で選ぶ)
   warehouse:
     sim_world: warehouse          # Gazebo のワールド名 (省略時はキー名)

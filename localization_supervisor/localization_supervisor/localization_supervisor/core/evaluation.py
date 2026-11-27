@@ -2,7 +2,7 @@
 
 ROS に依存しない。時刻は評価の開始からの経過秒。
 
-  検知 (系全体)   : 故障の開始から、区間の終わりまでに、状態が NORMAL 以外 (疑い) / 確認
+  検知 (系全体)   : 故障の開始から、区間の終わりまでに、状態が NORMAL 以外 (疑義) / 確認
                     (ISOLATED・RECOVERING・DEGRADED) になったか。なったまでの時間と、確認したときの blame
   誤検知 (系全体) : どの故障の区間 (と、その後の settle_sec) にも入らない時刻に、確認に移った回数
   判定のインスタンスごと : 故障ごとに、区間の中で初めて異常と判定するまでの時間と、
@@ -34,7 +34,7 @@ class TickRecord:
 
 @dataclass
 class ReinitRecord:
-    """監督が再初期化を指示した 1 回。error_m は、候補と真の姿勢 (故障を注入する前の記録) の距離 (分からなければ None)。"""
+    """自己位置監視が再初期化を指示した 1 回。error_m は、候補と真の姿勢 (故障を注入する前の記録) の距離 (分からなければ None)。"""
     t: float
     origin: str
     error_m: Optional[float] = None
@@ -181,7 +181,7 @@ def format_report(report: Report, title: str = '') -> str:
         names = sorted(report.instances)
         recovery = bool(report.reinits)
         lines += ['', '## 故障ごと (開始からの秒。- は区間の中で検知せず)', '',
-                  '| 故障 | 情報源 | 検知の対象 | 開始 [s] | 疑い | 確認 | blame | '
+                  '| 故障 | 情報源 | 検知の対象 | 開始 [s] | 疑義 | 確認 | blame | '
                   + ('再初期化 | 候補の誤差 [m] | 復旧 | ' if recovery else '') + ' | '.join(names) + ' |',
                   '|---|---|---|---|---|---|---|' + ('---|---|---|' if recovery else '') + '---|' * len(names)]
         for f in report.faults:

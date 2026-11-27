@@ -4,18 +4,22 @@
   odometry             : nav_msgs/Odometry -> pose (地図座標の推定器の出力) または motion (オドメトリ)
   map_scan             : nav_msgs/OccupancyGrid と sensor_msgs/LaserScan -> reference
   occupancy_grid       : nav_msgs/OccupancyGrid だけ -> reference (計画用地図など)
+  particle_cloud       : nav2_msgs/ParticleCloud (AMCL の粒子) -> hypotheses (粒子を分けた峰)
 """
 import math
 from typing import List, Optional
 
 import numpy as np
 from geometry_msgs.msg import PoseWithCovarianceStamped
+from nav2_msgs.msg import ParticleCloud
 from nav_msgs.msg import OccupancyGrid, Odometry
 from sensor_msgs.msg import LaserScan
 
 from ...core.geometry import Pose2
 from ...core.grid import OccupancyMap
-from ...core.interfaces import MotionSample, ParamSpec, PoseSample, ScanSample, SourceKind
+from ...core.interfaces import (
+    Hypothesis, HypothesisSample, MotionSample, ParamSpec, PoseSample, ScanSample, SourceKind)
+from ...core.particle_modes import cluster_particles
 from .base import SourceAdapter, Subscription
 
 # geometry_msgs の 6x6 の共分散 (行優先) のうち、x, y, yaw の添字
@@ -121,9 +125,48 @@ class OccupancyGridAdapter(SourceAdapter):
         self.store.set_map(self.source, occupancy_from_msg(msg, self.params['occupied_threshold']))
 
 
+class ParticleCloudAdapter(SourceAdapter):
+    """粒子を、格子でつながる群れと向きの分布の谷で峰に分け、仮説の集合にする (core/particle_modes.py)。
+
+    分けるのは min_interval_sec ごとに 1 回 (粒子の配信ごとには分けない。間の配信は捨てる)。
+    AMCL はリサンプリングの後に粒子を出すので、仮説の重みは粒子の数の割合 (尤度の比ではない)。
+    """
+    KINDS = (SourceKind.HYPOTHESES,)
+    PARAMS = {
+        'topic': ParamSpec(str, None),
+        'min_interval_sec': ParamSpec(float, 1.0, '粒子を分ける最短の間隔'),
+        'cell_m': ParamSpec(float, 0.5, 'これより離れた粒子の群れは別の仮説'),
+        'cell_yaw_rad': ParamSpec(float, 0.26),
+        'yaw_bin_rad': ParamSpec(float, 0.17, '群れの中の向きの分布を見る区間の幅'),
+        'valley_ratio': ParamSpec(float, 0.5, '向きの分布の谷が、低い方の山のこの割合未満なら分ける (0 で分けない)'),
+    }
+
+    def __init__(self, source, kind, params, store, context) -> None:
+        super().__init__(source, kind, params, store, context)
+        self._last_stamp: Optional[float] = None
+
+    def subscriptions(self) -> List[Subscription]:
+        return [Subscription(self.params['topic'], ParticleCloud, self._on_cloud, qos='sensor')]
+
+    def _on_cloud(self, msg: ParticleCloud) -> None:
+        stamp = stamp_to_sec(msg.header.stamp)
+        p = self.params
+        if self._last_stamp is not None and 0.0 <= stamp - self._last_stamp < p['min_interval_sec']:
+            return
+        if not msg.particles:
+            return
+        self._last_stamp = stamp
+        poses = np.array([pose_from_msg(particle.pose) for particle in msg.particles], dtype=float)
+        weights = np.array([particle.weight for particle in msg.particles], dtype=float)
+        modes = cluster_particles(poses, weights, p['cell_m'], p['cell_yaw_rad'], p['yaw_bin_rad'], p['valley_ratio'])
+        self.store.add_hypotheses(self.source, HypothesisSample(stamp, [
+            Hypothesis(mode['weight'], tuple(float(v) for v in mode['mean']), mode['cov']) for mode in modes]))
+
+
 STANDARD_ADAPTERS = {
     'pose_with_covariance': PoseWithCovarianceAdapter,
     'odometry': OdometryAdapter,
     'map_scan': MapScanAdapter,
     'occupancy_grid': OccupancyGridAdapter,
+    'particle_cloud': ParticleCloudAdapter,
 }

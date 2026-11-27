@@ -1,0 +1,5 @@
+# シナリオ試験で、/initialpose で自己位置推定をずらす故障を注入するとき (supervision.yaml に重ねる)。
+# /initialpose を外からの再初期化として扱わない (扱うと、注入のたびに猶予に入って総合しない)。
+# EKF の初期化 (/set_pose) は、引き続き外からの再初期化として扱う。実機では使わない。
+external_reinit:
+  topics: [/set_pose]

@@ -54,6 +54,11 @@ def test_interpolate_nodes_allows_long_gap_when_stationary():
     poses, valid = pg.interpolate_nodes(nodes, times, stationary_dist=0.6)
     assert valid.tolist() == [True, False]
     assert poses[0, 0] == pytest.approx(0.05)
+    # 長い間隔でその場で大きく回ったときは、回った時刻が分からないので補間しない
+    turned = nodes.copy()
+    turned[1, 3] = 0.5
+    _, valid = pg.interpolate_nodes(turned, times, stationary_dist=0.6)
+    assert valid.tolist() == [False, False]
 
 
 def test_interpolate_nodes_yaw_across_pi():

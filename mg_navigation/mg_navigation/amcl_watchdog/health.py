@@ -1,4 +1,4 @@
-"""amcl_watchdog_node の状態を、監督ノード (localization_supervisor) と同じ状態の名前に対応づける。"""
+"""amcl_watchdog_node の状態を、自己位置監視ノード (localization_supervisor) と同じ状態の名前に対応づける。"""
 from localization_supervisor.core.state_machine import State
 
 

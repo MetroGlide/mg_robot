@@ -1,0 +1,13 @@
+# 走行側からの検証要求 (localization_supervisor_node の ~/request_verify)。AMCL 検証ゲートが地図照合を 1 回行い、
+# 結果は状態 (LocalizationStatus) の verify_id・verify_result に出る
+
+# 要求元 (記録用)
+string requester
+---
+# 確かめを扱えるか (自己位置監視に AMCL 検証ゲートがあるか)。扱えなければ、要求元は状態の state で判断する
+bool supported
+# 受け付けたか (AMCL 検証ゲートがない、間隔の下限より早い、待っている要求があるときは受け付けない)
+bool accepted
+# 受け付けた要求の番号 (状態の verify_id と照らす)
+uint32 id
+string message

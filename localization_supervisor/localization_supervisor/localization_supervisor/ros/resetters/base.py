@@ -7,7 +7,7 @@ from ..own_messages import OwnMessages
 
 class PoseResetter(Plugin):
     """reset を実装する。node は rclpy の Node。own に、送ったメッセージの目印を入れる
-    (監督が自分の送ったものを、外からの再初期化と取り違えないため)。"""
+    (自己位置監視が自分の送ったものを、外からの再初期化と取り違えないため)。"""
     PARAMS: Mapping[str, ParamSpec] = {}
 
     def __init__(self, name: str, params: Mapping[str, Any], node: Any, own: OwnMessages) -> None:

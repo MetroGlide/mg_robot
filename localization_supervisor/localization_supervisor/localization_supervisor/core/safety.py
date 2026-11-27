@@ -87,6 +87,35 @@ class FootprintChecker:
             return SafetyResult(False, 0.0, 0.0)
         return SafetyResult(True, float(lethal.mean()), self._depth(occupancy, pose, points[lethal]))
 
+    def clearance(self, occupancy: OccupancyMap, pose: Pose2) -> float:
+        """footprint の標本の点から、最も近い致死セルまでの距離の最小 [m] (かかっていれば 0。depth_range_m で頭打ち)。"""
+        points = transform_points(pose, self.samples(occupancy.resolution))
+        if occupancy.occupied_at(points).any():
+            return 0.0
+        window, i0, j0 = self._window(occupancy, pose)
+        if window is None or not window.any():
+            return self.config.depth_range_m
+        distance = ndimage.distance_transform_edt(~window) * occupancy.resolution
+        ix = np.floor((points[:, 0] - occupancy.origin_x) / occupancy.resolution).astype(int) - i0
+        iy = np.floor((points[:, 1] - occupancy.origin_y) / occupancy.resolution).astype(int) - j0
+        keep = (ix >= 0) & (ix < window.shape[1]) & (iy >= 0) & (iy < window.shape[0])
+        if not keep.any():
+            return self.config.depth_range_m
+        return min(float(distance[iy[keep], ix[keep]].min()), self.config.depth_range_m)
+
+    def _window(self, occupancy: OccupancyMap, pose: Pose2):
+        """姿勢の周り (外接円 + depth_range_m) の致死セルの窓と、その左下のセルの番号。地図の外なら (None, 0, 0)。"""
+        res = occupancy.resolution
+        reach = self._radius + self.config.depth_range_m
+        height, width = occupancy.data.shape
+        i0 = max(int((pose[0] - reach - occupancy.origin_x) / res), 0)
+        i1 = min(int((pose[0] + reach - occupancy.origin_x) / res) + 1, width)
+        j0 = max(int((pose[1] - reach - occupancy.origin_y) / res), 0)
+        j1 = min(int((pose[1] + reach - occupancy.origin_y) / res) + 1, height)
+        if i1 <= i0 or j1 <= j0:
+            return None, 0, 0
+        return occupancy.data[j0:j1, i0:i1] >= occupancy.occupied_threshold, i0, j0
+
     def _depth(self, occupancy: OccupancyMap, pose: Pose2, lethal_points: np.ndarray) -> float:
         """致死セルにある点から、最も近い致死でないセルまでの距離の最大。"""
         res = occupancy.resolution

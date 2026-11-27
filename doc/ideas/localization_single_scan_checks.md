@@ -2,7 +2,7 @@
 
 ## 背景
 
-自己位置の監督 ([localization_supervisor](../../localization_supervisor/README.md)) の判定のうち、1 枚のスキャンを地図に重ねるのは `scan_map` だけにしている。
+自己位置監視 ([localization_supervisor](../../localization_supervisor/README.md)) の判定のうち、1 枚のスキャンを地図に重ねるのは `scan_map` だけにしている。
 次の 2 つの判定を作って評価したが、屋外の地図 (別の走行で作った地図。植栽や柵のすき間から先が見える) では、正しい姿勢と異常を区別できなかったので、コードごと外した。
 
 | 判定 | 見るもの | 屋外の地図で区別できなかった理由 |

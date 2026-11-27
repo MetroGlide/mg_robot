@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from typing import TYPE_CHECKING, Any, List
+from typing import TYPE_CHECKING, Any, Dict, List
 
 from sim_scenario_test.engine.readiness import wait_until_ready
 from sim_scenario_test.engine.result import (
@@ -13,12 +13,15 @@ from sim_scenario_test.engine.result import (
 )
 from sim_scenario_test.engine.timeline import Timeline
 from sim_scenario_test.errors import ScenarioError, ScenarioValidationError
+from sim_scenario_test.parameters import read_parameters
 
 if TYPE_CHECKING:
     from sim_scenario_test.context import ScenarioContext
     from sim_scenario_test.drivers.base import RunDriver
 
 _SEP = "=" * 60
+# record_parameters の 1 ノードあたりの取得の待ち時間 [s]
+_PARAMETER_TIMEOUT_SEC = 3.0
 
 
 class ScenarioEngine:
@@ -42,11 +45,16 @@ class ScenarioEngine:
         timeline = None
         monitors: List[Any] = []
         executed = False
+        parameters: Dict[str, Any] = {}
 
         self._log_header()
         try:
             driver = scenario.run.entry.impl(ctx, scenario.run.spec)
             wait_until_ready(ctx, driver)
+            if ctx.profile.record_parameters:
+                parameters = read_parameters(
+                    ctx.node, ctx.profile.record_parameters, _PARAMETER_TIMEOUT_SEC)
+                log.info(f"[ready] parameters: {parameters}")
             log.info("[setup] start")
             ctx.run_actions(scenario.setup)
             ctx.run_start_time = ctx.clock.now()
@@ -90,6 +98,7 @@ class ScenarioEngine:
             elapsed_wall_sec=time.monotonic() - wall_start,
             elapsed_sim_sec=ctx.elapsed(),
             events=ctx.events.to_list(ctx.run_start_time or 0.0),
+            parameters=parameters,
         )
         self._log_result(result)
         return result

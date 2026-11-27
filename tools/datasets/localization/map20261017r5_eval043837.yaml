@@ -1,0 +1,16 @@
+# 評価セット (今の自己位置推定用の地図 map_for20261017 の領域ごとの区間) の 1 つ。
+# 走行 043837 が Region5 の地図に入っている範囲で、止まっている時点から始める。
+# 地図のディレクトリには pose_graph.json が無いため、map.slam_dir には地図とアンカーが同じ 051635 の
+# SLAM 出力を書き、真値をそのアンカーへ移す (UTM 経由。SLAM 出力の回転は使わない)。
+# 地図は切り貼りなので、場所によって真値と地図の座標が局所的にずれる。誤差の絶対値ではなく、変種どうしの比較に使う。
+name: map20261017r5_eval043837
+description: 評価セット (地図 map_for20261017 の Region5、評価 043837 の 0-396 s)
+map:
+  localization_yaml: /root/ros2_data/map_for20261017/Region5_jikoichi.yaml
+  gnss_transform: /root/ros2_data/map_for20261017/gnss_transform.yaml
+  slam_dir: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_051635/20260921_2243
+eval:
+  bag: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_043837
+  slam_dir: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_043837/20260921_2248
+  start_offset: 0.0
+  duration: 396.0

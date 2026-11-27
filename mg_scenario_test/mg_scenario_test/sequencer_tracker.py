@@ -27,10 +27,15 @@ class SequencerProgressTracker:
         self._state: Optional[str] = None
         self._index: Optional[int] = None
         self._idle_since: Optional[float] = None
+        self._paused = False
 
     @property
     def state(self) -> Optional[str]:
         return self._state
+
+    @property
+    def paused(self) -> bool:
+        return self._paused
 
     @property
     def index(self) -> Optional[int]:
@@ -39,10 +44,12 @@ class SequencerProgressTracker:
     def reset_run(self) -> None:
         self._armed = False
 
-    def update(self, state: str, index: int, now: float) -> None:
+    def update(self, state: str, index: int, now: float, paused: bool = False) -> None:
+        """paused は停止要求が出ているか。要求で IDLE に留まる間は停滞に数えない。"""
         if state in ACTIVE_STATES:
             self._armed = True
-        if state == "IDLE":
+        self._paused = paused
+        if state == "IDLE" and not paused:
             if self._state != "IDLE" or self._idle_since is None:
                 self._idle_since = now
         else:

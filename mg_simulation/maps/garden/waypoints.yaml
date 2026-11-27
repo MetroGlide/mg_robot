@@ -1,0 +1,86 @@
+# tools/scripts/make_garden_world.py で配置の YAML の route から生成
+version: '2.0'
+defaults:
+  reach_tolerance: 0.5
+  through_tolerance: 1.5
+  is_through_point: true
+waypoints:
+- index: 0
+  pose:
+    position:
+      x: 22.0
+      y: 0.0
+      z: 0.0
+    orientation:
+      x: 0.0
+      y: 0.0
+      z: 0.0
+      w: 1.0
+- index: 1
+  pose:
+    position:
+      x: 22.0
+      y: 14.0
+      z: 0.0
+    orientation:
+      x: 0.0
+      y: 0.0
+      z: 0.7071067811865475
+      w: 0.7071067811865476
+- index: 2
+  pose:
+    position:
+      x: 10.0
+      y: 14.0
+      z: 0.0
+    orientation:
+      x: 0.0
+      y: 0.0
+      z: 1.0
+      w: 6.123233995736766e-17
+- index: 3
+  pose:
+    position:
+      x: 10.0
+      y: 22.0
+      z: 0.0
+    orientation:
+      x: 0.0
+      y: 0.0
+      z: 0.7071067811865475
+      w: 0.7071067811865476
+- index: 4
+  pose:
+    position:
+      x: -4.0
+      y: 22.0
+      z: 0.0
+    orientation:
+      x: 0.0
+      y: 0.0
+      z: 1.0
+      w: 6.123233995736766e-17
+- index: 5
+  pose:
+    position:
+      x: -4.0
+      y: 2.0
+      z: 0.0
+    orientation:
+      x: 0.0
+      y: 0.0
+      z: -0.7071067811865475
+      w: 0.7071067811865476
+- index: 6
+  pose:
+    position:
+      x: -1.0
+      y: 0.0
+      z: 0.0
+    orientation:
+      x: 0.0
+      y: 0.0
+      z: -0.28978414868843005
+      w: 0.9570920264890529
+  navigation:
+    is_through_point: false

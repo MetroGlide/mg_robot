@@ -45,6 +45,16 @@ Docker のログのローテーション設定。compose の `${LOG_MAX_SIZE}` �
 | `ROSBAG_FILE` | 再生・解析する bag。`rosbag-replay`、`offline-slam-gnss-2d`、`bag-*` が使う |
 | `ROSBAG_TOPICS` | `rosbag-replay` で再生するトピック (空白区切り)。未設定なら全部。録画時の `/diagnostics`・`/diagnostics_agg`・`/events`・`/rosout` は、`/replay/` 以下に出す (いまのスタックの診断・イベントに混ざらないように) |
 
+### 自己位置推定
+
+| 変数 | 内容 |
+| :--- | :--- |
+| `LOCALIZATION_CONFIG` | 自己位置推定の構成 (`legacy` / `observe` / `supervised`)。`bringup_navigation.launch.py` の `localization_config` 引数の既定値。書かなければ `supervised`。構成ごとの中身は [localization.md](../mg_navigation/doc/localization.md#自己位置推定の構成) |
+| `LOCALIZATION_MONITOR` | 自己位置の監視ノード (`none` / `watchdog` / `supervisor`)。`localization_monitor` 引数の既定値。空なら構成の値 |
+| `LOCALIZATION_PRESET` | AMCL と EKF の params に重ねる自己位置推定のプリセット。`localization_preset` 引数の既定値。空なら構成の値、`none` なら重ねない ([localization.md](../mg_navigation/doc/localization.md#自己位置推定のプリセット)) |
+| `LOCALIZATION_PROFILE` | 自己位置監視の設定に重ねるプロファイル。`localization_profile` 引数の既定値。空なら構成の値、`none` なら基本設定 ([mg_localization_supervisor](../mg_localization_supervisor/README.md)) |
+| `LOCALIZATION_GATE` | 自己位置監視ノードの中で AMCL 検証ゲートを使うか (`true` / `false` / `observe`)。`localization_gate` 引数の既定値。空なら構成の値 ([mg_localization_supervisor](../mg_localization_supervisor/README.md#自己位置監視ノード-localization_supervisor_node)) |
+
 ### SLAM の再最適化
 
 | 変数 | 内容 |

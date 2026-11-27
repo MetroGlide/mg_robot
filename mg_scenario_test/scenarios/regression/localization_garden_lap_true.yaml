@@ -1,0 +1,40 @@
+version: "2.0"
+name: localization_garden_lap_true
+description: >
+  植栽に囲まれた garden の 1 周 (角が 6 回) を、注入なしでシーケンサで走る。2D LiDAR が植栽を見て点が不安定になり、
+  測位用の地図の植栽は点を散らした太い帯で、角の外側には植栽を切って遠くの壁や柱が見える場所がある
+  (mg_simulation/worlds/garden_layout.yaml)。AMCL が自分でずれる条件で、ずれたまま走り続けず、人の操作なしで走りきることを
+  確かめる。対照として、測位用の地図は LiDAR に映る要素をそのまま描いたもの (localization_true.yaml。散らさない)。ずれは必須にしない。自己位置推定の構成は環境変数 LOCALIZATION_PRESET で選ぶ (元の設定と robust を同じ条件で比べる)。自己位置監視あり。
+profile: mg01
+world: garden
+tags: [localization, weak, corner, garden, mg_sequencer, known_issue]
+timeout: 600
+
+record_topics: [/scan_top_lidar, /tf, /tf_static, /particle_cloud, /amcl_pose_origin, /localization/status, /odom]
+
+stack_args:
+  localization_monitor: supervisor
+  localization_gate: "false"
+  localization_profile: none
+  map_path: "pkg://mg_simulation/maps/garden/localization_true.yaml"
+
+setup:
+  - respawn: { pose: { x: 0.0, y: 0.0, yaw: 0.0 }, settle_sec: 3.0 }
+
+monitors:
+  # 暫定の基準: ずれたまま止める要求なしで走る距離、止まったままの時間、見かけの食い込み
+  - localization_outcome: { max_missed_distance_m: 3.0, max_false_hold_sec: 30.0 }
+  - max_stop_duration: { max_stop_sec: 60.0, until_goal_reached: 6 }
+  - map_overlap: { max_overlap_sec: 60.0 }
+  # 以下は診断の記録 (合否に使わない)
+  - pose_error: { deviation_m: 1.0 }
+  - localization_hold: { ends_released: false }
+
+run:
+  mg_sequencer:
+    waypoints_file: "{world.waypoints}"
+    waypoint_timeout_sec: 200.0
+
+expect:
+  - reached_all
+  - time_limit: { sec: 600 }

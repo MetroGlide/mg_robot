@@ -9,7 +9,7 @@ def test_gate_is_open_only_when_every_requester_attaches():
     arbiter.request('waypoint', False)
     assert arbiter.desired is False
     assert arbiter.holders == ['waypoint']
-    # 監督ノードが復帰させても、ウェイポイントが切っている間は開かない
+    # 自己位置監視ノードが復帰させても、ウェイポイントが切っている間は開かない
     arbiter.request('supervisor', False)
     arbiter.request('supervisor', True)
     assert arbiter.desired is False

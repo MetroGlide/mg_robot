@@ -1,0 +1,14 @@
+# map20261017r1_eval051635_win090 と同じ区間で、スキャンを SLAM 地図への光線追跡に置き換えたもの (測位は Region1)。
+# 光線追跡のスキャンが、記録でずれない所でもずれる (記録より厳しすぎる) かを見る。
+# bag は map20261017r1_eval051635_win270_selfmap_raycast と同じ引数で全区間を書き換えた (--end なし)。
+name: map20261017r1_eval051635_win090_selfmap_raycast
+description: 角の取り違えより前の区間で、SLAM 地図への光線追跡で作ったスキャン (測位は Region1、評価 051635 の 90-350 s)
+map:
+  localization_yaml: /root/ros2_data/map_for20261017/Region1_jikoichi.yaml
+  gnss_transform: /root/ros2_data/map_for20261017/gnss_transform.yaml
+  slam_dir: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_051635/20260921_2243
+eval:
+  bag: /root/ros2_data/rosbag/TC2026/20260913/derived/051635_selfmap_raycast_full
+  slam_dir: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_051635/20260921_2243
+  start_offset: 90.0
+  duration: 260.0

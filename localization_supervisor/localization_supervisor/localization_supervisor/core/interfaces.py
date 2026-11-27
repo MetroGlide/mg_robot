@@ -6,6 +6,7 @@
     pose      : 地図座標の絶対の姿勢と共分散 (PoseSample の履歴)
     motion    : 相対的な動き (MotionSample の履歴。odom->base のような、ゆっくりずれる座標での姿勢)
     reference : 地図とスキャン (ReferenceData)
+    hypotheses: 地図座標の姿勢の仮説の集合 (HypothesisSample の履歴。AMCL の粒子を分けた峰など)
   プラグイン
     Detector       : 情報源を比べて Evidence を返す
     FusionStrategy : 判定のインスタンスの Evidence を総合して FusionResult を返す
@@ -25,6 +26,7 @@ class SourceKind(str, enum.Enum):
     POSE = 'pose'
     MOTION = 'motion'
     REFERENCE = 'reference'
+    HYPOTHESES = 'hypotheses'
 
 
 @dataclass
@@ -40,6 +42,21 @@ class MotionSample:
     """動きの情報源の座標 (odom など) での姿勢。2 つの時刻の差が、その間の動きになる。"""
     stamp: float
     pose: Pose2
+
+
+@dataclass
+class Hypothesis:
+    """姿勢の仮説の 1 つ。weight は仮説の集合の中での割合 (和が 1)。cov は x, y, yaw の 3x3 の共分散。"""
+    weight: float
+    pose: Pose2
+    cov: np.ndarray
+
+
+@dataclass
+class HypothesisSample:
+    """ある時刻の、姿勢の仮説の集合 (重みの大きい順)。"""
+    stamp: float
+    hypotheses: List[Hypothesis]
 
 
 @dataclass
@@ -122,15 +139,15 @@ class SourcedPlugin(Plugin):
 class Detector(SourcedPlugin):
     """判定。比べる情報源は、引数の名前 (SOURCES のキー) で受け取る。
 
-    SUBJECTS : 異常のとき、疑いをかける引数 (情報源の切り分けに使う)。既定は reference 以外のすべて
+    SUBJECTS : 異常のとき、疑義をかける引数 (情報源の切り分けに使う)。既定は pose と motion のすべて
     """
     SUBJECTS: Optional[Sequence[str]] = None
 
     def subjects(self) -> List[str]:
-        """疑いをかける情報源の名前。"""
+        """疑義をかける情報源の名前。"""
         args = self.SUBJECTS
         if args is None:
-            args = [arg for arg, kind in self.SOURCES.items() if kind != SourceKind.REFERENCE]
+            args = [arg for arg, kind in self.SOURCES.items() if kind in (SourceKind.POSE, SourceKind.MOTION)]
         return [self.sources[arg] for arg in args]
 
     def evaluate(self, snapshot: 'SnapshotLike') -> Evidence:
@@ -151,7 +168,7 @@ class InstanceInfo:
     decay: float = 1.0
     max_score: float = 5.0
     options: Dict[str, Any] = field(default_factory=dict)
-    # 正常と判定できたとき、正しいと示す情報源 (切り分けで、2 つの情報源を比べた判定の疑いを、もう一方に寄せる)
+    # 正常と判定できたとき、正しいと示す情報源 (切り分けで、2 つの情報源を比べた判定の疑義を、もう一方に寄せる)
     vouches: List[str] = field(default_factory=list)
 
 
@@ -160,9 +177,9 @@ class FusionResult:
     """総合の結果。
 
     level       : 総合の強さ (方式ごとの単位)
-    suspect     : 疑いの段階に達した
+    suspect     : 疑義の段階に達した
     confirmed   : 異常を確認した
-    cleared     : 異常がなくなった (疑い・異常から正常に戻ってよい)
+    cleared     : 異常がなくなった (疑義・異常から正常に戻ってよい)
     anomaly     : その周期に異常と判定したインスタンスがある
     blame       : 疑わしい独立の情報源の名前。決めきれなければ 'unknown'、異常がなければ ''
     contaminated: 汚れていると見なす、融合の結果の情報源
@@ -246,7 +263,7 @@ class RecoveryContext:
 
     snapshot     : 今の周期の Snapshot
     anchors      : アンカー (信頼できた時点の姿勢と動き)
-    suspect_since: 疑いが始まった時刻 (分からなければ None)
+    suspect_since: 疑義が始まった時刻 (分からなければ None)
     scans        : 動きとともに残したスキャン (ScanBuffer。設定がなければ None)
     safety       : 安全の信号の設定 (SafetyConfig。なければ None)
     matcher      : 照合
@@ -295,6 +312,12 @@ class SnapshotLike:
         raise NotImplementedError
 
     def motion_at(self, name: str, stamp: float) -> Optional[Pose2]:
+        raise NotImplementedError
+
+    def hypotheses(self, name: str, max_age: Optional[float] = None) -> Optional[HypothesisSample]:
+        raise NotImplementedError
+
+    def align(self, sample: PoseSample, stamp: Optional[float] = None) -> Optional[PoseSample]:
         raise NotImplementedError
 
     def reference(self, name: str) -> Any:

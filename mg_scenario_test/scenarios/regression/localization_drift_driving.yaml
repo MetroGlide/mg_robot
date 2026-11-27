@@ -1,0 +1,54 @@
+version: "2.0"
+name: localization_drift_driving
+description: >
+  棚の列に沿った通路をシーケンサで走っている間に、自己位置推定を横へ少しずつずらす (推定器が誤った姿勢へ
+  引きずられる状況の再現。真の位置は動かさない)。AMCL と EKF がそろってずれ、正しい GNSS だけが食い違う。
+  ずれたまま長く走らず、自己位置監視が AMCL を疑って戻し、ゴールへ着くことを確かめる。
+  到達の判定はシミュレータ上の真の位置で行う。ずらす注入は /initialpose を使うので、自己位置監視はプロファイル
+  fault_injection (localization_test_profile で、環境変数で選ぶプロファイルの後に重ねる) で /initialpose を外からの
+  再初期化として扱わない。自己位置推定はプリセット robust。
+  通路に入る前に開けた場所を走り、自己位置監視の準備 (GNSS による初期化と猶予) ができて通路に入ってから注入する。
+profile: mg01
+world: warehouse
+tags: [localization, drift, mg_sequencer, known_issue]
+timeout: 300
+
+stack_args:
+  waypoints_load_path: "pkg://mg_scenario_test/scenarios/data/drift_aisle_waypoints.yaml"
+  localization_monitor: supervisor
+  localization_gate: "false"
+  localization_profile: none
+  localization_preset: robust
+  localization_test_profile: fault_injection
+
+setup:
+  - respawn: { pose: { x: -4.0, y: 3.0, yaw: 3.1416 }, settle_sec: 3.0 }
+
+monitors:
+  # 暫定の基準: ずれたまま止める要求なしで走る距離、止まったままの時間、見かけの食い込み
+  - localization_outcome: { max_missed_distance_m: 3.0, max_false_hold_sec: 30.0, require_deviation: true }
+  - max_stop_duration: { max_stop_sec: 60.0, until_goal_reached: 2 }
+  - map_overlap: { max_overlap_sec: 60.0 }
+  # 以下は診断の記録 (合否に使わない)
+  - pose_error: { deviation_m: 1.0 }
+  - localization_hold: { ends_released: false }
+
+run:
+  mg_sequencer:
+    waypoints_file: "pkg://mg_scenario_test/scenarios/data/drift_aisle_waypoints.yaml"
+    waypoint_timeout_sec: 200.0
+
+timeline:
+  - name: drift
+    when:
+      all_of:
+        triggers:
+          - localization_ready: { checks: [amcl_gnss] }
+          - robot_near: { x: -3.0, y: 6.5, radius: 1.5 }
+    do:
+      - localization_drift: { rate: { y: 0.15 }, duration_sec: 12.0 }
+
+expect:
+  - reached_all
+  - time_limit: { sec: 300 }
+  - final_pose_error: { x: 11.0, y: 6.5, tolerance: 0.5, frame: world }

@@ -27,7 +27,7 @@ MG-01 のノードとデータの流れ、座標系 (TF)、センサの取り付
                        mmi_switch_node ◄── MMI (操作盤のスイッチ・LED・ブザー)
 ```
 
-- 自己位置推定の詳細 (AMCL・GNSS・EKF の融合、AMCL の入/切の調停、監督ノード) は [mg_navigation の README](../mg_navigation/README.md) を参照。
+- 自己位置推定の詳細 (AMCL・GNSS・EKF の融合、AMCL の入/切の調停、自己位置監視ノード) は [mg_navigation の README](../mg_navigation/README.md) を参照。
 - `/cmd_vel` は、Nav2 の controller が出した `cmd_vel_nav` を `collision_monitor`、`velocity_smoother` の順に通して作る (`mg_navigation/launch/navigation_launch.py`)。
 - 地図作成 (SLAM) は走行とは別のスタックで行う。センサは同じドライバを使い、`slam_gnss_2d` が地図と `gnss_transform.yaml` を作る ([slam_gnss_2d](../slam_gnss_2d/README.md))。
 

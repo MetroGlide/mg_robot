@@ -1,0 +1,5 @@
+# LiDAR が止まり、起動し直しても戻らない (スキャンを出さない)。基準の GNSS に、trigger lost の後はスキャンを止める。
+faults:
+  - {type: gnss_noise, start: 0.0, end: 100000.0, sigma: 0.3, tau: 30.0}
+  - {type: gnss_accuracy, start: 0.0, end: 100000.0, std_m: 0.5}
+  - {type: scan_halt, trigger: lost}

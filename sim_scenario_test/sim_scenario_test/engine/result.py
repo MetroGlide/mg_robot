@@ -43,6 +43,8 @@ class ScenarioResult:
     elapsed_wall_sec: float = 0.0
     elapsed_sim_sec: float = 0.0
     events: List[Dict[str, Any]] = field(default_factory=list)
+    # 実行時に取得したノードのパラメータ (プロファイルの record_parameters)
+    parameters: Dict[str, Any] = field(default_factory=dict)
 
     @property
     def success(self) -> bool:
@@ -65,6 +67,7 @@ class ScenarioResult:
                 for c in self.checks
             ],
             "events": self.events,
+            "parameters": self.parameters,
         }
 
 

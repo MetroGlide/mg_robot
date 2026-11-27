@@ -1,0 +1,51 @@
+version: "2.0"
+name: anomaly_gnss_building_weak
+description: >
+  異常パターン 7 の、AMCL が弱っている区間と重なる場合。anomaly_gnss_building と同じ区間で GNSS をずらし、
+  同時に人混みを入れる (横に人が並んで歩き、スキャンの多くが地図にない近い点になる。人は経路をふさがない)。
+  GNSS による再初期化が誤った GNSS と重なると、推定位置が棚に重なり、経路を作れなくなる。対照は anomaly_baseline。
+  構成は LOCALIZATION_CONFIG で選ぶ。
+profile: mg01
+world: warehouse
+tags: [localization, anomaly, mg_sequencer, known_issue]
+timeout: 600
+
+record_topics: [/sim_scenario_test/entity_poses, /amcl_pose_origin, /odom/gps, /ekf_global_odom, /odom, /localization/status, /cmd_vel, /initialpose, /rosout]
+
+sim_args:
+  sensor_fault_file: "pkg://mg_scenario_test/scenarios/data/faults/anomaly_gnss_building_weak.yaml"
+
+stack_args:
+  map_path: "pkg://mg_scenario_test/scenarios/data/map_realistic/localization.yaml"
+
+setup:
+  - respawn: { pose: { x: 0.0, y: 0.0, yaw: 0.0 }, settle_sec: 3.0 }
+
+monitors:
+  # 合否の上限は置かず、構成どうしの比較のために値を残す
+  - pose_error: { deviation_m: 1.0 }
+  # 合否に使わない記録: ずれたまま止める要求も減速もなく走った距離、減速した時間
+  - localization_outcome: {}
+  - max_stop_duration: { max_stop_sec: 60.0, from_goal_started: 2, until_goal_reached: 8 }
+  - map_overlap: { max_overlap_sec: 60.0 }
+  - localization_hold: { ends_released: false }
+
+run:
+  mg_sequencer:
+    waypoints_file: "{world.waypoints}"
+    waypoint_timeout_sec: 200.0
+
+timeline:
+  - name: building_on
+    when: { robot_near: { x: 10.0, y: -8.0, radius: 1.5, pose_source: sim } }
+    do:
+      - call_set_bool: { service: /fault_injector/trigger/building, value: true }
+  - name: building_off
+    when: { robot_near: { x: 9.0, y: -21.0, radius: 1.5, pose_source: sim } }
+    required: false
+    do:
+      - call_set_bool: { service: /fault_injector/trigger/building, value: false }
+
+expect:
+  - reached_all
+  - time_limit: { sec: 600 }

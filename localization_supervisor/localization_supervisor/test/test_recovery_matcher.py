@@ -64,3 +64,31 @@ def test_window_size_follows_covariance_within_limits():
     assert window_size(cov, 3.0, 0.5, 10.0) == pytest.approx((1.5, 0.3))
     assert window_size(cov, 3.0, 2.0, 10.0)[0] == 2.0
     assert window_size(cov, 30.0, 0.5, 10.0)[0] == 10.0
+
+
+def test_points_outside_the_field_count_as_misses_when_asked():
+    points = np.vstack([_points(), _points()[:50] + np.array([100.0, 100.0])])
+    window = SearchWindow(0.0, 0.0)
+    kept = _matcher().match(_field(), points, TRUTH, window)[0]
+    missed = _matcher(outside_is_miss=True).match(_field(), points, TRUTH, window)[0]
+    assert kept.ratio > 0.95
+    assert missed.ratio == pytest.approx(kept.ratio * (points.shape[0] - 50) / points.shape[0])
+
+
+def test_a_wide_coarse_tolerance_keeps_a_narrow_peak_and_scores_with_the_fine_tolerance():
+    # 粗い向きの刻みが大きく、細かい許容距離では本当の姿勢の近くの粗い格子も一致率が低い
+    window = SearchWindow(1.0, 0.5, math.pi, 0.3)
+    center = (1.3, 1.8, 0.0)
+    missed = _matcher(tolerance_m=0.05).match(_field(), _points(), center, window)[0]
+    assert math.hypot(missed.pose[0] - TRUTH[0], missed.pose[1] - TRUTH[1]) > 0.3
+    params = dict(tolerance_m=0.05, coarse_tolerance_m=0.4, coarse_candidates=8, separation_m=1.0)
+    peaks = _matcher(**params).match(_field(), _points(), center, window, max_peaks=2)
+    best = peaks[0]
+    assert math.hypot(best.pose[0] - TRUTH[0], best.pose[1] - TRUTH[1]) < 0.15
+    assert abs(math.remainder(best.pose[2] - TRUTH[2], 2 * math.pi)) < 0.06
+    fine = _matcher(tolerance_m=0.05).match(_field(), _points(), best.pose, SearchWindow(0.0, 0.0))[0]
+    assert best.ratio == pytest.approx(fine.ratio)
+    assert len(peaks) == 2
+    a, b = peaks
+    assert (math.hypot(a.pose[0] - b.pose[0], a.pose[1] - b.pose[1]) >= 1.0
+            or abs(math.remainder(a.pose[2] - b.pose[2], 2 * math.pi)) >= 0.5)

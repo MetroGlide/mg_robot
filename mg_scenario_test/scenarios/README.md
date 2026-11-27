@@ -39,8 +39,22 @@ scenarios/
 | `dynamic_recovery_resume` | 壁で囲い込んでリカバリーに入れ、待機の段階で壁を除くと、`IsPathClear` が待機を中断して 3 秒以内に走り出し、到達する |
 | `full_lap_sequencer` | シミュレーション用 waypoint 9 個 (通過点と wait_trigger の停止点) を 1 周する |
 | `localization_gnss_denied` | 走行中に GNSS の配信を止めても (ブリッジの `change_publish_state`)、AMCL とホイールオドメトリだけでゴールへ到達し、停止位置の誤差が 0.5m 以内 |
-| `localization_kidnap_recovery` | 1 つ目のゴールに着いたあとロボットを別の場所へ移して (`teleport`。自己位置推定には通知しない) 止まったまま待つと、自己位置の監督が異常を確認して AMCL と EKF を初期化し直し (状態が `RECOVERING` を経て `NORMAL` に戻る。`localization_state`)、2 つ目のゴールへ到達する。到達はシミュレータ上の真の位置で判定する。監視は監督 (`localization_monitor: supervisor`。既定)。停止中の AMCL は更新されない(静止中は AMCL との比較が判定できない)ので、検知は走り出した後になる。所要は約 2.5 分 |
-| `keepout_escape` | 計画用地図にだけある進入禁止の領域 (`data/keepout/planning.yaml`。ウェアハウスの計画用地図の原点の周りの 2m 四方を進入禁止にしたもので、`tools/scripts/add_keepout_to_map.py` で作る。実際の世界には何もない) の中でスタートしても、自己位置が信頼できる (監督の状態が `NORMAL`) ので、BT のリカバリーの `EscapeKeepout` が領域の外の最も近い位置を始点に計画して領域から出て (`FindFreeStart` が SUCCESS)、ゴールへ到達する。監督が起動して状態を配信するまでは待つ。この段階が無いと、プランナが「始点が致死」で計画できず動けない |
+| `localization_kidnap_recovery` | 1 つ目のゴールに着いたあとロボットを別の場所へ移して (`teleport`。自己位置推定には通知しない) 止まったまま待つと、自己位置監視が異常を確認して AMCL と EKF を初期化し直し (状態が `RECOVERING` を経て `NORMAL` に戻る。`localization_state`)、2 つ目のゴールへ到達する。到達はシミュレータ上の真の位置で判定する。監視は自己位置監視 (`localization_monitor: supervisor`。既定)。停止中の AMCL は更新されない(静止中は AMCL との比較が判定できない)ので、検知は走り出した後になる。所要は約 2.5 分 |
+| `localization_drift_driving` | 棚の列に沿った通路をシーケンサで走っている間に、自己位置推定を横へ少しずつずらしても (`localization_drift`。真の位置は動かさない)、ずれたまま長く走らず (`pose_error` の `max_deviated_distance_m`・`max_deviated_sec`)、自己位置監視が AMCL を疑って戻し (`localization_state` の `blame`)、ゴールへ到達する。到達はシミュレータ上の真の位置で判定する。通路の前に開けた場所を走り、自己位置監視の準備 (GNSS による初期化と猶予。`localization_ready`) ができて通路に入ってから (`all_of`) 注入する。自己位置監視はプロファイル `fault_injection` (`localization_test_profile`)、自己位置推定はプリセット `robust`。`known_issue` (下記) |
+| `localization_corner_drift` | warehouse を 1 周する経路の複数の角で、自己位置推定の向きを少しずつずらしても (`localization_drift`)、ずれたまま走り続けず (`localization_outcome`)、止まったままにならず (`max_stop_duration`、`map_overlap`)、最後まで走りきる。注入は状態遷移と復旧の回帰。`known_issue` (下記) |
+| `localization_corner_odom` | warehouse 1 周で、旋回中だけオドメトリの回転を大きく出す (`sim_args` の `sensor_fault_file`)。AMCL が自分で角の回りすぎを起こす条件で走りきる。`known_issue` (下記) |
+| `localization_corner_weak` | `localization_corner_odom` に、旋回中のスキャンの間引きと距離の制限を加える。`known_issue` (下記) |
+| `localization_map_shift` | 測位用の地図だけ東側の棚と壁をずらし、推定の footprint が計画用地図の棚にかかる見かけの食い込みを起こす (`map_overlap`)。そこから戻って走りきる。`known_issue` (下記) |
+| `localization_garden_lap` | 植栽に囲まれた garden の 1 周 (角 6 回) を注入なしで走る。LiDAR の点が植栽で不安定で、測位用の地図の植栽は点を散らした太い帯。AMCL が自分でずれる条件で走りきる。葉の揺れはスキャンの注入 (`scan_jitter`) で模す。`_thick` は帯をさらに太くした段階、`_true` は散らさず揺れもない対照 (ずれを必須にしない)。構成は環境変数 `LOCALIZATION_PRESET` で選ぶ。走行は bag に記録する (`record_topics`)。`known_issue` (下記) |
+| `anomaly_baseline`、`anomaly_gnss_building`、`anomaly_gnss_building_weak`、`anomaly_gnss_field`、`anomaly_gnss_field_weak`、`anomaly_gnss_roof_exit`、`anomaly_odom_slip`、`anomaly_map_mismatch` | 想定する異常パターン ([localization_failure_ledger.md](../../mg_navigation/doc/localization_failure_ledger.md)) を、warehouse の 1 周に入力の故障として入れる。比べる構成を `LOCALIZATION_CONFIG` で選び、同じシナリオを回して比べる (`make scenario-test-all TAGS=anomaly KNOWN=1 LOCALIZATION_CONFIG=legacy`)。合否の上限は置かず、真値との差・止まった時間・見かけの食い込み・到達を値として残す。`anomaly_baseline` は基準の GNSS (雑音と申告の精度) だけの対照。`anomaly_gnss_field` は場所で向きと大きさが変わる GNSS のずれ (`gnss_bias_field`)。AMCL が弱る区間は、現実の弱り方で作る: 人混み (`scan_occlude`。横に人が並び、スキャンの多くが地図にない近い点になる。経路はふさがない) は `_building_weak`、横の壁しか見えない長い通路に人がいる (`scan_keep` と `scan_occlude`) は `_field_weak` と `_roof_exit`、届く距離の短縮 (`scan_range`。窓の汚れや雨) は `_transform_weak`。測位用の地図は、実機の地図に近い線幅に太らせたもの (`data/map_realistic`。`tools/scripts/degrade_localization_map.py --thicken` で作る) を使う。調整に使うシナリオの強さは、current が毎回失敗する最も弱い段にする。何も見えない状況は自己位置の復旧の対象にせず、`anomaly_lidar_blind` で別に扱う。場所で入れる故障は、真の位置 (`robot_near` の `pose_source: sim`) で故障注入ノードの trigger を入れ切りする。走行は bag に記録し (`record_topics`)、`make scenario-plot` で図にする。`known_issue` (下記) |
+| `anomaly_gnss_transform`、`anomaly_gnss_transform_weak`、`anomaly_gnss_building_west_weak` | タグ `anomaly_holdout`。上の `anomaly` と同じ異常パターンを、場所・向き・大きさ・ずれの形を変えて入れる。対策の調整には使わず、調整した結果がこれでも成り立つかを確かめる (`TAGS=anomaly,anomaly_holdout`)。`anomaly_gnss_transform` は全区間で一律の変換のずれ。`known_issue` (下記) |
+| `anomaly_start_away`、`anomaly_start_initialpose` | タグ `anomaly`。起動の 2 つの流れで、ずれた GNSS (変換の一律のずれ) のもとで初期姿勢が決まるかを見る。`_away` は既定の流れで、スタート地点から離れた所で向きも違えて起動し (`sim_args` の `spawn_*`)、初期姿勢を与えない。`_initialpose` はスタート地点の近くで起動し直す流れで、真の姿勢からずらした初期姿勢をオペレータが与える。`known_issue` (下記) |
+| `anomaly_lidar_blind` | タグ `anomaly_sensor`。LiDAR が何も返さない故障 (窓の汚れ・濃い霧) を、西の通路で 20 s 入れる。障害物も見えないので、その間は走らずに止まり、診断に出すのが期待する動作。スキャンの中身が空であることを判定する仕組みがまだないので、記録だけにする (`TAGS=anomaly_sensor`)。`known_issue` (下記) |
+| `anomaly_lidar_lost` | タグ `anomaly_sensor`。LiDAR が止まり戻らない故障 (`scan_halt`。スキャンが届かない) を、西の通路から最後まで入れる。センサ構成を LiDAR なしにして、collision_monitor の scan の途絶による停止を外し、深度の障害物と構成の速度の上限で走りきるのが期待する動作 (`mg_localization_supervisor` の `sensor_sets` と対処 `sensor_set`)。シミュレーションにはセンサの途絶の見張りがないので、その一時停止の引き継ぎは試さない |
+| `anomaly_lidar_lost_gnss_weak`、`anomaly_lidar_lost_gnss_biased` | タグ `anomaly_sensor`。`anomaly_lidar_lost` を GNSS が弱い区間で起こす組み合わせ。LiDAR なしの構成では自己位置がほぼオドメトリと GNSS だけになるので、ずれたまま走る距離を見る。`_weak` は屋根の下のように GNSS の申告の精度と雑音を最後まで悪くし、`_biased` は建物の近くのマルチパスのように、精度を過大に申告したまま西の通路の間だけずらす。シミュのオドメトリは誤差がないので、どちらも実機の補正の後に残る程度の旋回の誤差 (`odom_scale` の回転) を足す。LiDAR がないときは精度を追わないので、ずれの上限は置かず、走りを続けたかは、既定の `reached_all` が走行の終わりの推定と真の位置の差で見る。`_biased` は、EKF が GNSS のずれに引かれて棚に当たって止まり、推定だけが走りきる既知の問題、`_weak` は、EKF の向きが雑音の大きい GNSS の位置に引かれ、走り続けてもゴールに着けない回がある既知の問題 (どちらも `known_issue`) |
+| `localization_drift_stuck` | 棚の手前でシーケンサが止まっている間に、自己位置推定を棚の中へ少しずつずらしても、止まったままにならず、次のゴールへ到達する。止まっていると AMCL も GNSS も更新されず、推定の footprint が地図の棚にかかって経路を作れなくなる状況。自己位置監視の準備は走行中に待つ (`wait_for`)。自己位置監視・プリセットは `localization_drift_driving` と同じ。`known_issue` (下記) |
+| `gate_drift_driving`、`gate_jump_driving` | 自己位置監視ノードの中の AMCL 検証ゲート (`localization_gate: "true"`、自己位置監視のプロファイル `notify_only`) の戻し方を、走りへの影響で確かめる。`localization_drift_driving` と同じ通路を走る間に、AMCL を少しずつずらす (`_drift`。AMCL 検証ゲートが閉じる前に EKF がずれを取り込み、戻すのは大きい補正になる) か、1 回だけ飛ばす (`_jump`。`localization_spread` の広がりを小さくしたもの。AMCL 検証ゲートがすぐ閉じ、戻すのは小さい補正になる)。合否は、ずれたまま止める要求なしで走った距離 (`localization_outcome`)・止まったままの時間・到達。戻し方 (その場で補正する / 止まってから補正する / 大きさで分ける) は、自己位置監視の設定の `gate.settings` (`small_correction_m`・`small_correction_rad`) を変えた設定ファイルを `supervisor_config` で渡して比べ、`make scenario-plot` で、姿勢補正の直後の速度の指令の回転の急な変化を見る |
+| `keepout_escape` | 計画用地図にだけある進入禁止の領域 (`data/keepout/planning.yaml`。ウェアハウスの計画用地図の原点の周りの 2m 四方を進入禁止にしたもので、`tools/scripts/add_keepout_to_map.py` で作る。実際の世界には何もない) の中でスタートしても、自己位置が信頼できる (自己位置監視の状態が `NORMAL`) ので、BT のリカバリーの `EscapeKeepout` が領域の外の最も近い位置を始点に計画して領域から出て (`FindFreeStart` が SUCCESS)、ゴールへ到達する。自己位置監視が起動して状態を配信するまでは待つ。この段階が無いと、プランナが「始点が致死」で計画できず動けない |
 | `narrow_corridor_blocked` | 通れない幅 (0.5m) の狭い回廊へ経路を引かず、壁の外側を迂回して到達する。壁に接触しない (`obstacle_clearance`) |
 | `long_detour_rejected` | 計画用地図にだけある南北の長い壁 (`data/detour_wall/planning.yaml`。ウェアハウスの計画用地図の x=2〜3 を南端から北の棚の帯まで進入禁止にし、y=-1.25〜1.25 だけ通路として開けたもので、`tools/scripts/add_keepout_to_map.py` で作る) の通路を箱で塞ぐと、建物の反対側を回る約 50m の迂回路を `CommitPath` の遠回りの上限で棄却し、乗らずに待つ (「いまの活動」に `detour_rejected` が出る)。最初の引き直しで迂回路に乗らなかったあと、リカバリーを首振りまで何周かくり返すのを待ってから箱を除くと、通路を通って到達する。棄却した迂回路も planner_server が `/plan` に配信する (RViz の `Plan Candidate` で見える。Web UI と RViz の `Path` は採用した経路 `/navigation/committed_path` を出すので、迂回路は出ない)。計画用地図を `stack_args` で差し替えるので attach では使えない。物理的な壁だけではセンサで見えた範囲しか地図に載らず、経路が少しずつ延びるだけで棄却まで至らないため、壁は計画用地図に置く |
 | `dynamic_avoid` | 横切る歩行者 (0.6m/s) に、ロボット自身の動きで接触せず (`obstacle_clearance`) 到達する |
@@ -59,7 +73,13 @@ scenarios/
 
 ## 既知の問題
 
-`known_issue` タグ付きのシナリオは、現在ありません。
+`known_issue` タグ付きのシナリオ:
+
+- **`localization_garden_lap`、`localization_garden_lap_thick`、`localization_corner_odom`、`localization_corner_weak`、`localization_map_shift`、`localization_corner_drift`、`localization_drift_driving`、`localization_drift_stuck`**: 自己位置推定のロバスト化 ([localization_robustness.md](../../mg_navigation/doc/localization_robustness.md)) で、今の自己位置監視では戻せない失敗を再現する。対策ができたら、タグを外す。
+  - 走行中のずれ: AMCL と EKF がそろってずれ、正しい GNSS だけが食い違うので、自己位置監視は GNSS を疑って除外、推定はずれたまま走り続ける (例: 7 m)。
+  - 止まっている間のずれ: AMCL も GNSS も新しい値を出さないので、自己位置監視は判定の材料がなく疑わない。経路を作れずにナビゲーションが失敗する。
+- **`gate_drift_driving`**: 注入が現実の AMCL の弱り方と違う。毎秒の `/initialpose` で AMCL の分布を絞り直すので、AMCL は進む向きにも強い自信を申告したまま、オドメトリに逆らって流れる (現実の通路では、進む向きの分布が伸びる)。AMCL 検証ゲートのノードは、地図が進む向きに似た形の続く通路で 1 m 未満のずれを照合で見分けられず、推定器をそのまま採る (設計どおり)。その後のずれは GNSS との食い違いの遮断条件の閾値に届く前にゴールに着き、EKF は自信の強い AMCL と離れた GNSS を棄却して (`odom0_pose_rejection_threshold`)、ずれたまま走る。
+- **`anomaly_*`** (タグ `anomaly`・`anomaly_holdout`・`anomaly_sensor`): 構成の比較に使う測定で、合否の回帰ではない。通常の回帰から外すために付けている。
 
 このほか、シナリオにできなかった (または挙動が不安定で見送った) 項目:
 
@@ -78,7 +98,7 @@ scenarios/
   通れない幅の回廊 (`narrow_corridor_blocked`) は、迂回して到達できる。
 - **走行の途中・終了後に遠くへ再び respawn**: AMCL の watchdog / GNSS 初期化ノードが `/initialpose` を上書きして位置が狂う。
   原点以外への respawn も、開始時に収束しないことがある (地図の特徴が少ない)。GNSS 関連は範囲外。
-- **飛び出した人の前で止まる余裕が小さい (`dynamic_stop_and_resume` がまれに失敗する)**: 人 (`obstacle_clearance` では半径の円) と止まった
+- **飛び出した人の前で止まる余裕距離が小さい (`dynamic_stop_and_resume` がまれに失敗する)**: 人 (`obstacle_clearance` では半径の円) と止まった
   ロボットとの距離は数 cm〜十数 cm しかなく、まれに 0 になって失敗する。シミュレータの真の姿勢で測っても同じなので、自己位置の誤差ではない。
   人を出してから止まるまでに進む距離 (teleport の反映の遅れ、制動距離、scan と制御の遅れ) が巡航速度で決まり、反映の遅れが回ごとにばらつく。
   巡航速度 (`nav2_params.yaml` のアンカー `&v_max`) を下げれば余裕が増える。実機で止まる余裕を確かめてから決める

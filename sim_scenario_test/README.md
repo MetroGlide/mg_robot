@@ -87,7 +87,7 @@ ros2 run sim_scenario_test scenario_cli.py run-all scenarios/ --tags smoke  # �
 
 ## 結果
 
-`<results-dir>/<シナリオ名>/` に `result.json` (チェックごとの結果とイベント)、`launch.log`、
+`<results-dir>/<シナリオ名>/` に `result.json` (チェックごとの結果とイベント、プロファイルの `record_parameters` で取得したパラメータ)、`launch.log`、
 ルートに `junit.xml` を保存します。`FAILED` は「ロボットが期待どおりに動かなかった」、
 `ERROR` は「テスト基盤・セットアップの失敗 (起動しない、障害物が生成されない、シミュレータが止まった等)」を意味します。
 

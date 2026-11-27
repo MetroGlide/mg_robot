@@ -1,0 +1,14 @@
+# 評価セット focus_short の 1 つ。map20261017r5_eval043837 の区間のうち、GNSS が強いのに EKF が AMCL に引っ張られる事象 (元の区間の 345 s ごろ)の前後だけの短い区間。
+# 設定を反復して比べるときに再生の時間を短くする用。関門の判定は元の区間で行う。
+# 区間の途中から始めるので、初期姿勢は真値から与える (区間の始まりで真値が有効で、動いている時点)。
+name: map20261017r5_eval043837_win270
+description: 反復用の短い区間 (地図 map_for20261017 の Region5、評価 043837 の 270-396 s)
+map:
+  localization_yaml: /root/ros2_data/map_for20261017/Region5_jikoichi.yaml
+  gnss_transform: /root/ros2_data/map_for20261017/gnss_transform.yaml
+  slam_dir: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_051635/20260921_2243
+eval:
+  bag: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_043837
+  slam_dir: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_043837/20260921_2248
+  start_offset: 270.0
+  duration: 126.0

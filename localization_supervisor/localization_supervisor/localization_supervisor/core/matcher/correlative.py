@@ -25,6 +25,12 @@ class CorrelativeMatcher(Matcher):
         'min_points': ParamSpec(int, 30, '距離場の中にある点がこれ未満なら判断しない'),
         'separation_m': ParamSpec(float, 1.0, '上位の候補どうしが離れているべき距離'),
         'refine_ratio': ParamSpec(int, 4, '絞り込みで格子の刻みを何分の 1 にするか'),
+        # 粗い格子では、本当の姿勢から刻みの半分ずれる。遠い点ほど大きくずれるので、細かい許容距離では
+        # 本当の姿勢の山を取りこぼす。粗い格子だけ許容距離を広げ、候補を多めに拾って絞り込む
+        'coarse_tolerance_m': ParamSpec(float, 0.0, '粗い格子での一致の距離 (0 なら tolerance_m)'),
+        'coarse_candidates': ParamSpec(int, 0, '絞り込む粗い候補の数 (0 なら max_peaks)'),
+        # 点を距離場の外へ追い出す姿勢は、残った少ない点だけで一致率が高く見える
+        'outside_is_miss': ParamSpec(bool, False, '距離場の外の点を不一致に数える'),
     }
 
     def match(
@@ -35,18 +41,23 @@ class CorrelativeMatcher(Matcher):
         if points_base.shape[0] < p['min_points']:
             return []
         coarse = self._grid(center, window.range_xy_m, window.step_xy_m, window.range_yaw_rad, window.step_yaw_rad)
-        scored = self._evaluate(field, points_base, coarse)
-        peaks = self._separate(scored, max_peaks)
+        coarse_tolerance = p['coarse_tolerance_m'] or p['tolerance_m']
+        scored = self._evaluate(field, points_base, coarse, coarse_tolerance)
+        peaks = self._separate(scored, p['coarse_candidates'] or max_peaks)
         refined: List[MatchPeak] = []
         for peak in peaks:
             fine_step = window.step_xy_m / p['refine_ratio']
             fine_yaw = window.step_yaw_rad / p['refine_ratio']
             yaw_range = window.step_yaw_rad / 2.0 if window.range_yaw_rad > 0 else 0.0
             grid = self._grid(peak.pose, window.step_xy_m / 2.0, fine_step, yaw_range, fine_yaw)
-            best = self._evaluate(field, points_base, grid)
-            refined.append(best[0] if best else peak)
+            best = self._evaluate(field, points_base, grid, p['tolerance_m'])
+            if best:
+                refined.append(best[0])
+            elif coarse_tolerance == p['tolerance_m']:
+                refined.append(peak)
         refined.sort(key=lambda q: (-q.ratio, q.mean_distance))
-        return refined
+        # 多めに拾った候補は、絞り込みで同じ姿勢へ寄ることがある
+        return self._separate(refined, max_peaks) if p['coarse_candidates'] else refined
 
     @staticmethod
     def _grid(center: Pose2, range_xy: float, step_xy: float, range_yaw: float, step_yaw: float) -> np.ndarray:
@@ -57,10 +68,13 @@ class CorrelativeMatcher(Matcher):
         poses = np.stack([gx.ravel() + center[0], gy.ravel() + center[1], gt.ravel() + center[2]], axis=1)
         return poses
 
-    def _evaluate(self, field: LocalDistanceField, points_base: np.ndarray, poses: np.ndarray) -> List[MatchPeak]:
+    def _evaluate(
+        self, field: LocalDistanceField, points_base: np.ndarray, poses: np.ndarray, tolerance: float,
+    ) -> List[MatchPeak]:
         """姿勢ごとの一致率。一致率の高い順 (同じなら距離の平均の小さい順)。判断できない姿勢は除く。"""
         p = self.params
-        tolerance, min_points = p['tolerance_m'], p['min_points']
+        min_points = p['min_points']
+        total_points = points_base.shape[0]
         results: List[MatchPeak] = []
         for start in range(0, poses.shape[0], CHUNK):
             chunk = poses[start:start + CHUNK]
@@ -73,10 +87,11 @@ class CorrelativeMatcher(Matcher):
             count = valid.sum(axis=1)
             near = ((distances <= tolerance) & valid).sum(axis=1)
             total = np.where(valid, distances, 0.0).sum(axis=1)
+            denominator = np.full(count.shape, total_points) if p['outside_is_miss'] else count
             for i in np.nonzero(count >= min_points)[0]:
                 results.append(MatchPeak(
                     (float(chunk[i, 0]), float(chunk[i, 1]), wrap_angle(float(chunk[i, 2]))),
-                    float(near[i] / count[i]), float(total[i] / count[i])))
+                    float(near[i] / denominator[i]), float(total[i] / count[i])))
         results.sort(key=lambda q: (-q.ratio, q.mean_distance))
         return results
 

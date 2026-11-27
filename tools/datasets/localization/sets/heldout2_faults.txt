@@ -1,0 +1,7 @@
+# 2 つ目の調整に使わない故障の組 (heldout_faults を原因の調べに使った後、直した規則を確かめる)。
+# 1 行に 1 条件: <ラベル> <データセット> [run_localization_variant.sh の引数 ...]
+kidnap map043837_eval051635_short --faults tools/datasets/localization/faults/heldout2_kidnap.yaml
+kidnap_yaw map043837_eval051635_short --faults tools/datasets/localization/faults/heldout2_kidnap_yaw.yaml
+drift map043837_eval051635_short --faults tools/datasets/localization/faults/heldout2_drift.yaml
+drift_gnss_bias map043837_eval051635_short --faults tools/datasets/localization/faults/heldout2_drift_gnss_bias.yaml
+kidnap_gnss_drop map043837_eval051635_short --faults tools/datasets/localization/faults/heldout2_kidnap_gnss_drop.yaml

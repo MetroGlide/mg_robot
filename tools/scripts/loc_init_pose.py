@@ -35,6 +35,9 @@ from tools.common.pose_graph import (  # noqa: E402
 
 # SLAM のキーフレームは 0.5 m 動くごとに作られるので、これ未満なら止まっているとみなして補間する
 STATIONARY_DIST_M = 0.6
+# 止まっている間のその場の回転も補間する上限 [rad]。初期姿勢は区間の最初の時点で決まれば足り、
+# 区間がその場で回る前の停止から始まっても送れるよう、評価の補間 (向きの遅れを避ける) より緩める
+STATIONARY_YAW_RAD = 0.6
 
 # 送信の条件 (購読側の存在と TF) がこの回数 (タイマー 0.5 s ごと) 続いてから送る
 READY_TICKS = 3
@@ -88,7 +91,8 @@ class InitPose(Node):
         if self._ready_ticks < READY_TICKS:
             return
         poses, valid = interpolate_nodes(
-            self._nodes, np.array([now.nanoseconds * 1e-9]), stationary_dist=STATIONARY_DIST_M)
+            self._nodes, np.array([now.nanoseconds * 1e-9]), stationary_dist=STATIONARY_DIST_M,
+            stationary_yaw=STATIONARY_YAW_RAD)
         if not valid[0]:
             return
         x, y, yaw = (float(v) for v in poses[0])

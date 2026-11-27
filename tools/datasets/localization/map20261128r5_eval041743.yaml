@@ -1,0 +1,12 @@
+# 評価セット map20261128 の 1 つ (説明は map20261128r1_eval043837)。区間は map20261017r5_eval041743 と同じ。
+name: map20261128r5_eval041743
+description: 評価セット (地図 map_for20261128 の Region5、評価 041743 の 196-554 s)
+map:
+  localization_yaml: /root/ros2_data/map_for20261128/Region5_jikoichi.yaml
+  gnss_transform: /root/ros2_data/map_for20261128/gnss_transform.yaml
+  slam_dir: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_051635/20260921_2243
+eval:
+  bag: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_041743
+  slam_dir: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_041743/20260921_2246
+  start_offset: 196.0
+  duration: 358.0

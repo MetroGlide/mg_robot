@@ -61,13 +61,13 @@ rclpy に依存しないため、テストや rosbag を読まない解析から
 numpy のみに依存する指標の計算 (`compose`, `pose_errors`, `correction_jumps`, `nees`, `best_lag`, `recovery_metrics`, `count_episodes` ほか)。
 
 ## `tools.common.scan_map` (スキャンと地図の突き合わせ)
-numpy と scipy のみに依存する。地図の占有と占有までの距離 (`OccupancyMap`。光線追跡の `raycast`、占有の帯の長さの `run_length`、軌跡沿いの占有を消す `clear_near`、消した後の地図を切り出して保存する `save`)、姿勢の補間 (`interpolate_pose`)、ビームの始点と向き (`beam_geometry`)、地図にない点を除く (`keep_matched`)、光線追跡の距離に置き換える (`raycast_ranges`)。
+numpy と scipy のみに依存する。地図の占有と占有までの距離 (`OccupancyMap`。光線追跡の `raycast`、占有の帯の長さの `run_length`、軌跡沿いの占有を消す `clear_near`、消した後の地図を切り出して保存する `save`)、姿勢の補間 (`interpolate_pose`)、ビームの始点と向き (`beam_geometry`)、地図にない点を除く (`keep_matched`)、光線追跡の距離に置き換える (`raycast_ranges`)。`analyze_scan_conditions.py` と `rewrite_scans.py` が使う。
 
 ## `tools.common.faults` (故障注入の定義)
 評価ツールと故障注入ノードが共有する故障定義 (`kidnap` / `gnss_bias` / `gnss_drop` / `odom_scale` / `scan_drop` / `amcl_drift`) の読込。時刻は再生開始からの経過秒。
 
 ## `tools.common.fault_apply` (故障注入の計算)
-故障の作用の判定と、スキャンの欠測・GNSS のバイアスなどの計算。numpy のみに依存し、`fault_injector.py` が使う。
+故障の作用の判定と、スキャンの欠測・GNSS のバイアスなどの計算 (GNSS の雑音の過程は `GnssNoise`)。numpy のみに依存し、`fault_injector.py` が使う。
 
 ## `tools.common.offline_faults` (オフライン評価の故障への変換)
-故障定義を、自己位置の監督のオフライン評価 (`localization_supervisor.core.faults`) の定義に直す。情報源の名前は `mg_localization_supervisor/config/supervision.yaml` に合わせる。`eval_localization_offline.py` が使う。
+故障定義を、自己位置監視のオフライン評価 (`localization_supervisor.core.faults`) の定義に直す。情報源の名前は `mg_localization_supervisor/config/supervision.yaml` に合わせる。`eval_localization_offline.py` が使う。

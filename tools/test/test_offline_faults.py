@@ -17,7 +17,8 @@ def test_bundled_faults_convert_to_supervision_sources():
     with open(SUPERVISION, encoding="utf-8") as f:
         sources = yaml.safe_load(f)["sources"]
     for path in sorted(glob.glob(os.path.join(FAULT_DEFINITION_DIR, "*.yaml"))):
-        replay = [f for f in load_faults(path) if f.type != "odom_scale"]
+        # odom_scale・gnss_noise は記録した標本に注入できず、manual_pose は故障ではなく手動の経路の確かめ
+        replay = [f for f in load_faults(path) if f.type not in ("odom_scale", "gnss_noise", "manual_pose")]
         for fault in parse_faults(to_offline(replay)):
             assert fault.source in sources, path
 
@@ -34,6 +35,12 @@ def test_conversion_keeps_times_and_values():
     assert (drift.type, drift.end) == ("pose_drift", 100.0)
     assert (bias.type, bias.source, bias.end, bias.params["offset"]) == (
         "pose_offset", "gnss", 20.0, {"x": 2.0, "y": 1.0})
+
+
+def test_scan_halt_drops_the_scan_source():
+    replay = parse_replay_faults({"faults": [{"type": "scan_halt", "start": 5.0, "end": 50.0}]})
+    (halt,) = parse_faults(to_offline(replay))
+    assert (halt.type, halt.source, halt.start, halt.end) == ("source_drop", "map_scan", 5.0, 50.0)
 
 
 def test_odom_scale_cannot_be_injected_offline():

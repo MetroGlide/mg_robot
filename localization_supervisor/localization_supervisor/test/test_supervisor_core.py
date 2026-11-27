@@ -15,7 +15,7 @@ from localization_supervisor.core.geometry import compose
 from localization_supervisor.core.interfaces import (
     CONTRACT_VERSION, Evidence, FusionResult, InstanceInfo, MotionSample, SourceKind, Status)
 from localization_supervisor.core.plugins import resolve_params
-from localization_supervisor.core.snapshot import SampleStore
+from localization_supervisor.core.snapshot import HoldConfig, SampleStore
 from localization_supervisor.core.state_machine import Action, MachineConfig, State, StateMachine
 from localization_supervisor.core.supervisor import Supervisor, make_store
 from localization_supervisor.core.timeline import AlignmentConfig
@@ -65,6 +65,81 @@ def test_align_outside_motion_history_is_unknown():
         store.add_motion('odom', drive.motion(float(i)))
     store.add_pose('amcl', pose_sample(2.0, drive.map(2.0)))
     assert store.snapshot(20.0).pose_aligned('amcl') is None
+
+
+def _held_store():
+    return SampleStore(KINDS, ('odom',), horizon_sec=5.0, alignment=AlignmentConfig(0.0, 0.0),
+                       holds={'amcl': HoldConfig(distance_m=0.25, rotation_rad=0.2)})
+
+
+def test_hold_keeps_the_last_pose_while_stationary_beyond_the_horizon():
+    store = _held_store()
+    store.add_pose('amcl', pose_sample(0.0, (1.0, 2.0, 0.3)))
+    for t in range(41):
+        store.add_motion('odom', MotionSample(float(t), (0.5, 0.0, 0.0)))
+        snap = store.snapshot(float(t))
+    assert snap.pose('amcl', max_age=3.0).pose == pytest.approx((1.0, 2.0, 0.3))
+    aligned, age = snap.pose_aligned('amcl', 3.0)
+    assert aligned.pose == pytest.approx((1.0, 2.0, 0.3))
+    assert age == pytest.approx(0.0)
+    assert snap.pose('gnss', max_age=3.0) is None
+
+
+def test_hold_follows_small_motion_and_ends_after_moving_too_far():
+    store = _held_store()
+    store.add_pose('amcl', pose_sample(0.0, (0.0, 0.0, 0.0)))
+    store.add_motion('odom', MotionSample(0.0, (0.0, 0.0, 0.0)))
+    for t in range(1, 5):
+        store.add_motion('odom', MotionSample(float(t), (0.0, 0.0, 0.0)))
+        store.snapshot(float(t))
+    store.add_motion('odom', MotionSample(5.0, (0.1, 0.0, 0.0)))
+    assert store.snapshot(5.0).pose('amcl', max_age=3.0).pose == pytest.approx((0.1, 0.0, 0.0))
+    store.add_motion('odom', MotionSample(6.0, (0.3, 0.0, 0.0)))
+    assert store.snapshot(6.0).pose('amcl', max_age=3.0) is None
+    store.add_motion('odom', MotionSample(7.0, (0.3, 0.0, 0.0)))
+    assert store.snapshot(7.0).pose('amcl', max_age=3.0) is None
+
+
+def test_hold_ends_after_turning_and_restarts_from_a_new_sample():
+    store = _held_store()
+    store.add_pose('amcl', pose_sample(0.0, (0.0, 0.0, 0.0)))
+    store.add_motion('odom', MotionSample(0.0, (0.0, 0.0, 0.0)))
+    store.add_motion('odom', MotionSample(5.0, (0.0, 0.0, 0.3)))
+    assert store.snapshot(5.0).pose('amcl', max_age=3.0) is None
+    store.add_pose('amcl', pose_sample(5.0, (2.0, 0.0, 0.3)))
+    for t in range(6, 10):
+        store.add_motion('odom', MotionSample(float(t), (0.0, 0.0, 0.3)))
+        snap = store.snapshot(float(t))
+    assert snap.pose('amcl', max_age=3.0).pose == pytest.approx((2.0, 0.0, 0.3))
+
+
+def test_hold_restarts_from_a_sample_that_arrives_later_than_its_stamp():
+    store = _held_store()
+    store.add_pose('amcl', pose_sample(0.0, (0.0, 0.0, 0.0)))
+    for t in range(6):
+        store.add_motion('odom', MotionSample(float(t), (0.0, 0.0, 0.0)))
+        store.snapshot(float(t))
+    store.add_pose('amcl', pose_sample(4.5, (5.0, 6.0, 0.0)))
+    for t in range(6, 10):
+        store.add_motion('odom', MotionSample(float(t), (0.0, 0.0, 0.0)))
+        snap = store.snapshot(float(t))
+    assert snap.pose('amcl', max_age=3.0).pose == pytest.approx((5.0, 6.0, 0.0))
+
+
+def test_hold_is_used_only_when_the_latest_sample_is_too_old():
+    store = _held_store()
+    store.add_pose('amcl', pose_sample(0.0, (0.0, 0.0, 0.0)))
+    store.add_motion('odom', MotionSample(0.0, (0.0, 0.0, 0.0)))
+    store.add_motion('odom', MotionSample(1.0, (0.0, 0.0, 0.0)))
+    snap = store.snapshot(1.0)
+    assert snap.pose('amcl', max_age=3.0).stamp == 0.0
+    assert snap.pose('amcl').stamp == 0.0
+    assert store.held('amcl').stamp == 1.0
+
+
+def test_hold_requires_a_pose_source():
+    with pytest.raises(ValueError, match='not a pose source'):
+        SampleStore(KINDS, ('odom',), holds={'odom': HoldConfig(0.25)})
 
 
 def test_motion_priority_falls_back_to_next_source():
@@ -129,6 +204,48 @@ def test_pose_jump_detects_only_new_jumps():
     assert all(r.status == Status.NORMAL for r in results[21:])
     # 新しい標本がなければ判定しない
     assert detector.evaluate(store.snapshot(30.0)).status == Status.UNKNOWN
+
+
+def test_pose_jump_skips_samples_with_poor_reported_accuracy():
+    """max_std_m より申告の精度が悪い標本 (揺れる GNSS) は、飛びの判定に使わない。"""
+    drive = Drive()
+    store = _store()
+    detector = _detector(PoseJump, 'gnss_motion', {'pose': 'amcl', 'motion': 'odom'}, max_std_m=0.5)
+    results = []
+    for i in range(6):
+        t = float(i)
+        store.add_motion('odom', drive.motion(t))
+        # 揺れの大きい標本 (申告 2 m) は 3 m 飛んでいても見ない。精度の良い標本だけを比べる
+        jump = 3.0 if i % 2 else 0.0
+        store.add_pose('amcl', pose_sample(t, compose(drive.map(t), (jump, 0.0, 0.0)), std_xy=2.0 if i % 2 else 0.1))
+        results.append(detector.evaluate(store.snapshot(t)))
+    assert all(r.status != Status.ANOMALY for r in results)
+    assert any(r.status == Status.NORMAL for r in results)
+
+
+def test_pose_jump_window_detects_slow_yaw_drift():
+    drive = Drive()
+    store = _store()
+    consecutive = _detector(PoseJump, 'jump', {'pose': 'amcl', 'motion': 'odom'})
+    windowed = _detector(PoseJump, 'drift', {'pose': 'amcl', 'motion': 'odom'}, window_sec=10.0, threshold_m=100.0)
+    results = {'jump': [], 'drift': []}
+    for i in range(25):
+        t = float(i)
+        store.add_motion('odom', drive.motion(t))
+        # 10 s 目から、1 標本あたり 0.05 rad (約 3 deg) ずつ向きが回りすぎていく (角での AMCL の回りすぎ)。
+        # ずれが育つと、誤った向きで進む分が位置の飛びにも出るので、直前との比較でも見つかるが、その手前までを見る
+        drift = 0.05 * max(0, i - 10)
+        store.add_pose('amcl', pose_sample(t, compose(drive.map(t), (0.0, 0.0, drift))))
+        snap = store.snapshot(t)
+        results['jump'].append(consecutive.evaluate(snap))
+        results['drift'].append(windowed.evaluate(snap))
+    assert all(r.status != Status.ANOMALY for r in results['jump'])
+    assert all(r.status != Status.ANOMALY for r in results['drift'][:15])
+    # 10 s の窓で 0.5 rad ずれた時点で、しきい値 (0.35 rad) を超える
+    assert results['drift'][20].status == Status.ANOMALY
+    assert results['drift'][20].values['jump_rad'] == pytest.approx(0.5, abs=1e-6)
+    # 最初の 10 s は比べる標本がない
+    assert all(r.status == Status.UNKNOWN for r in results['drift'][:10])
 
 
 def test_covariance_metrics():
@@ -262,11 +379,11 @@ def test_attribute_blame_uses_independent_sources_only():
         peaks = {**values, **(peaks or {})}
         return attribute(peaks, values, instances, independent, derived, 1.0)
 
-    # 2 つの情報源の食い違いだけでは決めきれない
+    # 2 つの情報源の食い違いだけでは判定保留
     assert run({'amcl_gnss': 9.0}) == ('unknown', [])
     # AMCL だけを疑う判定が加われば AMCL
     assert run({'amcl_gnss': 9.0, 'amcl_jump': 3.0}) == ('amcl', [])
-    # 飛びの累積が減っても、疑いが始まってからの最大値で数える
+    # 飛びの累積が減っても、疑義が始まってからの最大値で数える
     assert run({'amcl_gnss': 20.0}, {'amcl_jump': 3.0}) == ('amcl', [])
     # 融合の結果が関わる判定は blame に数えず、汚れているとする
     assert run({'scan_ekf': 2.0}) == ('unknown', ['ekf'])
@@ -345,6 +462,35 @@ def test_degraded_with_recovery_returns_to_normal_when_the_anomaly_clears():
     machine.step(13.0, _fr(cleared=True))
     d = machine.step(14.0, _fr(cleared=True))
     assert d.state == State.NORMAL and d.actions == [Action.RESTORE] and not machine.hold_requested
+
+
+def _verifying():
+    machine = _recovering()
+    machine.config.verify_return = True
+    return machine
+
+
+def test_verify_return_does_not_return_only_because_the_anomaly_cleared():
+    # 止まっていると判定の多くが「判定できない」になり、異常がないように見える。確かめないまま戻さない
+    machine = _verifying()
+    for t in (3.0, 4.0, 5.0):
+        assert machine.step(t, _fr(cleared=True), converged=None).state == State.RECOVERING
+    machine.step(6.0, _fr(cleared=True), converged=True)
+    d = machine.step(7.0, _fr(cleared=True), converged=True)
+    assert d.state == State.NORMAL and d.actions == [Action.RESTORE] and d.event == 'recovered'
+
+
+def test_verify_return_leaves_degraded_only_after_convergence():
+    machine = _verifying()
+    machine.note_reinit()
+    assert machine.step(12.0, _fr(anomaly=True), converged=False).state == State.DEGRADED
+    for t in (13.0, 14.0, 15.0):
+        assert machine.step(t, _fr(cleared=True), converged=None).state == State.DEGRADED
+    machine.step(16.0, _fr(cleared=True), converged=True)
+    machine.step(17.0, _fr(), converged=False)
+    assert machine.step(18.0, _fr(), converged=True).state == State.DEGRADED
+    d = machine.step(19.0, _fr(), converged=True)
+    assert d.state == State.NORMAL and d.actions == [Action.RESTORE] and d.event == 'recovered'
 
 
 # ---------------------------------------------------------------- anchors

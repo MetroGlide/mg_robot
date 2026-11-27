@@ -17,6 +17,7 @@
   <exec_depend>mg_msgs</exec_depend>
   <exec_depend>mg_utils</exec_depend>
   <exec_depend>nav2_msgs</exec_depend>
+  <exec_depend>builtin_interfaces</exec_depend>
 
   <exec_depend>rclpy</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>

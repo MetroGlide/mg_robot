@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import threading
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, List, Literal
 
 from nav2_msgs.msg import BehaviorTreeLog
 from rclpy.qos import qos_profile_sensor_data
 
+from sim_scenario_test.engine.timeline import instantiate_trigger
 from sim_scenario_test.geometry import PoseSpec
 from sim_scenario_test.registry import register_trigger
+from sim_scenario_test.spec import TriggerCall
 
 if TYPE_CHECKING:
     from sim_scenario_test.context import ScenarioContext
@@ -94,6 +96,8 @@ class RobotNearSpec:
     y: float
     radius: float
     frame: Literal["map", "world"] = "map"
+    # tf: 自己位置推定の姿勢。sim: シミュレータ上の真の姿勢 (推定がずれる試験で場所を決めるとき)
+    pose_source: Literal["tf", "sim"] = "tf"
 
 
 @register_trigger("robot_near", RobotNearSpec)
@@ -104,9 +108,18 @@ class RobotNear:
         self._ctx = ctx
         self._spec = spec
         self._target = ctx.poses.to_map(PoseSpec(frame=spec.frame, x=spec.x, y=spec.y))
+        if spec.pose_source == "sim":
+            # 真の姿勢を出せないバックエンドなら、ここで ScenarioError にする
+            ctx.backend.entity_pose(ctx.profile.sim.robot_entity)
 
     def poll(self) -> bool:
-        robot = self._ctx.poses.robot.get()
+        if self._spec.pose_source == "sim":
+            world = self._ctx.backend.entity_pose(self._ctx.profile.sim.robot_entity)
+            if world is None:
+                return False
+            robot = self._ctx.poses.to_map(PoseSpec("world", world.x, world.y, world.z, world.yaw))
+        else:
+            robot = self._ctx.poses.robot.get()
         return robot.distance_xy(self._target) <= self._spec.radius
 
 
@@ -134,3 +147,26 @@ class BtNodeTrigger:
 
     def poll(self) -> bool:
         return self._occurred.is_set()
+
+
+@dataclass
+class AllOfSpec:
+    triggers: List[TriggerCall]
+
+
+@register_trigger("all_of", AllOfSpec)
+class AllOf:
+    """triggers のすべてが一度は成立したら成立する (成立した順は問わない)。
+
+    例: 自己位置監視の準備ができ (localization_ready)、かつ通路に入った (robot_near) ら故障を注入する。
+    """
+
+    def __init__(self, ctx: "ScenarioContext", spec: AllOfSpec):
+        self._triggers = [instantiate_trigger(ctx, call) for call in spec.triggers]
+        self._fired = [False] * len(self._triggers)
+
+    def poll(self) -> bool:
+        for i, trigger in enumerate(self._triggers):
+            if not self._fired[i] and trigger.poll():
+                self._fired[i] = True
+        return all(self._fired)

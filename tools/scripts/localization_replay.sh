@@ -19,6 +19,8 @@
 #   MAP_GT_DIR       地図を作った走行の SLAM 出力 (別走行を評価するとき)
 #   FAULTS           故障定義 YAML (tools/datasets/localization/faults/)。センサ入力に故障を注入する
 #   RUNS             繰り返す回数 (既定 1)
+#   RUN_FROM         最初の試行の番号 (既定 1。RUN_FROM から RUNS までの試行を実行する。1 試行ずつ並列に回す用)
+#   SUMMARY          試行をまとめた summary.md を作るか (既定 true。1 試行ずつ回すときは、まとめる側で作る)
 #   RATE             再生速度 (既定 1.0。実時間での評価が基本)
 #   START_OFFSET     再生を始める bag 先頭からの経過秒 (既定 0)
 #   DURATION         再生する長さ [s] (既定 0 = 最後まで)
@@ -26,15 +28,30 @@
 #   EVAL_SKIP        INIT_MODE=gt のとき、評価の先頭から除く秒数 (既定 10。初期姿勢を与えた直後の過渡)
 #   USE_INITIALIZER  GNSS から AMCL の初期姿勢を与えるノードを起動するか (既定: gt なら false、gnss なら true)
 #   MONITOR          自己位置の監視ノード none | watchdog | supervisor (既定: gt なら none、gnss なら watchdog)
-#   PROFILE          監督の設定に重ねるプロファイル (既定: 基本設定)
-#   BUILD_PKGS       起動前に増分ビルドするパッケージ
+#   PROFILE          自己位置監視の設定に重ねるプロファイル (既定: 基本設定)
+#   GATE             自己位置監視ノードの中で AMCL 検証ゲートを使うか (MONITOR=supervisor のとき。既定 false)
+#   RECORD_PARTICLES AMCL の粒子 (/particle_cloud) を記録するか (既定 true。記録の容量の大半を占める)
+#   BUILD_PKGS       起動前に増分ビルドするパッケージ (空ならビルドしない。ビルド済みのイメージで回す用)
+#   BUILD_ONLY       true ならビルドだけして終わる (ビルド済みのイメージを作る用。ほかの必須の変数は要らない)
 # ROS の setup.bash は未定義の変数を参照するため、set -u は使わない
 set -eo pipefail
+
+BUILD_PKGS="${BUILD_PKGS-slam_gnss_2d mg_msgs localization_supervisor_msgs localization_supervisor mg_localization_supervisor mg_bringup mg_navigation mg_drivers}"
+
+source /opt/ros/humble/setup.bash
+source /root/ros2_ws/install/setup.bash
+
+if [ "${BUILD_ONLY:-false}" = "true" ]; then
+  echo "[replay] パッケージを増分ビルドします: $BUILD_PKGS"
+  cd /root/ros2_ws && colcon build --symlink-install --packages-select $BUILD_PKGS
+  exit 0
+fi
 
 : "${BAG:?}" "${MAP_YAML:?}" "${GNSS_TRANSFORM:?}" "${GT_DIR:?}" "${VARIANT_DIR:?}" "${OUT_DIR:?}"
 MAP_GT_DIR="${MAP_GT_DIR:-}"
 FAULTS="${FAULTS:-}"
 RUNS="${RUNS:-1}"
+RUN_FROM="${RUN_FROM:-1}"
 RATE="${RATE:-1.0}"
 START_OFFSET="${START_OFFSET:-0}"
 DURATION="${DURATION:-0}"
@@ -49,22 +66,22 @@ else
   USE_INITIALIZER="${USE_INITIALIZER:-true}"
   MONITOR="${MONITOR:-watchdog}"
 fi
-BUILD_PKGS="${BUILD_PKGS:-slam_gnss_2d mg_msgs localization_supervisor_msgs localization_supervisor mg_localization_supervisor mg_bringup mg_navigation mg_drivers}"
 
 PLAY_TOPICS="/odom /scan_top_lidar /navpvt /gps/fix"
-RECORD_TOPICS="/tf /odom /odom/raw /ekf_global_odom /amcl_pose /amcl_pose_origin /odom/gps /localization/status /diagnostics"
+# /particle_cloud は、AMCL の仮説を見る解析と、記録を固定の入力にするオフラインの評価に使う
+RECORD_TOPICS="/tf /odom /odom/raw /ekf_global_odom /amcl_pose /amcl_pose_origin /initialpose /odom/gps /localization/status /diagnostics"
+[ "${RECORD_PARTICLES:-true}" = "true" ] && RECORD_TOPICS="$RECORD_TOPICS /particle_cloud"
 READY_TIMEOUT_SEC=180
 # 初期姿勢が AMCL に届かなかった試行をやり直す最大回数
 MAX_ATTEMPTS=2
 
-source /opt/ros/humble/setup.bash
-source /root/ros2_ws/install/setup.bash
-
 mkdir -p "$OUT_DIR"
-echo "[replay] パッケージを増分ビルドします: $BUILD_PKGS"
-(cd /root/ros2_ws && colcon build --symlink-install --packages-select $BUILD_PKGS \
-  > "$OUT_DIR/build.log" 2>&1) || { echo "エラー: ビルドに失敗しました。$OUT_DIR/build.log を確認してください。" >&2; exit 1; }
-source /root/ros2_ws/install/setup.bash
+if [ -n "$BUILD_PKGS" ]; then
+  echo "[replay] パッケージを増分ビルドします: $BUILD_PKGS"
+  (cd /root/ros2_ws && colcon build --symlink-install --packages-select $BUILD_PKGS \
+    > "$OUT_DIR/build.log" 2>&1) || { echo "エラー: ビルドに失敗しました。$OUT_DIR/build.log を確認してください。" >&2; exit 1; }
+  source /root/ros2_ws/install/setup.bash
+fi
 
 # 実機や他のコンテナの ROS 通信と混ざらないようにする
 export ROS_LOCALHOST_ONLY=1
@@ -99,12 +116,14 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# 起動の確かめは launch のログで行う (ros2 のコマンドは、並列に回すと discovery で固まり、起動済みでも無効になる)。
+# AMCL などの自己位置推定の lifecycle が active になり、EKF のプロセスが起動していれば準備済み
 wait_ready() {
+  local log="$1"
   local waited=0
   while [ "$waited" -lt "$READY_TIMEOUT_SEC" ]; do
-    # ros2 のコマンドは discovery で固まることがあるので、必ずタイムアウトをつける
-    if timeout 20 ros2 lifecycle get /amcl 2>/dev/null | grep -q "active" \
-       && timeout 20 ros2 node list 2>/dev/null | grep -q "ekf_global_node"; then
+    if grep -q "\[lifecycle_manager_localization\]: .*Managed nodes are active" "$log" 2>/dev/null \
+       && grep -q "\[ekf_node-[0-9]*\]: process started" "$log" 2>/dev/null; then
       return 0
     fi
     sleep 2
@@ -113,29 +132,35 @@ wait_ready() {
   return 1
 }
 
-# 1 回分の試行。初期姿勢が AMCL に届かず、試行が無効になったときは 1 を返す。
+# 1 回分の試行。真値の初期姿勢を送れないか AMCL に届かず、試行が無効になったときは 1 を返す。
 run_once() {
   local run="$1"
   local run_dir="$OUT_DIR/run_$run"
+  local init_status=0
   rm -rf "$run_dir"
   mkdir -p "$run_dir"
   echo "[replay] run $run/$RUNS: スタックを起動します"
 
+  # 空の値の launch 引数 (name:=) は解釈できないので、プロファイルは指定したときだけ渡す
+  # 構成 (launch の既定は supervised) のプリセットとプロファイルは使わない。AMCL・EKF の params は変種のファイルで渡す
+  local profile_args=(localization_preset:=none localization_profile:="${PROFILE:-none}")
   setsid ros2 launch mg_bringup bringup_navigation.launch.py \
     use_navigation:=false use_realsense:=false use_slam_gnss_bridge:=true \
     use_odom_corrector:=true \
     use_gnss_amcl_initializer:="$USE_INITIALIZER" localization_monitor:="$MONITOR" \
+    localization_gate:="${GATE:-false}" \
     map_path:="$MAP_YAML" planning_map_path:="$MAP_YAML" \
     gnss_transform_file:="$GNSS_TRANSFORM" \
     ekf_params_file:="$VARIANT_DIR/ekf_global.yaml" \
     nav2_params_file:="$VARIANT_DIR/nav2_params.yaml" \
     bridge_params_file:="$VARIANT_DIR/nav_bridge.yaml" \
     odom_corrector_params_file:="$VARIANT_DIR/wheel_odom_corrector.yaml" \
-    supervisor_config:="$VARIANT_DIR/supervision.yaml" localization_profile:="${PROFILE:-}" \
+    supervisor_config:="$VARIANT_DIR/supervision.yaml" \
+    "${profile_args[@]}" \
     > "$run_dir/launch.log" 2>&1 &
   LAUNCH_PID=$!
 
-  if ! wait_ready; then
+  if ! wait_ready "$run_dir/launch.log"; then
     echo "[replay] run $run/$RUNS: ${READY_TIMEOUT_SEC}秒以内にスタックが起動しませんでした (この試行は無効。$run_dir/launch.log)" >&2
     stop_group "$LAUNCH_PID"; LAUNCH_PID=""
     return 1
@@ -161,7 +186,7 @@ run_once() {
   if [ "$DURATION" != "0" ]; then
     local limit
     limit=$(python3 -c "print(int($DURATION / $RATE) + 5)")
-    play_cmd=(timeout -s INT "$limit" "${play_cmd[@]}")
+    play_cmd=(timeout -s INT -k 30 "$limit" "${play_cmd[@]}")
   fi
   setsid "${play_cmd[@]}" > "$run_dir/play.log" 2>&1 &
   PLAY_PID=$!
@@ -169,8 +194,10 @@ run_once() {
   if [ "$INIT_MODE" = "gt" ]; then
     local init_args=(--gt-dir "$GT_DIR")
     [ -n "$MAP_GT_DIR" ] && init_args+=(--map-gt-dir "$MAP_GT_DIR")
-    timeout 120 python3 /app/tools/scripts/loc_init_pose.py "${init_args[@]}" \
+    # SIGTERM で終わらないことがあるので、猶予の後に強制終了する
+    timeout -k 10 120 python3 /app/tools/scripts/loc_init_pose.py "${init_args[@]}" \
       2>&1 | tee "$run_dir/init_pose.log"
+    init_status="${PIPESTATUS[0]}"
   fi
 
   # 再生の終了を待つ (グループごと起動したので、pid の終了で判定する)
@@ -183,8 +210,10 @@ run_once() {
   stop_group "$LAUNCH_PID"; LAUNCH_PID=""
 
   # AMCL は初期姿勢を受け取るたびに "Setting pose (<スタンプ>)" を出す。AMCL 自身の初期値のスタンプは 0
-  if [ "$INIT_MODE" = "gt" ] && ! grep -qE "Setting pose \([1-9]" "$run_dir/launch.log"; then
-    echo "[replay] run $run/$RUNS: 初期姿勢が AMCL に届きませんでした (この試行は無効)" >&2
+  # 自己位置監視が自分で初期化しても AMCL には姿勢が届くので、真値の初期姿勢を送れたかも見る
+  if [ "$INIT_MODE" = "gt" ] && { [ "$init_status" != "0" ] \
+       || ! grep -qE "Setting pose \([1-9]" "$run_dir/launch.log"; }; then
+    echo "[replay] run $run/$RUNS: 真値の初期姿勢を送れなかったか、AMCL に届きませんでした (この試行は無効)" >&2
     return 1
   fi
 
@@ -196,12 +225,13 @@ run_once() {
   [ -n "$MAP_GT_DIR" ] && eval_args+=(--map-gt-dir "$MAP_GT_DIR")
   [ -n "$FAULTS" ] && eval_args+=(--faults "$FAULTS")
   # この関数は until の条件として呼ばれ set -e が効かないため、失敗を明示的に検出する
-  python3 /app/tools/scripts/eval_localization.py "${eval_args[@]}" > "$run_dir/eval_localization.log" 2>&1 \
+  timeout -k 10 600 python3 /app/tools/scripts/eval_localization.py "${eval_args[@]}" \
+    > "$run_dir/eval_localization.log" 2>&1 \
     || { echo "エラー: 評価に失敗しました。$run_dir/eval_localization.log を確認してください。" >&2; exit 1; }
   echo "[replay] run $run/$RUNS: 評価を保存しました: $run_dir/eval_localization.md"
 }
 
-for run in $(seq 1 "$RUNS"); do
+for run in $(seq "$RUN_FROM" "$RUNS"); do
   attempt=1
   until run_once "$run"; do
     if [ "$attempt" -ge "$MAX_ATTEMPTS" ]; then
@@ -216,4 +246,6 @@ done
 # 使ったパラメータを残し、試行ごとの結果をまとめる
 mkdir -p "$OUT_DIR/params"
 cp "$VARIANT_DIR"/*.yaml "$OUT_DIR/params/"
-python3 /app/tools/scripts/compare_localization.py "$OUT_DIR" -o "$OUT_DIR/summary.md"
+if [ "${SUMMARY:-true}" = "true" ]; then
+  python3 /app/tools/scripts/compare_localization.py "$OUT_DIR" -o "$OUT_DIR/summary.md"
+fi

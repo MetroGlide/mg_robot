@@ -23,6 +23,11 @@ def inverse(a: Pose2) -> Pose2:
     return (-(c * a[0] + s * a[1]), -(-s * a[0] + c * a[1]), wrap_angle(-a[2]))
 
 
+def separated(a: Pose2, b: Pose2, distance_m: float, yaw_rad: float) -> bool:
+    """2 つの姿勢が、位置で distance_m より、または向きで yaw_rad より離れているか。"""
+    return math.hypot(a[0] - b[0], a[1] - b[1]) > distance_m or abs(wrap_angle(a[2] - b[2])) > yaw_rad
+
+
 def implied_map_odom(map_base: Pose2, odom_base: Pose2) -> Pose2:
     """AMCL の姿勢 (map->base) と、その時刻のオドメトリ (odom->base) が示す map->odom。
 

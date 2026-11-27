@@ -8,6 +8,7 @@ from datetime import datetime
 
 import pytest
 
+from sim_scenario_test.cli import parse_shard
 from sim_scenario_test.engine.result import ResultStatus
 from sim_scenario_test.execution import (
     PlannedRun,
@@ -136,6 +137,19 @@ def test_progress_file_tracks_each_run(tmp_path):
     data = read()
     assert (data["finished"], data["exit_code"]) == (True, 1)
     assert not (results / "progress.json.tmp").exists()
+
+
+def test_progress_file_name_can_be_chosen_for_a_shard(tmp_path):
+    ProgressWriter(str(tmp_path), [PlannedRun("a", "/s/a.yaml", str(tmp_path / "a"))], {}, file_name="progress_1of2.json")
+    assert (tmp_path / "progress_1of2.json").exists() and not (tmp_path / "progress.json").exists()
+
+
+def test_parse_shard():
+    assert parse_shard("") is None
+    assert parse_shard("2/3") == (2, 3)
+    for bad in ("0/2", "3/2", "x"):
+        with pytest.raises(SystemExit):
+            parse_shard(bad)
 
 
 def test_collect_scenarios_by_tags(tmp_path):

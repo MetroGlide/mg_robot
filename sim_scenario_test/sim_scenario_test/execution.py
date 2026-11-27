@@ -338,8 +338,10 @@ class ProgressWriter:
     result_dir は results_dir からの相対パスで記録する。
     """
 
-    def __init__(self, results_dir: str, planned: Sequence[PlannedRun], options: dict):
+    def __init__(self, results_dir: str, planned: Sequence[PlannedRun], options: dict,
+                 file_name: str = PROGRESS_FILE):
         self._results_dir = results_dir
+        self._file_name = file_name
         self._data = {
             "started_at": _now_iso(),
             "options": options,
@@ -384,7 +386,7 @@ class ProgressWriter:
 
     def _write(self) -> None:
         os.makedirs(self._results_dir, exist_ok=True)
-        path = os.path.join(self._results_dir, PROGRESS_FILE)
+        path = os.path.join(self._results_dir, self._file_name)
         tmp = path + ".tmp"
         with open(tmp, "w") as f:
             json.dump(self._data, f, ensure_ascii=False, indent=2)

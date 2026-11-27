@@ -6,7 +6,7 @@ import pytest
 
 from localization_supervisor.core.config import ConfigError, parse_config
 from localization_supervisor.core.interfaces import (
-    CONTRACT_VERSION, Candidate, CandidateGenerator, CandidateScorer, ParamSpec, RecoveryContext)
+    CONTRACT_VERSION, Candidate, CandidateGenerator, CandidateScorer, Evidence, ParamSpec, RecoveryContext)
 from localization_supervisor.core.recovery.planner import RecoveryPlanner, ScorerConfig, SelectionConfig
 from localization_supervisor.core.state_machine import MachineConfig, State, StateMachine
 from localization_supervisor.core.supervisor import Supervisor, make_store
@@ -312,6 +312,101 @@ def test_anchor_agreement_prefers_the_dead_reckoning_prediction():
     by_origin = {c.origin: c for c in result.plan.candidates}
     assert by_origin['dr'].scores['prior'] > 0.99
     assert by_origin['gnss'].scores['gnss_near'] > 0.9
+
+
+def _observe_scene():
+    """止まったロボット。AMCL をずらすと、再初期化しても AMCL は戻らない (収束の確認は異常のまま)。"""
+    raw = _raw()
+    raw['recovery']['observe'] = {
+        'motion': 'odom', 'request_after_sec': 3.0, 'request_interval_sec': 5.0, 'reseed_min_rotation_rad': 1.0}
+    scene = Scene(raw)
+    scene.drive = Drive(map_odom=(1.0, -2.0, 0.3), speed=0.0, yaw_rate=0.0)
+    for _ in scene.run(0, 40):
+        pass
+    assert scene.supervisor.state == State.NORMAL
+    scene.amcl_offset = (4.0, 0.0, 0.0)
+    return scene
+
+
+def _kinds_and_skips(scene, start, stop):
+    kinds, reasons = [], []
+    for _, result in scene.run(start, stop):
+        kinds += [d.kind for d in result.directives]
+        reasons += [e.fields.get('reason') for e in result.events if e.name == 'localization.reinit_skipped']
+    return kinds, reasons
+
+
+def test_observe_is_requested_while_the_recovery_cannot_be_confirmed():
+    scene = _observe_scene()
+    kinds, _ = _kinds_and_skips(scene, 40, 75)
+    assert kinds.count('reinit') == 1
+    first = kinds.index('reinit')
+    assert 'observe' in kinds[first:]
+    observe_events = [e for _, r in scene.results for e in r.events if e.name == 'localization.observe_requested']
+    assert observe_events and observe_events[0].fields['waited_sec'] >= 3.0
+
+
+def test_no_reseed_with_the_same_observation_until_the_robot_turns():
+    scene = _observe_scene()
+    kinds, reasons = _kinds_and_skips(scene, 40, 120)
+    assert kinds.count('reinit') == 1
+    assert 'no_new_observation' in reasons
+    # その場で回る (観測が増える) と、撒き直せる
+    t0 = 120.0
+    scene.drive = Drive(map_odom=(1.0, -2.0, 0.3), speed=0.0, yaw_rate=0.3, start=(0.0, 0.0, -0.3 * t0))
+    kinds, _ = _kinds_and_skips(scene, 120, 260)
+    assert 'reinit' in kinds
+
+
+def test_observe_is_not_requested_without_the_setting():
+    scene = Scene(_raw())
+    scene.drive = Drive(map_odom=(1.0, -2.0, 0.3), speed=0.0, yaw_rate=0.0)
+    for _ in scene.run(0, 40):
+        pass
+    scene.amcl_offset = (4.0, 0.0, 0.0)
+    kinds, reasons = _kinds_and_skips(scene, 40, 120)
+    assert 'observe' not in kinds and 'no_new_observation' not in reasons
+    assert kinds.count('reinit') >= 2
+
+
+def test_observe_motion_must_be_a_motion_source():
+    raw = _raw()
+    raw['recovery']['observe'] = {'motion': 'gnss'}
+    with pytest.raises(ConfigError, match='recovery.observe.motion'):
+        parse_config(raw)
+
+
+def _two_convergence_checks(mode):
+    raw = _raw()
+    raw['detectors']['amcl_gnss_2'] = dict(raw['detectors']['amcl_gnss'])
+    raw['recovery']['convergence'] = ['amcl_gnss', 'amcl_gnss_2']
+    if mode is not None:
+        raw['recovery']['convergence_mode'] = mode
+    return Supervisor(parse_config(raw))
+
+
+def test_convergence_all_needs_every_check_normal():
+    supervisor = _two_convergence_checks(None)
+    normal, anomaly, unknown = Evidence.from_score(0.5), Evidence.from_score(2.0), Evidence.unknown()
+    assert supervisor._converged({'amcl_gnss': normal, 'amcl_gnss_2': normal}) is True
+    assert supervisor._converged({'amcl_gnss': normal, 'amcl_gnss_2': anomaly}) is False
+    assert supervisor._converged({'amcl_gnss': normal, 'amcl_gnss_2': unknown}) is None
+
+
+def test_convergence_any_needs_one_check_normal():
+    # 復旧中に融合の結果が固まっていても、別の姿勢 (推定器の姿勢) で確かめられれば戻せる
+    supervisor = _two_convergence_checks('any')
+    normal, anomaly, unknown = Evidence.from_score(0.5), Evidence.from_score(2.0), Evidence.unknown()
+    assert supervisor._converged({'amcl_gnss': anomaly, 'amcl_gnss_2': normal}) is True
+    assert supervisor._converged({'amcl_gnss': anomaly, 'amcl_gnss_2': unknown}) is False
+    assert supervisor._converged({'amcl_gnss': unknown, 'amcl_gnss_2': unknown}) is None
+
+
+def test_invalid_convergence_mode_is_rejected():
+    raw = _raw()
+    raw['recovery']['convergence_mode'] = 'majority'
+    with pytest.raises(ConfigError, match='recovery.convergence_mode'):
+        parse_config(raw)
 
 
 def test_dead_reckoning_candidates_from_the_anchor():

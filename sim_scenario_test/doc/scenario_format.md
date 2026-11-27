@@ -25,6 +25,14 @@ expect: [...]                  # 判定。省略時は reached_all
 teardown: [...]                # 走行後に実行する action (生成した障害物は自動で削除される)
 ```
 
+## record_topics
+
+走行の間 rosbag に記録するトピックの一覧。結果のディレクトリの `bag/` に入る。`sim_args` と同じく、シミュレータを起動し直す実行でだけ使われる。記録は再生評価の道具 (例: `tools/scripts/analyze_scan_conditions.py`、`analyze_particle_modes.py`) で解析できる。
+
+## sim_args
+
+プロファイルの `sim.launch.args` を、このシナリオ用に上書き・追加する launch 引数。書き方と変数展開は `stack_args` と同じ。シミュレータを起動し直す実行 (`make scenario-test`、`make scenario-test-all`) でだけ使われ、起動済みのシミュレータへの attach では使われない。
+
 ## stack_args
 
 プロファイルの `stack.args` (ナビゲーションスタックの launch 引数) を、シナリオごとに上書き・追加します
@@ -102,7 +110,10 @@ run:
 | `despawn` | `obstacle` | 障害物を削除する |
 | `move_obstacle` | `obstacle`, `to`, `speed`=1.0 [m/s], `rate_hz`=5 | 配置済みの障害物を現在位置から `to` まで等速で直線移動させる |
 | `call_set_bool` | `service`, `value` | `std_srvs/SetBool` を呼ぶ (センサの配信停止など故障の注入) |
+| `localization_drift` | `rate` (`x`, `y` [m/s]、`yaw` [rad/s]。地図座標), `duration_sec`, `interval_sec`=1.0, `topic`=/initialpose, `cov_xy`=0.01, `cov_yaw`=0.003 | 自己位置推定を少しずつずらす (推定器が誤った姿勢へ引きずられる状況の再現)。`interval_sec` ごとに、シミュレータ上の真の姿勢に `rate` × 開始からの経過時間を足した姿勢を `topic` に送る (推定器がスキャンで戻そうとしても、ずれは時間とともに増える)。`duration_sec` が過ぎたら送るのをやめ、推定器に任せる。真の姿勢は変えない。`topic` を外からの再初期化として扱う監視があれば、それを外して使う |
+| `localization_spread` | `offset` (`x`, `y` [m]、`yaw` [rad]。地図座標)=0, `sigma` (同じ形の標準偏差)=(1.5, 1.5, 0.3), `topic`=/initialpose | 自己位置推定の分布を 1 回だけ広げ、推定器に峰を選び直させる (尤度が割れて誤った峰が勝つ状況の再現)。シミュレータ上の真の姿勢に `offset` を足した姿勢を中心に、`sigma` の共分散で `topic` に 1 回送る。正しい峰を選び直すこともあり、結果は推定器と場所による。真の姿勢は変えない。`topic` を外からの再初期化として扱う監視があれば、それを外して使う |
 | `delay` | `sec` | sim 時間で待つ |
+| `wait_for` | `trigger` (トリガー 1 つ), `timeout_sec`=60 | トリガーが成立するまで待つ。`timeout_sec` (sim 時間) で成立しなければエラー。トリガーは action を始めた時点で作るので、それより前の出来事は見ない (例: waypoint のフックで、故障の注入の前に自己位置監視の準備を待つ) |
 | `log` | `message` | ログとイベントに記録する |
 
 ## trigger (`timeline[].when` / `until`)
@@ -114,8 +125,9 @@ run:
 | `goal_reached` | `index` | `index` 番目のゴールに到達 |
 | `goal_failed` | `index` | `index` 番目のゴールへの走行が失敗 |
 | `robot_travelled` | `distance` | 走行開始からのロボットの移動距離 (経路長) が `distance` [m] に達した |
-| `robot_near` | `x`, `y`, `radius`, `frame`=map (`map`/`world`) | ロボットが指定点から `radius` [m] 以内 |
+| `robot_near` | `x`, `y`, `radius`, `frame`=map (`map`/`world`), `pose_source`=tf (`tf`/`sim`) | ロボットが指定点から `radius` [m] 以内。`pose_source: sim` はシミュレータ上の真の姿勢で判定する (自己位置推定がずれる試験で、注入の場所を真の位置で決めるとき) |
 | `bt_node` | `node`, `status`=RUNNING (`IDLE`/`RUNNING`/`SUCCESS`/`FAILURE`), `topic`=/behavior_tree_log | BT のノードが指定の状態になった (例: リカバリーの `Spin` が始まった)。トリガーを作った時点 (タイムラインの開始) より後の状態だけを見る |
+| `all_of` | `triggers` (トリガーのリスト) | `triggers` のすべてが一度は成立した (順は問わない)。例: 自己位置監視の準備ができ、かつ指定の場所に入ったら |
 
 `robot_travelled` / `robot_near` は速度や RTF に左右されないので、`at_time` より再現性が高くなります。
 
@@ -146,6 +158,8 @@ timeline:
 | `max_stop_duration` | `max_stop_sec`=省略, `min_stop_sec`=0, `speed_threshold`=0.05, `include_turning`=false, `turn_threshold`=0.1, `from_goal_started`=0, `until_goal_reached`=0, `after_timeline`=省略, `topic`=/odom | 区間 (指定ゴールの開始から指定ゴールの到達まで。`after_timeline` を指定すると、その項目が発火するまでは区間に入らない) の連続した停止時間を判定。`include_turning` が true なら、その場の回転 (`resume_within` と同じ判定) は停止に数えない。`max_stop_sec` 超で FAILED (通過点で止まらないこと)、`min_stop_sec` 未満で FAILED (一時停止で止まること) |
 
 | `resume_within` | `after_timeline` (timeline[].name), `max_sec`, `speed_threshold`=0.05, `min_moving_sec`=0.5, `include_turning`=false, `turn_threshold`=0.1, `topic`=/odom | 指定したタイムライン項目が発火してから、並進速度が `speed_threshold` 以上 (`include_turning` が true なら、角速度が `turn_threshold` [rad/s] 以上でもよい) の状態が `min_moving_sec` 続き始めるまでの時間を判定 (一瞬の速度は数えない)。`include_turning` が false のときは、回転を始めた時刻も結果に添える。`max_sec` 超、または走り出さなければ FAILED。項目が発火しなければ ERROR (障害物を除いてから走行を再開するまでの時間の確認) |
+| `map_overlap` | `map_topic`=/planning_map, `occupied_threshold`=65, `require_overlap`=false, `max_overlap_sec`=省略, `ends_clear`=true, `sample_sec`=0.2, `topic`=/odom | 推定の footprint (`profile.robot.footprint`) が事前地図の占有セルにかかり、真の footprint はかかっていない状態 (見かけの食い込み) の回数と最長の時間を測る。`max_overlap_sec` を超えるか、終わりに残っていれば FAILED。`require_overlap` なら、一度も起きない試行は ERROR |
+| `pose_error` | `deviation_m`=1.0, `deviation_yaw`=0.35 [rad], `max_error_m`=省略, `max_deviated_distance_m`=省略, `max_deviated_sec`=省略, `sample_sec`=0.2, `topic`=/odom | 自己位置推定 (TF の map → base) とシミュレータ上の真の姿勢の差を `sample_sec` ごとに比べ、差の最大、ずれていた (位置で `deviation_m` か向きで `deviation_yaw` を超えた) 時間、ずれている間にロボットが実際に走った距離を出す。`max_error_m` を超えたか、ずれている間に走った距離が `max_deviated_distance_m` を超えたか (ずれたまま走ることを測る)、ずれていた時間の合計が `max_deviated_sec` を超えたら (止まったままずれていることを測る)FAILED。真の姿勢を出せないバックエンドでは ERROR |
 
 ロボット固有の monitor はプラグインが提供します。
 
@@ -153,7 +167,7 @@ timeline:
 
 | 型 | パラメータ | 内容 |
 |---|---|---|
-| `reached_all` | なし | すべてのゴールに到達した (省略時の既定) |
+| `reached_all` | `max_end_error_m`=3.0 | すべてのゴールに到達した (省略時の既定)。真の姿勢を出せるバックエンドでは、走行の終わりの推定と真の姿勢の位置の差が `max_end_error_m` [m] を超えたら FAILED (推定の上で着いても、実際のロボットが着いていない回を落とす。`null` で見ない) |
 | `time_limit` | `sec` | 走行が `sec` 秒 (sim 時間) 以内に終わった |
 | `navigation_fails` | `index`=省略可 | 走行が失敗した (到達不能ゴールなどの異常系テスト)。`index` 指定時はそのゴールで失敗 |
 | `final_pose_error` | `x`, `y`, `tolerance`=0.5, `frame`=map (`map`/`world`) | 走行後のロボット位置が指定点から `tolerance` [m] 以内 (停止精度) |

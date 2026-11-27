@@ -5,8 +5,9 @@ from typing import List
 
 import numpy as np
 
+from ..geometry import separated
 from ..interfaces import (
-    Candidate, CandidateGenerator, ParamSpec, RecoveryContext, SearchWindow, SourceKind)
+    Candidate, CandidateGenerator, ParamSpec, PoseSample, RecoveryContext, SearchWindow, SourceKind)
 from ..matcher.correlative import window_size
 from .common import base_points, grow_covariance, predict_from_anchor
 
@@ -54,8 +55,66 @@ class PoseSource(CandidateGenerator):
         return [Candidate(sample.pose, cov, self.name)]
 
 
+class HypothesisModes(CandidateGenerator):
+    """姿勢の仮説の集合 (推定器の粒子の峰など) から、重みの大きい順に、互いに離れた仮説を最大 max_candidates 個、
+    候補にする。
+
+    推定器が誤った仮説に収束した後も、正しい仮説が少ない重みで残っていれば、その姿勢に戻せる。仮説は遠く離れた
+    似た場所にも残るので、疑義が始まる前のアンカーに動きを足した姿勢 (推測航法) から、位置が max_distance_m
+    (動いた距離に distance_ratio をかけた分を足す) か、向きが max_yaw_rad より離れた仮説は使わない。
+    仮説の時刻から今までの動きを足し、共分散には下限をかける (粒子の群れは小さく固まっていることがある)。
+    """
+    SOURCES = {'hypotheses': SourceKind.HYPOTHESES, 'motion': SourceKind.MOTION}
+    REQUIRES = ('anchors',)
+    PARAMS = {
+        'max_candidates': ParamSpec(int, 3),
+        'min_weight': ParamSpec(float, 0.05, 'これより軽い仮説は候補にしない'),
+        'separation_m': ParamSpec(float, 1.0),
+        'separation_rad': ParamSpec(float, 0.5),
+        'max_distance_m': ParamSpec(float, 3.0, '推測航法の姿勢から、これより離れた仮説は使わない'),
+        'distance_ratio': ParamSpec(float, 0.05, '動いた距離 [m] あたり、max_distance_m に足す距離'),
+        'max_yaw_rad': ParamSpec(float, 0.5, '推測航法の向きから、これより離れた仮説は使わない'),
+        'max_age_sec': ParamSpec(float, 3.0),
+        'min_std_m': ParamSpec(float, 0.3),
+        'min_std_yaw_rad': ParamSpec(float, 0.1),
+    }
+
+    def generate(self, context: RecoveryContext) -> List[Candidate]:
+        p = self.params
+        snapshot = context.snapshot
+        sample = snapshot.hypotheses(self.sources['hypotheses'], p['max_age_sec'])
+        if sample is None or not sample.hypotheses:
+            self.status = 'no_recent_sample'
+            return []
+        predicted = predict_from_anchor(context, self.sources['motion'])
+        if predicted is None:
+            self.status = 'no_anchor_or_motion'
+            return []
+        expected, _, distance = predicted
+        reach = p['max_distance_m'] + p['distance_ratio'] * distance
+        chosen = []
+        for hypothesis in sample.hypotheses:
+            if len(chosen) >= p['max_candidates'] or hypothesis.weight < p['min_weight']:
+                break
+            aligned = snapshot.align(PoseSample(sample.stamp, hypothesis.pose, hypothesis.cov))
+            if aligned is None or separated(aligned.pose, expected, reach, p['max_yaw_rad']):
+                continue
+            if all(separated(aligned.pose, other[1].pose, p['separation_m'], p['separation_rad']) for other in chosen):
+                chosen.append((hypothesis, aligned))
+        candidates = []
+        for rank, (hypothesis, aligned) in enumerate(chosen):
+            cov = np.array(aligned.cov, dtype=float, copy=True)
+            cov[0, 0] = max(cov[0, 0], p['min_std_m'] ** 2)
+            cov[1, 1] = max(cov[1, 1], p['min_std_m'] ** 2)
+            cov[2, 2] = max(cov[2, 2], p['min_std_yaw_rad'] ** 2)
+            candidates.append(Candidate(aligned.pose, cov, self.name,
+                                        info={'weight': hypothesis.weight, 'rank': float(rank)}))
+        self.status = 'ok' if candidates else 'no_hypothesis_near_prediction'
+        return candidates
+
+
 class AnchorMotion(CandidateGenerator):
-    """疑いが始まる前のアンカーに、その後の動きを足した姿勢を候補にする (推測航法)。
+    """疑義が始まる前のアンカーに、その後の動きを足した姿勢を候補にする (推測航法)。
 
     動きの誤差は、動いた距離に比例して共分散に足す。アンカーがなければ作らない。
     """

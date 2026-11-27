@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, List, Literal, Optional
 from diagnostic_msgs.msg import DiagnosticArray
 from nav2_msgs.msg import BehaviorTreeLog
 from nav_msgs.msg import OccupancyGrid, Odometry
-from rclpy.qos import qos_profile_sensor_data
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy, qos_profile_sensor_data
 from sensor_msgs.msg import LaserScan
 from std_msgs.msg import Bool, String
 
@@ -22,6 +22,7 @@ from sim_scenario_test.geometry import (
     Point,
     Pose,
     PoseSpec,
+    normalize_angle,
     polygon_circle_distance,
     polygon_polygon_distance,
     rectangle_vertices,
@@ -322,6 +323,237 @@ class ObstacleClearanceMonitor(TopicMonitor):
             f"(limit {self._spec.min_clearance} m, '{name}' at t={at:.1f}s, "
             f"robot speed {speed:.2f} m/s, position in robot frame ({x:.2f}, {y:.2f}); "
             f"{reference})")
+
+
+@dataclass
+class PoseErrorSpec:
+    # 推定 (TF の map -> base) と真の姿勢の差が、位置でこれ [m] か、向きでこれ [rad] を超えている間を
+    # 「ずれている」とみなす
+    deviation_m: float = 1.0
+    deviation_yaw: float = 0.35
+    # 位置の差の最大 [m] の上限 (省略時は判定しない)
+    max_error_m: Optional[float] = None
+    # ずれている間に、ロボットが実際に走った距離 [m] の上限 (省略時は判定しない)。
+    # ずれたまま走ることを測る
+    max_deviated_distance_m: Optional[float] = None
+    # ずれていた時間の合計 [s] の上限 (sim 時間。省略時は判定しない)。止まったままずれていることを測る
+    max_deviated_sec: Optional[float] = None
+    # 姿勢を比べる間隔 [s] (sim 時間)
+    sample_sec: float = 0.2
+    # 比べるタイミングの元になるトピック
+    topic: str = "/odom"
+
+    def validate(self, where: str) -> None:
+        if self.deviation_m <= 0.0 or self.deviation_yaw <= 0.0 or self.sample_sec <= 0.0:
+            raise ScenarioValidationError(
+                f"{where}: 'deviation_m', 'deviation_yaw' and 'sample_sec' must be > 0")
+
+
+@register_monitor("pose_error", PoseErrorSpec)
+class PoseErrorMonitor(TopicMonitor):
+    """自己位置推定とシミュレータ上の真の姿勢の差を監視する。
+
+    差の最大、ずれていた時間、ずれている間に実際に走った距離を出す。上限を指定すると判定する。
+    """
+    MSG_TYPE = Odometry
+
+    def __init__(self, ctx: "ScenarioContext", spec: PoseErrorSpec):
+        super().__init__(ctx, spec.topic)
+        self._spec = spec
+        # 真の姿勢を出せないバックエンドなら、ここで ScenarioError にする
+        ctx.backend.entity_pose(ctx.profile.sim.robot_entity)
+        self._samples = 0
+        self._last_time: Optional[float] = None
+        self._last_truth: Optional[Pose] = None
+        self._max_error = 0.0
+        self._max_yaw_error = 0.0
+        self._deviated_sec = 0.0
+        self._deviated_distance = 0.0
+        self._last_error = (0.0, 0.0)
+
+    def _truth(self) -> Optional[Pose]:
+        world_pose = self._ctx.backend.entity_pose(self._ctx.profile.sim.robot_entity)
+        if world_pose is None:
+            return None
+        return self._ctx.poses.to_map(PoseSpec(
+            "world", world_pose.x, world_pose.y, world_pose.z, world_pose.yaw))
+
+    def _on_msg(self, msg) -> None:
+        now = self._ctx.clock.now()
+        if self._last_time is not None and now - self._last_time < self._spec.sample_sec:
+            return
+        try:
+            estimate = self._ctx.poses.robot.get()
+        except ScenarioError:
+            return
+        truth = self._truth()
+        if truth is None:
+            return
+        error = estimate.distance_xy(truth)
+        yaw_error = abs(normalize_angle(estimate.yaw - truth.yaw))
+        deviated = error > self._spec.deviation_m or yaw_error > self._spec.deviation_yaw
+        if deviated and self._last_time is not None:
+            self._deviated_sec += now - self._last_time
+            self._deviated_distance += truth.distance_xy(self._last_truth)
+        self._samples += 1
+        self._max_error = max(self._max_error, error)
+        self._max_yaw_error = max(self._max_yaw_error, yaw_error)
+        self._last_error = (error, yaw_error)
+        self._last_time = now
+        self._last_truth = truth
+
+    def _evaluate(self) -> CheckResult:
+        if self._samples == 0:
+            return CheckResult("", ResultStatus.ERROR, "no pose was compared")
+        failed = (
+            (self._spec.max_error_m is not None and self._max_error > self._spec.max_error_m)
+            or (self._spec.max_deviated_distance_m is not None
+                and self._deviated_distance > self._spec.max_deviated_distance_m)
+            or (self._spec.max_deviated_sec is not None
+                and self._deviated_sec > self._spec.max_deviated_sec))
+        return CheckResult(
+            "", ResultStatus.FAILED if failed else ResultStatus.PASSED,
+            f"max error {self._max_error:.2f} m / {math.degrees(self._max_yaw_error):.0f} deg "
+            f"(limit {self._spec.max_error_m}), deviated {self._deviated_sec:.1f} s "
+            f"(limit {self._spec.max_deviated_sec}), "
+            f"travelled {self._deviated_distance:.2f} m while deviated "
+            f"(limit {self._spec.max_deviated_distance_m}), "
+            f"last error {self._last_error[0]:.2f} m / {math.degrees(self._last_error[1]):.0f} deg")
+
+
+@dataclass
+class MapOverlapSpec:
+    # 事前地図 (nav_msgs/OccupancyGrid)。推定の footprint がこの占有セルにかかるかを見る
+    map_topic: str = "/planning_map"
+    # 占有とみなす OccupancyGrid の値の下限
+    occupied_threshold: int = 65
+    # 見かけの食い込みが起きることを必須にする (起きなければ、試験になっていないので ERROR)
+    require_overlap: bool = False
+    # 1 回の見かけの食い込みが続く時間の上限 [s] (sim 時間。省略時は判定しない)
+    max_overlap_sec: Optional[float] = None
+    # true なら、走行の終わりに見かけの食い込みが解けていること
+    ends_clear: bool = True
+    sample_sec: float = 0.2
+    topic: str = "/odom"
+
+    def validate(self, where: str) -> None:
+        if self.sample_sec <= 0.0:
+            raise ScenarioValidationError(f"{where}: 'sample_sec' must be > 0")
+
+
+def _point_in_polygon(x: float, y: float, polygon: List[List[float]]) -> bool:
+    inside = False
+    for (x1, y1), (x2, y2) in zip(polygon, polygon[1:] + polygon[:1]):
+        if (y1 > y) != (y2 > y) and x < (x2 - x1) * (y - y1) / (y2 - y1) + x1:
+            inside = not inside
+    return inside
+
+
+@register_monitor("map_overlap", MapOverlapSpec)
+class MapOverlapMonitor(TopicMonitor):
+    """推定の footprint が事前地図の障害物にかかり、真の footprint はかかっていない状態を測る。
+
+    自己位置がずれて、実際には接触していないのに経路を作れなくなる状態 (見かけの食い込み) の回数と長さを出す。
+    """
+    MSG_TYPE = Odometry
+
+    def __init__(self, ctx: "ScenarioContext", spec: MapOverlapSpec):
+        super().__init__(ctx, spec.topic)
+        self._spec = spec
+        self._footprint = [list(v) for v in ctx.profile.robot.footprint]
+        if not self._footprint:
+            raise ScenarioError("map_overlap: profile.robot.footprint is not defined")
+        ctx.backend.entity_pose(ctx.profile.sim.robot_entity)
+        self._map_sub = None
+        self._map: Optional[OccupancyGrid] = None
+        self._points: List[Point] = []
+        self._last_time: Optional[float] = None
+        self._samples = 0
+        self._count = 0
+        self._since: Optional[float] = None
+        self._longest = 0.0
+
+    def start(self) -> None:
+        super().start()
+        self._map_sub = self._ctx.node.create_subscription(
+            OccupancyGrid, self._spec.map_topic, self._on_map,
+            QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE,
+                       durability=DurabilityPolicy.TRANSIENT_LOCAL))
+
+    def stop(self) -> None:
+        super().stop()
+        if self._map_sub is not None:
+            self._ctx.node.destroy_subscription(self._map_sub)
+            self._map_sub = None
+
+    def _on_map(self, msg: OccupancyGrid) -> None:
+        with self._lock:
+            self._map = msg
+            step = msg.info.resolution / 2.0
+            xs = [p[0] for p in self._footprint]
+            ys = [p[1] for p in self._footprint]
+            self._points = [
+                (min(xs) + i * step, min(ys) + j * step)
+                for i in range(int((max(xs) - min(xs)) / step) + 1)
+                for j in range(int((max(ys) - min(ys)) / step) + 1)
+                if _point_in_polygon(min(xs) + i * step, min(ys) + j * step, self._footprint)]
+
+    def _overlaps(self, pose: Pose) -> bool:
+        info = self._map.info
+        c = math.cos(pose.yaw)
+        s = math.sin(pose.yaw)
+        for px, py in self._points:
+            col = int(math.floor(
+                (pose.x + c * px - s * py - info.origin.position.x) / info.resolution))
+            row = int(math.floor(
+                (pose.y + s * px + c * py - info.origin.position.y) / info.resolution))
+            if (0 <= col < info.width and 0 <= row < info.height
+                    and self._map.data[row * info.width + col] >= self._spec.occupied_threshold):
+                return True
+        return False
+
+    def _truth(self) -> Optional[Pose]:
+        world_pose = self._ctx.backend.entity_pose(self._ctx.profile.sim.robot_entity)
+        if world_pose is None:
+            return None
+        return self._ctx.poses.to_map(PoseSpec(
+            "world", world_pose.x, world_pose.y, world_pose.z, world_pose.yaw))
+
+    def _on_msg(self, msg) -> None:
+        now = self._ctx.clock.now()
+        if self._map is None or (self._last_time is not None
+                                 and now - self._last_time < self._spec.sample_sec):
+            return
+        try:
+            estimate = self._ctx.poses.robot.get()
+        except ScenarioError:
+            return
+        truth = self._truth()
+        if truth is None:
+            return
+        self._last_time = now
+        self._samples += 1
+        apparent = self._overlaps(estimate) and not self._overlaps(truth)
+        if apparent and self._since is None:
+            self._since = now
+            self._count += 1
+        elif not apparent and self._since is not None:
+            self._longest = max(self._longest, now - self._since)
+            self._since = None
+
+    def _evaluate(self) -> CheckResult:
+        if self._samples == 0:
+            return CheckResult("", ResultStatus.ERROR, f"no pose was compared with {self._spec.map_topic}")
+        if self._spec.require_overlap and self._count == 0:
+            return CheckResult("", ResultStatus.ERROR, "apparent overlap never occurred (the test did not exercise it)")
+        ongoing = self._since is not None
+        longest = max(self._longest, self._ctx.clock.now() - self._since) if ongoing else self._longest
+        failed = ((self._spec.max_overlap_sec is not None and longest > self._spec.max_overlap_sec)
+                  or (self._spec.ends_clear and ongoing))
+        return CheckResult(
+            "", ResultStatus.FAILED if failed else ResultStatus.PASSED,
+            f"apparent overlap {self._count} time(s), longest {longest:.1f} s "
+            f"(limit {self._spec.max_overlap_sec})" + (", still overlapping at the end" if ongoing else ""))
 
 
 @dataclass

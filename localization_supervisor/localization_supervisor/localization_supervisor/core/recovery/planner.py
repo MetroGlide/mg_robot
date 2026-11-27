@@ -10,7 +10,7 @@
 import math
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from ..interfaces import Candidate, CandidateGenerator, CandidateScorer, Matcher, RecoveryContext
 
@@ -48,6 +48,22 @@ class SelectionConfig:
 
 
 @dataclass
+class ObserveConfig:
+    """止まったままでは決められないときに、観測を増やしてほしいと求める (指示 observe) 条件と、撒き直しの条件。
+
+    RECOVERING で、再初期化も収束の確認もできない (候補を選べない・確認が異常か判定できない) 時間が
+    request_after_sec 続いたら、request_interval_sec ごとに observe の指示を出す (0 なら出さない)。
+    一度再初期化した後は、motion の動きが reseed_min_distance_m か reseed_min_rotation_rad に届くまで、
+    撒き直さない (同じ観測では同じ候補になるため)。どちらも 0 なら制限しない。
+    """
+    motion: str = ''
+    request_after_sec: float = 0.0
+    request_interval_sec: float = 20.0
+    reseed_min_distance_m: float = 0.0
+    reseed_min_rotation_rad: float = 0.0
+
+
+@dataclass
 class RecoveryPlan:
     candidates: List[Candidate]
     chosen: Optional[Candidate]
@@ -77,15 +93,7 @@ class RecoveryPlanner:
     def plan(self, context: RecoveryContext, exclude: str = '') -> RecoveryPlan:
         """exclude は、疑わしい情報源の名前。それを使う候補を作るものと評価するものは、使わない。"""
         started = time.monotonic()
-        context.matcher = self.matcher
-        candidates: List[Candidate] = []
-        notes: Dict[str, str] = {}
-        for generator in self.generators:
-            if exclude and exclude in generator.sources.values():
-                notes[generator.name] = f'excluded:{exclude}'
-                continue
-            candidates.extend(generator.generate(context))
-            notes[generator.name] = generator.status
+        candidates, notes = self.generate(context, {exclude} if exclude else set())
         if not candidates:
             return RecoveryPlan([], None, 'no_candidates', time.monotonic() - started, generators=notes)
         scorers = [(s, c) for s, c in zip(self.scorers, self.scorer_configs)
@@ -97,6 +105,20 @@ class RecoveryPlanner:
         plan.elapsed_sec = time.monotonic() - started
         plan.generators = notes
         return plan
+
+    def generate(self, context: RecoveryContext, exclude: set) -> Tuple[List[Candidate], Dict[str, str]]:
+        """候補を作る (評価しない)。exclude の情報源を使う候補を作るものは使わない。(候補, 作るものごとの結果の理由)。"""
+        context.matcher = self.matcher
+        candidates: List[Candidate] = []
+        notes: Dict[str, str] = {}
+        for generator in self.generators:
+            excluded = sorted(exclude & set(generator.sources.values()))
+            if excluded:
+                notes[generator.name] = f'excluded:{",".join(excluded)}'
+                continue
+            candidates.extend(generator.generate(context))
+            notes[generator.name] = generator.status
+        return candidates, notes
 
     @staticmethod
     def _score(candidate: Candidate, context: RecoveryContext, scorers) -> None:

@@ -1,0 +1,13 @@
+# GNSS と整合させた自己位置推定用の地図 (map_for20261128) の、領域ごとの区間の評価セット (run_localization_set.sh /
+# compare_localization_set.py)。区間は robustness の map_for20261017 の行と同じ。構成どうし (legacy と supervised) の
+# 比較と、実データでの誤った停止・減速・悪化がないことの確認に使う。
+# 1 行に 1 条件: <ラベル> <データセット> [run_localization_variant.sh の引数 ...]
+r1_051635 map20261128r1_eval051635
+r2_051635 map20261128r2_eval051635
+r3_051635 map20261128r3_eval051635
+r5_043837 map20261128r5_eval043837
+r4_043837 map20261128r4_eval043837
+r3_043837 map20261128r3_eval043837
+r2_043837 map20261128r2_eval043837
+r1_043837 map20261128r1_eval043837
+r5_041743 map20261128r5_eval041743

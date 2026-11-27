@@ -92,6 +92,8 @@ class Profile:
     robot: RobotSpec = field(default_factory=RobotSpec)
     nav2: Nav2Spec = field(default_factory=Nav2Spec)
     readiness: ReadinessSpec = field(default_factory=ReadinessSpec)
+    # 準備完了の後に取得して結果に残すパラメータ (ノード名 -> パラメータ名の並び)。どの構成で走ったかの記録
+    record_parameters: Dict[str, List[str]] = field(default_factory=dict)
     # world 名 -> 変数 (sim_world, sdf, map, waypoints など任意)
     worlds: Dict[str, Dict[str, str]] = field(default_factory=dict)
 

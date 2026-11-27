@@ -1,0 +1,58 @@
+version: "2.0"
+name: gate_drift_driving
+description: >
+  自己位置監視のノードの中の AMCL 検証ゲート (localization_gate:=true) の戻し方を、走りへの影響で確かめる (大きい補正)。
+  自己位置監視のプロファイル notify_only で、自己位置監視の判定は通知だけにし、AMCL 検証ゲートだけを働かせる。
+  棚の列に沿った通路をシーケンサで走っている間に、AMCL を通路に沿って少しずつずらす (真の位置は動かさない)。
+  AMCL 検証ゲートが閉じる前に EKF がずれた AMCL を取り込むので、戻すときは EKF との差が大きい補正になる。
+  戻し方 (その場で補正する / 止まってから補正する / 大きさで分ける) は、自己位置監視の設定 (gate.settings の
+  small_correction_m・small_correction_rad) を差し替えて比べる。到達の判定はシミュレータ上の真の位置で行う。
+  ずらす注入は /initialpose で、AMCL 検証ゲートは専用のトピックを通らない /initialpose を推定器の振る舞いとして判定する。
+  通路に入る前に開けた場所を走り、AMCL 検証ゲートが起動の直後の確かめを済ませて通路に入ってから注入する。
+profile: mg01
+world: warehouse
+tags: [localization, gate, drift, mg_sequencer, known_issue]
+timeout: 300
+
+record_topics: [/sim_scenario_test/entity_poses, /amcl_pose_origin, /odom/gps, /ekf_global_odom, /odom, /localization/status, /cmd_vel, /initialpose, /rosout]
+
+stack_args:
+  waypoints_load_path: "pkg://mg_scenario_test/scenarios/data/drift_aisle_waypoints.yaml"
+  localization_monitor: supervisor
+  localization_gate: "true"
+  localization_profile: notify_only
+  localization_preset: none
+
+setup:
+  - respawn: { pose: { x: -4.0, y: 3.0, yaw: 3.1416 }, settle_sec: 3.0 }
+
+monitors:
+  # 合否: ずれたまま止める要求なしで走る距離、止まったままの時間
+  - localization_outcome: { max_missed_distance_m: 3.0, max_false_hold_sec: 30.0, require_deviation: true }
+  - max_stop_duration: { max_stop_sec: 60.0, until_goal_reached: 2 }
+  # 以下は戻し方の比較のための記録 (合否に使わない)
+  - pose_error: { deviation_m: 1.0 }
+  - localization_hold: {}
+  - map_overlap: { max_overlap_sec: 60.0 }
+
+run:
+  mg_sequencer:
+    waypoints_file: "pkg://mg_scenario_test/scenarios/data/drift_aisle_waypoints.yaml"
+    waypoint_timeout_sec: 200.0
+
+timeline:
+  - name: drift
+    when:
+      all_of:
+        triggers:
+          - localization_ready: { checks: [gate_amcl_gnss] }
+          - robot_near: { x: -3.0, y: 6.5, radius: 1.5 }
+    do:
+      # 通路に沿って (拘束の弱い向き) ゆっくりずらす。毎秒の /initialpose で AMCL の分布を絞り直すので、AMCL は
+      # 進む向きにも強い自信を申告したまま流れる (現実の通路の弱り方とは違う。scenarios/README.md の known_issue)
+      - localization_drift: { rate: { x: 0.08 }, duration_sec: 20.0 }
+
+expect:
+  - reached_all
+  - time_limit: { sec: 300 }
+  - final_pose_error: { x: 11.0, y: 6.5, tolerance: 0.5, frame: world }

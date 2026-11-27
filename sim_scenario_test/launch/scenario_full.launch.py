@@ -4,10 +4,13 @@
 プロファイルの sim.launch / stack.launch を include し、scenario_runner の終了で全体を終了する。
 launch_stack:=false のときは stack を起動しない (別のマシンで起動済みのスタックに接続する)。
 """
+import os
+
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
     EmitEvent,
+    ExecuteProcess,
     OpaqueFunction,
     RegisterEventHandler,
 )
@@ -31,13 +34,20 @@ def _setup(context, *args, **kwargs):
         scenario.world, LaunchConfiguration("headless").perform(context), "scenario.world")
     actions = []
     if profile.sim.launch is not None:
-        actions.append(include_launch(profile.sim.launch, variables, "profile.sim.launch.args"))
+        actions.append(include_launch(
+            profile.sim.launch, variables, "profile.sim.launch.args", scenario.sim_args))
     actions += backend_launch_actions(profile, variables)
     # 実機PCなど別の場所でスタックを起動する場合 (--remote-stack) は include しない
     launch_stack = LaunchConfiguration("launch_stack").perform(context) == "true"
     if profile.stack is not None and launch_stack:
         actions.append(include_launch(
             profile.stack, variables, "profile.stack.args", scenario.stack_args))
+
+    if scenario.record_topics and result_file:
+        actions.append(ExecuteProcess(
+            cmd=["ros2", "bag", "record", "-o", os.path.join(os.path.dirname(result_file), "bag"),
+                 *scenario.record_topics],
+            output="log"))
 
     runner = Node(
         package="sim_scenario_test",

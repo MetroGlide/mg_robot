@@ -11,6 +11,8 @@ from launch.substitutions import (
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from ament_index_python.packages import get_package_share_directory
 
+from mg_navigation.localization_config import DEFAULT_CONFIG, resolve
+from mg_navigation.localization_preset import preset_files
 from mg_utils import launch_argument
 
 
@@ -91,19 +93,36 @@ def generate_launch_description():
     # rosbag を再生して自己位置推定を評価するときに使う。
     use_navigation_arg = launch_argument_creator.create(
         "use_navigation", default="true")
-    # GNSS から AMCL の初期姿勢を与えるノードと、自己位置の監視ノード (none | watchdog | supervisor)
+    # GNSS から AMCL の初期姿勢を与えるノード
     use_gnss_amcl_initializer_arg = launch_argument_creator.create(
         "use_gnss_amcl_initializer", default="true")
+    # 自己位置推定の構成 (legacy | observe | supervised。mg_navigation/localization_config.py)。既定は環境変数
+    # LOCALIZATION_CONFIG。下の監視・自己位置監視の並走・ AMCL 検証ゲート・プロファイル・プリセットは、空なら構成の値を使う
+    localization_config_arg = launch_argument_creator.create(
+        "localization_config", default=EnvironmentVariable("LOCALIZATION_CONFIG", default_value=DEFAULT_CONFIG))
+    # 自己位置の監視ノード (none | watchdog | supervisor)。既定は環境変数 LOCALIZATION_MONITOR
     localization_monitor_arg = launch_argument_creator.create(
-        "localization_monitor", default="supervisor")
-    # 監視が watchdog のとき、監督ノードを並行して通知だけで動かすか
+        "localization_monitor", default=EnvironmentVariable("LOCALIZATION_MONITOR", default_value=""))
+    # 監視が watchdog のとき、自己位置監視ノードを並行して通知だけで動かすか (true | false)
     localization_supervisor_arg = launch_argument_creator.create(
-        "localization_supervisor", default="false")
+        "localization_supervisor", default="")
     supervisor_config_arg = launch_argument_creator.create(
         "supervisor_config", default=os.path.join(
             get_package_share_directory("mg_localization_supervisor"), "config", "supervision.yaml"))
+    # 自己位置監視ノードの中で AMCL 検証ゲートを使うか (true | false | observe)。既定は環境変数 LOCALIZATION_GATE
+    localization_gate_arg = launch_argument_creator.create(
+        "localization_gate", default=EnvironmentVariable("LOCALIZATION_GATE", default_value=""))
+    # 自己位置監視の設定に重ねるプロファイル (mg_localization_supervisor/config/supervision.yaml の profiles。none は基本設定)
     localization_profile_arg = launch_argument_creator.create(
-        "localization_profile", default="")
+        "localization_profile", default=EnvironmentVariable("LOCALIZATION_PROFILE", default_value=""))
+    # localization_profile の後に重ねるプロファイル (シナリオ試験の故障の注入用。localization_profile は環境変数で
+    # 比べる構成を選ぶのに残す)
+    localization_test_profile_arg = launch_argument_creator.create(
+        "localization_test_profile", default="")
+    # AMCL と EKF の params に重ねる自己位置推定のプリセット (mg_navigation/params/localization_presets/<名前>.yaml。
+    # none は重ねない)
+    localization_preset_arg = launch_argument_creator.create(
+        "localization_preset", default=EnvironmentVariable("LOCALIZATION_PRESET", default_value=""))
     nav2_params_file_arg = launch_argument_creator.create(
         "nav2_params_file", default=os.path.join(
             navigation_pkg_share, "params", "nav2_params.yaml"))
@@ -142,29 +161,44 @@ def generate_launch_description():
         }.items(),
     )
 
-    ekf_group = launch.actions.GroupAction(
-        [
-            Node(
-                package="robot_localization",
-                executable="ekf_node",
-                name="ekf_global_node",
-                output="screen",
-                parameters=[
-                    {"use_sim_time": simulation_arg.launch_config},
-                    PathJoinSubstitution(
-                        [drivers_pkg_share, "params",
-                            ekf_params_file_arg.launch_config]
-                    ),
-                ],
-                remappings=[
-                    ("odometry/filtered", ekf_odom_topic_arg.launch_config),
-                ],
-            ),
+    def localization(context):
+        """構成の名前と個別の指定から、自己位置推定の launch の引数の値を決める。"""
+        args = {
+            "localization_monitor": localization_monitor_arg, "localization_supervisor": localization_supervisor_arg,
+            "localization_gate": localization_gate_arg, "localization_preset": localization_preset_arg,
+            "localization_profile": localization_profile_arg,
+        }
+        return resolve(context.perform_substitution(localization_config_arg.launch_config), {
+            key: context.perform_substitution(arg.launch_config) for key, arg in args.items()})
 
-        ],
-        condition=launch.conditions.IfCondition(
-            use_ekf_arg.launch_config),
-    )
+    def create_ekf(context):
+        """EKF を作る。プリセットがあれば、EKF の params の後に重ねる。"""
+        values = localization(context)
+        return [launch.actions.GroupAction(
+            [
+                Node(
+                    package="robot_localization",
+                    executable="ekf_node",
+                    name="ekf_global_node",
+                    output="screen",
+                    parameters=[
+                        {"use_sim_time": simulation_arg.launch_config},
+                        PathJoinSubstitution(
+                            [drivers_pkg_share, "params",
+                                ekf_params_file_arg.launch_config]
+                        ),
+                        *preset_files(
+                            values["localization_preset"], values["localization_monitor"], navigation_pkg_share),
+                    ],
+                    remappings=[
+                        ("odometry/filtered", ekf_odom_topic_arg.launch_config),
+                    ],
+                ),
+
+            ],
+            condition=launch.conditions.IfCondition(
+                use_ekf_arg.launch_config),
+        )]
 
     bridge_node = Node(
         package='slam_gnss_2d',
@@ -197,36 +231,43 @@ def generate_launch_description():
     # map_path = PathJoinSubstitution(
     #     ["/root/ros2_data", map_path_arg.launch_config, "map.yaml"])
     map_path = map_path_arg.launch_config
-    launch_navigation = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            navigation_pkg_share + "/launch/bringup.launch.py"
-        ),
-        launch_arguments={
-            "simulation": simulation_arg.launch_config,
-            "localization_map": map_path,
-            "planning_map": planning_map_path_arg.launch_config,
-            "waypoints_load_path": waypoints_load_path_arg.launch_config,
-            "rviz": rviz_arg.launch_config,
-            "record_bag": record_bag_arg.launch_config,
-            "global_planner": global_planner_arg.launch_config,
-            "use_navigation": use_navigation_arg.launch_config,
-            "params_file": nav2_params_file_arg.launch_config,
-            "use_gnss_amcl_initializer": use_gnss_amcl_initializer_arg.launch_config,
-            "localization_monitor": localization_monitor_arg.launch_config,
-            "localization_supervisor": localization_supervisor_arg.launch_config,
-            "supervisor_config": supervisor_config_arg.launch_config,
-            "localization_profile": localization_profile_arg.launch_config,
-        }.items(),
-    )
+    def create_navigation(context):
+        """ナビゲーション (自己位置推定を含む) を、構成で決めた引数で include する。"""
+        values = localization(context)
+        test_profile = context.perform_substitution(localization_test_profile_arg.launch_config)
+        profile = ",".join(p for p in (values["localization_profile"], test_profile) if p)
+        return [IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                navigation_pkg_share + "/launch/bringup.launch.py"
+            ),
+            launch_arguments={
+                "simulation": simulation_arg.launch_config,
+                "localization_map": map_path,
+                "planning_map": planning_map_path_arg.launch_config,
+                "waypoints_load_path": waypoints_load_path_arg.launch_config,
+                "rviz": rviz_arg.launch_config,
+                "record_bag": record_bag_arg.launch_config,
+                "global_planner": global_planner_arg.launch_config,
+                "use_navigation": use_navigation_arg.launch_config,
+                "params_file": nav2_params_file_arg.launch_config,
+                "use_gnss_amcl_initializer": use_gnss_amcl_initializer_arg.launch_config,
+                "localization_monitor": values["localization_monitor"],
+                "localization_supervisor": values["localization_supervisor"],
+                "supervisor_config": supervisor_config_arg.launch_config,
+                "localization_gate": values["localization_gate"],
+                "localization_profile": profile,
+                "localization_preset": values["localization_preset"],
+            }.items(),
+        )]
 
     return LaunchDescription(
         [
             *launch_argument_creator.get_created_declare_launch_args(),
 
             launch_common,
-            ekf_group,
+            launch.actions.OpaqueFunction(function=create_ekf),
             bridge_node,
             mmi_switch_node,
-            launch_navigation,
+            launch.actions.OpaqueFunction(function=create_navigation),
         ]
     )

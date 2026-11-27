@@ -7,15 +7,23 @@
 # オプション:
 #   --dataset <名前|パス>    データセット (tools/datasets/localization/。既定 map043837_eval051635_short)
 #   --runs N                 繰り返す回数 (既定 3。AMCL は乱数を使うため分布で比べる)
+#   --run-from K             試行 K から --runs までだけ実行し、summary.md は作らない
+#                            (1 試行ずつ並列に回す用。run_localization_queue.py が使う)
+#   --no-build               起動前にビルドしない (ビルド済みのイメージを IMAGE で渡すとき)
 #   --rate R                 再生速度 (既定 1.0。実時間で評価するのが基本)
 #   --init gt|gnss           初期姿勢 (既定 gt: 真値を与える / gnss: GNSS による初期化に任せる)
 #   --initializer true|false GNSS から AMCL の初期姿勢を与えるノード (既定: gt なら false、gnss なら true)
 #   --monitor none|watchdog|supervisor
 #                            自己位置の監視ノード (既定: gt なら none、gnss なら watchdog)
-#   --profile <名前>         監督の設定に重ねるプロファイル (mg_localization_supervisor/config/supervision.yaml)
+#   --profile <名前>         自己位置監視の設定に重ねるプロファイル (mg_localization_supervisor/config/supervision.yaml)
+#   --gate true|false        自己位置監視ノードの中で AMCL 検証ゲートを使う (--monitor supervisor のとき。既定 false。AMCL 検証ゲートの設定は
+#                            supervision.yaml の gate 節で、sup.gate.<key> で書き換える)
 #   --start S / --duration D 評価する区間 (データセットの値を上書き)
 #   --cpus N                 コンテナに使わせる CPU 数 (実機相当の負荷にしたいとき)
+#   --no-particles           AMCL の粒子 (/particle_cloud) を記録しない (記録の容量を抑える。仮説の解析や
+#                            記録を固定の入力にする評価に使わない試行で)
 #   --faults <yaml>          センサ入力に故障を注入する (tools/datasets/localization/faults/。復旧の評価用)
+#                            kidnap・amcl_drift は /initialpose を使うので、自己位置監視の external_reinit.topics を空にする
 #   --ekf-file / --nav2-file / --bridge-file / --odom-file / --supervisor-file <yaml>
 #                            パラメータファイルをリポジトリの既定ではなく、指定したファイルから複製する
 #                            (複数行のリストなど、1 行の書き換えでは変えられない変更に使う)
@@ -25,8 +33,9 @@
 #   amcl.<key>    mg_navigation/params/nav2_params.yaml の amcl
 #   bridge.<key>  slam_gnss_2d/params/nav_bridge.yaml の slam_gnss_nav_bridge
 #   odom.<key>    mg_drivers/params/wheel_odom_corrector.yaml の wheel_odom_corrector_node
-#   sup.<key>     mg_localization_supervisor/config/supervision.yaml (監督の設定。トップレベルからのパスで、
+#   sup.<key>     mg_localization_supervisor/config/supervision.yaml (自己位置監視の設定。トップレベルからのパスで、
 #                 フロー形式の中の値も書ける。例: sup.detectors.amcl_gnss.params.threshold=8.0)
+#                 AMCL 検証ゲートは sup.gate.<key> (例: sup.gate.settings.small_correction_m=100)
 #
 # 例:
 #   tools/scripts/run_localization_variant.sh baseline
@@ -34,7 +43,7 @@
 #   tools/scripts/run_localization_variant.sh light_amcl amcl.max_particles=2000 amcl.max_beams=240 --cpus 4
 #
 # 出力: <評価 bag>/eval_loc/<データセット>/<名前>/{params/, run_N/, summary.md}
-# 環境変数: IMAGE (使う Docker イメージ。既定 mg_develop:latest)
+# 環境変数: IMAGE (使う Docker イメージ。既定 mg_develop:latest)、CONTAINER_NAME (コンテナの名前。外から止める用)
 set -euo pipefail
 
 usage() {
@@ -55,6 +64,7 @@ INIT_MODE=gt
 USE_INITIALIZER=""
 MONITOR=""
 PROFILE=""
+GATE=""
 CPUS=""
 START_OVERRIDE=""
 DURATION_OVERRIDE=""
@@ -64,6 +74,9 @@ BRIDGE_UPDATES=()
 ODOM_UPDATES=()
 SUPERVISOR_UPDATES=()
 FAULTS=""
+RECORD_PARTICLES="true"
+RUN_FROM=""
+NO_BUILD="false"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -74,10 +87,14 @@ while [ $# -gt 0 ]; do
     --initializer) USE_INITIALIZER="$2"; shift 2 ;;
     --monitor) MONITOR="$2"; shift 2 ;;
     --profile) PROFILE="$2"; shift 2 ;;
+    --gate) GATE="$2"; shift 2 ;;
     --start) START_OVERRIDE="$2"; shift 2 ;;
     --duration) DURATION_OVERRIDE="$2"; shift 2 ;;
     --cpus) CPUS="$2"; shift 2 ;;
     --faults) FAULTS="$2"; shift 2 ;;
+    --no-particles) RECORD_PARTICLES="false"; shift ;;
+    --run-from) RUN_FROM="$2"; shift 2 ;;
+    --no-build) NO_BUILD="true"; shift ;;
     --ekf-file) EKF_FILE="$2"; shift 2 ;;
     --nav2-file) AMCL_FILE="$2"; shift 2 ;;
     --bridge-file) BRIDGE_FILE="$2"; shift 2 ;;
@@ -96,6 +113,12 @@ done
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
+# 故障の注入 (kidnap、amcl_drift) は /initialpose を使うので、自己位置監視が人による再初期化として受け入れないよう、
+# 外からの再初期化を見るトピックを空にする (sup.external_reinit.topics=... を渡せば、そちらが優先)
+if [ -n "$FAULTS" ]; then
+  SUPERVISOR_UPDATES=("external_reinit.topics=[]" "${SUPERVISOR_UPDATES[@]}")
+fi
+
 eval "$(python3 tools/scripts/loc_dataset.py "$DATASET")"
 [ -n "$START_OVERRIDE" ] && START_OFFSET="$START_OVERRIDE"
 [ -n "$DURATION_OVERRIDE" ] && DURATION="$DURATION_OVERRIDE"
@@ -108,7 +131,8 @@ if [ "$INIT_MODE" = "gt" ]; then
 fi
 
 # 変種のパラメータファイルを、リポジトリの値から複製して書き換える
-VARIANT_REL="tools/data/variants/loc_${NAME}"
+# 1 試行ずつ並列に回すときは、同じ変種の試行どうしでファイルを書き換え合わないよう、試行ごとに分ける
+VARIANT_REL="tools/data/variants/loc_${NAME}${RUN_FROM:+/run_$RUN_FROM}"
 mkdir -p "$VARIANT_REL"
 patch() {
   # $1: 元ファイル, $2: 出力ファイル名, 以降: node:key=value
@@ -120,7 +144,7 @@ patch "${ODOM_FILE:-mg_drivers/params/wheel_odom_corrector.yaml}" wheel_odom_cor
 patch "${EKF_FILE:-mg_drivers/params/ekf_global.yaml}" ekf_global.yaml "${EKF_UPDATES[@]}"
 patch "${AMCL_FILE:-mg_navigation/params/nav2_params.yaml}" nav2_params.yaml "${AMCL_UPDATES[@]}"
 patch "${BRIDGE_FILE:-slam_gnss_2d/slam_gnss_2d/params/nav_bridge.yaml}" nav_bridge.yaml "${BRIDGE_UPDATES[@]}"
-# 監督の設定は ROS2 パラメータではないので --plain で書き換える。プロファイルは設定ファイルからの相対パスなので複製する
+# 自己位置監視の設定は ROS2 パラメータではないので --plain で書き換える。プロファイルは設定ファイルからの相対パスなので複製する
 SUPERVISOR_SRC="${SUPERVISOR_FILE:-mg_localization_supervisor/config/supervision.yaml}"
 python3 tools/scripts/patch_params.py --plain "$SUPERVISOR_SRC" "$VARIANT_REL/supervision.yaml" "${SUPERVISOR_UPDATES[@]}"
 rm -rf "$VARIANT_REL/profiles"
@@ -148,11 +172,15 @@ DOCKER_ARGS=(run --rm --network host -e ROS_DOMAIN_ID="$DOMAIN_ID"
   -e GT_DIR="$GT_DIR" -e MAP_GT_DIR="$MAP_GT_DIR"
   -e VARIANT_DIR="/app/$VARIANT_REL" -e OUT_DIR="$OUT_DIR"
   -e RUNS="$RUNS" -e RATE="$RATE" -e START_OFFSET="$START_OFFSET" -e DURATION="$DURATION"
-  -e INIT_MODE="$INIT_MODE")
+  -e INIT_MODE="$INIT_MODE" -e RECORD_PARTICLES="$RECORD_PARTICLES")
 [ -n "$CPUS" ] && DOCKER_ARGS+=(--cpus "$CPUS")
+[ -n "${CONTAINER_NAME:-}" ] && DOCKER_ARGS+=(--name "$CONTAINER_NAME")
+[ -n "$RUN_FROM" ] && DOCKER_ARGS+=(-e RUN_FROM="$RUN_FROM" -e SUMMARY=false)
+[ "$NO_BUILD" = "true" ] && DOCKER_ARGS+=(-e BUILD_PKGS=)
 [ -n "$USE_INITIALIZER" ] && DOCKER_ARGS+=(-e USE_INITIALIZER="$USE_INITIALIZER")
 [ -n "$MONITOR" ] && DOCKER_ARGS+=(-e MONITOR="$MONITOR")
 [ -n "$PROFILE" ] && DOCKER_ARGS+=(-e PROFILE="$PROFILE")
+[ -n "$GATE" ] && DOCKER_ARGS+=(-e GATE="$GATE")
 if [ -n "$FAULTS" ]; then
   # ホストのパスをコンテナ内のパスに直す (リポジトリ内 -> /app、~/ros2_data -> /root/ros2_data)
   FAULTS_ABS="$(cd "$(dirname "$FAULTS")" && pwd)/$(basename "$FAULTS")"

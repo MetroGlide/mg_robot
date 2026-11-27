@@ -1,6 +1,6 @@
 # プラグインの約束
 
-判定、総合、復旧の候補を作るものと評価するもの、照合、再初期化の送り先、対処、入力のアダプタ、イベントの出力は、基底クラスを継承したプラグインとして作る。標準のものは登録名で、外部のものは `パッケージ.モジュール:クラス` で、設定ファイルの `type` に書く。
+判定、総合、復旧の候補を作るものと評価するもの、照合、再初期化の送り先、出力部、入力のアダプタ、イベントの出力は、基底クラスを継承したプラグインとして作る。標準のものは登録名で、外部のものは `パッケージ.モジュール:クラス` で、設定ファイルの `type` に書く。
 読み込むときに、パラメータの型と必須、情報源の名前と種類をすべて検証し、合わなければ設定の読み込みで落ちる (`ConfigError`)。
 
 ## 約束の版
@@ -24,7 +24,7 @@ from localization_supervisor.core.interfaces import Detector, Evidence, ParamSpe
 
 class SpeedLimitCheck(Detector):
     SOURCES = {'pose': SourceKind.POSE}      # 引数の名前と、求める情報源の種類
-    SUBJECTS = ('pose',)                     # 異常のとき疑いをかける引数 (既定は reference 以外のすべて)
+    SUBJECTS = ('pose',)                     # 異常のとき疑義をかける引数 (既定は pose と motion のすべて)
     PARAMS = {'threshold': ParamSpec(float, None, '...')}
 
     def evaluate(self, snapshot) -> Evidence:
@@ -54,6 +54,8 @@ class SpeedLimitCheck(Detector):
 | `pose_history(name)` | 姿勢の標本の履歴 |
 | `motion_at(name, stamp)` | 動きの情報源の、その時刻の姿勢 (補間) |
 | `reference(name)` | 地図 (`occupancy`)・最新のスキャン (`scan`)・距離場のキャッシュ (`fields`) |
+| `hypotheses(name, max_age)` | 最新の仮説の集合 (`HypothesisSample`: 時刻と、重み・姿勢・共分散の `Hypothesis` の列。重みの大きい順、和は 1。時刻はそろえない) |
+| `align(sample, stamp)` | 姿勢の標本を `stamp` (既定は周期の時刻) に、動きの情報源で移す。移せなければ `None` |
 | `cached(key, compute)` | 同じ周期の中で計算を使い回す |
 
 ### 標準の判定
@@ -61,10 +63,11 @@ class SpeedLimitCheck(Detector):
 | 登録名 | 引数 (種類) | 内容 |
 | :--- | :--- | :--- |
 | `pose_consistency` | `a`, `b` (pose) | 2 つの姿勢を共通の時刻に移した位置の食い違い。`metric` が `mahalanobis` なら両方の共分散を使ったマハラノビス距離の二乗、`distance` なら距離。標準偏差が上限を超える標本は使わない |
-| `pose_jump` | `pose`, `motion` (疑うのは `pose`) | 姿勢と動きが示す `map→odom` の、新しい標本ごとの変化 (飛び)。新しい標本がない周期は判定しない |
+| `pose_jump` | `pose`, `motion` (疑うのは `pose`) | 姿勢と動きが示す `map→odom` の、新しい標本ごとの変化 (飛び)。`window_sec` を正にすると、直前ではなくその秒数以上前の標本と比べ、1 回ごとは小さくても続けて同じ向きにずれていくもの (旋回中の回りすぎなど) を見る。新しい標本がない周期は判定しない。`max_std_m` が正なら、申告の精度がそれより悪い標本は使わない (GNSS の揺れを飛びと見ない) |
 | `covariance` | `pose` | 自己申告の共分散の大きさ (`trace_xy` / `determinant_xy` / `max_eigenvalue_xy`) |
 | `scan_map` | `pose`, `reference` (疑うのは `pose`) | その姿勢でスキャンを地図に重ねた一致率を、正常なときの中央値と比べる。姿勢の周りでずらしたほうが合う量 (利得) も見られる |
 | `submap_map` | `pose`, `motion`, `reference` (疑うのは `pose`) | 直近の一定距離のスキャンを、動きに基づいて 1 枚の局所地図にまとめ (キーフレームに間引く)、その姿勢で地図に重ねる。一致率と、位置・向きをずらしたほうが合う量 (利得) を見る。照合は `interval_sec` ごとで、間の周期と、走行距離が足りない間は判定しない |
+| `hypothesis_split` | `pose`, `hypotheses` (疑うのは `pose`) | 推定器の仮説が割れているか。最も重い仮説から位置か向きで離れた仮説のうち、最も重いものの重みを見る。割れていても推定器が正しい方を選んでいることが多く、証拠としては弱い |
 
 推定器が同じスキャンと地図で推定しているとき、その推定器の姿勢でのスキャンの判定は推定器と独立ではない (誤った場所に収束していても一致率は良く見えやすい)。総合での重みは、この独立性を考えて決める ([design.md](./design.md#判定と-evidence))。
 スキャンの判定の値の大きさは、地図とセンサと環境で変わる。正しい姿勢での値の分布を、オフライン評価 (重み 0 で記録だけする) で確かめてから有効にする。
@@ -72,19 +75,20 @@ class SpeedLimitCheck(Detector):
 ## 総合 (`FusionStrategy`)
 
 `update(evidences, active) -> FusionResult` と `reset()` を実装する。`self.instances` (インスタンスの名前ごとの `InstanceInfo`: `subjects`、`weight`、`allowance`、`decay`、`max_score`、`options`)、`self.independent` (独立の情報源)、`self.derived` (融合の結果と、その元) を使える。
-疑わしい情報源の切り分け (最大値の記録、`vouch`、`attribute`) は、`core/fusion.py` の `AttributingFusion` を継承すれば共通で使える。その場合は `_accumulate` (インスタンスごとの累積と、疑い・確認の判定) と `_reset_counts` だけを書く。標準の方式 (`cusum`、`consecutive`) は [design.md](./design.md#総合)。
+疑わしい情報源の切り分け (最大値の記録、`vouch`、`attribute`) は、`core/fusion.py` の `AttributingFusion` を継承すれば共通で使える。その場合は `_accumulate` (インスタンスごとの累積と、疑義・確認の判定) と `_reset_counts` だけを書く。標準の方式 (`cusum`、`consecutive`) は [design.md](./design.md#総合)。
 
 ## 復旧の候補を作るもの (`CandidateGenerator`)
 
 `core/interfaces.py`。再初期化が要るあいだ、周期ごとに `generate(context) -> List[Candidate]` が呼ばれる。作れなければ空を返し、理由を `self.status` に入れる (見送りのイベントに添える)。
 `SOURCES` (引数の名前と種類)、`REQUIRES` (設定に要る項目: `anchors`・`safety`) を宣言する。`Candidate` は姿勢 `pose`、共分散 `cov` (3x3)、作ったもの `origin`、評価 `scores`・`total`。
-`RecoveryContext` から、`snapshot`、`anchors` (`latest_before(疑いの始まり)`)、`scans` (動きに基づいてまとめるスキャンのバッファ)、`safety`、`matcher` を使える。
+`RecoveryContext` から、`snapshot`、`anchors` (`latest_before(疑義の始まり)`)、`scans` (動きに基づいてまとめるスキャンのバッファ)、`safety`、`matcher` を使える。
 
 | 登録名 | 引数 (種類) | 内容 |
 | :--- | :--- | :--- |
 | `pose_source` | `pose` | 指定した情報源の今の姿勢。位置の標準偏差が上限以下の標本が指定の回数続くまで待つ。向きを持たない測位の向きの不確かさは、パラメータで与える |
-| `anchor_motion` | `motion` | 疑いが始まる前のアンカーに、その後の動きを足した姿勢 (推測航法)。動いた距離に比例して共分散を増やす |
+| `anchor_motion` | `motion` | 疑義が始まる前のアンカーに、その後の動きを足した姿勢 (推測航法)。動いた距離に比例して共分散を増やす |
 | `submap_match` | `motion`, `reference` | 上の姿勢の周りで、スキャン (動きでまとめた局所地図。バッファが足りなければ最新の 1 枚) を地図に照合し、一致の良い互いに離れた姿勢を複数。探す範囲は予測の共分散から決める |
+| `hypothesis_modes` | `hypotheses`, `motion` | 仮説の集合から、重みの大きい順に互いに離れた仮説を複数。推定器が誤った仮説に収束した後も、正しい仮説が残っていれば候補に入る。遠くの似た場所の仮説を使わないよう、推測航法 (`anchor_motion` と同じ予測) から位置か向きで離れた仮説は除く。仮説の時刻から今までの動きを足し、共分散に下限をかける |
 
 ## 復旧の候補を評価するもの (`CandidateScorer`)
 
@@ -95,12 +99,24 @@ class SpeedLimitCheck(Detector):
 | `scan_match` | `reference`, `motion` | 候補の姿勢でスキャンを地図に重ねた一致率 (スキャンのバッファが足りれば局所地図、足りなければ最新の 1 枚) |
 | `footprint_free` | `reference` | footprint が地図 (計画用地図) の致死セルにかからなければ 1、かかれば 0。footprint は `safety.footprint` |
 | `source_agreement` | `pose` | 指定した姿勢の情報源の今の姿勢との近さ (位置と、重みを掛けた向きの差) |
-| `anchor_agreement` | `motion` | 推測航法の予測との近さ。スキャンの照合が決めきれないとき、動きの事前情報で選ぶ |
+| `anchor_agreement` | `motion` | 推測航法の予測との近さ。スキャンの照合が判定保留とき、動きの事前情報で選ぶ |
 
 ## 照合 (`Matcher`)
 
 `match(field, points_base, center, window, max_peaks) -> List[MatchPeak]`。点群 (base の座標) が地図の距離場に最もよく合う姿勢を、一致の良い順に、互いに離れたものを最大 `max_peaks` 個返す。探す範囲は `SearchWindow` (位置と向きの範囲と刻み)。
 標準は `correlative` (numpy の総当たり)。別の実装 (C++ のマッチャーなど) に差し替えるには、`recovery.matcher.type` に `パッケージ.モジュール:クラス` を書く。
+
+`correlative` のパラメータ (既定値は `core/matcher/correlative.py` の `PARAMS`):
+
+| パラメータ | 内容 |
+| :--- | :--- |
+| `tolerance_m` | 占有セルからこの距離以内の点を一致とする |
+| `min_points` | 距離場の中にある点がこれ未満なら判断しない |
+| `separation_m` | 上位の候補どうしが離れているべき距離 |
+| `refine_ratio` | 絞り込みで格子の刻みを何分の 1 にするか |
+| `coarse_tolerance_m` | 粗い格子での一致の距離 (0 なら `tolerance_m`)。粗い格子は本当の姿勢から刻みの半分ずれ、遠い点ほど大きくずれるので、`tolerance_m` が狭いと本当の姿勢の山を取りこぼす。粗い格子だけ広げると取りこぼさない |
+| `coarse_candidates` | 絞り込む粗い候補の数 (0 なら `max_peaks`)。広い `coarse_tolerance_m` では似た候補が増えるので、多めに拾って絞り込み、絞り込んだ後に互いに離れたものを `max_peaks` 個返す |
+| `outside_is_miss` | 距離場の外の点を不一致に数える。数えないと、点を外へ追い出す姿勢が、残った少ない点だけで一致率が高く見える |
 
 ## 再初期化の送り先 (`PoseResetter`)
 
@@ -113,17 +129,19 @@ class SpeedLimitCheck(Detector):
 | `amcl` | `PoseWithCovarianceStamped` を AMCL の初期姿勢のトピックに送り、少し待ってから `request_nomotion_update` を呼ぶ (止まっていても、初期化し直した姿勢で粒子を更新させる) |
 | `robot_localization` | 同じメッセージを robot_localization の `set_pose` に送る |
 
-## 対処 (`Actuator`)
+## 出力部 (`Actuator`)
 
 `ros/actuators/base.py`。周期ごとに `apply(result)` が、周期の結果 (`state`・`blame`・`hold_requested`・`directives`) を受け取って、外に働きかける。
 状態に応じた働きかけ (ゲート・一時停止) は、毎周期の結果から決めて、変わったときだけ送る (失敗しても次の周期でやり直せる)。設定の `recovery.actuators` に `[{type, name?, params?}]` を書く。
-対処はプロファイルでは変えられない。働かせたくない状態は、状態遷移の設定 (`request_hold` など) で決める。プロファイルを切り替えると、監督は `NORMAL` から作り直されるので、対処は次の周期の結果から、働きかけを戻す (一時停止を解く、閉じたゲートを開けるなど)。
+出力部はプロファイルでは変えられない。働かせたくない状態は、状態遷移の設定 (`request_hold` など) で決める。プロファイルを切り替えると、自己位置監視は `NORMAL` から作り直されるので、対処は次の周期の結果から、働きかけを戻す (一時停止を解く、閉じたゲートを開けるなど)。
 
 | 登録名 | 内容 |
 | :--- | :--- |
-| `gate` | ゲート (`SetBool` で開閉するサービス。要求元ごとに調停するゲートの調停ノードの窓口) を、`hold_requested` で `blame` が指定のものにあるあいだ閉じ、戻ったら開ける |
+| `gate` | ゲート (`SetBool` で開閉するサービス。要求元ごとに調停するゲートの調停ノードの窓口) を、`hold_requested` で `blame` が指定のものにあるあいだ閉じ、戻ったら開ける。AMCL 検証ゲートがあるときは、AMCL 検証ゲートの開閉 (`StepResult.gate.gate_open`) に従う |
 | `service_call` | 指示 (`reinit`・`isolate`・`restore`) が出たとき、サービス (`Empty` または `Trigger`) を、指定の遅れの後に呼ぶ |
-| `variance_scale` | 監督が求めた、設定の `residuals` の分散の倍率 (`StepResult.applied_scales`。a の実際の誤差が自己申告の何倍か。a を切り離しているあいだは上限) を、周期ごとに `std_msgs/Float64` で配信する。受け取る側が分散にかけ、一定時間届かなければ 1 に戻す |
+| `variance_scale` | 自己位置監視が求めた、設定の `residuals` の分散の倍率 (`StepResult.applied_scales`。a の実際の誤差が自己申告の何倍か。a を除外しているあいだは上限) を、周期ごとに `std_msgs/Float64` で配信する。受け取る側が分散にかけ、一定時間届かなければ 1 に戻す |
+
+AMCL 検証ゲート ([motion_gate.md](./motion_gate.md)) の遮断条件は、判定 (`Detector`) をそのまま使う。停止要求は、自己位置監視の対処 (`Actuator`) が `StepResult.hold_requested` から受ける (AMCL 検証ゲートの止める要求も含む)。
 
 ## 入力のアダプタ (`SourceAdapter`)
 
@@ -141,6 +159,7 @@ class SpeedLimitCheck(Detector):
 | `odometry` | pose / motion | `nav_msgs/Odometry` (`topic`)。pose なら地図座標の姿勢と共分散、motion ならその座標での姿勢 |
 | `map_scan` | reference | `nav_msgs/OccupancyGrid` (`map_topic`) と `sensor_msgs/LaserScan` (`scan_topic`)。センサの取り付け位置は `sensor_pose` か、TF (`base_frame` → スキャンの frame) |
 | `occupancy_grid` | reference | `nav_msgs/OccupancyGrid` (`topic`) だけ。計画用地図など、安全の信号にだけ使う地図。`occupied_threshold` 以上のセルを致死とする |
+| `particle_cloud` | hypotheses | `nav2_msgs/ParticleCloud` (`topic`。AMCL の粒子)。粒子を、格子でつながる群れと、群れの中の向きの分布の谷で峰に分ける (`core/particle_modes.py`)。分けるのは `min_interval_sec` ごとに 1 回で、間の配信は捨てる。AMCL はリサンプリングの後に粒子を出すので、重みは粒子の数の割合 (尤度の比ではない) |
 
 ## イベントの出力 (`EventSink`)
 

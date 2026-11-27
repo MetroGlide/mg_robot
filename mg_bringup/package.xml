@@ -13,6 +13,7 @@
 
   <exec_depend>mg_utils</exec_depend>
   <exec_depend>mg_diagnostics</exec_depend>
+  <exec_depend>mg_navigation</exec_depend>
 
   <export>
     <build_type>ament_cmake</build_type>

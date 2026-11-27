@@ -1,0 +1,20 @@
+# 異常パターン 9 (変換の誤差)。地図の歪みと手合わせの誤差で、GNSS と地図のずれが場所で変わる。
+# 基準の GNSS に、warehouse の 1 周の各所で向きと大きさの違うずれ (例: 2〜3 m) を、なめらかにつないで足す。
+# 出発点 (0, 0) にもずれがあり、起動時の GNSS による初期化が誤った位置に置く (パターン 15)。
+# anchor は mg_simulation/maps/warehouse/gnss_transform.yaml の地図の原点。
+faults:
+  - {type: gnss_noise, start: 0.0, end: 100000.0, sigma: 0.3, tau: 30.0}
+  - {type: gnss_accuracy, start: 0.0, end: 100000.0, std_m: 0.5}
+  - type: gnss_bias_field
+    start: 0.0
+    end: 100000.0
+    anchor: {latitude: -22.986687, longitude: -43.202501}
+    length_m: 6.0
+    points:
+      - [0.0, 0.0, 1.5, -1.0]
+      - [10.0, 2.0, -1.0, 1.5]
+      - [10.0, -12.0, -2.5, 0.5]
+      - [9.0, -24.0, -1.0, -1.5]
+      - [-4.4, -23.0, 2.0, 1.0]
+      - [-5.0, -12.0, 2.5, -0.5]
+      - [-5.0, -3.0, 0.5, 2.0]

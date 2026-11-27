@@ -138,13 +138,17 @@ class OfflineSession:
         self.options = options
         self.t0 = t0
         validate_sources(options.faults, config.kinds())
-        for name in options.apply_reset + ([options.truth] if options.truth else []):
-            if config.sources.get(name) is None or config.sources[name].kind != SourceKind.POSE:
-                raise ValueError(f'{name!r}: not a pose source')
+        for name in options.apply_reset:
+            if config.sources.get(name) is None or config.sources[name].kind not in (
+                    SourceKind.POSE, SourceKind.HYPOTHESES):
+                raise ValueError(f'{name!r}: not a pose or hypotheses source')
+        if options.truth and (config.sources.get(options.truth) is None
+                              or config.sources[options.truth].kind != SourceKind.POSE):
+            raise ValueError(f'{options.truth!r}: not a pose source')
         self.store: FaultInjectingStore = FaultInjectingStore(
             FaultInjector(options.faults, t0), config.kinds(), tuple(config.motion_priority),
-            config.horizon_sec, config.max_extrapolation_sec, config.alignment)
-        adapters = build_adapters(config, self.store, context)
+            config.horizon_sec, config.max_extrapolation_sec, config.alignment, config.holds())
+        adapters = build_adapters(config.sources, self.store, context)
         for name, path in options.maps.items():
             if config.sources.get(name) is None or config.sources[name].kind != SourceKind.REFERENCE:
                 raise ValueError(f'--map {name}: not a reference source')
@@ -296,8 +300,8 @@ def parse_bag(text: str) -> BagInput:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> None:
-    parser = argparse.ArgumentParser(description='自己位置の監督を rosbag でオフライン評価する')
-    parser.add_argument('--config', required=True, help='監督の設定ファイル')
+    parser = argparse.ArgumentParser(description='自己位置監視を rosbag でオフライン評価する')
+    parser.add_argument('--config', required=True, help='自己位置監視の設定ファイル')
     parser.add_argument('--profile', default='', help='重ねるプロファイル')
     parser.add_argument('--bag', action='append', required=True, type=parse_bag,
                         help='bag のパス。:トピック,... で読むトピックを限る (複数指定可。最初の bag が時刻の基準)')

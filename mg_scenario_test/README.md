@@ -26,6 +26,10 @@ make scenario-test SCENARIO=nav_basic_goal GUI=1    # Gazebo の GUI を表示 (
 make scenario-test-all TIER=smoke                   # 変更のたびに実行する短い確認 (約 6 分)
 make scenario-test-all                              # 回帰テスト全件 (約 20 分)
 make scenario-test-all REPEAT=3 TIER=smoke          # 繰り返して安定性を見る
+make scenario-test-all TAGS=anomaly REPEAT=3 SHARDS=3  # 3 本に分けて並列に実行する (結果は 1 つのディレクトリ)
+make scenario-test-all TIER=smoke LOCALIZATION_PRESET=none  # 構成の一部 (ここではプリセット) を外したスタックで実行
+make scenario-test-all TAGS=localization LOCALIZATION_PROFILE=hypotheses  # 自己位置監視のプロファイルを重ねて実行
+make scenario-test-all TAGS=anomaly KNOWN=1 LOCALIZATION_CONFIG=legacy  # 比べる構成 (legacy / supervised) を選んで実行
 ```
 
 | ターゲット | 内容 |

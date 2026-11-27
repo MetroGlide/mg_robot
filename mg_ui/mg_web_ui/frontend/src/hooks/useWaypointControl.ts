@@ -102,7 +102,7 @@ export function useWaypointControl(
     onError(null);
     try {
       client.publish(
-        TOPICS.INITIALPOSE,
+        TOPICS.MANUAL_INITIAL_POSE,
         "geometry_msgs/msg/PoseWithCovarianceStamped",
         buildInitialPoseMessage(pose),
       );
@@ -116,7 +116,7 @@ export function useWaypointControl(
     try {
       if (interactionMode === "pose_estimate") {
         client.publish(
-          TOPICS.INITIALPOSE,
+          TOPICS.MANUAL_INITIAL_POSE,
           "geometry_msgs/msg/PoseWithCovarianceStamped",
           buildInitialPoseMessage({ x, y, z: 0.0, yaw }),
         );

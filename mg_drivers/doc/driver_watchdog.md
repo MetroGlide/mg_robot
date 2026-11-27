@@ -20,7 +20,7 @@
 層 3  driver_watchdog   トピックの途絶を監視する。走行を一時停止し、止まった上流ドライバを終了させて層 2 に起動し直させる
 ```
 
-再起動の判断をシーケンサに持たせないのは、シーケンサがドライバのプロセスを持っていないことと、手動ゴールや SLAM の収録など、シーケンサを通らない場面でも復旧してほしいため。シーケンサは一時停止の要求 (`pause_request`) を受けて止まり、全部の要求が解除されたら自動で再開するだけでよい。
+再起動の判断をシーケンサに持たせないのは、シーケンサがドライバのプロセスを持っていないことと、手動ゴールや SLAM の収録など、シーケンサを通らない場面でも復旧してほしいため。シーケンサは停止要求 (`pause_request`) を受けて止まり、全部の要求が解除されたら自動で再開するだけでよい。
 
 ## 動作
 
@@ -28,7 +28,7 @@
 
 1. `monitored_sources` のトピックの最終受信時刻を見る。`stale_timeout_sec` を超えたら**異常**にする。`recover_hold_sec` のあいだ正常が続いたら**復旧**とする。
 2. 診断 `driver_watchdog_node: <id>` を出す (`diagnostic_updater`)。異常のあいだは `ERROR`、受信頻度が `expected_hz` × `hz_warn_ratio` を下回るときは `WARN`。`hardware_id` は `<id>`、`values` は `hz`・`expected_hz`・`stale_sec`・`topic`・`restarts`。途絶と受信頻度の判定は `mg_utils.monitoring` の共通のもので、`topic_monitor_node` と同じ。
-3. `pause_on_fault: true` のとき、シーケンサの `pause_request` に `requester_id=driver_watchdog`、`active=true` を **一定の周期で出し続ける**。復旧したら `active=false` を出す。周期的に送るのは、`~/stop` で一時停止の要求が消えたり、シーケンサが再起動したりしても、異常のあいだは一時停止が戻るようにするため (異常のまま `~/start` もできない)。
+3. `pause_on_fault: true` のとき、シーケンサの `pause_request` に `requester_id=driver_watchdog`、`active=true` を **一定の周期で出し続ける**。復旧したら `active=false` を出す。周期的に送るのは、`~/stop` で停止要求が消えたり、シーケンサが再起動したりしても、異常のあいだは一時停止が戻るようにするため (異常のまま `~/start` もできない)。
 4. `restart_node` を持つソースが `restart_after_sec` 以上途絶えたら、その名前のノードのプロセスに SIGTERM を送る。`kill_timeout_sec` たっても残っていれば SIGKILL を送る。launch の respawn が起動し直す。
 5. 状態の変化を、イベントログに出す ([doc/monitoring.md](../../doc/monitoring.md))。
 
@@ -62,7 +62,7 @@
 | `max_tick_gap_sec` | 周期処理の遅れの検知 |
 | `pause_on_fault` | シーケンサに一時停止を出す |
 | `pause_request_topic` | 一時停止を出すトピック |
-| `pause_requester_id` | 一時停止の要求元の名前 |
+| `pause_requester_id` | 停止要求元の名前 |
 | `restart_enabled` | 止まったドライバを終了させる (launch が `respawn_drivers` に合わせる) |
 | `restart_after_sec` | 途絶がこの時間続いたら終了させる |
 | `restart_cooldown_sec` | 続けて終了させない時間 |
@@ -114,6 +114,7 @@
 
 - 診断は集約で `/Robot/Drivers/...` に入る ([doc/monitoring.md](../../doc/monitoring.md))。実機では、`driver_watchdog_node: top_lidar` / `odom` / `motor` が欠けると、集約が `STALE` にする。
 - USB ハブごと落ちたときに、`/dev/ttyRobot-*` が戻るかはホスト側の問題で、このノードでは扱わない。
+- 起動し直しても LiDAR が戻らないときは、自己位置監視がセンサ構成を LiDAR なしにして、このノードの `pause_exempt_sources` に `top_lidar` を足し、LiDAR の一時停止を外す (走行中に変えられるパラメータ。診断と起動し直しは続ける)。LiDAR が戻れば元に戻す ([localization_target.md のセンサ構成](../../mg_navigation/doc/localization_target.md#センサ構成-一部))。
 - LiDAR の途絶で止まるのはシーケンサの走行。手動ゴールなど、シーケンサを通らない走行の安全は、Nav2 の `collision_monitor` 側で別に守る。
 
 ## テスト

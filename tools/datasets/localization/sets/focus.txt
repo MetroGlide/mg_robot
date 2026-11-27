@@ -1,0 +1,9 @@
+# 評価セット robustness のうち、元の設定で AMCL がずれる事象が出た区間と、故障の注入 (kidnap、amcl_drift) だけの
+# 絞った評価セット。試行を増やして、設定どうしの差を確かめる用 (run_localization_set.sh / compare_localization_set.py)
+# 1 行に 1 条件: <ラベル> <データセット> [run_localization_variant.sh の引数 ...]
+r1_051635 map20261017r1_eval051635
+r3_051635 map20261017r3_eval051635
+r5_043837 map20261017r5_eval043837
+r4_043837 map20261017r4_eval043837
+kidnap map043837_eval051635_short --faults tools/datasets/localization/faults/kidnap.yaml
+amcl_drift map043837_eval051635_short --faults tools/datasets/localization/faults/amcl_drift.yaml

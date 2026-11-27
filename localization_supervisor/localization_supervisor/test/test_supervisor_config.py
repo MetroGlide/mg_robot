@@ -1,5 +1,6 @@
 """設定ファイルのスキーマの検証と、プラグインの読み込みのテスト。"""
 import copy
+import math
 import pathlib
 
 import pytest
@@ -8,6 +9,7 @@ from localization_supervisor.core.config import ConfigError, load_config, merge,
 from localization_supervisor.core.detectors.pose_consistency import PoseConsistency
 from localization_supervisor.core.fusion import ConsecutiveFusion
 from localization_supervisor.core.interfaces import CONTRACT_VERSION
+from localization_supervisor.core.snapshot import HoldConfig
 
 from supervisor_test_helpers import AlwaysNormal
 
@@ -73,10 +75,23 @@ def test_parse_fills_defaults():
     ({'anchors': {'pose': 'odom', 'motion': 'odom'}}, 'not a pose source'),
     ({'state_machine': {'clear_ticks': 'many'}}, 'integer'),
     ({'enabled_detectors': ['nope']}, 'unknown detector'),
+    ({'sources': {'odom': {'kind': 'motion', 'hold': {'distance_m': 0.25}}}}, 'only for pose sources'),
+    ({'sources': {'amcl': {'kind': 'pose', 'hold': {'rotation_rad': 0.2}}}}, 'distance_m: required'),
+    ({'sources': {'amcl': {'kind': 'pose', 'hold': {'distance_m': 0.25, 'typo': 1}}}}, 'unknown keys'),
 ])
 def test_invalid_configs_fail_at_load(changes, message):
     with pytest.raises(ConfigError, match=message):
         parse_config(_raw(**changes))
+
+
+def test_hold_is_read_per_pose_source():
+    sources = copy.deepcopy(BASE['sources'])
+    sources['amcl']['hold'] = {'distance_m': 0.25, 'rotation_rad': 0.2}
+    sources['gnss']['hold'] = {'distance_m': 1.0}
+    holds = parse_config(_raw(sources=sources)).holds()
+    assert holds['amcl'] == HoldConfig(0.25, 0.2)
+    assert holds['gnss'].rotation_rad == math.inf
+    assert 'ekf' not in holds
 
 
 def test_external_plugin_by_module_path():
@@ -109,6 +124,27 @@ def test_profiles_overlay_and_replace_plugin_type():
     assert counting.fusion_cls is ConsecutiveFusion and counting.enabled_detectors() == {}
     with pytest.raises(ConfigError, match='not defined'):
         base.with_profile('nope')
+
+
+def test_profiles_stack_left_to_right():
+    profiles = {'strict': {'detectors': {'amcl_gnss': {'params': {'threshold': 3.0}}},
+                           'external_reinit': {'topics': ['/a', '/b']}},
+                'looser': {'detectors': {'amcl_gnss': {'params': {'threshold': 4.0}}}},
+                'inject': {'external_reinit': {'topics': ['/b']}}}
+    base = parse_config(_raw(), profiles=profiles)
+    stacked = base.with_profile('strict, inject')
+    assert stacked.detectors['amcl_gnss'].params['threshold'] == 3.0
+    # リストは後のプロファイルで置き換わる
+    assert stacked.external_reinit_topics == ['/b']
+    assert stacked.profile == 'strict, inject'
+    assert base.with_profile('strict,looser').detectors['amcl_gnss'].params['threshold'] == 4.0
+    assert base.with_profile('looser,strict').detectors['amcl_gnss'].params['threshold'] == 3.0
+    with pytest.raises(ConfigError, match="'nope' is not defined"):
+        base.with_profile('strict,nope')
+    with pytest.raises(ConfigError, match='empty name'):
+        base.with_profile('strict,')
+    with pytest.raises(ConfigError, match='duplicated'):
+        base.with_profile('strict,strict')
 
 
 def test_merge_replaces_lists_and_other_types():

@@ -8,8 +8,8 @@
   consecutive : インスタンスごとに、続けて異常だった回数を数える (従来の監視と同じ振る舞い)
 
 切り分け (両方の方式で共通):
-  - 独立の情報源だけを疑う。インスタンスの累積の、疑いが始まってからの最大値を、そのインスタンスが疑いを
-    かける情報源 (subjects) に足す。最も多い情報源と次点の差 (他と共有しない疑い) が blame_margin 以上なら、
+  - 独立の情報源だけを疑う。インスタンスの累積の、疑義が始まってからの最大値を、そのインスタンスが疑義を
+    かける情報源 (subjects) に足す。最も多い情報源と次点の差 (他と共有しない疑義) が blame_margin 以上なら、
     その情報源を blame とする。決めきれなければ unknown。
     2 つの情報源の食い違い (pose_consistency など) は両方に同じだけ足すので、それだけでは決まらない。
     ただし、一方を vouch (正常なら、その情報源が正しいと示す) する判定のインスタンスが、直近で「判定できて正常」
@@ -32,7 +32,7 @@ def attribute(
     independent: List[str], derived: Mapping[str, List[str]], blame_margin: float,
     vouched: Collection[str] = (),
 ) -> Tuple[str, List[str]]:
-    """(blame, contaminated) を決める。peaks は疑いが始まってからの累積の最大値、accumulated は今の累積。
+    """(blame, contaminated) を決める。peaks は疑義が始まってからの累積の最大値、accumulated は今の累積。
     vouched は、正常と示されている情報源。"""
     if not any(v > 0.0 for v in accumulated.values()):
         return '', []
@@ -60,7 +60,7 @@ def attribute(
 
 
 class _Peaks:
-    """インスタンスごとの累積の、疑いが始まってからの最大値。"""
+    """インスタンスごとの累積の、疑義が始まってからの最大値。"""
 
     def __init__(self, names) -> None:
         self.values: Dict[str, float] = {name: 0.0 for name in names}
@@ -125,10 +125,10 @@ class Accumulation:
 class AttributingFusion(FusionStrategy):
     """疑わしい情報源の切り分け (最大値の記録、vouch、attribute) を共通にした総合の基底。
 
-    方式ごとに _accumulate (インスタンスごとの累積と、疑い・確認の判定) と _reset_counts を実装する。
+    方式ごとに _accumulate (インスタンスごとの累積と、疑義・確認の判定) と _reset_counts を実装する。
     """
     PARAMS = {
-        'blame_margin': ParamSpec(float, 1.0, '他と共有しない疑いがこの値以上ある情報源を blame とする'),
+        'blame_margin': ParamSpec(float, 1.0, '他と共有しない疑義がこの値以上ある情報源を blame とする'),
         'vouch_hold_ticks': VOUCH_HOLD_TICKS,
     }
 
@@ -162,7 +162,7 @@ class AttributingFusion(FusionStrategy):
 
 class CusumFusion(AttributingFusion):
     PARAMS = {
-        'suspect_level': ParamSpec(float, 1.0, '総合の強さがこの値以上になったら疑いとする'),
+        'suspect_level': ParamSpec(float, 1.0, '総合の強さがこの値以上になったら疑義とする'),
         'confirm_level': ParamSpec(float, 5.0, '総合の強さがこの値以上になったら異常を確認とする'),
         **AttributingFusion.PARAMS,
     }
@@ -195,7 +195,7 @@ class ConsecutiveFusion(AttributingFusion):
     """インスタンスごとの、続けて異常だった回数で判断する。
 
     インスタンスの options:
-      suspect_after : この回数続けば疑い (既定 1)
+      suspect_after : この回数続けば疑義 (既定 1)
       confirm_after : この回数続けば異常を確認 (0 なら、単独では確認しない。既定 3)
     異常がなくなった (cleared) のは、その周期に判定できたインスタンスがあり、どれも異常でないとき。
     """

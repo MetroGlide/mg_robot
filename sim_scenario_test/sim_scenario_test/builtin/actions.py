@@ -6,12 +6,15 @@ import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from geometry_msgs.msg import PoseWithCovarianceStamped
 from std_srvs.srv import SetBool
 
+from sim_scenario_test.engine.timeline import instantiate_trigger
 from sim_scenario_test.errors import ScenarioError, ScenarioValidationError
-from sim_scenario_test.geometry import Pose, PoseSpec
+from sim_scenario_test.geometry import Pose, PoseSpec, quaternion_from_yaw
 from sim_scenario_test.nav2 import call_service
 from sim_scenario_test.registry import register_action
+from sim_scenario_test.spec import TriggerCall
 
 if TYPE_CHECKING:
     from sim_scenario_test.context import ScenarioContext
@@ -104,6 +107,124 @@ def set_initial_pose(
 ) -> None:
     """自己位置推定に初期位置 (/initialpose) を与える。"""
     ctx.nav2.publish_initial_pose(ctx.poses.to_map(spec.pose))
+
+
+@dataclass
+class DriftRate:
+    # 1 秒あたりのずれ (地図座標) [m/s]、[rad/s]
+    x: float = 0.0
+    y: float = 0.0
+    yaw: float = 0.0
+
+
+@dataclass
+class LocalizationDriftSpec:
+    rate: DriftRate
+    duration_sec: float
+    # この間隔 [s] (sim 時間) ごとに、ずらした姿勢を送る
+    interval_sec: float = 1.0
+    # ずらした姿勢を送る先 (自己位置推定の初期姿勢)
+    topic: str = "/initialpose"
+    # 送る姿勢の共分散 (小さいほど、粒子がずらした姿勢に集まる)
+    cov_xy: float = 0.01
+    cov_yaw: float = 0.003
+
+    def validate(self, where: str) -> None:
+        if self.duration_sec <= 0.0 or self.interval_sec <= 0.0:
+            raise ScenarioValidationError(
+                f"{where}: 'duration_sec' and 'interval_sec' must be > 0")
+
+
+@register_action("localization_drift", LocalizationDriftSpec)
+def localization_drift(
+    ctx: "ScenarioContext", spec: LocalizationDriftSpec, stop: threading.Event
+) -> None:
+    """自己位置推定を少しずつずらす (推定器が誤った姿勢へ引きずられる状況の再現)。
+
+    interval_sec ごとに、シミュレータ上の真の姿勢に rate * (開始からの経過時間) を足した姿勢を topic に送る。
+    推定器がスキャンで戻そうとしても、ずれは時間とともに増える。終わった後は送らない (推定器に任せる)。
+    真の姿勢は変えない。topic を外からの再初期化として扱う監視があれば、それを外して使う。
+    """
+    key = f"localization_drift:{spec.topic}"
+    if key not in ctx.extensions:
+        ctx.extensions[key] = ctx.node.create_publisher(PoseWithCovarianceStamped, spec.topic, 10)
+    pub = ctx.extensions[key]
+    start = ctx.clock.now()
+    while not stop.is_set():
+        elapsed = min(ctx.clock.now() - start, spec.duration_sec)
+        world = ctx.backend.entity_pose(ctx.profile.sim.robot_entity)
+        if world is not None:
+            truth = ctx.poses.to_map(PoseSpec("world", world.x, world.y, world.z, world.yaw))
+            msg = PoseWithCovarianceStamped()
+            msg.header.frame_id = ctx.profile.frames.map
+            msg.header.stamp = ctx.node.get_clock().now().to_msg()
+            msg.pose.pose.position.x = truth.x + spec.rate.x * elapsed
+            msg.pose.pose.position.y = truth.y + spec.rate.y * elapsed
+            qx, qy, qz, qw = quaternion_from_yaw(truth.yaw + spec.rate.yaw * elapsed)
+            msg.pose.pose.orientation.x = qx
+            msg.pose.pose.orientation.y = qy
+            msg.pose.pose.orientation.z = qz
+            msg.pose.pose.orientation.w = qw
+            msg.pose.covariance[0] = spec.cov_xy
+            msg.pose.covariance[7] = spec.cov_xy
+            msg.pose.covariance[35] = spec.cov_yaw
+            pub.publish(msg)
+        if elapsed >= spec.duration_sec:
+            return
+        ctx.clock.sleep(spec.interval_sec, stop)
+
+
+@dataclass
+class PoseOffset:
+    # 地図座標 [m]、[rad]
+    x: float = 0.0
+    y: float = 0.0
+    yaw: float = 0.0
+
+
+@dataclass
+class LocalizationSpreadSpec:
+    # 真の姿勢からずらす量 (広げた分布の中心)
+    offset: PoseOffset = dataclasses.field(default_factory=PoseOffset)
+    # 広げる標準偏差 [m]、[rad]
+    sigma: PoseOffset = dataclasses.field(default_factory=lambda: PoseOffset(1.5, 1.5, 0.3))
+    topic: str = "/initialpose"
+
+    def validate(self, where: str) -> None:
+        if min(self.sigma.x, self.sigma.y, self.sigma.yaw) < 0.0:
+            raise ScenarioValidationError(f"{where}: 'sigma' must be >= 0")
+
+
+@register_action("localization_spread", LocalizationSpreadSpec)
+def localization_spread(
+    ctx: "ScenarioContext", spec: LocalizationSpreadSpec, stop: threading.Event
+) -> None:
+    """自己位置推定の分布を 1 回だけ広げ、推定器に峰を選び直させる (尤度が割れて誤った峰が勝つ状況の再現)。
+
+    シミュレータ上の真の姿勢に offset を足した姿勢を中心に、sigma の共分散で topic に 1 回送る。
+    真の姿勢は変えない。topic を外からの再初期化として扱う監視があれば、それを外して使う。
+    """
+    world = ctx.backend.entity_pose(ctx.profile.sim.robot_entity)
+    if world is None:
+        raise ScenarioError("localization_spread: true pose of the robot is not available")
+    truth = ctx.poses.to_map(PoseSpec("world", world.x, world.y, world.z, world.yaw))
+    key = f"localization_spread:{spec.topic}"
+    if key not in ctx.extensions:
+        ctx.extensions[key] = ctx.node.create_publisher(PoseWithCovarianceStamped, spec.topic, 10)
+    msg = PoseWithCovarianceStamped()
+    msg.header.frame_id = ctx.profile.frames.map
+    msg.header.stamp = ctx.node.get_clock().now().to_msg()
+    msg.pose.pose.position.x = truth.x + spec.offset.x
+    msg.pose.pose.position.y = truth.y + spec.offset.y
+    qx, qy, qz, qw = quaternion_from_yaw(truth.yaw + spec.offset.yaw)
+    msg.pose.pose.orientation.x = qx
+    msg.pose.pose.orientation.y = qy
+    msg.pose.pose.orientation.z = qz
+    msg.pose.pose.orientation.w = qw
+    msg.pose.covariance[0] = spec.sigma.x ** 2
+    msg.pose.covariance[7] = spec.sigma.y ** 2
+    msg.pose.covariance[35] = spec.sigma.yaw ** 2
+    ctx.extensions[key].publish(msg)
 
 
 @register_action("clear_costmaps")
@@ -232,6 +353,33 @@ class DelaySpec:
 def delay(ctx: "ScenarioContext", spec: DelaySpec, stop: threading.Event) -> None:
     """sim 時間で sec 秒待つ。"""
     ctx.clock.sleep(spec.sec, stop)
+
+
+@dataclass
+class WaitForSpec:
+    trigger: TriggerCall
+    # この秒数 (sim 時間) で成立しなければ ScenarioError
+    timeout_sec: float = 60.0
+
+    def validate(self, where: str) -> None:
+        if self.timeout_sec <= 0.0:
+            raise ScenarioValidationError(f"{where}: 'timeout_sec' must be > 0")
+
+
+@register_action("wait_for", WaitForSpec)
+def wait_for(ctx: "ScenarioContext", spec: WaitForSpec, stop: threading.Event) -> None:
+    """trigger が成立するまで待つ (waypoint のフックの中で、故障の注入の前に準備を待つなど)。
+
+    trigger はこの action を始めた時点で作るので、それより前の出来事は見ない。
+    """
+    trigger = instantiate_trigger(ctx, spec.trigger)
+    deadline = ctx.clock.now() + spec.timeout_sec
+    while not trigger.poll():
+        if stop.is_set():
+            return
+        if ctx.clock.now() > deadline:
+            raise ScenarioError(f"wait_for: {spec.trigger.name} not satisfied within {spec.timeout_sec:.0f}s")
+        time.sleep(0.05)
 
 
 @dataclass

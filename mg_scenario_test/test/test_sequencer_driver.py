@@ -18,7 +18,16 @@ class FakeClient:
         self._states = list(states)
         self.state = "IDLE"
         self.index = 0
+        self.paused = False
+        # wait_unpaused が返す値 (True なら要求が解けたとする)
+        self.unpause_result = True
         self.calls: List[tuple] = []
+
+    def wait_unpaused(self, timeout, abort_event, clock_now):
+        self.calls.append(("wait_unpaused",))
+        if self.unpause_result:
+            self.paused = False
+        return self.unpause_result
 
     def fetch_waypoints(self):
         pose = SimpleNamespace(pose=SimpleNamespace(
@@ -110,3 +119,23 @@ def test_manual_start_mode_does_not_call_start():
     driver, _ = _driver(client, auto_start=False)
     driver.run()
     assert not any(c[0] in ("start", "stop", "set_index") for c in client.calls)
+
+
+def test_waits_for_pause_release_before_start():
+    client = FakeClient([Progress.REACHED] * 3, states=["NAVIGATING", "NAVIGATING", "GOAL_REACHED"])
+    client.paused = True
+    driver, _ = _driver(client)
+    outcome = driver.run()
+    assert outcome.reached == 3
+    assert client.calls.index(("wait_unpaused",)) < client.calls.index(("start", 0))
+
+
+def test_pause_not_released_is_navigation_failure():
+    client = FakeClient([], states=[])
+    client.paused = True
+    client.unpause_result = False
+    driver, _ = _driver(client)
+    outcome = driver.run()
+    assert outcome.failed_index == 0
+    assert "pause was not released" in outcome.failure
+    assert not any(c[0] == "start" for c in client.calls)

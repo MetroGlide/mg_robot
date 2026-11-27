@@ -1,0 +1,11 @@
+# LiDAR が戻らない故障 (anomaly_lidar_lost) を、GNSS が弱い区間 (屋根の下・建物の近く) で起こす。
+# GNSS は申告の精度を正直に悪くする (位置の雑音も大きい)。シミュのオドメトリは誤差がないので、実機の補正の後に残る
+# 旋回の誤差 (例: 実走行の 50 m の窓で数 m) を、回転のスケールで足す。
+# 同じ種類の故障は定義の順で最初のものだけが作用するので、trigger の故障を常時の故障より先に書く。
+faults:
+  - {type: scan_halt, trigger: lost}
+  - {type: gnss_accuracy, trigger: lost, std_m: 3.0}
+  - {type: gnss_noise, trigger: lost, sigma: 1.5, tau: 10.0}
+  - {type: gnss_noise, start: 0.0, end: 100000.0, sigma: 0.3, tau: 30.0}
+  - {type: gnss_accuracy, start: 0.0, end: 100000.0, std_m: 0.5}
+  - {type: odom_scale, start: 0.0, end: 100000.0, v: 1.0, w: 1.03}

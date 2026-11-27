@@ -1,0 +1,15 @@
+# map20261017r1_eval051635_win270_selfmap_raycast の GNSS を、真値 (SLAM のキーフレーム) のアンテナ位置に置き換えたもの。
+# スキャンは SLAM 地図への光線追跡のまま、測位は Region1。ずれが戻らないのが GNSS の誤差によるか、測位用の地図と
+# 現場の食い違いによるかを見る (GNSS の雑音は faults/gnss_noise_*.yaml で足す)。
+# bag は 051635_selfmap_raycast_full に tools/scripts/rewrite_gnss.py --pose-graph <slam_dir> をかけた。
+name: map20261017r1_eval051635_win270_selfmap_truthgnss
+description: 角の区間で、光線追跡のスキャンと真値の GNSS (測位は Region1、評価 051635 の 270-440 s)
+map:
+  localization_yaml: /root/ros2_data/map_for20261017/Region1_jikoichi.yaml
+  gnss_transform: /root/ros2_data/map_for20261017/gnss_transform.yaml
+  slam_dir: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_051635/20260921_2243
+eval:
+  bag: /root/ros2_data/rosbag/TC2026/20260913/derived/051635_selfmap_raycast_truthgnss
+  slam_dir: /root/ros2_data/rosbag/TC2026/20260913/record_slam_20260913_051635/20260921_2243
+  start_offset: 270.0
+  duration: 170.0

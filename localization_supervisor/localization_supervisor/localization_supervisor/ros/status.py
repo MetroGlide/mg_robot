@@ -19,6 +19,14 @@ def to_message(view: StatusView, stamp) -> LocalizationStatus:
     msg.in_grace = view.in_grace
     msg.footprint_in_lethal = view.footprint_in_lethal
     msg.lethal_depth_m = float(view.lethal_depth_m)
+    msg.situation = view.situation
+    msg.degree = int(view.degree)
+    msg.possible_error_m = float(view.possible_error_m)
+    msg.clearance_m = float(view.clearance_m)
+    msg.speed_limit = float(view.speed_limit)
+    msg.sensor_set = view.sensor_set
+    msg.verify_id = int(view.verify_id)
+    msg.verify_result = view.verify_result
     msg.profile = view.profile
     msg.last_event = view.last_event
     for check in view.checks:

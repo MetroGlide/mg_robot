@@ -1,0 +1,21 @@
+# mg_waypoint_navigation の waypoint (version 2.0)。warehouse の棚の列 (y 8 m 付近) に沿った通路を東へ走る。
+# 通路に入る前に開けた場所を走り、GNSS による初期化と自己位置監視の猶予を済ませる (開始は (-4, 3) で西向き)。
+version: "2.0"
+defaults:
+  reach_tolerance: 0.5
+  through_tolerance: 1.5
+  is_through_point: true
+waypoints:
+  - index: 0
+    pose:
+      position: {x: -8.0, y: 3.0, z: 0.0}
+      orientation: {x: 0.0, y: 0.0, z: 0.7071, w: 0.7071}
+  - index: 1
+    pose:
+      position: {x: -8.0, y: 6.5, z: 0.0}
+      orientation: {x: 0.0, y: 0.0, z: 0.0, w: 1.0}
+  - index: 2
+    navigation: {is_through_point: false}
+    pose:
+      position: {x: 11.0, y: 6.5, z: 0.0}
+      orientation: {x: 0.0, y: 0.0, z: 0.0, w: 1.0}

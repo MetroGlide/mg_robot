@@ -1,13 +1,13 @@
 import { LOCALIZATION_CHECK_STATUS, LocalizationStatus } from "../../types";
 
 /**
- * 自己位置の状態の補足を 1 行にする。判定はせず、監督が決めた値を並べるだけ。
+ * 自己位置の状態の補足を 1 行にする。判定はせず、自己位置監視が決めた値を並べるだけ。
  * 疑わしい情報源 (blame)、異常の判定の名前、計画用地図の障害物の中にいるか (と食い込みの深さ)。
  */
 export function localizationDetail(status: LocalizationStatus): string {
   const parts: string[] = [];
   if (status.blame !== "") {
-    parts.push(`疑い: ${status.blame}`);
+    parts.push(`疑義: ${status.blame}`);
   }
   const anomalies = status.checks
     .filter((check) => check.status === LOCALIZATION_CHECK_STATUS.ANOMALY)

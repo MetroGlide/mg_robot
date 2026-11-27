@@ -72,6 +72,24 @@ def test_robot_near_rejects_robot_frame():
         _parse(timeline=timeline)
 
 
+def test_all_of_parses_nested_triggers():
+    timeline = [{"when": {"all_of": {"triggers": [
+        {"at_time": {"sec": 1}}, {"robot_near": {"x": 0, "y": 0, "radius": 1}}]}}}]
+    scenario = _parse(timeline=timeline)
+    assert [c.name for c in scenario.timeline[0].when.spec.triggers] == ["at_time", "robot_near"]
+    bad = [{"when": {"all_of": {"triggers": [{"robot_near": {"x": 0, "y": 0, "radius": 1,
+                                                              "frame": "robot"}}]}}}]
+    with pytest.raises(ScenarioValidationError, match="frame"):
+        _parse(timeline=bad)
+
+
+def test_wait_for_parses_trigger():
+    scenario = _parse(setup=[{"wait_for": {"trigger": {"at_time": {"sec": 1}}, "timeout_sec": 5}}])
+    assert scenario.setup[0].spec.trigger.name == "at_time"
+    with pytest.raises(ScenarioValidationError, match="timeout_sec"):
+        _parse(setup=[{"wait_for": {"trigger": {"at_time": {"sec": 1}}, "timeout_sec": 0}}])
+
+
 def test_negative_delay():
     with pytest.raises(ScenarioValidationError, match="sec"):
         _parse(setup=[{"delay": {"sec": -1}}])

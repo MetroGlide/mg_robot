@@ -1,0 +1,49 @@
+version: "2.0"
+name: anomaly_lidar_lost_gnss_weak
+description: >
+  LiDAR が戻らない故障 (anomaly_lidar_lost) を、GNSS が弱い区間で起こす (2 つの故障の組み合わせ)。西の通路で
+  スキャンを止め、同時に GNSS の申告の精度と位置の雑音を悪くし、どちらも最後まで戻さない。オドメトリには、実機の
+  補正の後に残る程度の旋回の誤差を足す。ほぼオドメトリだけで走る区間で、ずれたまま走る距離を見る。期待する動作: センサ構成を LiDAR なしにして、collision_monitor の scan の途絶による停止を外し、深度の
+  障害物 (ローカルコストマップ) と構成の速度の上限で走りきる。シミュレーションにはセンサの途絶の見張りがないので、
+  見張りの一時停止の引き継ぎは試さない。構成は LOCALIZATION_CONFIG で選ぶ。既知の問題: 雑音の大きい GNSS の位置に
+  EKF の向きが引かれ (例: 100° 以上)、走り続けるがゴールに着けない回がある (LiDAR がないときは精度を追わない判断)。
+profile: mg01
+world: warehouse
+tags: [localization, anomaly_sensor, mg_sequencer, known_issue]
+timeout: 600
+
+record_topics: [/sim_scenario_test/entity_poses, /amcl_pose_origin, /odom/gps, /ekf_global_odom, /odom, /localization/status, /cmd_vel, /initialpose, /diagnostics_agg, /rosout]
+
+sim_args:
+  sensor_fault_file: "pkg://mg_scenario_test/scenarios/data/faults/anomaly_lidar_lost_gnss_weak.yaml"
+
+stack_args:
+  map_path: "pkg://mg_scenario_test/scenarios/data/map_realistic/localization.yaml"
+
+setup:
+  - respawn: { pose: { x: 0.0, y: 0.0, yaw: 0.0 }, settle_sec: 3.0 }
+
+monitors:
+  # ずれの上限は置かない (LiDAR がないときは精度を追わない)。走りを続けたかは、reached_all が走行の終わりの
+  # 推定と真の位置の差で見る
+  - pose_error: { deviation_m: 1.0 }
+  # 合否に使わない記録: ずれたまま止める要求も減速もなく走った距離、減速した時間
+  - localization_outcome: {}
+  - max_stop_duration: { max_stop_sec: 60.0, from_goal_started: 2, until_goal_reached: 8 }
+  - map_overlap: { max_overlap_sec: 60.0 }
+  - localization_hold: {}
+
+run:
+  mg_sequencer:
+    waypoints_file: "{world.waypoints}"
+    waypoint_timeout_sec: 200.0
+
+timeline:
+  - name: lost
+    when: { robot_near: { x: -4.6, y: -20.0, radius: 1.5, pose_source: sim } }
+    do:
+      - call_set_bool: { service: /fault_injector/trigger/lost, value: true }
+
+expect:
+  - reached_all
+  - time_limit: { sec: 900 }

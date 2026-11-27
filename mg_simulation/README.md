@@ -31,18 +31,19 @@ GPU の指定は `.env` の `USE_GPU`、または `make gazebo-simulation USE_GP
 
 ## ワールド
 
-`worlds/` に 6 つある。
+`worlds/` に 7 つある。
 
 | ワールド | ファイル |
 | :--- | :--- |
 | warehouse (既定) | `warehouse.sdf` |
+| garden | `garden.sdf` (`garden_layout.yaml` から生成) |
 | construction | `construction.sdf` |
 | office | `office.sdf` |
 | orchard | `orchard.sdf` |
 | pipeline | `pipeline.sdf` |
 | solar_farm | `solar_farm.sdf` |
 
-地図とウェイポイントがあるのは、warehouse だけ ([下記](#地図とウェイポイント))。
+地図とウェイポイントがあるのは、warehouse と garden だけ ([下記](#地図とウェイポイント))。
 
 ### モデル
 
@@ -84,6 +85,19 @@ GNSS ブリッジ (`slam_gnss_nav_bridge`) のシミュレータ用パラメー�
 | `gnss_transform.yaml` | GNSS を地図の座標に変換する (`tools/scripts/make_sim_gnss_transform.py` で生成) |
 
 これらは、シナリオテストのプロファイル (`mg_scenario_test/profiles/mg01.yaml` の `warehouse`) が `pkg://mg_simulation/maps/warehouse/...` として参照する。
+
+### garden
+
+植栽 (生垣・花壇) に囲まれた経路 (角が 6 回) のワールド。2D LiDAR が植栽を見て点が不安定になり、測位用の地図の植栽が太い帯になり、角を抜けると見える物が入れ替わる、という AMCL が弱い条件の再現に使う。
+ワールドと `maps/garden/` は、配置の定義 `worlds/garden_layout.yaml` から `tools/scripts/make_garden_world.py` で生成する (手で編集しない。作り直す手順は定義の先頭に書いてある)。
+
+| ファイル | 内容 |
+| :--- | :--- |
+| `localization.yaml` | 測位用の地図。LiDAR に映る植栽の要素の周りに点を散らす (SLAM で植栽を溜めた地図の再現)。地図を作った後に植栽が変わった状況として、一部の要素を描かず、ワールドにない要素を描く |
+| `localization_thick.yaml`、`localization_true.yaml` | 散らす幅を大きくしたもの、散らさないもの (強さの段階と対照) |
+| `planning.yaml` | 計画用の地図。植栽は帯を埋めたもの |
+| `waypoints.yaml` | ウェイポイント (経路の角) |
+| `gnss_transform.yaml` | GNSS を地図の座標に変換する (`tools/scripts/make_sim_gnss_transform.py` で生成) |
 
 ## 依存
 

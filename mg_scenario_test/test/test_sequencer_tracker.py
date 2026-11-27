@@ -71,3 +71,13 @@ def test_idle_stall_restarts_after_activity():
     t.update("IDLE", 0, now=6.0)
     assert t.evaluate(0, 0.0, 15.0) == Progress.WAITING
     assert t.evaluate(0, 0.0, 16.5) == Progress.STALLED
+
+
+def test_idle_while_paused_is_not_stall():
+    t = _tracker()
+    t.update("IDLE", 0, now=0.0, paused=True)
+    assert t.paused
+    assert t.evaluate(0, 0.0, 100.0) == Progress.WAITING
+    t.update("IDLE", 0, now=100.0)
+    assert t.evaluate(0, 0.0, 105.0) == Progress.WAITING
+    assert t.evaluate(0, 0.0, 110.5) == Progress.STALLED

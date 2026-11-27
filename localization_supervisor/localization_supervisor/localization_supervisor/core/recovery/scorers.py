@@ -61,8 +61,8 @@ class FootprintFree(CandidateScorer):
 
 
 class AnchorAgreement(CandidateScorer):
-    """候補が、疑いが始まる前のアンカーに動きを足した姿勢(推測航法の予測)と近いほど 1 に近い (max_distance_m で 0)。
-    スキャンの照合が決めきれない(廊下で進行方向の位置が定まらないなど)とき、動きの事前情報で選ぶ。
+    """候補が、疑義が始まる前のアンカーに動きを足した姿勢(推測航法の予測)と近いほど 1 に近い (max_distance_m で 0)。
+    スキャンの照合が判定保留(廊下で進行方向の位置が定まらないなど)とき、動きの事前情報で選ぶ。
     ロボットが運ばれたときは予測が外れるので、重みを小さくして、スキャンの一致を優先させる。"""
     SOURCES = {'motion': SourceKind.MOTION}
     REQUIRES = ('anchors',)

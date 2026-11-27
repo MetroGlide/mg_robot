@@ -73,6 +73,22 @@ def test_nees_of_consistent_error_is_dof():
     assert np.nanmean(result) == pytest.approx(3.0, abs=0.2)
 
 
+def test_local_offset_follows_slow_bias_and_ignores_excluded_episode():
+    times = np.arange(0.0, 200.0, 0.5)
+    errors = np.stack([1.0 + times / 100.0, np.zeros_like(times)], axis=1)
+    excluded = (times >= 90.0) & (times < 110.0)
+    errors[excluded, 0] += 30.0
+    offsets = lm.local_offset(times, errors, 40.0, excluded)
+    assert offsets[int(np.searchsorted(times, 100.0)), 0] == pytest.approx(2.0, abs=0.2)
+    assert offsets[int(np.searchsorted(times, 150.0)), 0] == pytest.approx(2.5, abs=0.2)
+
+
+def test_local_offset_without_usable_samples_is_nan():
+    times = np.arange(0.0, 10.0)
+    offsets = lm.local_offset(times, np.zeros((10, 3)), 20.0, np.ones(10, dtype=bool))
+    assert np.all(np.isnan(offsets))
+
+
 def test_nees_singular_covariance_is_nan():
     result = lm.nees(np.ones((1, 3)), np.zeros((1, 36)))
     assert np.isnan(result[0])
@@ -145,3 +161,85 @@ def test_first_detection_delay():
     assert lm.first_detection_delay(t, s, 20.0, 50.0) == pytest.approx(3.0)
     assert lm.first_detection_delay(t, s, 30.0, 50.0) == pytest.approx(0.0)
     assert lm.first_detection_delay(t, np.zeros_like(s), 20.0, 50.0) is None
+
+
+def _straight_then_turn():
+    # 0-10 s は +x へ直進、10-14 s で左に 90 度曲がり、その後 +y へ直進する
+    rows = [[t, t, 0.0, 0.0] for t in np.arange(0.0, 10.0, 0.5)]
+    rows += [[10.0 + k, 10.0, 0.0, math.pi / 2 * k / 4] for k in range(1, 5)]
+    rows += [[14.0 + t, 10.0, t, math.pi / 2] for t in np.arange(0.5, 10.0, 0.5)]
+    return np.array(rows)
+
+
+def test_detect_turns_finds_one_left_turn():
+    turns = lm.detect_turns(_straight_then_turn(), min_turn_rad=math.radians(45), window_sec=5.0)
+    assert len(turns) == 1
+    start, end, dyaw = turns[0]
+    # 区間は、窓の中で向きが変わる範囲なので、実際の曲がり (10-14 s) より窓の幅だけ前後に広がりうる
+    assert 9.0 - 5.0 <= start <= 10.0
+    assert 14.0 <= end <= 14.0 + 5.0
+    assert dyaw == pytest.approx(math.pi / 2, abs=0.4)
+
+
+def test_detect_turns_ignores_straight_and_short_input():
+    straight = np.array([[t, t, 0.0, 0.01 * t] for t in np.arange(0.0, 20.0, 0.5)])
+    assert lm.detect_turns(straight, math.radians(45), 5.0) == []
+    assert lm.detect_turns(straight[:1], math.radians(45), 5.0) == []
+
+
+def test_deviation_episodes_uses_median_merges_gaps_and_marks_until_end():
+    times = np.arange(0.0, 60.0, 0.1)
+    pos = np.full(times.shape, 0.2)
+    yaw = np.zeros(times.shape)
+    # 一瞬の飛び (1 s の中の少数の標本) は、1 s ごとの中央値では数えない
+    pos[(times >= 5.0) & (times < 5.2)] = 50.0
+    # yaw のずれ 2 つ (間 5 s) は 1 つの事象にまとめる
+    yaw[(times >= 10.0) & (times < 15.0)] = 1.0
+    yaw[(times >= 20.0) & (times < 25.0)] = 1.0
+    # 最後までずれたまま
+    pos[times >= 50.0] = 8.0
+    episodes = lm.deviation_episodes(times, pos, yaw, 6.0, math.radians(30), merge_sec=10.0)
+    assert [(e["start_s"], e["end_s"]) for e in episodes] == [
+        pytest.approx((10.0, 25.0)), pytest.approx((50.0, 60.0))]
+    assert episodes[0]["max_yaw_rad"] == pytest.approx(1.0)
+    assert episodes[0]["until_end"] is False
+    assert episodes[1]["until_end"] is True
+    assert episodes[1]["max_position_m"] == pytest.approx(8.0)
+    # 間が merge_sec を超えれば分ける
+    assert len(lm.deviation_episodes(times, pos, yaw, 6.0, math.radians(30), merge_sec=2.0)) == 3
+    assert lm.deviation_episodes(times[:0], pos[:0], yaw[:0], 6.0, 0.5) == []
+
+
+def test_turn_errors_marks_mispick_only_when_deviation_persists():
+    times = np.arange(0.0, 40.0, 0.1)
+    turns = [(10.0, 14.0, math.pi / 2)]
+    pos = np.full(times.shape, 0.2)
+    yaw = np.zeros(times.shape)
+    # 角の中だけずれても、抜けた後に戻れば取り違えではない
+    pos[(times >= 11.0) & (times < 13.0)] = 7.0
+    episodes = lm.deviation_episodes(times, pos, yaw, 6.0, 0.5)
+    ok = lm.turn_errors(times, pos, yaw, turns, 10.0, episodes)
+    assert ok[0]["mispicked"] is False
+    assert ok[0]["deviated"] is True
+    assert ok[0]["max_position_m"] == pytest.approx(7.0)
+    # 抜けた後も yaw が 90 度ずれたまま
+    yaw[times >= 12.0] = math.pi / 2
+    episodes = lm.deviation_episodes(times, pos, yaw, 6.0, 0.5)
+    bad = lm.turn_errors(times, pos, yaw, turns, 10.0, episodes)
+    assert bad[0]["mispicked"] is True
+    # 角から離れた事象は、その角のずれにしない
+    far = lm.turn_errors(times, pos, yaw, [(2.0, 4.0, 1.0)], 3.0, episodes)
+    assert far[0]["deviated"] is False
+    # 抜けた後の記録が無ければ判定しない
+    none = lm.turn_errors(times, pos, yaw, [(50.0, 51.0, 1.0)], 10.0, episodes)
+    assert none[0]["mispicked"] is None
+    assert none[0]["deviated"] is None
+
+
+def test_gnss_weak_mask_by_sigma_and_staleness():
+    gps_t = np.array([1.0, 2.0, 3.0])
+    gps_sigma = np.array([0.3, 2.0, 0.3])
+    times = np.array([0.5, 1.5, 2.5, 3.5, 10.0])
+    weak = lm.gnss_weak_mask(times, gps_t, gps_sigma, sigma_threshold=1.0, stale_sec=3.0)
+    # 届く前・σ が大きい・古すぎるときは弱い
+    assert list(weak) == [True, False, True, False, True]

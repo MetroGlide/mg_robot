@@ -1,0 +1,7 @@
+# 復旧の候補に、AMCL の粒子の仮説 (supervision.yaml の recovery.generators.hypotheses) を足す (supervision.yaml に重ねる)。
+# 角で AMCL が誤った向きに収束した後も、正しい向きの粒子が少数残っていれば、その姿勢を候補にできる。
+# 候補の評価と選び方は基本設定のまま (スキャンの一致率を主に、GNSS・推測航法との近さで選ぶ)。
+# 近い候補が増えると、判定保留 (ambiguous) で見送ることが増えうる
+recovery:
+  generators:
+    hypotheses: {enabled: true}

@@ -1,4 +1,4 @@
-# このロボットの、自己位置の監督の構成 (localization_supervisor の設定ファイル)。
+# このロボットの、自己位置監視の構成 (localization_supervisor の設定ファイル)。
 # 情報源 (AMCL・GNSS・EKF・ホイールオドメトリ・地図とスキャン・計画用地図)、判定のインスタンス、総合、状態遷移、
 # アンカー、安全の信号、出力。書き方は localization_supervisor/doc/parameters.md。
 # オフライン評価 (tools/scripts/eval_localization_offline.py) もこのファイルを読む。
@@ -14,6 +14,11 @@ sources:
   gnss:
     kind: pose
     input: {type: odometry, topic: /odom/gps}
+  # AMCL の粒子を峰に分けた仮説の集合 (分けるのは min_interval_sec ごと)。角で誤った向きに収束した後も、
+  # 正しい向きの粒子が少数残ることが多い。格子は、峰を分ける大きさ (1 つの峰の広がりより大きく)
+  amcl_particles:
+    kind: hypotheses
+    input: {type: particle_cloud, topic: /particle_cloud, min_interval_sec: 1.0, cell_m: 0.5, cell_yaw_rad: 0.26}
   # EKF は AMCL・GNSS・オドメトリを融合した結果。疑わしい情報源の特定には使わず、出力が汚れているかの判定に使う
   ekf:
     kind: pose
@@ -98,7 +103,7 @@ detectors:
     params: {ratio_min: 0.35, baseline_min_samples: 5, gain_threshold: 0.5}
     allowance: 0.8
   # AMCL と GNSS が食い違ったとき、どちらが悪いかの切り分けに使う。これが正常と判定できているあいだは、
-  # AMCL は正しいと見なして、食い違いの疑いを GNSS だけにかける (地図と GNSS の位置合わせのずれなど)。
+  # AMCL は正しいと見なして、食い違いの疑義を GNSS だけにかける (地図と GNSS の位置合わせのずれなど)。
   # scan_amcl は AMCL と独立でないので vouch しない。判定できない周期が続くと、AMCL を疑う側に戻る
   submap_amcl:
     type: submap_map
@@ -106,6 +111,13 @@ detectors:
     params: {ratio_min: 0.35, baseline_min_samples: 5, gain_threshold: 0.5}
     allowance: 0.8
     vouch: [amcl]
+  # AMCL の粒子が、離れた姿勢の仮説に割れているか。割れても AMCL が正しい方を選ぶことが多いので、重み 0 で
+  # 記録だけする (正しい姿勢と、ずれたときの値の分布を確かめてから重みを決める)
+  amcl_split:
+    type: hypothesis_split
+    sources: {pose: amcl, hypotheses: amcl_particles}
+    params: {threshold: 0.2, separation_m: 1.0, separation_rad: 0.5}
+    weight: 0.0
 
 fusion:
   type: cusum
@@ -117,9 +129,9 @@ trust:
 
 state_machine:
   # false: 検知と通知だけ (異常を確認したら DEGRADED、消えたら NORMAL)。プロファイル notify_only で切り替える。
-  # true: 切り離して (対処 gate)、候補を選んで再初期化し、収束したら戻す
+  # true: 除外して (対処 gate)、候補を選んで再初期化し、収束したら戻す
   recovery_enabled: true
-  # 切り離してから戻すまで、走行を止めてほしいと要求するか (対処 pause_request が一時停止を出す)
+  # 除外してから戻すまで、走行を止めてほしいと要求するか (対処 pause_request が一時停止を出す)
   request_hold: true
   clear_ticks: 5
   isolate_hold_sec: 3.0
@@ -136,8 +148,9 @@ recovery:
   # 再初期化の後に収束したかを見る判定 (すべて正常な周期が recover_ok_ticks 回続けば戻す)
   convergence: [amcl_ekf]
 
-  # 復旧のために残すスキャン (動きでまとめた局所地図。判定の submap_map のバッファとは別)
-  scan_buffer: {reference: map_scan, motion: odom}
+  # 復旧のために残すスキャン (動きでまとめた局所地図。判定の submap_map のバッファとは別)。最新のスキャンが
+  # max_scan_age_sec より古い間 (LiDAR の途絶) は捨てて使わない (AMCL 検証ゲートの scan_buffer と同じ値にする)
+  scan_buffer: {reference: map_scan, motion: odom, max_scan_age_sec: 3.0}
 
   # 復旧の候補を作るもの。再初期化が要るあいだ、2 秒ごとに計画する
   generators:
@@ -146,7 +159,7 @@ recovery:
       type: pose_source
       sources: {pose: gnss}
       params: {max_std_m: 1.0, consecutive: 2, max_age_sec: 3.0}
-    # 疑いが始まる前の信頼できた時点 (アンカー) に、その後のオドメトリを足した位置
+    # 疑義が始まる前の信頼できた時点 (アンカー) に、その後のオドメトリを足した位置
     dead_reckoning:
       type: anchor_motion
       sources: {motion: odom}
@@ -154,6 +167,13 @@ recovery:
     submap:
       type: submap_match
       sources: {motion: odom, reference: map_scan}
+    # AMCL の粒子の仮説のうち、推測航法の姿勢に近いものを、重みの大きい順に (角で誤った向きに収束しても、残った
+    # 正しい向きの仮説へ戻す)。遠くの似た場所の仮説は、スキャンの一致が良くても使わない。プロファイル hypotheses で有効にする
+    hypotheses:
+      type: hypothesis_modes
+      sources: {hypotheses: amcl_particles, motion: odom}
+      params: {max_candidates: 3, min_weight: 0.05, max_distance_m: 3.0, max_yaw_rad: 0.5}
+      enabled: false
 
   # 候補の評価 (0〜1)。重み付き平均で順位を付ける。
   # スキャンの照合は、廊下のように進行方向の位置が定まらない場所では、似た一致の候補が並ぶ。
@@ -181,26 +201,47 @@ recovery:
   # min_score は、この地図で正しい姿勢の一致率 (0.55 以上) より低くする
   selection: {min_score: 0.35, ambiguity_margin: 0.1, separation_m: 1.0, retry_sec: 2.0}
 
-  # 選んだ姿勢の送り先 (AMCL と EKF)。監督が送ったものは、外からの再初期化と見なさない
+  # 選んだ姿勢の送り先 (AMCL と EKF)。自己位置監視が送ったものは、外からの再初期化と見なさない。
+  # role は AMCL 検証ゲートの姿勢補正の送り先の役 (推定器 / 融合。AMCL 検証ゲートが AMCL を採って EKF だけを直すときは fused だけに送る)
   resetters:
-    - {type: amcl}
-    - {type: robot_localization}
+    - {type: amcl, role: estimator}
+    - {type: robot_localization, role: fused}
 
   # 対処。いずれも、プロファイルでは変えられない (起動時に作る)
   actuators:
-    # AMCL の出力 (EKF への入力) を、AMCL が疑わしいあいだ止める (ゲートの調停ノードの、監督用の窓口)
+    # AMCL の出力 (EKF への入力) を、AMCL が疑わしいあいだ止める (ゲートの調停ノードの、自己位置監視用の窓口)
     - type: gate
       params: {service: /amcl_gate_arbiter/supervisor/change_publish_state, blames: [amcl, unknown]}
     # 走行を止めてほしいあいだ、シーケンサを一時停止する
     - name: pause_request
       type: "mg_localization_supervisor.actuators.pause_request:PauseRequestActuator"
+    # 観測を増やす指示 (observe) が出たら、その場で首を振る (Nav2 の Spin)。指示はプロファイル robust_recovery で出す
+    - name: spin_observe
+      type: "mg_localization_supervisor.actuators.spin_observe:SpinObserve"
     # 再初期化の後に、グローバルコストマップを消す
     - name: clear_costmap
       type: "mg_localization_supervisor.actuators.clear_costmap:ClearCostmap"
-    # GNSS の分散にかける倍率を配信する (GNSS を切り離しているあいだは上限)。slam_gnss_2d の nav_bridge.yaml の
+    # GNSS の分散にかける倍率を配信する (GNSS を除外しているあいだは上限)。slam_gnss_2d の nav_bridge.yaml の
     # variance_scale_topic と同じトピック
     - type: variance_scale
       params: {topic: /gnss_variance_scale, residual: gnss_vs_ekf}
+    # 走行制約 (conduct) の速度の上限を、controller_server の /speed_limit に出す (AMCL 検証ゲートがあるときだけ上限が出る)
+    - name: speed_limit
+      type: "mg_localization_supervisor.actuators.speed_limit:SpeedLimitActuator"
+    # センサ構成が変わったら、ほかのノードのパラメータを切り替える (センサの途絶の見張りからの引き継ぎ)。
+    # LiDAR なしの構成では、collision_monitor の scan の途絶による停止を切り、見張りの LiDAR の一時停止を外して、
+    # 深度の障害物 (ローカルコストマップ) と構成の速度の上限で走る。all は全部のセンサ構成に戻ったときの値 (設定ファイルと同じ)
+    - name: sensor_set
+      type: "mg_localization_supervisor.actuators.sensor_set:SensorSetParameters"
+      params:
+        sets:
+          no_lidar:
+            /collision_monitor: {scan_top.stop_on_timeout: false}
+            /driver_watchdog_node: {pause_exempt_sources: [top_lidar]}
+          all:
+            /collision_monitor: {scan_top.stop_on_timeout: true}
+            # 空の並びは ROS のパラメータの型が決まらないので、どのソースにも当たらない [""] にする
+            /driver_watchdog_node: {pause_exempt_sources: [""]}
 
 anchors:
   pose: ekf
@@ -217,7 +258,7 @@ safety:
   footprint: [[0.4, 0.25], [0.4, -0.25], [-0.2, -0.3], [-0.2, 0.3]]
 
 # 残差: 信頼できる周期に、GNSS と EKF の位置の差を残し、GNSS の自己申告の分散より実際の誤差が大きければ、
-# 分散にかける倍率を出す (対処 variance_scale が配信し、GNSS のブリッジが /odom/gps の分散にかける)。
+# 分散にかける倍率を出す (出力部 variance_scale が配信し、GNSS のブリッジが /odom/gps の分散にかける)。
 # 地図と GNSS のずれは場所ごとに違うので、補正せずに信頼度だけを下げる。倍率が大きい状態が続くと、イベント residual_changed で
 # 知らせる (gnss_transform.yaml を見直すきっかけ)。EKF は GNSS を含む融合の結果なので、GNSS を過大に信頼するほど残差は小さく
 # 出る。倍率は、ずれが大きい区間を見つけるための目安
@@ -231,9 +272,183 @@ grace:
   after_recovery_sec: 10.0
   after_reset_sec: 10.0
 
-# 監督以外 (GNSS による初期化、watchdog、人の操作) が推定器を初期化し直したら、人による上書きとして扱う
+# 自己位置監視以外 (GNSS による初期化、watchdog、人の操作) が推定器を初期化し直したら、人による上書きとして扱う
 external_reinit:
   topics: [/initialpose, /set_pose]
+
+# AMCL 検証ゲート: AMCL の姿勢を EKF に入れる前に確かめる (localization_supervisor/doc/motion_gate.md)。自己位置監視のノードのパラメータ
+# use_gate (launch の引数) で有効にする (enabled はここでは書かない)。AMCL 検証ゲートがあるときは、姿勢補正・AMCL 検証ゲートの開閉・
+# 一時停止を AMCL 検証ゲートが決め、自己位置監視の復旧も AMCL 検証ゲートの照合で決める (localization_supervisor/doc/design.md)。プロファイルでは
+# 変えられない (起動時に作る)。
+# 遮断条件・照合・戻し方の値は、記録の再生の評価で決めた仮の値で、実機で確かめて調整する
+# センサ構成: LiDAR (map_scan) が missing_after_sec 届かなければ LiDAR なしの構成にし、構成の速度の上限で走る。
+# missing_after_sec は、センサの途絶の見張り (mg_drivers の driver_watchdog.yaml) が起動し直しを試す時間
+# (restart_after_sec と restart_cooldown_sec の数回分) より長くする。戻ったら present_after_sec 待って全部のセンサ構成へ
+sensor_sets:
+  - name: no_lidar
+    missing: [map_scan]
+    missing_after_sec: 30.0
+    present_after_sec: 5.0
+    speed_limit_mps: 0.3
+
+# 走行制約: 自己位置状況 (未初期化 / 疑義 / 判定保留 / 未観測 / 復旧中) と危険度 (誤差見込み ÷ 余裕距離) から
+# 減速を決める (localization_supervisor/doc/architecture_target.md の「状態 × 危険度 → 対処」)。AMCL 検証ゲートがあるときだけ使う。
+# 余裕距離は safety の footprint と計画用地図から求める。止める対処は持たない (止めるのは AMCL 検証ゲートと自己位置監視の上限つきの仕組み)
+conduct:
+  # 確かめてから走った道のり 1 m あたりの誤差の増え方。AMCL 検証ゲートの continuation_xy_per_m と同じ考え方
+  error_per_m: 0.05
+  # 自己位置状況ごとの誤差見込みの下限 [m]
+  floors: {uninitialized: 2.0, suspect: 1.0, undecided: 1.5, unobserved: 1.0, recovering: 1.5}
+  # AMCL 検証ゲートの確かめ (gate.settings.confirm_distance_m) が 2 回続けて合わなかったくらいの道のり
+  unobserved_after_m: 25.0
+  undecided_after_sec: 3.0
+  medium_ratio: 0.5
+  heavy_ratio: 1.0
+  lower_hold_sec: 3.0
+  # 減速の上限 [m/s]。RPP の desired_linear_vel (巡航) より小さく
+  slow_speed_mps: 0.3
+  table:
+    uninitialized: {light: normal, medium: slow, heavy: slow}
+    # 疑義 (GNSS だけが食い違うなど) は、余裕距離が短いとき (重い) だけ減速する。地図と GNSS を整合させた地図では、
+    # 食い違いが続けば地図と現場の食い違いなどの見込みが高い。整合が悪い地図で、開けた所まで減速が続くなら
+    # heavy も normal にする
+    suspect: {light: normal, medium: normal, heavy: slow}
+    undecided: {light: slow, medium: slow, heavy: slow}
+    unobserved: {light: slow, medium: slow, heavy: slow}
+    recovering: {light: slow, medium: slow, heavy: slow}
+
+gate:
+  period_sec: 0.2
+  settings:
+    estimator: amcl
+    fused: ekf
+    motion: odom
+    reference: map_scan
+    gnss: gnss
+    max_age_sec: 2.0
+    gnss_max_age_sec: 2.0
+    # GNSS の候補は、申告の精度がこれ以下のときだけ。探す範囲は申告の標準偏差の倍
+    gnss_max_std_m: 1.0
+    gnss_sigma_k: 3.0
+    # 推測航法姿勢の候補の探す範囲を広げる量 (確かめてから走った道のり 1 m あたり)。オドメトリの誤差の目安より大きく
+    continuation_xy_per_m: 0.05
+    continuation_yaw_per_m: 0.01
+    # 手動の初期姿勢の候補の探す範囲。人が与える姿勢のおおよその誤差を覆う。照合の範囲の上限
+    # (map_match の cap_xy_m・cap_yaw_rad) の中にする
+    manual_xy_m: 1.5
+    manual_yaw_rad: 0.5
+    retry_sec: 2.0
+    # AMCL 検証ゲートが開いている間に、AMCL と推測航法姿勢を照合して、検証済み姿勢を更新する道のり
+    confirm_distance_m: 10.0
+    # 姿勢補正の後は、収束の途中なので遮断条件を使わない (active_in_grace の部品を除く)。時間は、時間の窓で比べる
+    # 遮断条件 (gate_amcl_window の window_sec + max_gap_sec) より長くする (姿勢補正の前の標本と比べないため)
+    grace_after_reset_m: 1.0
+    grace_after_reset_sec: 15.0
+    # 融合の結果 (走行に使う姿勢) との差がこれ以下なら、その場で補正する。超えれば止まってから補正する
+    small_correction_m: 0.3
+    small_correction_rad: 0.1
+    stopped_speed_mps: 0.05
+    stopped_yaw_rate_rps: 0.05
+    stopped_sec: 1.0
+    correction_hold_max_sec: 10.0
+    # 閉じたまま決まらないときの上限 (時間か道のり)。超えたら止めて照合し、決まらなければ解いて少し走らせる。
+    # 自己位置監視が AMCL の異常を確かめて閉じさせたときは、最初から上限を超えたものとして扱う
+    max_closed_sec: 30.0
+    max_closed_m: 15.0
+    undecided_hold_sec: 10.0
+    undecided_drive_m: 5.0
+    reset_std_m: 0.1
+    reset_std_yaw_rad: 0.05
+    # 初期全周探索 (initial_search) に使う GNSS: 申告の精度の上限と、続けて満たす標本の数 (初期化ノードと同じ)
+    initial_gnss_max_std_m: 5.0
+    initial_gnss_consecutive: 2
+    # GNSS の再採用待機: 申告の精度が直近の窓の最も悪い値 (gnss_max_std_m より悪い) から ratio 倍以上良くなったら、
+    # この時間だけ AMCL 検証ゲートは GNSS を使わない (屋根を抜けた直後など、位置はずれたまま申告だけが良くなるため)
+    gnss_probation_sec: 10.0
+    gnss_probation_ratio: 3.0
+    gnss_probation_window_sec: 10.0
+    # 自己位置監視の疑義が解けた GNSS を、検証済み姿勢と合うまで使わない (疑義が AMCL に移っただけで、ずれた GNSS を候補に
+    # 採らないため)
+    gnss_hold_after_distrust: true
+    # 決まらずに止めた回数がこれに達した後の停止では、推測航法姿勢の周りを初期全周探索 (initial_search) で探す
+    wide_search_after_holds: 2
+
+  # 遮断条件 (判定の書き方)。どれかの異常が close_after_sec 続いたら閉じる。誤って閉じても照合 1 回で戻る。
+  # 名前は判定のインスタンスと分ける (状態のメッセージに両方を並べる)
+  closers:
+    # 1 回ごとの飛び (AMCL の姿勢とホイールオドメトリが示す map->odom の変化)
+    gate_amcl_jump:
+      type: pose_jump
+      sources: {pose: amcl, motion: odom}
+      params: {threshold_m: 1.0, threshold_rad: 0.3}
+    # 直近の時間の窓での変化 (飛ばされた AMCL が少しずつ戻る・滑るのを見逃さない)
+    gate_amcl_window:
+      type: pose_jump
+      sources: {pose: amcl, motion: odom}
+      params: {threshold_m: 1.0, threshold_rad: 0.3, window_sec: 10.0}
+    # GNSS と離れたまま (動きの合意では気づけない、ゆっくりしたずれ)。精度の良い GNSS だけを使う。
+    # 今の AMCL と今の GNSS を比べ、姿勢補正の前の標本を使わないので、姿勢補正の後の猶予の間も使う。
+    # 自己位置監視が GNSS を疑っている間は使わない
+    gate_amcl_gnss:
+      type: pose_consistency
+      sources: {a: amcl, b: gnss}
+      params: {metric: distance, threshold: 1.5, b_max_std_m: 0.5}
+      close_after_sec: 3.0
+      active_in_grace: true
+
+  map_match:
+    min_ratio: 0.35
+    margin: 0.1
+    separation_m: 1.0
+    separation_yaw_rad: 0.2
+    narrow_xy_m: 0.5
+    narrow_yaw_rad: 0.15
+    step_xy_m: 0.1
+    step_yaw_rad: 0.05
+    cap_xy_m: 2.0
+    cap_yaw_rad: 0.55
+    wide_step_xy_m: 0.25
+    wide_step_yaw_rad: 0.1
+    tolerance_m: 0.3
+    coarse_tolerance_m: 0.5
+    coarse_candidates: 5
+    max_points: 400
+    field_radius_m: 25.0
+
+  # 照合に使う、直近のスキャンを重ねたもの
+  scan_buffer:
+    keyframe_distance_m: 0.3
+    keyframe_angle_rad: 0.2
+    window_distance_m: 3.0
+    max_points_per_scan: 90
+    max_range_m: 25.0
+    # 最新のスキャンがこれより古い間 (LiDAR が止まったなど) は照合も停止もしない (溜めたスキャンで誤って補正しない)。
+    # センサ構成の missing_after_sec より短く (読み込みで確かめる)、スキャンの周期の乱れより長く
+    max_scan_age_sec: 3.0
+
+  # 未初期化間 (起動の直後、地図の切り替えの後) に、GNSS の周りを向きの全周で照合した姿勢を候補に足す。
+  # 推定器と別の仮説に補正するのは、この姿勢と同じ仮説に決まったときだけ。合わなければ、最初の 1 回だけ GNSS の
+  # 位置を広い共分散で出す (AMCL に広く探させる)。GNSS の精度の条件は settings の initial_gnss_*。
+  # 値は GNSS による初期化ノード (initializer.yaml、verify.*) の照合と同じ
+  initial_search:
+    search_range_m: 4.0
+    step_xy_m: 0.5
+    step_yaw_rad: 0.1
+    scan_radius_m: 15.0
+    tolerance_m: 0.15
+    coarse_tolerance_m: 0.4
+    coarse_candidates: 8
+    min_points: 30
+    min_ratio: 0.5
+    ambiguity_margin: 0.1
+    separation_m: 1.0
+    matched_std_m: 0.3
+    matched_std_yaw_rad: 0.1
+    fallback_std_m: 2.0
+    fallback_std_yaw_rad: 0.5
+
+  # 手動の初期姿勢の専用トピック (Web UI が送る。AMCL 検証ゲートがないときは、launch の中継がそのまま /initialpose へ送る)
+  manual_pose_topic: /localization/manual_initial_pose
 
 events:
   prefix: localization
@@ -249,3 +464,9 @@ profiles:
   gnss_fallback: profiles/gnss_fallback.yaml
   # 検知と通知だけ (自動復旧しない。watchdog と並行して動かすときに使う)
   notify_only: profiles/notify_only.yaml
+  # 復旧の候補に、AMCL の粒子の仮説を足す
+  hypotheses: profiles/hypotheses.yaml
+  # 止まったままでも確かめて戻り、決められなければ首を振って観測を増やす復旧
+  robust_recovery: profiles/robust_recovery.yaml
+  # シナリオ試験で /initialpose から故障を注入するとき (実機では使わない)
+  fault_injection: profiles/fault_injection.yaml

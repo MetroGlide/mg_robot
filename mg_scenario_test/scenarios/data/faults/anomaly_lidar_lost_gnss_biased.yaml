@@ -1,0 +1,10 @@
+# LiDAR が戻らない故障 (anomaly_lidar_lost) を、建物の近くで GNSS がずれる区間で起こす。GNSS は精度を過大に
+# 申告したまま (申告は良いまま) 東 (棚の側) へずれる (マルチパス)。シミュのオドメトリは誤差がないので、実機の補正の後に
+# 残る旋回の誤差を、回転のスケールで足す。
+# 同じ種類の故障は定義の順で最初のものだけが作用するので、trigger の故障を常時の故障より先に書く。
+faults:
+  - {type: scan_halt, trigger: lost}
+  - {type: gnss_bias, trigger: biased, bias: {x: 2.5, y: 0.0}}
+  - {type: gnss_noise, start: 0.0, end: 100000.0, sigma: 0.3, tau: 30.0}
+  - {type: gnss_accuracy, start: 0.0, end: 100000.0, std_m: 0.5}
+  - {type: odom_scale, start: 0.0, end: 100000.0, v: 1.0, w: 1.03}

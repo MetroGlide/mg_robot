@@ -1,0 +1,20 @@
+# 自己位置推定のロバスト性の評価セット (run_localization_set.sh / compare_localization_set.py)
+# 1 行に 1 条件: <ラベル> <データセット> [run_localization_variant.sh の引数 ...]
+# 変種の出力は <評価 bag>/eval_loc/<データセット>/<名前>_<ラベル>/ に入る。
+# 今の自己位置推定用の地図 (map_for20261017) の、領域ごとの区間
+r1_051635 map20261017r1_eval051635
+r2_051635 map20261017r2_eval051635
+r3_051635 map20261017r3_eval051635
+r5_043837 map20261017r5_eval043837
+r4_043837 map20261017r4_eval043837
+r3_043837 map20261017r3_eval043837
+r2_043837 map20261017r2_eval043837
+r1_043837 map20261017r1_eval043837
+r5_041743 map20261017r5_eval041743
+# 補助: 故障の注入 (人工的な条件) と、オドメトリの速度が 0 になる不具合 (補正なし)
+kidnap map043837_eval051635_short --faults tools/datasets/localization/faults/kidnap.yaml
+amcl_drift map043837_eval051635_short --faults tools/datasets/localization/faults/amcl_drift.yaml
+gnss_degraded map043837_eval051635_short --faults tools/datasets/localization/faults/gnss_degraded.yaml
+odom_slip map043837_eval051635_short --faults tools/datasets/localization/faults/odom_slip.yaml
+scan_dropout map043837_eval051635_short --faults tools/datasets/localization/faults/scan_dropout.yaml
+twist_glitch_raw map043837_eval051635_twist_glitch odom.twist_source=raw

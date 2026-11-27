@@ -5,7 +5,7 @@ description: >
   領域の外の最も近い位置を始点にして計画し (リカバリーの EscapeKeepout)、領域から出てゴールへ到達できることを確認する。
   領域は scenarios/data/keepout/planning.yaml (ウェアハウスの計画用地図の原点の周りの 2m 四方を進入禁止にしたもの。
   tools/scripts/add_keepout_to_map.py で作った)。この段階が無いと、プランナが「始点が致死」で計画できず、動けない。
-  監督が起動して状態が NORMAL になるまで、リカバリーは待つ。
+  自己位置監視が起動して状態が NORMAL になるまで、リカバリーは待つ。
 profile: mg01
 world: warehouse
 tags: [localization, keepout, nav2_goals]
@@ -14,6 +14,8 @@ timeout: 240
 stack_args:
   planning_map_path: "pkg://mg_scenario_test/scenarios/data/keepout/planning.yaml"
   localization_monitor: supervisor
+  localization_gate: "false"
+  localization_profile: none
 
 setup:
   - respawn: { pose: { x: 0.0, y: 0.0, yaw: 0.0 }, settle_sec: 3.0 }
