@@ -1,5 +1,3 @@
-import { Tone } from "../ui/Pill";
-import { Step } from "../ui/Stepper";
 
 /** クォータニオンから、地図平面での向き(yaw)を度で返す */
 export function quaternionToYawDeg(q: {
@@ -15,25 +13,20 @@ export function quaternionToYawDeg(q: {
   return (yaw * 180) / Math.PI;
 }
 
-/** waypoint_sequencer の通常の流れ。SUSPENDED と ERROR は流れの外なので段にしない */
-export const SEQUENCER_STEPS: Step[] = [
-  { id: "IDLE", label: "待機" },
-  { id: "ON_STARTING", label: "出発前" },
-  { id: "NAVIGATING", label: "走行中" },
-  { id: "ON_ARRIVING", label: "到着処理" },
-  { id: "GOAL_REACHED", label: "到着" },
-];
+/** 地点の区切りのバーの 1 区画の状態 */
+export type WaypointSegment = "passed" | "current" | "ahead";
 
 /**
- * ステッパーの現在の段と色を決める。
- * SUSPENDED(一時停止)は、止まる前の段を特定できないので走行中の段を warn で示す。ERROR は待機の段を error で示す。
+ * 地点の区切りのバーの区画。シーケンサが出す番号と総数を並べるだけで、状態は判定しない
+ * (いま何をしているかはランプが表す)。全地点に到着したら全て通過済み。
  */
-export function sequencerStep(state: string | null): {
-  currentId: string | null;
-  tone: Tone;
-} {
-  if (state === null) return { currentId: null, tone: "neutral" };
-  if (state === "SUSPENDED") return { currentId: "NAVIGATING", tone: "warn" };
-  if (state === "ERROR") return { currentId: "IDLE", tone: "error" };
-  return { currentId: state, tone: "ok" };
+export function waypointSegments(
+  currentIndex: number,
+  total: number,
+  goalReached: boolean,
+): WaypointSegment[] {
+  return Array.from({ length: Math.max(0, total) }, (_, i) => {
+    if (goalReached || i < currentIndex) return "passed";
+    return i === currentIndex ? "current" : "ahead";
+  });
 }

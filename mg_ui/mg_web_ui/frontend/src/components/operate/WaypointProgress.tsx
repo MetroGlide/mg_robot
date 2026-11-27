@@ -8,10 +8,9 @@ import Card from "../ui/Card";
 import IconButton from "../ui/IconButton";
 import { CloseIcon } from "../ui/icons";
 import OpsButton from "../ui/OpsButton";
-import Stepper from "../ui/Stepper";
 import ActivityLine from "./ActivityLine";
 import RecentActivity from "./RecentActivity";
-import { SEQUENCER_STEPS, sequencerStep } from "./displayState";
+import WaypointBar from "./WaypointBar";
 
 interface Props {
   client: FoxgloveClientHandle;
@@ -22,7 +21,7 @@ interface Props {
 }
 
 /**
- * Waypoint シーケンサの状態ランプ・直近の状態の変化・進捗と、開始・停止・一時停止の操作。
+ * Waypoint シーケンサの状態ランプ・直近の状態の変化・地点の進み具合と、開始・停止・一時停止の操作。
  * 状態の変化を見逃さないよう、status は間引かずに受ける(10Hz で、この部品だけが再描画される)。
  */
 export default function WaypointProgress({
@@ -37,20 +36,16 @@ export default function WaypointProgress({
     "mg_msgs/msg/SequencerStatus",
   );
   const activity = useNavigationActivity(client);
-  const { currentId, tone } = sequencerStep(status?.state ?? null);
   const busy = control.loading || !connected;
 
   return (
     <Card className="w-[34rem] max-w-full p-4">
       <div className="mb-3 flex items-center gap-2">
         <h2 className="text-sm font-bold">Waypoint 走行</h2>
-        <span className="ml-auto text-xs tabular-nums text-muted">
-          {status &&
-            `${Math.min(status.current_index + 1, status.total_waypoints)} / ${status.total_waypoints} 地点 ・ 残り ${status.distance_remaining.toFixed(1)} m`}
-        </span>
+        <span className="ml-auto" />
         <IconButton icon={<CloseIcon />} title="閉じる" onClick={onClose} />
       </div>
-      {/* 状態ランプを主役にする: いまの活動と直近の変化を最初に置き、進捗の段はその下 */}
+      {/* いま何をしているかは状態ランプと文言だけで表す。進み具合は下の地点のバー */}
       <div className="rounded-lg border border-line bg-surface-sunken p-3">
         <ActivityLine
           activity={activity}
@@ -59,9 +54,16 @@ export default function WaypointProgress({
         />
         <RecentActivity activity={activity} />
       </div>
-      <div className="mt-3">
-        <Stepper steps={SEQUENCER_STEPS} currentId={currentId} tone={tone} />
-      </div>
+      {status && (
+        <div className="mt-3">
+          <WaypointBar
+            currentIndex={status.current_index}
+            total={status.total_waypoints}
+            goalReached={status.state === "GOAL_REACHED"}
+            distanceRemaining={status.distance_remaining}
+          />
+        </div>
+      )}
       <div className="mt-4 flex flex-wrap items-center justify-center gap-4">
         <OpsButton tone="primary" disabled={busy} onClick={control.start}>
           START

@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  quaternionToYawDeg,
-  SEQUENCER_STEPS,
-  sequencerStep,
-} from "./displayState";
+import { quaternionToYawDeg, waypointSegments } from "./displayState";
 
 describe("quaternionToYawDeg", () => {
   it("z 軸まわりの回転を度にする", () => {
@@ -15,22 +11,13 @@ describe("quaternionToYawDeg", () => {
   });
 });
 
-describe("sequencerStep", () => {
-  it("通常の状態は、そのままステッパーの段になる", () => {
-    for (const step of SEQUENCER_STEPS) {
-      expect(sequencerStep(step.id).currentId).toBe(step.id);
-    }
+describe("waypointSegments", () => {
+  it("番号より前は通過済み、番号の地点はいま、後ろはこれから", () => {
+    expect(waypointSegments(2, 4, false)).toEqual(["passed", "passed", "current", "ahead"]);
   });
 
-  it("SUSPENDED は走行中の段を warn にする", () => {
-    expect(sequencerStep("SUSPENDED")).toEqual({
-      currentId: "NAVIGATING",
-      tone: "warn",
-    });
-  });
-
-  it("ERROR は error、未受信は段なし", () => {
-    expect(sequencerStep("ERROR").tone).toBe("error");
-    expect(sequencerStep(null)).toEqual({ currentId: null, tone: "neutral" });
+  it("全地点に到着したら全て通過済み、地点がなければ空", () => {
+    expect(waypointSegments(3, 4, true)).toEqual(["passed", "passed", "passed", "passed"]);
+    expect(waypointSegments(0, 0, false)).toEqual([]);
   });
 });
