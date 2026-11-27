@@ -37,7 +37,7 @@ MG-01 の状態の表示と操作のための UI。ブラウザ (タブレット
 
 運用ビューは、走行中に操作しない運用を想定して、状態の表示を 1 画面に収める (診断は右下の `DiagnosticsBoard` に区分ごとに並べ、「全表示」と、OK を件数にまとめる「簡易」を切り替える。「詳細」で値まで見られる木を開く。操作のカードは節ごとに閉じられる)。追従・カードの開閉・タブの選択・入力値は、他の画面に移って戻っても保持する。
 
-**状態ランプ**: Waypoint 走行のカードに、パトライトのような色のランプと、直近の状態の変化 (件数は `RecentActivity.tsx` の `RECENT_ACTIVITY_COUNT`、保持の上限は `ActivityHistoryContext.tsx` の `MAX_ACTIVITY_ENTRIES`) を出す。状態はシーケンサの「いまの活動」(`~/activity`) で、判定はロボット側だけが行う ([いまの活動](../mg_waypoint_navigation/doc/architecture.md#いまの活動-activity))。色・点灯 / 点滅・点滅の速さは `mg_web_ui/frontend/src/components/operate/statusLamp.ts` の表だけで決める。開始待ちの橙の点滅は MMI の LED1 に、活動が届かないときの赤は MMI の LED2 (シーケンサの途絶) に合わせている (MMI の側は変えていない)。履歴はイベント `sequencer.activity_changed` から作り、画面の移動では消えず、再読み込みで消える。
+**状態ランプ**: Waypoint 走行のカードに、パトライトのような色のランプと、直近の状態の変化 (件数は `RecentActivity.tsx` の `RECENT_ACTIVITY_COUNT`、保持の上限は `ActivityHistoryContext.tsx` の `MAX_ACTIVITY_ENTRIES`) を出す。状態はシーケンサの「いまの活動」(`~/activity`) で、判定はロボット側だけが行う ([いまの活動](../mg_waypoint_navigation/doc/architecture.md#いまの活動-activity))。色・点灯 / 点滅・点滅の速さは `mg_web_ui/frontend/src/components/operate/statusLamp.ts` の表だけで決める。開始待ちの橙の点滅は MMI の LED1 に合わせている (MMI の側は変えていない)。活動が届かないとき (通信の途絶・シーケンサの停止) は、ロボットのエラーの赤と分けて灰にする。上部バーにも同じランプを小さく出し、押すと全件の一覧を開く。履歴はイベント `sequencer.activity_changed` から作り、画面の移動では消えず、再読み込みで消える。
 
 地図はタッチパッドで操作する (2 本指のスクロールで移動、ピンチでズーム)。マウスのホイールで拡大縮小したいときは、設定の「全般」で「マウスのホイールで地図を拡大縮小」をオンにする (端末ごとに保存)。受信が途切れた値は `--` と経過秒の表示になり、ロボットと切断中は画面の上に帯が出て、操作が無効になる。
 

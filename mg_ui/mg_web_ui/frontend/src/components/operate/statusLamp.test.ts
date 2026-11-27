@@ -38,8 +38,9 @@ describe("ACTIVITY_LAMPS", () => {
 });
 
 describe("lampFor", () => {
-  it("届かないときは赤、表にない code は灰", () => {
+  it("届かないときと表にない code は灰", () => {
     expect(lampFor(null)).toBe(STALE_LAMP);
+    expect(STALE_LAMP.color).toBe("gray");
     expect(lampFor("future_code")).toBe(UNKNOWN_LAMP);
     expect(lampFor("navigating").color).toBe("green");
   });

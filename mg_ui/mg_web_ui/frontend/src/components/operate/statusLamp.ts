@@ -70,8 +70,8 @@ export const ACTIVITY_LAMPS: Record<ActivityCode, LampSpec> = {
   idle: { color: "off", blinkMs: SOLID },
 };
 
-/** 活動が届かない・古いとき (通信の途絶、シーケンサの停止)。MMI の LED2 の赤 (~/status の途絶) に合わせる */
-export const STALE_LAMP: LampSpec = { color: "red", blinkMs: SOLID };
+/** 活動が届かない・古いとき (通信の途絶、シーケンサの停止)。ロボットのエラー (赤) と見分けるため灰にする */
+export const STALE_LAMP: LampSpec = { color: "gray", blinkMs: SOLID };
 /** 表にない code (ロボット側が新しく、UI が古いとき) */
 export const UNKNOWN_LAMP: LampSpec = { color: "gray", blinkMs: SOLID };
 

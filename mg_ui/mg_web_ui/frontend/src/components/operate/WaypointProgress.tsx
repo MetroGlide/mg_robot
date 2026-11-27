@@ -22,7 +22,7 @@ interface Props {
 }
 
 /**
- * Waypoint シーケンサの進捗と、開始・停止・一時停止の操作。
+ * Waypoint シーケンサの状態ランプ・直近の状態の変化・進捗と、開始・停止・一時停止の操作。
  * 状態の変化を見逃さないよう、status は間引かずに受ける(10Hz で、この部品だけが再描画される)。
  */
 export default function WaypointProgress({
@@ -50,9 +50,18 @@ export default function WaypointProgress({
         </span>
         <IconButton icon={<CloseIcon />} title="閉じる" onClick={onClose} />
       </div>
-      <Stepper steps={SEQUENCER_STEPS} currentId={currentId} tone={tone} />
-      <ActivityLine activity={activity} className="mt-3 text-sm" />
-      <RecentActivity activity={activity} />
+      {/* 状態ランプを主役にする: いまの活動と直近の変化を最初に置き、進捗の段はその下 */}
+      <div className="rounded-lg border border-line bg-surface-sunken p-3">
+        <ActivityLine
+          activity={activity}
+          lampSize={28}
+          className="text-base font-medium"
+        />
+        <RecentActivity activity={activity} />
+      </div>
+      <div className="mt-3">
+        <Stepper steps={SEQUENCER_STEPS} currentId={currentId} tone={tone} />
+      </div>
       <div className="mt-4 flex flex-wrap items-center justify-center gap-4">
         <OpsButton tone="primary" disabled={busy} onClick={control.start}>
           START
