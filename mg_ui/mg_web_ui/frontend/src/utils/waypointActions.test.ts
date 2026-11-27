@@ -4,12 +4,15 @@ import {
   describeAmclGate,
   describeGnssGate,
   describeServiceResponse,
+  describeVerifyResponse,
   GOAL_BT_OPTIONS,
   isGoalBtMode,
   mapDisplayName,
   parseJsonObject,
   parseNavigationMode,
+  relocalizeService,
 } from "./waypointActions";
+import { SERVICES } from "../ros/services";
 
 describe("parseJsonObject", () => {
   it("treats empty input as an empty object", () => {
@@ -188,5 +191,52 @@ describe("mapDisplayName", () => {
 
   it("shows a dash when nothing is loaded", () => {
     expect(mapDisplayName("")).toBe("—");
+  });
+});
+
+describe("relocalizeService", () => {
+  it("prefers the GNSS initializer, then the gate's map matching", () => {
+    expect(
+      relocalizeService([
+        SERVICES.GNSS_AMCL_REINIT,
+        SERVICES.LOCALIZATION_REQUEST_VERIFY,
+      ]),
+    ).toBe(SERVICES.GNSS_AMCL_REINIT);
+    expect(relocalizeService([SERVICES.LOCALIZATION_REQUEST_VERIFY])).toBe(
+      SERVICES.LOCALIZATION_REQUEST_VERIFY,
+    );
+    expect(relocalizeService([])).toBeNull();
+  });
+});
+
+describe("describeVerifyResponse", () => {
+  it("reports support and acceptance", () => {
+    expect(
+      describeVerifyResponse({
+        supported: false,
+        accepted: false,
+        id: 0,
+        message: "",
+      }).ok,
+    ).toBe(false);
+    expect(
+      describeVerifyResponse({
+        supported: true,
+        accepted: false,
+        id: 0,
+        message: "too early",
+      }),
+    ).toEqual({ ok: false, text: "not accepted: too early" });
+    expect(
+      describeVerifyResponse({
+        supported: true,
+        accepted: true,
+        id: 7,
+        message: "",
+      }),
+    ).toEqual({
+      ok: true,
+      text: "verify requested (id 7)",
+    });
   });
 });
