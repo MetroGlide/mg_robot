@@ -2,7 +2,7 @@ import { FoxgloveClientHandle } from "../../hooks/useFoxgloveClient";
 import { useNavigationActivity } from "../../hooks/useNavigationActivity";
 import { useTopicSubscriber } from "../../hooks/useTopicSubscriber";
 import { useWaypointControl } from "../../hooks/useWaypointControl";
-import { SequencerStatus } from "../../types";
+import { SequencerStatus, WaypointListMsg } from "../../types";
 import { TOPICS } from "../../ros/interfaces";
 import Card from "../ui/Card";
 import IconButton from "../ui/IconButton";
@@ -35,6 +35,12 @@ export default function WaypointProgress({
     TOPICS.WAYPOINT_STATUS,
     "mg_msgs/msg/SequencerStatus",
   );
+  // 地点ごとの種類と予定のアクション (読み込み・reload のときだけ届く latched のトピック)
+  const waypointList = useTopicSubscriber<WaypointListMsg>(
+    client,
+    TOPICS.WAYPOINT_LIST,
+    "mg_msgs/msg/WaypointList",
+  );
   const activity = useNavigationActivity(client);
   const busy = control.loading || !connected;
 
@@ -61,6 +67,7 @@ export default function WaypointProgress({
             total={status.total_waypoints}
             goalReached={status.state === "GOAL_REACHED"}
             distanceRemaining={status.distance_remaining}
+            waypoints={waypointList?.waypoints ?? null}
           />
         </div>
       )}

@@ -182,6 +182,24 @@ export interface CompressedImage {
   data: number[] | Uint8Array
 }
 
+/** ウェイポイント 1 点 (mg_msgs/WaypointInfo) */
+export interface WaypointInfo {
+  index: number
+  /** 到達判定には使われていない (停止点の到達半径は Nav2 の共通設定) */
+  reach_tolerance: number
+  is_through_point: boolean
+  /** 通過点で、Nav2 の完了を待たずに次へ進む半径 [m] */
+  through_tolerance: number
+  /** 到着後アクションの type の並び */
+  on_reached_action_types: string[]
+}
+
+/** 読み込んだウェイポイントの一覧 (mg_msgs/WaypointList)。位置は使わないので型に書かない */
+export interface WaypointListMsg {
+  loaded_time: { sec: number; nanosec: number }
+  waypoints: WaypointInfo[]
+}
+
 export interface SequencerStatus {
   stamp: { sec: number; nanosec: number }
   state: string
