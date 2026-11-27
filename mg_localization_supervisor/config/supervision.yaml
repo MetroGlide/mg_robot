@@ -308,9 +308,10 @@ conduct:
   slow_speed_mps: 0.3
   table:
     uninitialized: {light: normal, medium: slow, heavy: slow}
-    # 疑い (GNSS だけが食い違うなど) では減速しない。地図と GNSS のどちらが正しいか見分けられず、変換の誤差の区間で
-    # 誤った減速が続く割に、地図の食い違いへの効き目が小さかったため (2026-11-26 ユーザー判断)
-    suspect: {light: normal, medium: normal, heavy: normal}
+    # 疑い (GNSS だけが食い違うなど) は、余裕が狭いとき (重い) だけ減速する。地図と GNSS を整合させた地図では、
+    # 食い違いが続けば地図と現場の食い違いなどの見込みが高い。整合が悪い地図で、開けた所まで減速が続くなら
+    # heavy も normal にする
+    suspect: {light: normal, medium: normal, heavy: slow}
     undecided: {light: slow, medium: slow, heavy: slow}
     unobserved: {light: slow, medium: slow, heavy: slow}
     recovering: {light: slow, medium: slow, heavy: slow}
