@@ -12,16 +12,36 @@ mmi_switch_node:
     # ハートビートの周期 [s]。MMI は 2.5 s 届かないと LED2 を赤にする
     heartbeat_period_sec: 1.0
 
-    # シーケンサの状態。trigger_acceptable で表示を切り替える
+    # シーケンサの状態。届いている間だけハートビートを送り、trigger_acceptable に変わったらメロディを鳴らす
     status_topic: /waypoint_sequencer_node/status
     # 状態がこの時間届かなければハートビートを止める (MMI の LED2 が赤になる) [s]
     status_timeout_sec: 2.0
-    # 押下のあと、この時間たっても受け付けられるままなら橙の点滅に戻す [s]
+    # 押下のあと、この時間たっても点滅の表示のままなら点滅に戻す [s]
     # (押下で MMI が点滅を点灯に変えるため)
     reblink_after_sec: 1.5
+
+    # LED1 の表示の源。activity: シーケンサの「いまの活動」の状態ランプに合わせる
+    # trigger_acceptable: 受け付けられる間は橙の点滅、それ以外は緑の点灯 (前の表示)
+    led_source: activity
+    activity_topic: /waypoint_sequencer_node/activity
+    # 活動がこの時間届かなければ、led_color_unknown の点灯にする [s]
+    activity_timeout_sec: 3.0
+    # 状態ランプの意味 (lamp_response) ごとの LED1 の定義色 (MMI の色番号。0 消灯、1 赤、2 黄、3 緑、4 青、5 橙、6 白)。
+    # 動いていれば点灯、止まっていれば点滅 (MMI の点滅は 1 種類だけ)
+    led_color_normal: 3
+    led_color_watch: 2
+    led_color_act: 1
+    led_color_operator: 4
+    led_color_start: 5
+    led_color_none: 0
+    # 活動が届かない・意味が分からないとき (Web UI の灰に当たる)
+    led_color_unknown: 6
 
     # 走行の開始を要求するサービスと、要求元の名前 (シーケンサのイベントログに残る)
     trigger_service: /waypoint_sequencer_node/trigger
     requester_id: mmi_switch
-    # 開始に割り当てるスイッチの番号 (1: GP12、2: GP13、3: 基板上の USER SW)。他のスイッチはログだけ
+    # 開始・停止に割り当てるスイッチの番号 (1: GP12、2: GP13、3: 基板上の USER SW)。0 は使わない。他のスイッチはログだけ
     start_switch: 1
+    stop_switch: 3
+    # 停止で呼ぶサービス (シーケンサの ~/stop)
+    stop_service: /waypoint_sequencer_node/stop

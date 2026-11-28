@@ -21,7 +21,7 @@
 | :--- | :--- | :--- |
 | `wheel_odom_corrector_node.py` | ホイールオドメトリのスケール・バイアスを補正し、速度の共分散を設定する ([doc](./doc/wheel_odom_corrector.md)) | 入力: `odom/raw`、出力: `odom` |
 | `driver_watchdog_node.py` | LiDAR・オドメトリ・モータドライバの途絶を監視し、シーケンサに一時停止を出す。止まった上流ドライバ (rplidar) は終了させて、respawn に起動し直させる ([doc](./doc/driver_watchdog.md)) | 入力: `scan_top_lidar`、`odom`、`/motor_driver_node/connected`、出力: 診断 `driver_watchdog_node: <id>`、イベント `watchdog.*`、`/waypoint_sequencer_node/pause_request` |
-| `mmi_switch_node.py` | MMI (操作盤のスイッチ・RGB LED・ブザー) の物理スイッチで、シーケンサに走行の開始を要求する。下記 | 入力: MMI のシリアル、`/waypoint_sequencer_node/status`、出力: `/waypoint_sequencer_node/trigger` (サービス)、診断 `mmi_switch_node: connection` (集約で `/Robot/Drivers/MMI`)、イベント `driver.connected` / `driver.disconnected` (`device=mmi`)、`mmi.*` |
+| `mmi_switch_node.py` | MMI (操作盤のスイッチ・RGB LED・ブザー) の物理スイッチで、シーケンサに走行の開始・停止を要求し、LED1 に状態ランプを出す。下記 | 入力: MMI のシリアル、`/waypoint_sequencer_node/status`・`/waypoint_sequencer_node/activity`、出力: `/waypoint_sequencer_node/trigger`・`/waypoint_sequencer_node/stop` (サービス)、診断 `mmi_switch_node: connection` (集約で `/Robot/Drivers/MMI`)、イベント `driver.connected` / `driver.disconnected` (`device=mmi`)、`mmi.*` |
 | `odometry_tf_broadcaster_node.py` | `odom` から TF `odom→base_footprint` を配信する | 入力: `odom` |
 | `pose_with_cov_publish_controller_node.py` | `PoseWithCovarianceStamped` の中継を入/切する | 入力: `pose_with_cov_origin`、出力: `pose_with_cov`、サービス: `~/change_publish_state` |
 | `generic_publish_controller_node.py` | 任意の型のトピックの中継を入/切する (`msg_module`・`msg_class`・`publish`・`queue_size` で指定)。AMCL の出力のゲート (`amcl_publish_controller_node`) に使う ([mg_navigation](../mg_navigation/README.md)) | 入力: `input_topic`、出力: `output_topic`、サービス: `~/change_publish_state` |
@@ -144,16 +144,18 @@ MMI は Maker Nano RP2040 のマイコンで、USB CDC の固定長のバイナ�
 
 | 方向 | 内容 | 送る・受けるとき |
 | :--- | :--- | :--- |
-| PC → MMI | LED1 を橙で点滅 + 「再開待ち」のメロディ (MMI が 3 回鳴らして止める) | シーケンサの `trigger_acceptable` が true に変わったとき |
-| PC → MMI | LED1 を緑で点灯 | `trigger_acceptable` が false に変わったとき |
+| PC → MMI | LED1 の色と点灯 / 点滅 (定義色) | シーケンサの「いまの活動」の状態ランプの意味が変わったとき |
+| PC → MMI | 「再開待ち」のメロディ (MMI が 3 回鳴らして止める) | シーケンサの `trigger_acceptable` が true に変わったとき |
 | PC → MMI | ハートビート (全機能を変えない `0x92`) | `heartbeat_period_sec` ごと。シーケンサの `~/status` が届いている間だけ |
 | MMI → PC | SW1〜SW3 の押下 | 押したとき (離したときは通知されない) |
 
-- **受け付けるかはシーケンサが決める。** ノードは `start_switch` の押下で `~/trigger` を呼ぶだけで、表示も `~/status` の `trigger_acceptable` (シーケンサの判定) に従う。どの状態で受け付けるかは [mg_waypoint_navigation の architecture](../mg_waypoint_navigation/doc/architecture.md#ros-インターフェース)。
-- **LED の指示は表示が変わるときだけ送る。** 物理スイッチを押すと、MMI が自分でブザーを止め、点滅を点灯に変える (押したことが見える)。毎回送ると、それを上書きしてしまう。押しても受け付けられなかったとき (一時停止中など) は、`reblink_after_sec` 後に橙の点滅に戻す。
+- **LED1 は Web UI の状態ランプと同じ意味から決める。** 意味 (人がどうすればよいか・動いているか) はシーケンサが `~/activity` の `lamp_response`・`lamp_motion` で出す ([いまの活動](../mg_waypoint_navigation/doc/architecture.md#いまの活動-activity))。色は意味ごとのパラメータ `led_color_<意味>` (MMI の定義色の番号) で、動いていれば点灯、止まっていれば点滅にする。MMI の点滅は 1 種類だけなので、Web UI の遅い点滅と速い点滅は、MMI では同じ点滅になる。活動が `activity_timeout_sec` 届かないとき、または意味が分からないときは `led_color_unknown` (白)。`led_source: trigger_acceptable` にすると、前の表示 (受け付けられる間は橙の点滅、それ以外は緑の点灯) に戻る。
+- **LED2 は MMI の通信の表示のまま。** PC からは送らない。MMI が自分で、通信が正常なら暗い白、`0x92` が 2.5 秒届かなければ赤にする。
+- **受け付けるかはシーケンサが決める。** `start_switch` の押下で `~/trigger`、`stop_switch` の押下で `~/stop` を呼ぶだけ (0 にすると使わない)。どの状態で受け付けるかは [mg_waypoint_navigation の architecture](../mg_waypoint_navigation/doc/architecture.md#ros-インターフェース)。`~/stop` は、到着後アクションの実行中ならアクションが終わってから止め、一時停止の要求を全部消す。シーケンサを通らないゴール (RViz など) は止めない。止めた後は、開始のスイッチで同じ地点から続けられる。結果はイベント `mmi.stop_result` (届かないときは `mmi.stop_failed`)。
+- **LED の指示は表示が変わるときだけ送る。** 物理スイッチを押すと、MMI が自分でブザーを止め、点滅を点灯に変える (押したことが見える)。毎回送ると、それを上書きしてしまう。押した後 `reblink_after_sec` たっても点滅の表示のままなら、点滅を送り直す。
 - **シーケンサの状態が分からない間は、正常に見せない。** `~/status` を初めて受け取るまでは LED1 に何も送らない (MMI の起動時の表示のまま)。`~/status` が `status_timeout_sec` 届かなければハートビートを止め、MMI が LED2 を赤 (通信途絶) にする。シーケンサの `publish_waypoint_status` を false にすると、MMI は何も表示しない。
 - **古い押下で走り出さない。** ポートを開いたら受信バッファを捨て、`ignore_after_open_sec` の間に届いた押下も捨てる (`mmi.switch_ignored`)。
-- **走行の安全には使わない。** 切断されても走行は止めない (診断は `WARN`)。`reconnect_period_sec` ごとに開き直す。
+- **走行の安全には使わない。** 切断されても走行は止めない (診断は `WARN`)。`reconnect_period_sec` ごとに開き直す。停止のスイッチは操作の 1 つで、非常停止の代わりにはしない。
 - 起動はナビゲーションの bringup (`mg_bringup` の `bringup_navigation.launch.py`) の実機だけ。`use_mmi:=false` で起動しない。パラメータは `params/mmi_switch.yaml`。
 - 通信と表示の判断は `scripts/mmi_protocol.py`、ポートの開閉と読み書きは `scripts/mmi_serial.py` (どちらも ROS に依存しない)。
 
