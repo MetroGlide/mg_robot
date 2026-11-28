@@ -95,13 +95,16 @@ d < cost_scaling_dist のとき、速度 ×= cost_scaling_gain × d / cost_scali
 | :--- | :--- |
 | `use_collision_detection` | 現在の指令速度で carrot まで進んだときの、フットプリントの致死コストへの重なりを確認する |
 | `max_allowed_time_to_collision_up_to_carrot` | 確認する時間の上限 [s]。carrot までの距離が短ければ、そこまで |
-| `transform_tolerance` | TF の許容する遅れ [s] |
+| `transform_tolerance` | 姿勢を経路の座標系 (map) へ変換するときに、TF の到着を待つ上限 [s] |
 
 **考え方**
 
 - フットプリントは `footprint_padding` を含む。誤検出で止まるときは、コストマップのノイズ、padding、この時間のどれかを疑う。
 - **この時間は、`collision_monitor` の `PolygonApproach` の `time_before_collision` より長くする。** RPP が先に減速・停止し、`collision_monitor` は通常の走行では発動しない後ろ盾になる ([costmap_and_collision.md](./costmap_and_collision.md#衝突の防止-collision_monitor))。
-- `transform_tolerance` が小さすぎると、PC の負荷や EKF の遅れで、TF の外挿のエラーが出る。
+- RPP は、ロボットの姿勢 (打刻は最新の odom→base) を map へ変換するとき、その時刻の map→odom が届くまで待つ。`transform_tolerance` は、この待ちの上限。
+  - 待ちが制御の周期を食うと、`Control loop missed its desired rate` が出る。上限を超えると TF の外挿の例外になり、その周期の速度指令は 0 になる。
+  - 待ちをなくすのは、map→odom の打刻の側 (EKF の `transform_time_offset`。[localization.md](./localization.md#構成))。`transform_tolerance` を延ばしても、例外が減るだけで待ちは長くなり、周期の遅れは直らない。
+  - 実機の記録で、打刻の差と警告の件数を `make bag-summary` の「Navigation Timing」で確かめる ([tools](../../tools/doc/bag_tools.md#rosbag_summarypy-rosbag-統計サマリー))。
 
 ## 3. 値の関係
 

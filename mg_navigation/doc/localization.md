@@ -23,6 +23,7 @@ gnss_amcl_initializer_node ◄─ /odom/gps ◄─ slam_gnss_nav_bridge ◄─ /
 `localization_monitor:=supervisor` と `localization_gate:=true` では、自己位置監視ノードの中で AMCL 検証ゲートを動かす。AMCL 検証ゲートは、AMCL の動きがオドメトリと合わない、または GNSS と離れたままのとき、ゲートの調停を通して AMCL を EKF から除外、地図照合で決めてから `/initialpose` と `/set_pose` で補正する ([localization_supervisor](../../localization_supervisor/doc/motion_gate.md))。姿勢補正・AMCL 検証ゲート・一時停止・起動の直後の姿勢 (GNSS の周りの初期全周探索) を自己位置監視ノードが 1 か所で決め、`gnss_amcl_initializer_node` と `manual_pose_relay` は起動しない ([mg_localization_supervisor](../../mg_localization_supervisor/README.md#自己位置監視ノード-localization_supervisor_node))。
 
 EKF の周期は `mg_drivers/params/ekf_global.yaml` の `frequency`。
+EKF は map→odom を、最後に取り込んだ測定の時刻に `transform_time_offset` を足して打刻する (将来の時刻で打刻する)。足さないと、map→odom は odom→base より古く、map で姿勢を引くノード (RPP など) が毎周期その到着を待つ ([rpp_tuning.md](./rpp_tuning.md#衝突確認と-tf))。
 
 | ノード | 役割 |
 | :--- | :--- |
