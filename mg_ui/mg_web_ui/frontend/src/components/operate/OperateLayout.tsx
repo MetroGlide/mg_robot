@@ -71,7 +71,9 @@ interface Props {
 
 /**
  * 運用ビューの共通レイアウト。地図を全面に置き、各スロットの部品を重ねる。
- * 重ねる部品は、操作できる部分だけがポインタを受け取る(地図の操作を妨げない)。
+ * スロットの枠はポインタを受け取らず、カード(Card)などの部品の根だけが受け取る。
+ * 枠の矩形は列の最も広い部品の幅 × 列の高さになるので、枠で受け取ると部品の脇の地図が操作できなくなる。
+ * スロットに Card 以外を直接置くときは、その部品の根に pointer-events-auto を付ける。
  * パネルの背景の不透明度(--panel-alpha)は、ここで与える。運用ビューの外のカードには影響しない。
  * 画面の高さが足りず左上と左下の列が重なるときは、左下の列を左上の列の右へずらして横に並べる。
  */
@@ -95,24 +97,24 @@ export default function OperateLayout({
     >
       <div className="absolute inset-0">{map}</div>
       <div className="pointer-events-none absolute inset-0">
-        <div ref={topLeftRef} className="pointer-events-auto absolute left-3 top-3">
+        <div ref={topLeftRef} className="absolute left-3 top-3">
           {topLeft}
         </div>
-        <div className="pointer-events-auto absolute right-3 top-1/2 z-10 -translate-y-1/2">
+        <div className="absolute right-3 top-1/2 z-10 -translate-y-1/2">
           {toolbar}
         </div>
-        <div className="pointer-events-auto absolute right-16 top-3">{topRight}</div>
-        <div className="pointer-events-auto absolute left-1/2 top-3 -translate-x-1/2">
+        <div className="absolute right-16 top-3">{topRight}</div>
+        <div className="absolute left-1/2 top-3 -translate-x-1/2">
           {notice}
         </div>
         <div
           ref={bottomLeftRef}
-          className="pointer-events-auto absolute bottom-3 left-3"
+          className="absolute bottom-3 left-3"
           style={shift > 0 ? { transform: `translateX(${shift}px)` } : undefined}
         >
           {bottomLeft}
         </div>
-        <div className="pointer-events-auto absolute bottom-3 right-16">{bottomRight}</div>
+        <div className="absolute bottom-3 right-16">{bottomRight}</div>
       </div>
     </div>
   );

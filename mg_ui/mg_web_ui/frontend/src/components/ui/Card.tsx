@@ -11,12 +11,13 @@ interface CardProps {
  * 地図の上に重ねるカード。
  * WebGL キャンバスの上では backdrop-filter(ぼかし)を使わない。キャンバスの更新のたびに再合成が走り負荷が上がるため、
  * 半透明の単色と影で質感を出す。背景の不透明度は運用ビューの設定(--panel-alpha)に従う(index.css の .panel-surface)。
+ * 運用ビューのスロットの枠はポインタを受け取らないので、カード自身が受け取る(pointer-events-auto)。
  */
 export default function Card({ children, className = "", solid = false }: CardProps) {
   const background = solid ? "bg-surface-elevated/95" : "panel-surface";
   return (
     <div
-      className={`rounded-xl border border-line ${background} text-content shadow-card ${className}`}
+      className={`pointer-events-auto rounded-xl border border-line ${background} text-content shadow-card ${className}`}
     >
       {children}
     </div>

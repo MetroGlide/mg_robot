@@ -72,7 +72,7 @@ export default function GpsMapOverlay({
 
   return (
     <div
-      className="overflow-hidden rounded-lg border border-line shadow-card"
+      className="pointer-events-auto overflow-hidden rounded-lg border border-line shadow-card"
       style={{ position: "relative", width: mapWidth, height: mapHeight }}
     >
       <Map
