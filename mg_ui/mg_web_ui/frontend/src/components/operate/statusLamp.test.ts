@@ -1,97 +1,74 @@
 import { describe, expect, it } from "vitest";
-import { ACTIVITY_CODE } from "../../types";
 import {
-  ACTIVITY_LAMPS,
-  ACTIVITY_MEANINGS,
   BLINK_PERIOD_MS,
+  MOTION_BLINK_MS,
+  MOTION_LABELS,
+  RESPONSE_COLORS,
+  RESPONSE_LABELS,
   STALE_LAMP,
   UNKNOWN_LAMP,
   lampFor,
   lampLabel,
+  lampOf,
 } from "./statusLamp";
 
-describe("ACTIVITY_LAMPS", () => {
-  it("全ての活動の code にランプがある", () => {
-    expect(Object.keys(ACTIVITY_LAMPS).sort()).toEqual(
-      Object.values(ACTIVITY_CODE).sort(),
-    );
-  });
-
-  it("全ての活動に、ランプの見方のページの説明がある", () => {
-    for (const [code, m] of Object.entries(ACTIVITY_MEANINGS)) {
-      expect(m.description, code).not.toBe("");
-    }
-  });
-
-  it("赤は止まり自動では戻れない活動だけ", () => {
-    const red = Object.entries(ACTIVITY_LAMPS)
-      .filter(([, lamp]) => lamp.color === "red")
-      .map(([code]) => code)
-      .sort();
-    expect(red).toEqual(["error", "no_progress", "sensor_timeout_stop"]);
-  });
-
-  it("点滅は止まっている活動だけ (走っている活動は点灯)", () => {
-    for (const [code, m] of Object.entries(ACTIVITY_MEANINGS)) {
-      const lamp = ACTIVITY_LAMPS[code as keyof typeof ACTIVITY_LAMPS];
-      expect(lamp.blinkMs === null, code).toBe(
-        m.motion === "moving" || lamp.color === "off",
-      );
-    }
-  });
-
-  it("異常で止まっている活動は速い点滅、待っている活動は遅い点滅", () => {
-    expect(ACTIVITY_LAMPS.error).toEqual({
+describe("lampOf", () => {
+  it("色は人がどうすればよいか、点滅は動いているかで決まる", () => {
+    expect(lampOf("normal", "moving")).toEqual({
+      color: "green",
+      blinkMs: null,
+    });
+    expect(lampOf("act", "handling")).toEqual({
       color: "red",
       blinkMs: BLINK_PERIOD_MS.fast,
     });
-    expect(ACTIVITY_LAMPS.recovery).toEqual({
-      color: "yellow",
-      blinkMs: BLINK_PERIOD_MS.fast,
-    });
-    expect(ACTIVITY_LAMPS.obstacle_stop).toEqual({
+    expect(lampOf("watch", "waiting")).toEqual({
       color: "yellow",
       blinkMs: BLINK_PERIOD_MS.slow,
     });
-    expect(ACTIVITY_LAMPS.paused).toEqual({
-      color: "blue",
+    expect(lampOf("operator", "waiting").color).toBe("blue");
+    expect(lampOf("start", "waiting")).toEqual({
+      color: "orange",
       blinkMs: BLINK_PERIOD_MS.slow,
     });
-    expect(ACTIVITY_LAMPS.goal_reached).toEqual({
-      color: "green",
-      blinkMs: BLINK_PERIOD_MS.slow,
-    });
-    expect(ACTIVITY_LAMPS.idle).toEqual({ color: "off", blinkMs: null });
   });
 
-  it("開始待ちは MMI の LED1 と同じ橙の点滅", () => {
-    for (const code of [
-      ACTIVITY_CODE.TRIGGER_WAIT,
-      ACTIVITY_CODE.READY_TO_START,
-    ]) {
-      expect(ACTIVITY_LAMPS[code]).toEqual({
-        color: "orange",
-        blinkMs: BLINK_PERIOD_MS.slow,
-      });
-    }
+  it("消灯は点滅しない", () => {
+    expect(lampOf("none", "waiting")).toEqual({ color: "off", blinkMs: null });
+  });
+
+  it("意味が分からなければ灰", () => {
+    expect(lampOf("future", "moving")).toBe(UNKNOWN_LAMP);
+    expect(lampOf("normal", "future")).toBe(UNKNOWN_LAMP);
+    expect(lampOf("", "")).toBe(UNKNOWN_LAMP);
+  });
+
+  it("表示名の表と見た目の表が同じ意味をそろえている", () => {
+    expect(Object.keys(RESPONSE_LABELS).sort()).toEqual(
+      Object.keys(RESPONSE_COLORS).sort(),
+    );
+    expect(Object.keys(MOTION_LABELS).sort()).toEqual(
+      Object.keys(MOTION_BLINK_MS).sort(),
+    );
   });
 });
 
 describe("lampFor", () => {
-  it("届かないときと表にない code は灰", () => {
+  it("届かないときは灰、届いたら活動の意味から決める", () => {
     expect(lampFor(null)).toBe(STALE_LAMP);
     expect(STALE_LAMP.color).toBe("gray");
-    expect(lampFor("future_code")).toBe(UNKNOWN_LAMP);
-    expect(lampFor("navigating").color).toBe("green");
+    expect(lampFor({ lamp_response: "watch", lamp_motion: "moving" })).toEqual({
+      color: "yellow",
+      blinkMs: null,
+    });
   });
 });
 
 describe("lampLabel", () => {
   it("色と点滅の速さを並べる", () => {
-    expect(lampLabel(lampFor("recovery"))).toBe("黄・速い点滅");
-    expect(lampLabel(lampFor("ready_to_start"))).toBe("橙・遅い点滅");
-    expect(lampLabel(lampFor("paused"))).toBe("青・遅い点滅");
-    expect(lampLabel(lampFor("navigating"))).toBe("緑");
-    expect(lampLabel(lampFor("idle"))).toBe("消灯");
+    expect(lampLabel(lampOf("watch", "handling"))).toBe("黄・速い点滅");
+    expect(lampLabel(lampOf("start", "waiting"))).toBe("橙・遅い点滅");
+    expect(lampLabel(lampOf("normal", "moving"))).toBe("緑");
+    expect(lampLabel(lampOf("none", "moving"))).toBe("消灯");
   });
 });

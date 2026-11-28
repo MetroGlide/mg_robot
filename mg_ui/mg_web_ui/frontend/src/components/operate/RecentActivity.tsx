@@ -9,7 +9,7 @@ import {
   waypointText,
 } from "../../utils/activityHistory";
 import StatusLamp from "./StatusLamp";
-import { lampFor } from "./statusLamp";
+import { lampOf } from "./statusLamp";
 
 /** 直近に並べる件数の既定 */
 export const RECENT_ACTIVITY_COUNT = 5;
@@ -68,7 +68,10 @@ export default function RecentActivity({
                 key={entry.key}
                 className="grid grid-cols-[auto_4.5rem_1fr_auto] items-center gap-2"
               >
-                <StatusLamp lamp={lampFor(entry.code)} size={8} />
+                <StatusLamp
+                  lamp={lampOf(entry.response, entry.motion)}
+                  size={8}
+                />
                 <span className="font-mono tabular-nums text-muted">
                   {clockText(entry.startMs)}
                 </span>

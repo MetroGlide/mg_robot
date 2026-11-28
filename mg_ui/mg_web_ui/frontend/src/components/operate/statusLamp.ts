@@ -1,16 +1,11 @@
-import { ACTIVITY_CODE } from "../../types";
-
 /**
  * 状態ランプ (パトライトのような色の表示) の見た目の表。色・点灯/点滅・点滅の速さは、ここだけで決める。
- * 活動の判定はロボット側 (waypoint_sequencer_node の ~/activity) が行い、UI は code から引くだけにする。
- *
- * ランプは 2 つの軸で決める。code ごとには 2 つの属性だけを書き、色と点滅は下の 2 つの表から引く。
+ * 活動の判定と、活動ごとの意味 (人がどうすればよいか・動いているか) はロボット側が決める
+ * (mg_waypoint_navigation/config/activity_lamps.yaml。~/activity の lamp_response・lamp_motion)。
+ * MMI の LED も同じ意味から色を決める。ここは意味から画面の見た目を決める 2 つの表だけを持つ。
  * - 色 = 人がどうすればよいか (RESPONSE_COLORS)
  * - 点灯 / 点滅 = 動いているか (MOTION_BLINK_MS)
- * 色や点滅を変えたいときは、表の 1 行を変える (同じ意味の活動がまとめて変わる)。
  */
-
-export type ActivityCode = (typeof ACTIVITY_CODE)[keyof typeof ACTIVITY_CODE];
 
 /** ランプの色。値は画面に出す色 (物理のランプに合わせた固定の色で、テーマでは変えない) */
 export const LAMP_COLORS = {
@@ -95,86 +90,24 @@ export const MOTION_BLINK_MS: Record<LampMotion, number | null> = {
   handling: BLINK_PERIOD_MS.fast,
 };
 
-export interface ActivityLampMeaning {
-  response: LampResponse;
-  motion: LampMotion;
-  /** ランプの見方のページに出す短い説明 (画面の文言はロボット側の text を使う) */
-  description: string;
+function isResponse(value: string): value is LampResponse {
+  return Object.prototype.hasOwnProperty.call(RESPONSE_COLORS, value);
 }
 
-function meaning(
-  response: LampResponse,
-  motion: LampMotion,
-  description: string,
-): ActivityLampMeaning {
-  return { response, motion, description };
+function isMotion(value: string): value is LampMotion {
+  return Object.prototype.hasOwnProperty.call(MOTION_BLINK_MS, value);
 }
 
-/** 活動の code ごとの意味。code を足したら、ここに書かないと型の検査で落ちる */
-export const ACTIVITY_MEANINGS: Record<ActivityCode, ActivityLampMeaning> = {
-  // 走っている
-  navigating: meaning("normal", "moving", "地点へ走行中"),
-  manual_goal: meaning("normal", "moving", "指定した地点へ走行中"),
-  external_goal: meaning(
-    "normal",
-    "moving",
-    "外部指定のゴール (RViz など) へ走行中",
-  ),
-  obstacle_slowdown: meaning("normal", "moving", "障害物で減速して走行中"),
-  localization_recovering_drive: meaning(
-    "watch",
-    "moving",
-    "自己位置を復旧しながら走行中",
-  ),
-  localization_slowdown: meaning(
-    "watch",
-    "moving",
-    "自己位置の不確かさで減速して走行中",
-  ),
-  no_lidar_drive: meaning("watch", "moving", "LiDAR なしで走行中"),
-  localization_unknown: meaning(
-    "watch",
-    "moving",
-    "自己位置の状態が届かないまま走行中",
-  ),
-  // 止まって待っている
-  departure_wait: meaning("normal", "waiting", "出発までのカウントダウン"),
-  action: meaning("normal", "waiting", "到着後のアクションを実行中"),
-  goal_reached: meaning("normal", "waiting", "全地点に到着"),
-  obstacle_stop: meaning("watch", "waiting", "障害物で停止して待っている"),
-  paused: meaning("operator", "waiting", "人などの要求で一時停止中"),
-  trigger_wait: meaning(
-    "start",
-    "waiting",
-    "wait_trigger で、ボタンでの開始を待っている",
-  ),
-  ready_to_start: meaning("start", "waiting", "ボタンで走行を始められる"),
-  // 異常で止まっている
-  localization_hold: meaning("watch", "handling", "自己位置の確認のため停止中"),
-  watchdog_pause: meaning("watch", "handling", "センサ監視による一時停止中"),
-  recovery: meaning("watch", "handling", "リカバリー動作中"),
-  detour_rejected: meaning("watch", "handling", "遠回りの経路を棄却して待機中"),
-  error: meaning("act", "handling", "エラーで停止中"),
-  sensor_timeout_stop: meaning("act", "handling", "センサ途絶で停止中"),
-  no_progress: meaning("act", "handling", "進めていない"),
-  // 走行していない
-  idle: meaning("none", "moving", "Waypoint 走行なし"),
-};
-
-/** 意味からランプを決める (消灯なら点滅しない) */
-export function lampOf({ response, motion }: ActivityLampMeaning): LampSpec {
+/** 意味からランプを決める (消灯なら点滅しない)。意味が分からなければ UNKNOWN_LAMP */
+export function lampOf(response: string, motion: string): LampSpec {
+  if (!isResponse(response) || !isMotion(motion)) return UNKNOWN_LAMP;
   const color = RESPONSE_COLORS[response];
   return { color, blinkMs: color === "off" ? null : MOTION_BLINK_MS[motion] };
 }
 
-/** 活動の code ごとのランプ (ACTIVITY_MEANINGS から作る) */
-export const ACTIVITY_LAMPS = Object.fromEntries(
-  Object.entries(ACTIVITY_MEANINGS).map(([code, m]) => [code, lampOf(m)]),
-) as Record<ActivityCode, LampSpec>;
-
 /** 活動が届かない・古いとき (通信の途絶、シーケンサの停止)。ロボットのエラー (赤) と見分けるため灰にする */
 export const STALE_LAMP: LampSpec = { color: "gray", blinkMs: null };
-/** 表にない code (ロボット側が新しく、UI が古いとき) */
+/** 意味が分からないとき (ロボット側が新しく、UI が古いとき) */
 export const UNKNOWN_LAMP: LampSpec = { color: "gray", blinkMs: null };
 
 /** ランプの色の表示名 (一覧の絞り込みと書き出しに使う) */
@@ -188,14 +121,12 @@ export const LAMP_COLOR_LABELS: Record<LampColor, string> = {
   off: "消灯",
 };
 
-function isActivityCode(code: string): code is ActivityCode {
-  return Object.prototype.hasOwnProperty.call(ACTIVITY_MEANINGS, code);
-}
-
-/** code のランプ。null は活動が届かない・古いとき */
-export function lampFor(code: string | null): LampSpec {
-  if (code === null) return STALE_LAMP;
-  return isActivityCode(code) ? ACTIVITY_LAMPS[code] : UNKNOWN_LAMP;
+/** いまの活動のランプ。null は活動が届かない・古いとき */
+export function lampFor(
+  activity: { lamp_response: string; lamp_motion: string } | null,
+): LampSpec {
+  if (activity === null) return STALE_LAMP;
+  return lampOf(activity.lamp_response, activity.lamp_motion);
 }
 
 /** ランプの状態の表示名 (例: 黄・速い点滅) */

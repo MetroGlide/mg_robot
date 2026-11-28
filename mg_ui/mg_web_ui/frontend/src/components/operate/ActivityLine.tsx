@@ -18,7 +18,7 @@ export default function ActivityLine({
 }) {
   return (
     <div className={`flex items-center gap-3 ${className}`}>
-      <StatusLamp lamp={lampFor(activity?.code ?? null)} size={lampSize} />
+      <StatusLamp lamp={lampFor(activity)} size={lampSize} />
       <p className="min-w-0">
         {activity ? formatActivity(activity) : "活動が届いていません"}
       </p>

@@ -12,6 +12,8 @@ const MESSAGE = {
   index: 3,
   total: 10,
   remaining: -1,
+  lamp_response: "none",
+  lamp_motion: "moving",
 };
 
 function makeClient() {
