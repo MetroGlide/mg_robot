@@ -37,6 +37,16 @@ make bag-summary BAG=/path/to/bag  # 指定 rosbag を解析
 
 集計は `tools/common/status_timeline.py` (ROS 不要)。イベントの書式は [doc/monitoring.md](../../doc/monitoring.md)。詳しく見るときは `make log-events BAG=<bag>` で時系列にできます。
 
+**走行の時間的な健全性** (`/tf`、`/rosout` が入っているとき)。内容があれば、端末と Markdown の末尾に「Navigation Timing」の節を出します。
+
+| 内容 | 見方 |
+| :--- | :--- |
+| TF の打刻の差 (odom→base を受け取った時点の、その打刻 − 最新の map→odom の打刻) | 正の回は、map で姿勢を引くノード (RPP など) が map→odom の到着を待つ。EKF の `transform_time_offset` が足りていれば負になる ([rpp_tuning.md](../../mg_navigation/doc/rpp_tuning.md#衝突確認と-tf)) |
+| Nav2 の主な警告の件数と 1 分あたりの件数 (制御・計画の周期の遅れ、制御の TF の例外、近くに経路の点がない、RPP の前方の衝突の予測、BT のサービスの時間切れ、BT の中断で結果を受け取れず、リカバリーの衝突の予測による中止) | 変更の前と後の記録で比べる |
+| シーケンサの状態 (`sequencer.activity_changed` の `to`) ごとの時間と回数 | 通常の走行以外 (自己位置による減速・停止、リカバリーなど) に、どれだけ時間を取られたか |
+
+フレーム名は `map`・`odom`・`base_footprint`。集計は `tools/common/nav_timing.py` (ROS 不要)。
+
 ## `plot_gnss_trajectory.py` (GNSS軌跡・精度可視化 & 地図/オドメトリ比較)
 
 GNSS（`/navpvt` または `/gps/fix`）の軌跡を UTM 座標系でプロットし、Fix 状態（RTK Fix: 緑、RTK Float: 橙、Single/3D: 灰、No Fix: 赤）や精度誤差円を描画します。

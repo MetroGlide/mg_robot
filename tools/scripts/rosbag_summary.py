@@ -37,6 +37,8 @@ from mg_utils.event_log import parse_event  # noqa: E402
 from tools.common.bag import detect_storage_id, load_metadata, open_reader  # noqa: E402
 from tools.common.cli import resolve_output_path  # noqa: E402
 from tools.common.geo import haversine_distance  # noqa: E402
+from tools.common.nav_timing import (  # noqa: E402
+    NavTimingSummary, has_nav_timing_section, nav_timing_section_lines)
 from tools.common.status_timeline import (  # noqa: E402
     EventSummary, LevelTimeline, has_status_section, level_value, pick_timeline, status_section_lines)
 
@@ -779,6 +781,14 @@ class ReportFormatter:
             lines.append(f"{B}{'-' * 80}{RESET}")
             lines.extend(status_section_lines(diag, markdown=False))
 
+        # 9. Navigation timing
+        nav = data.get("nav_timing", {})
+        if has_nav_timing_section(nav):
+            lines.append(f"{B}{'-' * 80}{RESET}")
+            lines.append(f"{B}9. NAVIGATION TIMING (/tf, /rosout){RESET}")
+            lines.append(f"{B}{'-' * 80}{RESET}")
+            lines.extend(nav_timing_section_lines(nav, meta["duration_s"], markdown=False))
+
         lines.append(f"{B}{'=' * 80}{RESET}")
         return "\n".join(lines)
 
@@ -865,6 +875,13 @@ class ReportFormatter:
             md.append("## 8. Status Timeline & Events")
             md.append("")
             md.extend(status_section_lines(diag, markdown=True))
+
+        # Navigation timing
+        nav = data.get("nav_timing", {})
+        if has_nav_timing_section(nav):
+            md.append("## 9. Navigation Timing")
+            md.append("")
+            md.extend(nav_timing_section_lines(nav, meta["duration_s"], markdown=True))
 
         return "\n".join(md)
 
@@ -968,14 +985,15 @@ def main():
     imu_collector = ImuCollector()
     tf_collector = TfCollector()
     diag_collector = DiagnosticsCollector()
+    nav_collector = NavTimingSummary()
 
     filter_topics = set(args.topics) if args.topics else None
+    last_bag_ts = None
 
     # メッセージ走査
     if not args.info_only:
         msg_type_cache: Dict[str, Any] = {}
         first_bag_ts = None
-        last_bag_ts = None
         actual_total_msgs = 0
 
         while reader.has_next():
@@ -1018,9 +1036,20 @@ def main():
             elif type_name == "tf2_msgs/msg/TFMessage":
                 msg = deserialize_message(data, msg_class)
                 tf_collector.process(msg, is_static=(topic == "/tf_static"))
+                if topic != "/tf_static":
+                    for tr in msg.transforms:
+                        nav_collector.process_tf(
+                            tr.header.frame_id, tr.child_frame_id,
+                            tr.header.stamp.sec + tr.header.stamp.nanosec * 1e-9)
             elif type_name == "rcl_interfaces/msg/Log":
                 msg = deserialize_message(data, msg_class)
                 diag_collector.process_log(msg, topic, timestamp)
+                # /events は /rosout のイベントの写しなので、警告は /rosout だけで数える
+                if topic != "/events":
+                    nav_collector.process_log(msg.msg)
+                parsed = parse_event(msg.msg)
+                if parsed is not None:
+                    nav_collector.process_event(timestamp, *parsed)
             elif type_name == "diagnostic_msgs/msg/DiagnosticArray":
                 msg = deserialize_message(data, msg_class)
                 diag_collector.process_diagnostics(msg, topic, timestamp)
@@ -1091,6 +1120,7 @@ def main():
         "imu": imu_collector.finalize(),
         "tf": tf_collector.finalize(),
         "diagnostics": diag_collector.finalize(),
+        "nav_timing": nav_collector.summary(last_bag_ts),
     }
 
     target_output_file = None
