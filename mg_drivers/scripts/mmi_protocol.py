@@ -5,11 +5,14 @@
 - PC → MMI: 8 バイト `23 CMD DATA1..DATA6`。`0x92` はブザー・RGB LED の制御とハートビートを兼ねる
 - MMI → PC: 4 バイト `23 61/62/63 01 00` (SW1/SW2/SW3 の押下。離したときは通知しない)
 
-表示は 2 種類だけ: シーケンサが開始要求を受け付けられる間は LED1 を橙で点滅させてメロディを鳴らし、
-それ以外は緑で点灯する。物理スイッチを押すと、MMI が自分でブザーを止め、点滅を点灯に変える。
+LED1 は、シーケンサの「いまの活動」の状態ランプの意味 (人がどうすればよいか・動いているか) に合わせる。
+色は意味ごとに決め (定義色)、動いていれば点灯、止まっていれば点滅にする (MMI の点滅は 1 種類だけ)。
+今までの表示 (受け付けられる間は橙の点滅、それ以外は緑の点灯) にも切り替えられる。
+シーケンサが開始要求を受け付けられるようになったら、メロディを鳴らす。
+物理スイッチを押すと、MMI が自分でブザーを止め、点滅を点灯に変える。
 """
-import enum
-from typing import List, Optional
+from dataclasses import dataclass
+from typing import List, Mapping, Optional
 
 HEADER = 0x23
 CMD_CONTROL = 0x92
@@ -17,12 +20,22 @@ CMD_CONTROL = 0x92
 _SWITCH_CMDS = {0x61: 1, 0x62: 2, 0x63: 3}
 _EVENT_SIZE = 4
 
-_LED_SOLID = 0x01
-_LED_BLINK = 0x02
+# LED の Control (定義色の点灯・点滅)
+LED_SOLID = 0x01
+LED_BLINK = 0x02
 _BUZZER_REPEAT = 0x02
-_COLOR_GREEN = 0x03
-_COLOR_ORANGE = 0x05
+# 定義色 (MMI の仕様書の色番号)
+COLOR_OFF = 0x00
+COLOR_RED = 0x01
+COLOR_YELLOW = 0x02
+COLOR_GREEN = 0x03
+COLOR_BLUE = 0x04
+COLOR_ORANGE = 0x05
+COLOR_WHITE = 0x06
 _MELODY_WAITING = 0x04
+
+# 活動の lamp_motion のうち、点灯にするもの (それ以外は点滅)
+_MOVING = 'moving'
 
 
 def control_packet(buzzer_control: int = 0, buzzer_data: int = 0,
@@ -35,8 +48,8 @@ def control_packet(buzzer_control: int = 0, buzzer_data: int = 0,
 
 # 全機能を変えず、通信が生きていることだけを伝える
 HEARTBEAT = control_packet()
-LED1_GREEN_SOLID = control_packet(led1_control=_LED_SOLID, led1_data=_COLOR_GREEN)
-LED1_ORANGE_BLINK = control_packet(led1_control=_LED_BLINK, led1_data=_COLOR_ORANGE)
+LED1_GREEN_SOLID = control_packet(led1_control=LED_SOLID, led1_data=COLOR_GREEN)
+LED1_ORANGE_BLINK = control_packet(led1_control=LED_BLINK, led1_data=COLOR_ORANGE)
 # 「再開待ち」のメロディを 3 秒ごとに 3 回 (MMI が自分で止める)
 MELODY_WAITING = control_packet(buzzer_control=_BUZZER_REPEAT, buzzer_data=_MELODY_WAITING)
 
@@ -74,33 +87,56 @@ class SwitchEventParser:
         self._buffer.clear()
 
 
-class Display(enum.Enum):
-    WAITING = 'waiting'
-    NOT_WAITING = 'not_waiting'
+@dataclass(frozen=True)
+class Led:
+    """LED 1 つの表示 (Control と定義色)。"""
+    control: int
+    color: int
+
+    def packet(self) -> bytes:
+        return control_packet(led1_control=self.control, led1_data=self.color)
+
+    def describe(self) -> str:
+        mode = 'blink' if self.control == LED_BLINK else 'solid'
+        return f'{mode}:{self.color:#04x}'
+
+
+_WAITING = Led(LED_BLINK, COLOR_ORANGE)
+_NOT_WAITING = Led(LED_SOLID, COLOR_GREEN)
 
 
 class IndicatorController:
-    """シーケンサの状態から、MMI へ送るパケットを決める。時刻は単調増加の秒。
+    """シーケンサの状態と「いまの活動」から、MMI へ送るパケットを決める。時刻は単調増加の秒。
 
     - LED の指示は表示が変わるときだけ送る (毎回送ると、押下で点灯に変わった表示を上書きする)
     - メロディは「受け付けられる」に変わったときに 1 回だけ送る
     - シーケンサの状態を初めて受け取るまでは LED1 に何も送らない (状態が分からないのに
-      緑で「正常」に見せない)
+      正常に見せない)
     - 状態が status_timeout_sec 届かなければハートビートを止める。MMI が LED2 を赤にする
-    - 押下のあと reblink_after_sec たっても受け付けられるままなら、点灯に変わった橙を点滅に戻す
+    - 活動に合わせる設定で、活動が activity_timeout_sec 届かなければ unknown_color の点灯にする
+    - 押下のあと reblink_after_sec たっても点滅の表示のままなら、点灯に変わった点滅を送り直す
     """
 
-    def __init__(self, status_timeout_sec: float, reblink_after_sec: float) -> None:
+    def __init__(self, status_timeout_sec: float, reblink_after_sec: float,
+                 follow_activity: bool = False, activity_timeout_sec: float = 3.0,
+                 colors: Optional[Mapping[str, int]] = None,
+                 unknown_color: int = COLOR_WHITE) -> None:
         self._status_timeout = status_timeout_sec
         self._reblink_after = reblink_after_sec
+        self._follow_activity = follow_activity
+        self._activity_timeout = activity_timeout_sec
+        self._colors = dict(colors or {})
+        self._unknown_color = unknown_color
         self._last_status_time: Optional[float] = None
         self._acceptable = False
+        self._activity: Optional[tuple] = None
+        self._last_activity_time: Optional[float] = None
         # 最後に MMI へ送った表示。None なら、次の状態で表示を送り直す
-        self._shown: Optional[Display] = None
+        self._shown: Optional[Led] = None
         self._pressed_at: Optional[float] = None
 
     @property
-    def shown(self) -> Optional[Display]:
+    def shown(self) -> Optional[Led]:
         return self._shown
 
     def status_fresh(self, now: float) -> bool:
@@ -108,38 +144,63 @@ class IndicatorController:
         return (self._last_status_time is not None
                 and now - self._last_status_time <= self._status_timeout)
 
-    def on_status(self, trigger_acceptable: bool, now: float) -> List[bytes]:
+    def _activity_fresh(self, now: float) -> bool:
+        return (self._last_activity_time is not None
+                and now - self._last_activity_time <= self._activity_timeout)
+
+    def _wanted(self, now: float) -> Optional[Led]:
         if not self.status_fresh(now):
+            return None
+        if not self._follow_activity:
+            return _WAITING if self._acceptable else _NOT_WAITING
+        if self._activity is None or not self._activity_fresh(now):
+            return Led(LED_SOLID, self._unknown_color)
+        response, motion = self._activity
+        color = self._colors.get(response, self._unknown_color)
+        solid = motion == _MOVING or color == COLOR_OFF
+        return Led(LED_SOLID if solid else LED_BLINK, color)
+
+    def _refresh(self, now: float) -> List[bytes]:
+        wanted = self._wanted(now)
+        if wanted is None:
             self._shown = None
-        self._last_status_time = now
-        self._acceptable = trigger_acceptable
-        wanted = Display.WAITING if trigger_acceptable else Display.NOT_WAITING
+            return []
         if wanted == self._shown:
             return []
         self._shown = wanted
         self._pressed_at = None
-        if wanted == Display.WAITING:
-            return [LED1_ORANGE_BLINK, MELODY_WAITING]
-        return [LED1_GREEN_SOLID]
+        return [wanted.packet()]
+
+    def on_status(self, trigger_acceptable: bool, now: float) -> List[bytes]:
+        was_acceptable = self._acceptable and self.status_fresh(now)
+        if not self.status_fresh(now):
+            self._shown = None
+        self._last_status_time = now
+        self._acceptable = trigger_acceptable
+        packets = self._refresh(now)
+        if trigger_acceptable and not was_acceptable:
+            packets.append(MELODY_WAITING)
+        return packets
+
+    def on_activity(self, response: str, motion: str, now: float) -> List[bytes]:
+        self._activity = (response, motion)
+        self._last_activity_time = now
+        return self._refresh(now)
 
     def on_press(self, now: float) -> None:
-        if self._shown == Display.WAITING:
+        if self._shown is not None and self._shown.control == LED_BLINK:
             self._pressed_at = now
 
     def on_connected(self) -> List[bytes]:
         """ポートを開いたとき。MMI が起動し直していても今の表示に戻す (メロディは送らない)。"""
         self._pressed_at = None
-        if self._shown == Display.WAITING:
-            return [LED1_ORANGE_BLINK]
-        if self._shown == Display.NOT_WAITING:
-            return [LED1_GREEN_SOLID]
-        return []
+        return [] if self._shown is None else [self._shown.packet()]
 
     def tick(self, now: float) -> List[bytes]:
-        if (self._pressed_at is None or self._shown != Display.WAITING
-                or now - self._pressed_at < self._reblink_after):
-            return []
+        packets = self._refresh(now)
+        if packets or self._pressed_at is None or now - self._pressed_at < self._reblink_after:
+            return packets
         self._pressed_at = None
-        if self._acceptable and self.status_fresh(now):
-            return [LED1_ORANGE_BLINK]
+        if self._shown is not None and self._shown.control == LED_BLINK:
+            return [self._shown.packet()]
         return []

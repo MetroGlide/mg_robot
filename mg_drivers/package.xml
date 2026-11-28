@@ -13,6 +13,7 @@
 
   <depend>mg_utils</depend>
   <exec_depend>mg_msgs</exec_depend>
+  <exec_depend>std_srvs</exec_depend>
   <depend>diagnostic_msgs</depend>
   <depend>diagnostic_updater</depend>
 

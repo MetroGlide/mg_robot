@@ -230,6 +230,22 @@ export interface NavigationActivity {
   total: number
   /** 走行中は残り距離 [m]、出発待ちは残り秒数。該当しなければ -1 */
   remaining: number
+  /** 状態ランプの意味: 人がどうすればよいか・動いているか (ロボット側の activity_lamps.yaml で決まる) */
+  lamp_response: string
+  lamp_motion: string
+}
+
+/** 活動の code 1 つの状態ランプの意味 (mg_msgs/ActivityLamp) */
+export interface ActivityLamp {
+  code: string
+  response: string
+  motion: string
+  description: string
+}
+
+/** 活動の code ごとの状態ランプの意味の全体 (mg_msgs/ActivityLampTable。~/activity_lamps) */
+export interface ActivityLampTable {
+  lamps: ActivityLamp[]
 }
 
 /** NavigationActivity.code。値は mg_msgs/msg/NavigationActivity.msg に合わせる */

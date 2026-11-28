@@ -12,7 +12,7 @@ import StatusLamp from "../../components/operate/StatusLamp";
 import {
   LAMP_COLOR_LABELS,
   LampColor,
-  lampFor,
+  lampOf,
   lampLabel,
 } from "../../components/operate/statusLamp";
 import ActionButton from "../../components/ui/ActionButton";
@@ -69,7 +69,7 @@ export default function ActivityLogPage({
   const shown = useMemo(() => {
     const rows: { entry: ActivityHistoryEntry; duration: number | null }[] = [];
     entries.forEach((entry, i) => {
-      if (color && lampFor(entry.code).color !== color) return;
+      if (color && lampOf(entry.response, entry.motion).color !== color) return;
       if (code && entry.code !== code) return;
       rows.push({ entry, duration: durations[i] });
     });
@@ -79,7 +79,7 @@ export default function ActivityLogPage({
   const exportShown = () => {
     const oldestFirst = shown.map((row) => row.entry).reverse();
     download(
-      toTsv(oldestFirst, (c) => lampLabel(lampFor(c))),
+      toTsv(oldestFirst, (e) => lampLabel(lampOf(e.response, e.motion))),
       `activity_${fileStamp(new Date())}.txt`,
     );
   };
@@ -158,7 +158,7 @@ export default function ActivityLogPage({
           </thead>
           <tbody>
             {shown.map(({ entry, duration }) => {
-              const lamp = lampFor(entry.code);
+              const lamp = lampOf(entry.response, entry.motion);
               return (
                 <tr
                   key={entry.key}

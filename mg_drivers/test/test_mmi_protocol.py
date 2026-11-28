@@ -8,8 +8,17 @@ from mmi_protocol import (  # noqa: E402
     LED1_GREEN_SOLID,
     LED1_ORANGE_BLINK,
     MELODY_WAITING,
-    Display,
+    COLOR_BLUE,
+    COLOR_GREEN,
+    COLOR_OFF,
+    COLOR_ORANGE,
+    COLOR_RED,
+    COLOR_WHITE,
+    COLOR_YELLOW,
+    LED_BLINK,
+    LED_SOLID,
     IndicatorController,
+    Led,
     SwitchEventParser,
 )
 
@@ -89,7 +98,7 @@ def test_sends_nothing_and_no_heartbeat_before_the_first_status():
 def test_first_status_not_acceptable_shows_green():
     c = _controller()
     assert c.on_status(False, 0.0) == [LED1_GREEN_SOLID]
-    assert c.shown == Display.NOT_WAITING
+    assert c.shown == Led(LED_SOLID, COLOR_GREEN)
     assert c.status_fresh(0.5)
 
 
@@ -162,3 +171,104 @@ def test_reconnect_restores_the_display_without_melody():
     assert c.on_connected() == [LED1_ORANGE_BLINK]
     c.on_status(False, 0.1)
     assert c.on_connected() == [LED1_GREEN_SOLID]
+
+
+# ---------------------------------------------------------------------------
+# 「いまの活動」に合わせる表示
+# ---------------------------------------------------------------------------
+
+COLORS = {"normal": COLOR_GREEN, "watch": COLOR_YELLOW, "act": COLOR_RED,
+          "operator": COLOR_BLUE, "start": COLOR_ORANGE, "none": COLOR_OFF}
+
+
+def _activity_controller():
+    return IndicatorController(
+        status_timeout_sec=2.0, reblink_after_sec=1.5, follow_activity=True,
+        activity_timeout_sec=3.0, colors=COLORS, unknown_color=COLOR_WHITE)
+
+
+def _led(control, color):
+    return Led(control, color).packet()
+
+
+def test_led_packet_matches_the_spec_bytes():
+    # 仕様書の例: LED1 を定義済みの橙で点滅
+    assert _led(LED_BLINK, COLOR_ORANGE) == bytes.fromhex("2392000002050000")
+    assert _led(LED_SOLID, COLOR_RED) == bytes.fromhex("2392000001010000")
+
+
+def test_activity_sets_color_and_blink():
+    c = _activity_controller()
+    c.on_status(False, 0.0)
+    assert c.on_activity("normal", "moving", 0.1) == [_led(LED_SOLID, COLOR_GREEN)]
+    assert c.on_activity("act", "handling", 0.2) == [_led(LED_BLINK, COLOR_RED)]
+    assert c.on_activity("watch", "waiting", 0.3) == [_led(LED_BLINK, COLOR_YELLOW)]
+    # 同じ表示は送らない (遅い点滅と速い点滅は、MMI では同じ点滅)
+    assert c.on_activity("watch", "handling", 0.4) == []
+    assert c.on_activity("operator", "waiting", 0.5) == [_led(LED_BLINK, COLOR_BLUE)]
+
+
+def test_none_is_off_without_blink():
+    c = _activity_controller()
+    c.on_status(False, 0.0)
+    assert c.on_activity("none", "moving", 0.1) == [_led(LED_SOLID, COLOR_OFF)]
+
+
+def test_unknown_activity_is_white_until_it_arrives():
+    c = _activity_controller()
+    assert c.on_status(False, 0.0) == [_led(LED_SOLID, COLOR_WHITE)]
+    assert c.on_activity("normal", "moving", 0.5) == [_led(LED_SOLID, COLOR_GREEN)]
+
+
+def test_stale_activity_falls_back_to_white():
+    c = _activity_controller()
+    c.on_status(False, 0.0)
+    c.on_activity("normal", "moving", 0.0)
+    c.on_status(False, 1.5)
+    assert c.tick(3.0) == []
+    c.on_status(False, 3.0)
+    assert c.tick(3.1) == [_led(LED_SOLID, COLOR_WHITE)]
+
+
+def test_unknown_response_is_white():
+    c = _activity_controller()
+    c.on_status(False, 0.0)
+    assert c.on_activity("future", "waiting", 0.1) == [_led(LED_BLINK, COLOR_WHITE)]
+
+
+def test_nothing_before_the_first_status_even_with_activity():
+    c = _activity_controller()
+    assert c.on_activity("normal", "moving", 0.0) == []
+    assert c.shown is None
+
+
+def test_melody_when_start_becomes_possible():
+    c = _activity_controller()
+    c.on_status(False, 0.0)
+    c.on_activity("normal", "moving", 0.0)
+    assert c.on_activity("start", "waiting", 0.5) == [_led(LED_BLINK, COLOR_ORANGE)]
+    assert c.on_status(True, 0.6) == [MELODY_WAITING]
+    assert c.on_status(True, 0.7) == []
+
+
+def test_press_reblinks_any_blinking_display():
+    c = _activity_controller()
+    c.on_status(False, 0.0)
+    c.on_activity("act", "handling", 0.0)
+    c.on_press(1.0)
+    c.on_status(False, 1.5)
+    c.on_activity("act", "handling", 1.5)
+    assert c.tick(2.0) == []
+    c.on_status(False, 2.4)
+    assert c.tick(2.5) == [_led(LED_BLINK, COLOR_RED)]
+    assert c.tick(3.0) == []
+
+
+def test_press_on_a_solid_display_does_not_reblink():
+    c = _activity_controller()
+    c.on_status(False, 0.0)
+    c.on_activity("normal", "moving", 0.0)
+    c.on_press(0.5)
+    c.on_status(False, 1.5)
+    c.on_activity("normal", "moving", 1.5)
+    assert c.tick(2.5) == []

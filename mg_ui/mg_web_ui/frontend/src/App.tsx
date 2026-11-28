@@ -58,7 +58,10 @@ export default function App() {
                   }
                 />
                 {/* 状態ランプの見方と、走行の状態の履歴の全件。:useCase より前に置く */}
-                <Route path="status-lamps" element={<StatusLampGuidePage />} />
+                <Route
+                  path="status-lamps"
+                  element={<StatusLampGuidePage client={client} />}
+                />
                 <Route
                   path="activity-log"
                   element={<ActivityLogPage client={client} />}

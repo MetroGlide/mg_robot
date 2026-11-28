@@ -12,6 +12,8 @@ function activity(overrides: Partial<NavigationActivity>): NavigationActivity {
     index: -1,
     total: -1,
     remaining: -1,
+    lamp_response: "none",
+    lamp_motion: "moving",
     ...overrides,
   };
 }

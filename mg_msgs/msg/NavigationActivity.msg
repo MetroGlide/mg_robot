@@ -16,7 +16,23 @@ int32 total
 # code ごとの残り。走行中は残り距離 [m]、出発待ちと待機は残り秒数。該当しなければ -1
 float32 remaining
 
-# 表示の色 (ランプ) は code から UI が引く (mg_ui の statusLamp.ts)。健全性は /diagnostics_agg が表す
+# 状態ランプの意味 (code ごとに mg_waypoint_navigation/config/activity_lamps.yaml で決める)。
+# 色・点滅の見た目は使う側 (Web UI・MMI) が決める。健全性は /diagnostics_agg が表す
+# 人がどうすればよいか (下の LAMP_RESPONSE_* のどれか)
+string lamp_response
+# 動いているか (下の LAMP_MOTION_* のどれか)
+string lamp_motion
+
+string LAMP_RESPONSE_NORMAL="normal"
+string LAMP_RESPONSE_WATCH="watch"
+string LAMP_RESPONSE_ACT="act"
+string LAMP_RESPONSE_OPERATOR="operator"
+string LAMP_RESPONSE_START="start"
+string LAMP_RESPONSE_NONE="none"
+string LAMP_MOTION_MOVING="moving"
+string LAMP_MOTION_WAITING="waiting"
+string LAMP_MOTION_HANDLING="handling"
+
 string IDLE="idle"
 string DEPARTURE_WAIT="departure_wait"
 string NAVIGATING="navigating"

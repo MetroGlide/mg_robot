@@ -21,6 +21,9 @@ export interface ActivityHistoryEntry {
   /** 地点の番号 (0 始まり) と総数。該当しなければ -1 */
   index: number;
   total: number;
+  /** 状態ランプの意味 (人がどうすればよいか・動いているか)。古いロボットでは空 */
+  response: string;
+  motion: string;
 }
 
 export interface ActivityEventLike {
@@ -54,6 +57,8 @@ export function toActivityEntry(
     detail: fields.detail ?? "",
     index: toNumber(fields.index, -1),
     total: toNumber(fields.total, -1),
+    response: fields.lamp_response ?? "",
+    motion: fields.lamp_motion ?? "",
   };
 }
 
@@ -129,11 +134,11 @@ function tsvCell(value: string): string {
 }
 
 /**
- * 履歴を TSV のテキストにする (古い順)。lampText は code からランプの表示名を引く関数。
+ * 履歴を TSV のテキストにする (古い順)。lampText は件からランプの表示名を引く関数。
  */
 export function toTsv(
   entries: ActivityHistoryEntry[],
-  lampText: (code: string) => string,
+  lampText: (entry: ActivityHistoryEntry) => string,
 ): string {
   const durations = durationsSec(entries);
   const header = [
@@ -148,7 +153,7 @@ export function toTsv(
   const rows = entries.map((entry, i) => [
     dateTimeText(entry.startMs),
     durations[i] === null ? "" : durations[i]!.toFixed(1),
-    lampText(entry.code),
+    lampText(entry),
     entry.code,
     entry.text,
     entry.detail,

@@ -51,6 +51,7 @@ describe("toActivityEntry", () => {
       }),
     );
     expect(e).toMatchObject({
+      response: "",
       startMs: 8_500,
       code: "recovery",
       from: "navigating",
@@ -98,7 +99,7 @@ describe("toTsv", () => {
       entry(1000, "", "idle"),
       entry(5000, "idle", "navigating", "4.0"),
     ];
-    const lines = toTsv(entries, (code) => `lamp:${code}`)
+    const lines = toTsv(entries, (e) => `lamp:${e.code}`)
       .trimEnd()
       .split("\n");
     expect(lines[0]).toBe(
@@ -117,5 +118,19 @@ describe("toTsv", () => {
       "lamp:navigating",
       "navigating",
     ]);
+  });
+});
+
+describe("toActivityEntry のランプの意味", () => {
+  it("イベントの lamp_response・lamp_motion を持つ", () => {
+    const e = toActivityEntry(
+      event(0, {
+        from: "",
+        to: "recovery",
+        lamp_response: "watch",
+        lamp_motion: "handling",
+      }),
+    );
+    expect(e).toMatchObject({ response: "watch", motion: "handling" });
   });
 });

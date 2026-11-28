@@ -88,7 +88,7 @@ export default function TopBar({ client, links, onSettingClick }: Props) {
           title="走行の状態の履歴を開く"
           className="flex max-w-[16rem] items-center gap-1.5 rounded-lg px-2 py-1 text-xs hover:bg-surface-sunken"
         >
-          <StatusLamp lamp={lampFor(activity?.code ?? null)} size={12} />
+          <StatusLamp lamp={lampFor(activity)} size={12} />
           <span className="truncate">{activity ? activity.text : "活動なし"}</span>
         </NavLink>
         <Pill tone={estop?.data ? "error" : "neutral"}>
