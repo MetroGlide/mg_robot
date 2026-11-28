@@ -24,7 +24,9 @@ ekf_global_node:
 # そのままでは odom→base より古く、map で姿勢を引くノード (RPP など) が毎周期その到着を待つ
 # (待ちが transform_tolerance を超えると、その周期の速度指令は 0 になる)。
 # 値は、odom→base の打刻と最新の map→odom の打刻の差 (rosbag_summary.py の「Navigation Timing」) を覆う長さにする。
-# 差が正の回が残るなら延ばす。0.0 で従来の挙動に戻る。負荷は変わらない
+# 差が正の回が残るなら延ばす。ただし、時刻 t で引く map→odom は t からこの値だけ前の推定になる
+# (補正 (/set_pose など) の直後は、この間だけ補正前の値が返る)。必要以上に長くしない。
+# 0.0 で従来の挙動に戻る。負荷は変わらない
         transform_time_offset: 0.2
 
 # Use this parameter to provide specify how long the tf listener should wait for a transform to become available. 
