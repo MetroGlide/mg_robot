@@ -31,7 +31,7 @@ obstacle_detection_3d_node:
     cropbox_x_max: 3.0
     cropbox_y_min: -1.5
     cropbox_y_max: 1.5
-    cropbox_z_min: 0.05
+    cropbox_z_min: 0.1
     cropbox_z_max: 0.35
 
     # グリッドの一辺 [m]。大きいほど速く、位置分解能は粗くなる
@@ -44,7 +44,7 @@ obstacle_detection_3d_node:
     delta_z_threshold: 0.10
 
     # ΔZ 判定に必要なセル内の最小点数。大きいほど疎なセルのノイズに強い（遠方は点が減る）
-    min_points_per_cell: 2
+    min_points_per_cell: 4
 
     # セルごとに z の上下から無視する外れ値点数 (0 または 1)。
     # 1 にすると 1 点だけの飛び画素（フライングピクセル）による誤検出を抑える。
