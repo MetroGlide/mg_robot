@@ -59,7 +59,8 @@ GUI の [waypoint-tool](https://github.com/Chu-son/waypoint-tool) でも作れ�
 | Subscriber | `~/pause_request` | `mg_msgs/PauseRequest` | 停止要求 |
 | Subscriber | `/localization/status` | `localization_supervisor_msgs/LocalizationStatus` | 自己位置監視の状態。`~/activity` の自己位置の活動 (減速・復旧しながらの走行など) の入力 |
 | Publisher | `~/status` | `mg_msgs/SequencerStatus` | 状態 |
-| Publisher | `~/activity` | `mg_msgs/NavigationActivity` | 走行の「いまの活動」の要約 (transient_local)。表示用。code が変わるとイベント `sequencer.activity_changed` も出す。詳細は [doc/architecture.md](./doc/architecture.md#いまの活動-activity) |
+| Publisher | `~/activity` | `mg_msgs/NavigationActivity` | 走行の「いまの活動」の要約 (transient_local)。表示用。状態ランプの意味 (`lamp_response`・`lamp_motion`) を含む。code が変わるとイベント `sequencer.activity_changed` も出す。詳細は [doc/architecture.md](./doc/architecture.md#いまの活動-activity) |
+| Publisher | `~/activity_lamps` | `mg_msgs/ActivityLampTable` | 活動の code ごとの状態ランプの意味の全体 (`config/activity_lamps.yaml`。transient_local、起動時に 1 回) |
 | Publisher | `~/waypoints` | `mg_msgs/WaypointList` | 読み込んだウェイポイント |
 | Publisher | `~/waypoints_markers` | `visualization_msgs/MarkerArray` | RViz2 用のマーカー |
 | Publisher | `~/loaded_maps` | `mg_msgs/LoadedMaps` | 読み込み済みの地図 |

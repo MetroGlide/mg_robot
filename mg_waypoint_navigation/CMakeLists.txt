@@ -7,7 +7,7 @@ find_package(rclpy REQUIRED)
 
 ament_python_install_package(${PROJECT_NAME})
 
-install(DIRECTORY launch behavior_trees rviz
+install(DIRECTORY launch behavior_trees rviz config
   DESTINATION share/${PROJECT_NAME}
 )
 

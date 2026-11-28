@@ -199,6 +199,7 @@ stateDiagram-v2
 | `activity_min_duration_sec` | double | 新しい活動がこの秒数続いたときだけ採る [s]。`0` なら判定せず全ての変化を出す (調べるとき用) |
 | `activity_localization_requesters` | string[] | 一時停止の要求元のうち、自己位置監視のもの (`localization_hold` にする)。送る側の `requester_id` と合わせる |
 | `activity_watchdog_requesters` | string[] | 一時停止の要求元のうち、センサの見張りのもの (`watchdog_pause` にする)。送る側の `requester_id` と合わせる |
+| `activity_lamps_file` | string | 活動の code ごとの状態ランプの意味の表。空ならパッケージの `config/activity_lamps.yaml` |
 
 > 読み込み済みの地図の記録は、`load_map` アクションと `~/load_map` を通した読み込みだけが更新する。
 > `/map_server/load_map` などを直接呼んだ場合は記録とずれる。
@@ -214,8 +215,9 @@ stateDiagram-v2
 - **外部のゴールの判定**: Nav2 のアクションに生きたゴール (ACCEPTED / EXECUTING) があり、シーケンサ自身が送ったゴールが結果の返るまでの間に無く (`WaypointNavigator.has_live_goal`)、その状態が `EXTERNAL_GOAL_HOLD_SEC` 続いたとき。この時間は、シーケンサのゴールの結果とアクションの状態の到着順の差を吸収するためのもの。アクションの状態は変化したときしか届かないので、発行側が居なくなったら最後の値を捨てる。
 - **変化の判定**: 合成した code が `activity_min_duration_sec` 続いたときだけ採る (`ActivityDebouncer`)。ただし止まっていることを示す活動 (一時停止の 3 つ、`departure_wait`、`action`、`error`、`trigger_wait`、`ready_to_start`。`IMMEDIATE_CODES`) は、短くてもすぐに採る。判定にかかるのは走行中の活動の揺れだけ。採るまでは前の活動を出し続けるので、ランプと履歴は同じ活動を指す。短い揺れ (遷移の途中の一瞬の状態など) は消え、その秒数だけ表示が遅れる。採った code の開始は、新しい code が出始めた時刻にさかのぼる。
 - **配信**: `activity_freq_hz` のタイマーからだけ合成する (専用の callback group)。状態が変わってから、最大でタイマーの周期 (と変化の判定の秒数) だけ遅れる。`elapsed_sec` は同じ `code` が続いている秒数。
-- **記録**: 採った code が変わるたびに、イベント `sequencer.activity_changed` を出す (`from`・`to`・`text`・`detail`・`index`・`total`、前の code が続いた秒数 `from_sec`、新しい code がすでに続いている秒数 `since_sec`)。Web UI の活動の履歴は、このイベントから作る。`detail` や残り距離の変化だけでは出さない。`activity_min_duration_sec` を `0` にして活動が細かく揺れると、イベントの中継が保つ直近の履歴 (全種類で共有) を、このイベントが占める。
-- **`text` は固定の短い説明**で、変わる数値は `index` / `total` / `remaining` で渡す (自己位置の活動の速度の上限などは `detail` に入れる)。表示の色 (ランプ) は UI が `code` から引く (`mg_ui` の `statusLamp.ts`)。健全性は `/diagnostics_agg`。
+- **記録**: 採った code が変わるたびに、イベント `sequencer.activity_changed` を出す (`from`・`to`・`text`・`detail`・`index`・`total`、ランプの意味 `lamp_response`・`lamp_motion`、前の code が続いた秒数 `from_sec`、新しい code がすでに続いている秒数 `since_sec`)。Web UI の活動の履歴は、このイベントから作る。`detail` や残り距離の変化だけでは出さない。`activity_min_duration_sec` を `0` にして活動が細かく揺れると、イベントの中継が保つ直近の履歴 (全種類で共有) を、このイベントが占める。
+- **`text` は固定の短い説明**で、変わる数値は `index` / `total` / `remaining` で渡す (自己位置の活動の速度の上限などは `detail` に入れる)。健全性は `/diagnostics_agg`。
+- **状態ランプの意味**: code ごとに、人がどうすればよいか (`lamp_response`: normal・watch・act・operator・start・none) と、動いているか (`lamp_motion`: moving・waiting・handling) を `config/activity_lamps.yaml` (`activity_lamps_file`) で決め、`~/activity` に入れる。Web UI の状態ランプと MMI の LED1 は、この 2 つから自分の見た目 (色・点灯 / 点滅) を決める。表が活動の code と食い違うと、起動で落ちる。表の全体は `~/activity_lamps` (`mg_msgs/ActivityLampTable`、transient_local) に 1 回出す (Web UI のランプの見方のページが使う)。
 
 優先順位 (`PRIORITY`。上から。最初に当たったもの)。「走行中」は、`NAVIGATING`、手動ゴール中、外部のゴールの走行のこと。外部のゴールは、シーケンサが `SUSPENDED`・`ON_STARTING`・`ON_ARRIVING`・`ERROR` のときは走行に数えない (手動ゴールは `ERROR` でも走行に数える)。
 
@@ -247,7 +249,7 @@ stateDiagram-v2
 
 開始待ち (`trigger_wait`・`ready_to_start`) は、MMI の LED1 の橙の点滅と同じ `trigger_acceptable` を条件にする。`wait_trigger` で待っていても始められないとき (一時停止の要求があるとき) は、一時停止の活動になる。
 
-活動を足すときは、`activity.py` の code の定数・`RULES`・`PRIORITY`、`mg_msgs/msg/NavigationActivity.msg` の定数、Web UI の `ACTIVITY_CODE` (`types/ros.ts`)・ランプの表 (`statusLamp.ts`)・文言の補足の表 (`activityText.ts` の `SHOW_DETAIL`・`SHOW_ELAPSED`)、この表を合わせて変える (UI のランプの表は、code の書き忘れが型の検査で落ちる)。
+活動を足すときは、`activity.py` の code の定数・`RULES`・`PRIORITY`、`mg_msgs/msg/NavigationActivity.msg` の定数、ランプの意味の表 (`config/activity_lamps.yaml`)、Web UI の `ACTIVITY_CODE` (`types/ros.ts`)・文言の補足の表 (`activityText.ts` の `SHOW_DETAIL`・`SHOW_ELAPSED`)、この表を合わせて変える (ランプの意味の表の書き忘れは、起動とテストで落ちる)。
 
 リカバリーは、BT のログで実行中の BT ノード名から決める。名前と文言の表は `activity.py` の `RECOVERY_TEXTS` で、自作の BT の名前 (`SpinLeftAndReplan` など) を先に、Nav2 既定の BT 用の汎用の名前 (`Spin`、`BackUp`、`Wait`) を後に置く。BT の XML を変えたら、この表も合わせる (`test_bt_recovery_names.py` が照合する)。`FollowPath` が動き出したとき、走行中でなくなったときは、リカバリーの記録を消す。
 

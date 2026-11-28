@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import copy
+import os
 
 import rclpy
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
@@ -7,12 +8,15 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, ReliabilityPolicy
 
+from ament_index_python.packages import get_package_share_directory
+
 from diagnostic_msgs.msg import DiagnosticStatus
 from diagnostic_updater import DiagnosticStatusWrapper, DiagnosticTask, Updater
 from std_msgs.msg import ColorRGBA, Int16
 from std_srvs.srv import Trigger
 from visualization_msgs.msg import Marker, MarkerArray
 
+from mg_msgs.msg import ActivityLamp, ActivityLampTable
 from mg_msgs.msg import NavigationActivity, PauseRequest, SequencerStatus
 from mg_msgs.msg import WaypointInfo
 from mg_msgs.msg import WaypointList as WaypointListMsg
@@ -26,6 +30,8 @@ from mg_waypoint_navigation.waypoint_sequencer.activity import (
     ActivitySettings,
     compose_activity,
 )
+from mg_waypoint_navigation.waypoint_sequencer.activity import PRIORITY as ACTIVITY_CODES
+from mg_waypoint_navigation.waypoint_sequencer.activity_lamps import load_lamp_table
 from mg_waypoint_navigation.waypoint_sequencer.activity_sources import ActivitySources
 from mg_waypoint_navigation.waypoint_sequencer.fsm import WaypointSequencerFSM
 from mg_waypoint_navigation.waypoint_sequencer.health import progress_health
@@ -120,6 +126,11 @@ class WaypointSequencerNode(Node):
         # 新しい活動がこの秒数続いたときだけ採る。0 なら全ての変化を出す [s]
         self._activity_min_duration_sec: float = self.declare_parameter(
             "activity_min_duration_sec", 1.0).value
+        # 活動の code ごとの状態ランプの意味の表。空ならパッケージの config/activity_lamps.yaml
+        self._activity_lamps_file: str = self.declare_parameter(
+            "activity_lamps_file", "").value or os.path.join(
+                get_package_share_directory("mg_waypoint_navigation"), "config",
+                "activity_lamps.yaml")
         # 一時停止の要求元のうち、自己位置監視とセンサの見張りのもの (送る側の requester_id と合わせる)
         self._activity_settings = ActivitySettings(
             stall_warn_sec=self._stall_warn_sec,
@@ -183,6 +194,14 @@ class WaypointSequencerNode(Node):
                 self._activity_nav_status_topic, self._activity_path_check_topic,
                 self._activity_localization_topic, self._activity_localization_timeout_sec)
             self._activity_debouncer = ActivityDebouncer(self._activity_min_duration_sec)
+            # 表が活動の code と食い違うときは、ランプが嘘をつかないよう起動で落とす
+            self._activity_lamps = load_lamp_table(self._activity_lamps_file, ACTIVITY_CODES)
+            self._activity_lamps_pub = self.create_publisher(
+                ActivityLampTable, "~/activity_lamps", latched_qos)
+            self._activity_lamps_pub.publish(ActivityLampTable(lamps=[
+                ActivityLamp(code=code, response=m.response, motion=m.motion,
+                             description=m.description)
+                for code, m in self._activity_lamps.items()]))
             self._activity_pub = self.create_publisher(
                 NavigationActivity, "~/activity", latched_qos)
             self._activity_timer = self.create_timer(
@@ -370,11 +389,13 @@ class WaypointSequencerNode(Node):
         )
         activity, elapsed_sec, change = self._activity_debouncer.update(
             compose_activity(inputs, self._activity_settings), now_sec)
+        lamp = self._activity_lamps[activity.code]
         if change is not None:
             changed = change.activity
             self._events.info(
                 'sequencer.activity_changed', from_=change.from_code, to=changed.code,
                 text=changed.text, detail=changed.detail or None,
+                lamp_response=lamp.response, lamp_motion=lamp.motion,
                 index=changed.index if changed.index >= 0 else None,
                 total=changed.total if changed.total > 0 else None,
                 from_sec=round(change.from_sec, 1), since_sec=round(change.since_sec, 1))
@@ -388,6 +409,8 @@ class WaypointSequencerNode(Node):
         msg.index = activity.index
         msg.total = activity.total
         msg.remaining = activity.remaining
+        msg.lamp_response = lamp.response
+        msg.lamp_motion = lamp.motion
         self._activity_pub.publish(msg)
 
     def _publish_waypoints_list(self, waypoints: WaypointList):

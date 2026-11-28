@@ -1,0 +1,40 @@
+# 「いまの活動」(~/activity) の code ごとの状態ランプの意味。Web UI と MMI のランプの源はこの表だけ。
+# 色・点滅の見た目は使う側が決める (Web UI は statusLamp.ts、MMI は mmi_switch.yaml)。
+#
+# response: 人がどうすればよいか
+#   normal 何もしなくてよい (正常) / watch 見守る (いつもと違うが、自動で対処・制限している)
+#   act 人が対応する (自動では戻らない) / operator 人が止めている (人が解除する)
+#   start ボタンで走行を始められる (MMI の LED1 の橙の点滅と同じ条件) / none 走行していない
+# motion: 動いているか
+#   moving 走っている (または、続いているだけの状態) / waiting 止まって待っている / handling 異常で止まっている
+# description: Web UI のランプの見方のページに出す短い説明 (画面の文言は活動の text を使う)
+#
+# code を足したら、ここにも足す (シーケンサの順位表と食い違うと、起動で落ちる)。
+lamps:
+  # 走っている
+  navigating: {response: normal, motion: moving, description: 地点へ走行中}
+  manual_goal: {response: normal, motion: moving, description: 指定した地点へ走行中}
+  external_goal: {response: normal, motion: moving, description: 外部指定のゴール (RViz など) へ走行中}
+  obstacle_slowdown: {response: normal, motion: moving, description: 障害物で減速して走行中}
+  localization_recovering_drive: {response: watch, motion: moving, description: 自己位置を復旧しながら走行中}
+  localization_slowdown: {response: watch, motion: moving, description: 自己位置の不確かさで減速して走行中}
+  no_lidar_drive: {response: watch, motion: moving, description: LiDAR なしで走行中}
+  localization_unknown: {response: watch, motion: moving, description: 自己位置の状態が届かないまま走行中}
+  # 止まって待っている
+  departure_wait: {response: normal, motion: waiting, description: 出発までのカウントダウン}
+  action: {response: normal, motion: waiting, description: 到着後のアクションを実行中}
+  goal_reached: {response: normal, motion: waiting, description: 全地点に到着}
+  obstacle_stop: {response: watch, motion: waiting, description: 障害物で停止して待っている}
+  paused: {response: operator, motion: waiting, description: 人などの要求で一時停止中}
+  trigger_wait: {response: start, motion: waiting, description: wait_trigger で、ボタンでの開始を待っている}
+  ready_to_start: {response: start, motion: waiting, description: ボタンで走行を始められる}
+  # 異常で止まっている
+  localization_hold: {response: watch, motion: handling, description: 自己位置の確認のため停止中}
+  watchdog_pause: {response: watch, motion: handling, description: センサ監視による一時停止中}
+  recovery: {response: watch, motion: handling, description: リカバリー動作中}
+  detour_rejected: {response: watch, motion: handling, description: 遠回りの経路を棄却して待機中}
+  error: {response: act, motion: handling, description: エラーで停止中}
+  sensor_timeout_stop: {response: act, motion: handling, description: センサ途絶で停止中}
+  no_progress: {response: act, motion: handling, description: 進めていない}
+  # 走行していない
+  idle: {response: none, motion: moving, description: Waypoint 走行なし}
