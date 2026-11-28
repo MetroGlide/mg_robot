@@ -71,10 +71,13 @@
           </Sequence>
 
           <!-- 残った障害物の痕跡を消して引き直す。クリア直後の空の地図で通れると判定しないよう、
-               グローバル・ローカルのコストマップが作り直されて届くまで (両方の更新周期より長く) 待つ -->
+               グローバル・ローカルのコストマップが作り直されて届くまで (両方の更新周期より長く) 待つ。
+               クリアは全層を作り直すので、地図が広いとグローバルは既定の応答待ち (bt_navigator の
+               default_server_timeout) に収まらず、失敗扱いで待ちと引き直しが飛ばされる。そのため応答待ちを
+               個別に延ばす (待つ間も BT は止まらない) -->
           <Sequence name="ClearAndReplan">
-            <ClearEntireCostmap name="ClearLocalCostmap" service_name="local_costmap/clear_entirely_local_costmap"/>
-            <ClearEntireCostmap name="ClearGlobalCostmap" service_name="global_costmap/clear_entirely_global_costmap"/>
+            <ClearEntireCostmap name="ClearLocalCostmap" service_name="local_costmap/clear_entirely_local_costmap" server_timeout="1000"/>
+            <ClearEntireCostmap name="ClearGlobalCostmap" service_name="global_costmap/clear_entirely_global_costmap" server_timeout="1000"/>
             <Wait wait_duration="2"/>
             <ComputePathToPose goal="{goal}" path="{candidate_path}" planner_id="GridBased"/>
             <CommitPath candidate="{candidate_path}" goal="{goal}" path="{path}"/>

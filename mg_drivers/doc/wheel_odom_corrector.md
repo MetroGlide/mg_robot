@@ -49,7 +49,7 @@ EKF は速度を観測として使うため、速度を信頼する設定 (共�
 補正を有効にすると、`/odom` は次のものが受け取る。
 
 - EKF (`ekf_global_node`)
-- `odometry_tf_broadcaster` (`odom→base_footprint`)
+- `odometry_tf_broadcaster` (`odom→base_footprint`)。TF は受けた時点の `now()` で打刻し直すので、`time_offset` の補正は TF には入らない (将来の拡張: [odom_tf_stamp.md](../../doc/ideas/odom_tf_stamp.md))
 - Nav2 (`bt_navigator` の `odom_topic`、controller)
 - Web UI の ODOM 表示
 - rosbag の記録

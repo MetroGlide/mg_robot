@@ -33,4 +33,5 @@
 | [localization_directional_constraint.md](./localization_directional_constraint.md) | 照合の拘束の強さを向きごとに見て、通路の進行方向のずれを防ぐ |
 | [localization_without_lidar.md](./localization_without_lidar.md) | LiDAR を失った後の自己位置の精度を上げる (GNSS の動きの判定、IMU、カメラ) |
 | [localization_exceptions.md](./localization_exceptions.md) | 合格の条件を満たせない状況を「例外」として名前をつけて持つ |
+| [odom_tf_stamp.md](./odom_tf_stamp.md) | odom→base の TF を、`now()` ではなくオドメトリの測定の時刻で打刻し、スキャンの投影の時刻のずれをなくす |
 | [localization_pose_trust.md](./localization_pose_trust.md) | 自己位置の状態に「姿勢を信頼してよいか」の値を足し、GNSS だけを除外している間も走行側の脱出が働くようにする |
