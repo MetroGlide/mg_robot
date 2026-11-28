@@ -26,13 +26,15 @@
         <FollowPath path="{path}" controller_id="FollowPath"/>
       </PipelineSequence>
 
-      <!-- 回避行動はせず待つだけ。前が空いたら待ちを中断してすぐ走行へ戻る -->
+      <!-- 回避行動はせず待つだけ。前が空いたら待ちを中断してすぐ走行へ戻る。
+           クリアの応答待ちは、既定 (bt_navigator の default_server_timeout) より延ばす
+           (mg_navigate_to_pose.xml の ClearAndReplan と同じ理由) -->
       <ReactiveFallback name="RecoveryFallback">
         <GoalUpdated/>
         <IsPathClear path="{path}"/>
         <ForceSuccess>
           <Sequence name="ClearLocalCostmapAndWait">
-            <ClearEntireCostmap name="ClearLocalCostmap" service_name="local_costmap/clear_entirely_local_costmap"/>
+            <ClearEntireCostmap name="ClearLocalCostmap" service_name="local_costmap/clear_entirely_local_costmap" server_timeout="1000"/>
             <Wait wait_duration="3"/>
           </Sequence>
         </ForceSuccess>
